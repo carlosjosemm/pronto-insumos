@@ -63,17 +63,33 @@ export async function fetchProducts({
 }: FetchProductsOptions = {}): Promise<Product[]> {
   let result: Product[] = []
 
-  try {
-    const productsRef = collection(db, 'products')
-    const snapshot = await getDocs(productsRef)
+  const hasFirebaseConfig = Boolean(
+    import.meta.env.VITE_FIREBASE_PROJECT_ID && 
+    import.meta.env.VITE_FIREBASE_API_KEY
+  )
 
-    if (!snapshot.empty) {
-      result = snapshot.docs.map(d => ({ id: d.id, ...d.data() }) as Product)
-    } else {
+  if (hasFirebaseConfig) {
+    try {
+      const fetchPromise = (async () => {
+        const productsRef = collection(db, 'products')
+        const snapshot = await getDocs(productsRef)
+        if (!snapshot.empty) {
+          return snapshot.docs.map(d => ({ id: d.id, ...d.data() }) as Product)
+        }
+        return [...PRODUCTS]
+      })()
+
+      const timeoutPromise = new Promise<Product[]>((_, reject) =>
+        setTimeout(() => reject(new Error('Firestore response timeout')), 2500)
+      )
+
+      result = await Promise.race([fetchPromise, timeoutPromise])
+    } catch (err: any) {
+      console.warn('Firestore catalog fallback to local products:', err.message)
       result = [...PRODUCTS]
     }
-  } catch (err: any) {
-    console.warn('Firestore catalog fallback:', err.message)
+  } else {
+    // If Firebase credentials are not filled yet in environment, use PRODUCTS catalog immediately
     result = [...PRODUCTS]
   }
 

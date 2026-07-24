@@ -36,12 +36,20 @@ export default function App() {
       search,
       sortBy,
       inStockOnly
-    }).then((res) => {
-      if (isMounted) {
-        setProducts(res)
-        setLoading(false)
-      }
     })
+      .then((res) => {
+        if (isMounted) {
+          setProducts(res)
+        }
+      })
+      .catch((err) => {
+        console.warn('Error fetching products:', err)
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false)
+        }
+      })
 
     return () => {
       isMounted = false
