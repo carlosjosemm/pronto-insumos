@@ -1,0 +1,37 @@
+import { CartItem, CustomerInfo } from '../types'
+
+export interface WhatsAppQuoteParams {
+  orderId: string
+  customer: CustomerInfo
+  items: CartItem[]
+  total: number
+}
+
+/**
+ * WhatsApp Quote Generator for PRONTO INSUMOS ODONTOLÓGICOS (Melipilla & RM)
+ */
+export function generateWhatsAppQuoteUrl({ orderId, customer, items, total }: WhatsAppQuoteParams): string {
+  const phone = import.meta.env.VITE_WHATSAPP_NUMBER || '56912345678'
+  
+  const itemsText = items
+    .map(i => `• *${i.quantity}x* ${i.product.name} - $${(i.product.price * i.quantity).toFixed(2)}`)
+    .join('\n')
+
+  const message = `🏥 *SOLICITUD DE COTIZACIÓN - PRONTO INSUMOS ODONTOLÓGICOS*
+
+*N° Pedido:* ${orderId}
+*Cliente/Clínica:* ${customer.fullName}
+*Email:* ${customer.email}
+*Dirección Despacho:* ${customer.address}, ${customer.city}
+
+📋 *DETALLE DE INSUMOS:*
+${itemsText}
+
+💰 *TOTAL ESTIMADO (incluye IVA):* $${total.toFixed(2)}
+
+----------------------------------------------
+*Nota:* Por favor confirmar disponibilidad inmediata y condiciones de despacho para Melipilla.`
+
+  const encodedMessage = encodeURIComponent(message)
+  return `https://wa.me/${phone}?text=${encodedMessage}`
+}

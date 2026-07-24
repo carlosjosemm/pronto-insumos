@@ -1,0 +1,371 @@
+import React, { useState } from 'react'
+import { CartItem, CustomerInfo, PaymentMethod, SubmitOrderResult } from '../types'
+import { X, CheckCircle, ShieldCheck, Lock, CreditCard, MessageSquare, Building2, ArrowRight } from 'lucide-react'
+import { submitOrder } from '../services/api'
+import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
+import { processMercadoPagoPayment } from '../services/mercadopago'
+
+export interface CheckoutModalProps {
+  isOpen: boolean
+  onClose: () => void
+  cartItems: CartItem[]
+  totalAmount: number
+  onOrderSuccess: () => void
+}
+
+export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount, onOrderSuccess }: CheckoutModalProps) {
+  const [step, setStep] = useState<number>(1) // 1: Shipping, 2: Payment/Quote Method, 3: Confirmation
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transferencia')
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
+  const [orderDetails, setOrderDetails] = useState<SubmitOrderResult | null>(null)
+  const [whatsappUrl, setWhatsappUrl] = useState<string>('')
+
+  const [formData, setFormData] = useState<CustomerInfo>({
+    fullName: 'Dra. Camila Fuentes - Odontología Melipilla',
+    email: 'contacto@odontomelipilla.cl',
+    phone: '+56 9 1234 5678',
+    address: 'Av. Ortúzar 750, Of. 302',
+    city: 'Melipilla, Región Metropolitana',
+    zip: '9500000',
+    transferReceipt: '',
+    cardNumber: '•••• •••• •••• 4242',
+    expDate: '12/28',
+    cvc: '123'
+  })
+
+  if (!isOpen) return null
+
+  const handleNextStep = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (step === 1) {
+      setStep(2)
+    } else if (step === 2) {
+      handleCompleteOrder()
+    }
+  }
+
+  const handleCompleteOrder = async () => {
+    setIsSubmitting(true)
+
+    // Mercado Pago Online Payment Processing if selected
+    if (paymentMethod === 'mercadopago') {
+      await processMercadoPagoPayment({
+        orderId: 'PRONTO-MP',
+        items: cartItems,
+        total: totalAmount,
+        customer: formData
+      })
+    }
+
+    // Submit Order to Firestore (Stock deduction runs automatically in api.ts ONLY IF paymentMethod === 'mercadopago')
+    const result = await submitOrder({
+      items: cartItems,
+      total: totalAmount,
+      customer: formData,
+      paymentMethod
+    })
+
+    setIsSubmitting(false)
+
+    if (result.success) {
+      setOrderDetails(result)
+
+      if (paymentMethod === 'whatsapp') {
+        const url = generateWhatsAppQuoteUrl({
+          orderId: result.orderId,
+          customer: formData,
+          items: cartItems,
+          total: totalAmount
+        })
+        setWhatsappUrl(url)
+      }
+
+      setStep(3)
+      onOrderSuccess()
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" style={{ maxWidth: '620px' }} onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close-btn" onClick={onClose} aria-label="Cerrar ventana">
+          <X size={18} />
+        </button>
+
+        {/* Modal Header */}
+        <div style={{ padding: '1.5rem 1.5rem 1rem', borderBottom: '1px solid var(--slate-200)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <ShieldCheck size={20} style={{ color: 'var(--emerald-dark)' }} />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '800' }}>
+              {step === 3 ? 'Pedido Registrado' : 'Gestión de Pedido y Pago'}
+            </h2>
+          </div>
+
+          {/* Stepper Indicators */}
+          {step !== 3 && (
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '700', color: step >= 1 ? 'var(--emerald-dark)' : 'var(--slate-400)' }}>
+                <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: step >= 1 ? 'var(--emerald)' : 'var(--slate-200)', color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>1</span>
+                <span>Despacho</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '700', color: step >= 2 ? 'var(--emerald-dark)' : 'var(--slate-400)' }}>
+                <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: step >= 2 ? 'var(--emerald)' : 'var(--slate-200)', color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>2</span>
+                <span>Forma de Pago / Cotización</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Form Body */}
+        <div style={{ padding: '1.5rem' }}>
+          {step === 1 && (
+            <form onSubmit={handleNextStep} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Nombre Completo o Razón Social Clínica Dental</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.fullName}
+                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Email para Factura / Boleta</label>
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Teléfono WhatsApp Contacto</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Dirección de Gabinete / Consulta Dental</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Ciudad / Región</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.city}
+                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Comuna / Código Postal</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.zip}
+                    onChange={(e) => setFormData({ ...formData, zip: e.target.value })}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                  />
+                </div>
+              </div>
+
+              <button type="submit" className="btn-primary" style={{ marginTop: '1rem', justifyContent: 'center' }}>
+                <span>Seleccionar Método de Pago / Cotización</span>
+              </button>
+            </form>
+          )}
+
+          {step === 2 && (
+            <form onSubmit={handleNextStep} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{ background: 'var(--slate-50)', padding: '0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--slate-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--slate-600)' }}>Total Pedido:</span>
+                <span style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--slate-900)' }}>${totalAmount.toFixed(2)}</span>
+              </div>
+
+              {/* Method Selection Tabs */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', marginBottom: '0.5rem' }}>
+                  Selecciona la Opción Preferida para tu Clínica:
+                </label>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  {/* Option 1: Transferencia Bancaria */}
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '0.85rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: `2px solid ${paymentMethod === 'transferencia' ? 'var(--emerald)' : 'var(--slate-200)'}`,
+                    background: paymentMethod === 'transferencia' ? '#f0fdf4' : 'white',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="payMethod"
+                      value="transferencia"
+                      checked={paymentMethod === 'transferencia'}
+                      onChange={() => setPaymentMethod('transferencia')}
+                    />
+                    <Building2 size={20} style={{ color: 'var(--emerald-dark)' }} />
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem' }}>Transferencia Bancaria Directa (BCO)</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--slate-600)' }}>Datos bancarios para transferencia electrónica con boleta/factura.</div>
+                    </div>
+                  </label>
+
+                  {/* Option 2: WhatsApp Quote */}
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '0.85rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: `2px solid ${paymentMethod === 'whatsapp' ? 'var(--emerald)' : 'var(--slate-200)'}`,
+                    background: paymentMethod === 'whatsapp' ? '#f0fdf4' : 'white',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="payMethod"
+                      value="whatsapp"
+                      checked={paymentMethod === 'whatsapp'}
+                      onChange={() => setPaymentMethod('whatsapp')}
+                    />
+                    <MessageSquare size={20} style={{ color: '#25D366' }} />
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem' }}>Cotización por WhatsApp Melipilla</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--slate-600)' }}>Genera un mensaje de cotización instantáneo directo a nuestro ejecutivo.</div>
+                    </div>
+                  </label>
+
+                  {/* Option 3: Mercado Pago Chile */}
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '0.85rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: `2px solid ${paymentMethod === 'mercadopago' ? 'var(--emerald)' : 'var(--slate-200)'}`,
+                    background: paymentMethod === 'mercadopago' ? '#f0fdf4' : 'white',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="payMethod"
+                      value="mercadopago"
+                      checked={paymentMethod === 'mercadopago'}
+                      onChange={() => setPaymentMethod('mercadopago')}
+                    />
+                    <CreditCard size={20} style={{ color: '#009EE3' }} />
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem' }}>Pago Inmediato Mercado Pago Chile / Webpay</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--slate-600)' }}>Tarjeta de Crédito/Débito (descontará el stock de Firestore al instante).</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Dynamic Details by Method */}
+              {paymentMethod === 'transferencia' && (
+                <div style={{ background: 'var(--slate-50)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--slate-200)', fontSize: '0.825rem' }}>
+                  <div style={{ fontWeight: '700', color: 'var(--slate-900)', marginBottom: '0.5rem' }}>Datos Bancarios PRONTO INSUMOS:</div>
+                  <div>• <strong>Banco:</strong> Banco de Chile</div>
+                  <div>• <strong>Tipo Cuenta:</strong> Cuenta Corriente N° 849-01284-01</div>
+                  <div>• <strong>RUT:</strong> 77.892.410-K</div>
+                  <div>• <strong>Email Transferencias:</strong> pagos@prontoinsumos.cl</div>
+                  <div style={{ marginTop: '0.5rem', color: 'var(--slate-500)', fontSize: '0.75rem' }}>
+                    *El stock no será descontado hasta que el pago sea verificado por el área de tesorería.
+                  </div>
+                </div>
+              )}
+
+              {paymentMethod === 'whatsapp' && (
+                <div style={{ background: '#ecfdf5', color: '#047857', padding: '0.85rem', borderRadius: 'var(--radius-md)', fontSize: '0.825rem' }}>
+                  💡 Al continuar, serás redirigido a WhatsApp con el detalle formateado del pedido para coordinar despacho directo a Melipilla.
+                </div>
+              )}
+
+              {paymentMethod === 'mercadopago' && (
+                <div style={{ background: '#e0f2fe', color: '#0369a1', padding: '0.85rem', borderRadius: 'var(--radius-md)', fontSize: '0.825rem' }}>
+                  ⚡ **Descuento de Stock Automático**: Al aprobarse el pago, se actualizará el stock real en Firestore.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button type="button" className="btn-secondary" style={{ color: 'var(--slate-800)', borderColor: 'var(--slate-300)' }} onClick={() => setStep(1)}>
+                  Volver
+                </button>
+                <button type="submit" className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} disabled={isSubmitting}>
+                  <Lock size={18} />
+                  <span>{isSubmitting ? 'Procesando...' : paymentMethod === 'whatsapp' ? 'Generar Cotización' : 'Confirmar Pedido'}</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {step === 3 && orderDetails && (
+            <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+              <CheckCircle size={56} style={{ color: 'var(--emerald)', margin: '0 auto 1rem' }} />
+              <h3 style={{ fontSize: '1.4rem', fontWeight: '800', marginBottom: '0.25rem' }}>
+                {paymentMethod === 'whatsapp' ? '¡Cotización Registrada!' : '¡Pedido Registrado con Éxito!'}
+              </h3>
+
+              <div style={{ background: 'var(--slate-50)', padding: '1.25rem', borderRadius: 'var(--radius-md)', textAlign: 'left', margin: '1.25rem 0', border: '1px solid var(--slate-200)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                  <span style={{ color: 'var(--slate-500)' }}>ID de Pedido:</span>
+                  <span style={{ fontWeight: '800', color: 'var(--slate-900)' }}>{orderDetails.orderId}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                  <span style={{ color: 'var(--slate-500)' }}>Total:</span>
+                  <span style={{ fontWeight: '800', color: 'var(--emerald-dark)' }}>${totalAmount.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--slate-500)' }}>Método Seleccionado:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--slate-800)', textTransform: 'capitalize' }}>{paymentMethod}</span>
+                </div>
+              </div>
+
+              {paymentMethod === 'whatsapp' && whatsappUrl && (
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary"
+                  style={{ background: '#25D366', width: '100%', justifyContent: 'center', marginBottom: '1rem', textDecoration: 'none' }}
+                >
+                  <MessageSquare size={18} />
+                  <span>Enviar Cotización por WhatsApp Ahora</span>
+                  <ArrowRight size={18} />
+                </a>
+              )}
+
+              <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={onClose}>
+                <span>Volver a la Tienda</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

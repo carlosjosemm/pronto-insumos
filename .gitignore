@@ -1,0 +1,11 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Local Environment & Secrets (DO NOT COMMIT)
+.env.local
+.env.*.local
+
+# Vercel & Build Artifacts
+.vercel
+dist

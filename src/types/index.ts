@@ -1,0 +1,85 @@
+export type ProductCategory = 'Diagnostics' | 'Instruments' | 'Materials' | 'Sterilization' | 'all'
+
+export interface Category {
+  id: ProductCategory
+  name: string
+  icon: string
+}
+
+export interface Product {
+  id: string
+  name: string
+  category: string
+  price: number
+  originalPrice?: number
+  rating: number
+  reviewsCount: number
+  inStock: boolean
+  stockCount: number
+  prescriptionRequired: boolean
+  tag: string
+  description: string
+  specs: string[]
+  placeholderTheme: string
+  mediaBadge: string
+}
+
+export interface CartItem {
+  product: Product
+  quantity: number
+}
+
+export interface CustomerInfo {
+  fullName: string
+  email: string
+  phone: string
+  address: string
+  city: string
+  zip: string
+  transferReceipt?: string
+  cardNumber?: string
+  expDate?: string
+  cvc?: string
+}
+
+export type PaymentMethod = 'transferencia' | 'whatsapp' | 'mercadopago'
+
+export type OrderStatus =
+  | 'PAGADO_MERCADOPAGO'
+  | 'PENDIENTE_TRANSFERENCIA'
+  | 'COTIZACION_SOLICITADA_WHATSAPP'
+  | 'PENDIENTE_PAGO'
+
+export interface Order {
+  orderId: string
+  createdAt?: any
+  paymentMethod: PaymentMethod
+  status: OrderStatus
+  totalAmount: number
+  customer: CustomerInfo
+  items: {
+    productId: string
+    name: string
+    quantity: number
+    price: number
+  }[]
+}
+
+export interface PromoCode {
+  code: string
+  discountPercent: number
+  label: string
+}
+
+export interface Toast {
+  id: number
+  message: string
+}
+
+export interface SubmitOrderResult {
+  success: boolean
+  orderId: string
+  timestamp: string
+  total: number
+  itemsCount: number
+}

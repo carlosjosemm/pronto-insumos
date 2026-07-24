@@ -1,0 +1,55 @@
+import React from 'react'
+import ProductCard from './ProductCard'
+import { Product } from '../types'
+import { AlertCircle } from 'lucide-react'
+
+export interface ProductListProps {
+  products: Product[]
+  loading: boolean
+  onAddToCart: (product: Product) => void
+  onQuickView: (product: Product) => void
+}
+
+export default function ProductList({ products, loading, onAddToCart, onQuickView }: ProductListProps) {
+  if (loading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--slate-600)' }}>
+        <div className="brand-icon-wrapper" style={{ margin: '0 auto 1rem', animation: 'spin 1s linear infinite' }}>
+          ⏳
+        </div>
+        <p style={{ fontWeight: '600' }}>Cargando catálogo de insumos odontológicos...</p>
+      </div>
+    )
+  }
+
+  if (products.length === 0) {
+    return (
+      <div style={{
+        background: 'white',
+        borderRadius: 'var(--radius-lg)',
+        padding: '3.5rem 1.5rem',
+        textAlign: 'center',
+        border: '1px solid var(--slate-200)'
+      }}>
+        <AlertCircle size={48} style={{ color: 'var(--slate-400)', marginBottom: '1rem' }} />
+        <h3 style={{ fontSize: '1.25rem', fontWeight: '800', marginBottom: '0.5rem' }}>No se encontraron insumos odontológicos</h3>
+        <p style={{ color: 'var(--slate-600)', maxWidth: '420px', margin: '0 auto' }}>
+          Intenta cambiar el término de búsqueda o selecciona otra categoría odontológica.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="products-grid">
+      {products.map((product) => (
+        <ProductCard
+          key={product.id}
+          product={product}
+          onAddToCart={onAddToCart}
+          onQuickView={onQuickView}
+        />
+      ))}
+    </div>
+  )
+}

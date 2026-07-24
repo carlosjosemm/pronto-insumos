@@ -1,0 +1,237 @@
+import { Category, Product, PromoCode } from '../types'
+
+export const CATEGORIES: Category[] = [
+  { id: 'all', name: 'Todos los Insumos', icon: 'Grid' },
+  { id: 'Diagnostics', name: 'Diagnóstico y Exploración', icon: 'Activity' },
+  { id: 'Instruments', name: 'Instrumental y Piezas de Mano', icon: 'Home' },
+  { id: 'Materials', name: 'Materiales y Restauración', icon: 'Heart' },
+  { id: 'Sterilization', name: 'Esterilización e Higiene', icon: 'ShieldAlert' }
+]
+
+export const PRODUCTS: Product[] = [
+  {
+    id: 'odon-101',
+    name: 'Turbina Odontológica LED MasterTorque',
+    category: 'Instruments',
+    price: 189.99,
+    originalPrice: 229.99,
+    rating: 4.9,
+    reviewsCount: 86,
+    inStock: true,
+    stockCount: 18,
+    prescriptionRequired: false,
+    tag: 'Más Vendido',
+    description: 'Pieza de mano de alta velocidad con iluminación LED por fibra óptica, acople rápido push-button y triple spray de agua para gabinetes dentales.',
+    specs: [
+      'Velocidad de rotación: 380.000 a 420.000 RPM',
+      'Iluminación LED natural por fibra óptica (25.000 Lux)',
+      'Rodamientos de cerámica de alta durabilidad',
+      'Conexión Midwest 4 vías autoclaveable a 135°C'
+    ],
+    placeholderTheme: 'gradient-teal',
+    mediaBadge: 'Fibra Óptica LED'
+  },
+  {
+    id: 'odon-102',
+    name: 'Lámpara de Fotocurado Inalámbrica CuringPro 3000',
+    category: 'Diagnostics',
+    price: 129.50,
+    originalPrice: 159.00,
+    rating: 4.8,
+    reviewsCount: 112,
+    inStock: true,
+    stockCount: 22,
+    prescriptionRequired: false,
+    tag: 'Certificado ISP',
+    description: 'Luz LED de polimerización para resinas compuestas de alta intensidad (3.000 mW/cm²) con espectro de amplia longitud de onda (385-515 nm).',
+    specs: [
+      'Potencia ajustable: 1.000 a 3.000 mW/cm²',
+      'Tiempo de fotocurado ultrarrápido (1 a 3 segundos)',
+      'Cabezal giratorio 360° de perfil bajo para posteriores',
+      'Batería de litio con indicador de carga en pantalla'
+    ],
+    placeholderTheme: 'gradient-blue',
+    mediaBadge: '3000 mW/cm²'
+  },
+  {
+    id: 'odon-103',
+    name: 'Escariador Ultrasónico Dental OdonClean Pro',
+    category: 'Instruments',
+    price: 245.00,
+    originalPrice: 295.00,
+    rating: 4.9,
+    reviewsCount: 74,
+    inStock: true,
+    stockCount: 10,
+    prescriptionRequired: false,
+    tag: 'Recomendado Melipilla',
+    description: 'Unidad de detartraje y profilaxis ultrasónica con pieza de mano desmontable autoclaveable, irrigación de agua integrada y puntas de titanio.',
+    specs: [
+      'Frecuencia piezoeléctrica automática: 28 kHz - 32 kHz',
+      'Pieza de mano desmontable esterilizable a 135°C',
+      'Incluye kit de 5 puntas clínicas (G1, G2, G4, P1)',
+      'Pedal de control ergonómico manos libres'
+    ],
+    placeholderTheme: 'gradient-cyan',
+    mediaBadge: 'Piezoeléctrico 32kHz'
+  },
+  {
+    id: 'odon-104',
+    name: 'Kit de Resinas Compuestas Nano-Híbridas DentFill',
+    category: 'Materials',
+    price: 79.99,
+    originalPrice: 99.00,
+    rating: 4.7,
+    reviewsCount: 145,
+    inStock: true,
+    stockCount: 35,
+    prescriptionRequired: false,
+    tag: 'Alta Estética',
+    description: 'Set de 8 jeringas de resina estética fotocurable con tecnología de nano-relleno para restauraciones directas en sectores anteriores y posteriores.',
+    specs: [
+      '8 Jeringas de 4g en tonos A1, A2, A3, A3.5, B2, C2, Incisal y Denti',
+      'Excelente pulido y retención de brillo a largo plazo',
+      'Baja contracción de polimerización (<1.8%)',
+      'Incluye ácido grabador 37% y adhesivo universal de 5ml'
+    ],
+    placeholderTheme: 'gradient-emerald',
+    mediaBadge: 'Nano-Híbrido'
+  },
+  {
+    id: 'odon-201',
+    name: 'Autoclave Odontológico Clase B 18L SterilMax',
+    category: 'Sterilization',
+    price: 899.00,
+    originalPrice: 1100.00,
+    rating: 5.0,
+    reviewsCount: 42,
+    inStock: true,
+    stockCount: 4,
+    prescriptionRequired: false,
+    tag: 'Normativa ISP',
+    description: 'Esterilizador a vapor automático de vacío fraccionado previo y posterior para instrumentos quirúrgicos huecos y piezas de mano dentales.',
+    specs: [
+      'Capacidad de cámara: 18 Litros de acero inoxidable 304',
+      'Bomba de vacío silenciosa de triple ciclo fraccionado',
+      'Impresora térmica de ciclos integrada y puerto USB',
+      'Cumple estrictamente normativa de esterilización ISP Chile'
+    ],
+    placeholderTheme: 'gradient-indigo',
+    mediaBadge: 'Clase B Vacío'
+  },
+  {
+    id: 'odon-202',
+    name: 'Alginato Cromático de Alta Precisión ImpressDent (500g)',
+    category: 'Materials',
+    price: 18.50,
+    originalPrice: 24.00,
+    rating: 4.8,
+    reviewsCount: 190,
+    inStock: true,
+    stockCount: 50,
+    prescriptionRequired: false,
+    tag: 'Uso Diario',
+    description: 'Material de impresión dental libre de polvo con indicador cromático de fase (Violeta -> Rosa -> Blanco) para modelos de estudio y prótesis.',
+    specs: [
+      'Cambio de color visual guía para mezcla y fraguado',
+      'Alta elasticidad y resistencia al desgarro',
+      'Reproducción de detalles finos de hasta 20 micras',
+      'Aroma fresco a menta para comodidad del paciente'
+    ],
+    placeholderTheme: 'gradient-slate',
+    mediaBadge: 'Guía Cromática'
+  },
+  {
+    id: 'odon-301',
+    name: 'Localizador de Ápice Digital ApexPro V',
+    category: 'Diagnostics',
+    price: 165.00,
+    originalPrice: 199.00,
+    rating: 4.9,
+    reviewsCount: 68,
+    inStock: true,
+    stockCount: 14,
+    prescriptionRequired: false,
+    tag: 'Endodoncia Avanzada',
+    description: 'Buscador de ápice digital multifrecuencia para medición exacta de conductos radiculares en ambiente seco y húmedo.',
+    specs: [
+      'Pantalla LCD a color de 4.5 pulgadas con gráfica en tiempo real',
+      'Precisión del 98.4% en conductos con sangre o irrigantes',
+      'Alarma sonara progresiva según cercanía al constricción apical',
+      'Accesorios autoclaveables (ganchos labiales y clips de lima)'
+    ],
+    placeholderTheme: 'gradient-emerald',
+    mediaBadge: 'Precisión 98.4%'
+  },
+  {
+    id: 'odon-302',
+    name: 'Set de Instrumental de Exploración Odontológica (10 pzas)',
+    category: 'Instruments',
+    price: 42.00,
+    originalPrice: 55.00,
+    rating: 4.7,
+    reviewsCount: 130,
+    inStock: true,
+    stockCount: 30,
+    prescriptionRequired: false,
+    tag: 'Acero Quirúrgico',
+    description: 'Kit de diagnóstico oral de alta calidad en acero inoxidable alemán autoclaveable para exámenes de rutina en clínica.',
+    specs: [
+      'Incluye 2 espejos nº 5 con mango, 2 exploradores dobles, 2 pinzas de algodón y 2 sondas OMS',
+      'Acero inoxidable quirúrgico grado 316L antirreflejo',
+      'Ergonomía de agarre estriado para evitar fatiga',
+      'Resistente a desinfección química y autoclave a 135°C'
+    ],
+    placeholderTheme: 'gradient-blue',
+    mediaBadge: 'Acero Alemán 316L'
+  },
+  {
+    id: 'odon-401',
+    name: 'Campos Quirúrgicos Desechables Impermeables (Caja 100 un)',
+    category: 'Sterilization',
+    price: 32.99,
+    originalPrice: 42.00,
+    rating: 4.8,
+    reviewsCount: 98,
+    inStock: true,
+    stockCount: 45,
+    prescriptionRequired: false,
+    tag: 'Higiene Clínica',
+    description: 'Sabanillas clínicas de doble capa (papel absorbente + polietileno impermeable) para protección del sillón y paciente.',
+    specs: [
+      'Dimensiones: 33 cm x 45 cm (tamaño estándar pechera/campo)',
+      'Excelente absorción de fluidos y barrera total contra humedad',
+      'Textura gofrada para evitar deslizamiento de instrumentos',
+      'Disponibles en azul clínico y verde quirúrgico'
+    ],
+    placeholderTheme: 'gradient-red',
+    mediaBadge: 'Doble Capa Barredor'
+  },
+  {
+    id: 'odon-402',
+    name: 'Motor de Implante Odontológico ImplaDrive Pro',
+    category: 'Instruments',
+    price: 1250.00,
+    originalPrice: 1450.00,
+    rating: 5.0,
+    reviewsCount: 25,
+    inStock: true,
+    stockCount: 3,
+    prescriptionRequired: false,
+    tag: 'Cirugía e Implantes',
+    description: 'Consola quirúrgica para implantología y cirugía oral con pedal multifunción, contra-ángulo reductor 20:1 e irrigación salina.',
+    specs: [
+      'Torque máximo de 80 Ncm en contra-ángulo 20:1',
+      '10 programas quirúrgicos personalizables',
+      'Bomba peristáltica de irrigación de flujo variable y silencioso',
+      'Pantalla táctil intuitiva con curva de torque en tiempo real'
+    ],
+    placeholderTheme: 'gradient-amber',
+    mediaBadge: 'Torque 80 Ncm'
+  }
+]
+
+export const MOCK_PROMOS: Record<string, PromoCode> = {
+  'PRONTO10': { discountPercent: 10, code: 'PRONTO10', label: '10% Descuento Primer Pedido Odontológico' },
+  'DENT20': { discountPercent: 20, code: 'DENT20', label: '20% Convenio Clínicas Melipilla' }
+}
