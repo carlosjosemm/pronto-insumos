@@ -25,9 +25,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
           <X size={18} />
         </button>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', padding: '1.5rem' }}>
+        <div className="quickview-grid" style={{ padding: '1.5rem' }}>
           {/* Left Media Preview */}
-          <div className={`media-placeholder-box ${product.placeholderTheme}`} style={{ height: '100%', minHeight: '260px', borderRadius: 'var(--radius-md)' }}>
+          <div className={`media-placeholder-box ${product.placeholderTheme}`} style={{ height: '100%', minHeight: '220px', borderRadius: 'var(--radius-md)' }}>
             <div className="placeholder-badge">
               <ShieldCheck size={12} />
               <span>{product.mediaBadge}</span>
@@ -43,30 +43,30 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               {product.category}
             </div>
 
-            <h2 style={{ fontSize: '1.35rem', fontWeight: '800', lineHeight: '1.25', marginBottom: '0.5rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', lineHeight: '1.25', marginBottom: '0.5rem' }}>
               {product.name}
             </h2>
 
             {/* Rating */}
-            <div className="product-rating" style={{ marginBottom: '1rem' }}>
-              <Star size={16} className="star-filled" />
+            <div className="product-rating" style={{ marginBottom: '0.85rem' }}>
+              <Star size={15} className="star-filled" />
               <span style={{ fontWeight: '700', color: 'var(--slate-900)' }}>{product.rating}</span>
               <span>({product.reviewsCount} reseñas odontológicas)</span>
             </div>
 
             {/* Price */}
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', marginBottom: '1rem' }}>
-              <span style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--slate-900)' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', marginBottom: '0.85rem' }}>
+              <span style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--slate-900)' }}>
                 ${product.price.toFixed(2)}
               </span>
               {product.originalPrice && (
-                <span style={{ fontSize: '1rem', color: 'var(--slate-400)', textDecoration: 'line-through' }}>
+                <span style={{ fontSize: '0.95rem', color: 'var(--slate-400)', textDecoration: 'line-through' }}>
                   ${product.originalPrice.toFixed(2)}
                 </span>
               )}
             </div>
 
-            <p style={{ fontSize: '0.875rem', color: 'var(--slate-600)', marginBottom: '1rem', lineHeight: '1.5' }}>
+            <p style={{ fontSize: '0.85rem', color: 'var(--slate-600)', marginBottom: '1rem', lineHeight: '1.5' }}>
               {product.description}
             </p>
 
@@ -105,7 +105,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             )}
 
             {/* Quantity Selector & Add Button */}
-            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
               <div className="quantity-controls">
                 <button className="qty-btn" onClick={() => setQuantity(Math.max(1, quantity - 1))}>
                   <Minus size={14} />
@@ -116,7 +116,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
                 </button>
               </div>
 
-              <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={handleAdd}>
+              <button className="btn-primary" style={{ flex: 1, minWidth: '160px', justifyContent: 'center' }} onClick={handleAdd}>
                 <ShoppingBag size={18} />
                 <span>Agregar ${ (product.price * quantity).toFixed(2) }</span>
               </button>

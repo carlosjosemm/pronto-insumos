@@ -22,12 +22,12 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart }: Nav
           </div>
         </a>
 
-        {/* Instant Search Bar */}
-        <div className="nav-search">
+        {/* Desktop Search Bar */}
+        <div className="nav-search desktop-only-search">
           <Search size={18} className="nav-search-icon" />
           <input
             type="text"
-            placeholder="Buscar turbinas, resinas, autoclaves, instrumental dental..."
+            placeholder="Buscar turbinas, resinas, autoclaves, instrumental..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -35,7 +35,7 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart }: Nav
 
         {/* Action Controls */}
         <div className="nav-actions">
-          <div className="trust-badge-item" style={{ fontSize: '0.8rem' }}>
+          <div className="trust-badge-item desktop-only-trust" style={{ fontSize: '0.8rem' }}>
             <MapPin size={18} style={{ color: 'var(--emerald)' }} />
             <span>Melipilla & RM</span>
           </div>
@@ -46,10 +46,21 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart }: Nav
             aria-label="Abrir Carro de Compras"
           >
             <ShoppingBag size={18} />
-            <span>Carro</span>
+            <span className="cart-btn-label">Carro</span>
             {cartCount > 0 && <span className="cart-count-badge">{cartCount}</span>}
           </button>
         </div>
+      </div>
+
+      {/* Mobile Dedicated Search Bar */}
+      <div className="nav-search-mobile">
+        <Search size={16} className="nav-search-icon" />
+        <input
+          type="text"
+          placeholder="Buscar insumos y equipos dentales..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
     </header>
   )
