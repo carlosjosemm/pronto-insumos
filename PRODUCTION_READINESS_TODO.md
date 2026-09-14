@@ -51,10 +51,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 - [x] **0.3. Synchronize Order Identifier (`orderId` / `external_reference`)** ✅ *(Resolved: generateOrderId creates canonical PRONTO-XXXXXX; unified across CheckoutModal, preference payload, and Firestore order document; unit tests passing)*
 
-- [ ] **0.4. Enforce Idempotency in the Mercado Pago Webhook**
-  - **Current Issue:** Mercado Pago regularly delivers duplicate notifications (retries or multiple event triggers such as `payment.created` and `payment.updated`). If the webhook runs twice for the same payment, it executes `runTransaction` twice and decrements double the stock.
-  - **Required Action:**
-    - Before updating stock, verify whether the order already has `status === 'PAGADO_MERCADOPAGO'` or if `mercadopagoPaymentId` was already recorded. If already processed, return `status 200 OK` immediately without modifying inventory.
+- [x] **0.4. Enforce Idempotency in the Mercado Pago Webhook** ✅ *(Resolved: Fast-path idempotency pre-check and atomic all-in-one Firestore transaction inside api/webhooks/mercadopago.ts; duplicate deliveries return HTTP 200 without mutating stock or orders; comprehensive unit tests passing)*
 
 - [ ] **0.5. Cryptographic Signature Verification on Webhooks (`x-signature`)**
   - **Current Issue:** The webhook currently checks for a payment ID and queries Mercado Pago. Anyone can send fake POST payloads to `/api/webhooks/mercadopago` to trigger excessive outbound API calls or disrupt database states.

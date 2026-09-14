@@ -95,7 +95,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     consoleSpy.mockRestore()
   })
 
-  it('should update order to PAGADO_MERCADOPAGO and deduct stock using firebase-admin on approved payment', async () => {
+  it('should update order to PAGADO_MERCADOPAGO and deduct stock using firebase-admin in an atomic transaction on approved payment', async () => {
     // Mock Mercado Pago API returning approved payment
     vi.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
@@ -106,12 +106,25 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       })
     } as Response)
 
-    // Mock Firebase Admin Firestore
-    const mockOrderUpdate = vi.fn().mockResolvedValue(true)
+    const orderRef = { id: 'order-doc-abc' }
+    const productRef = { id: 'prod-turbine-1' }
+
     const mockTransactionUpdate = vi.fn()
-    const mockTransactionGet = vi.fn().mockResolvedValue({
-      exists: true,
-      data: () => ({ stockCount: 5, inStock: true })
+    const mockTransactionGet = vi.fn().mockImplementation((ref: any) => {
+      if (ref?.id === 'order-doc-abc') {
+        return Promise.resolve({
+          exists: true,
+          data: () => ({
+            orderId: 'PRONTO-123456',
+            status: 'PENDIENTE_PAGO_MERCADOPAGO',
+            items: [{ productId: 'prod-turbine-1', quantity: 2 }]
+          })
+        })
+      }
+      return Promise.resolve({
+        exists: true,
+        data: () => ({ stockCount: 5, inStock: true })
+      })
     })
 
     const mockAdminDb = {
@@ -125,9 +138,10 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
                   docs: [
                     {
                       id: 'order-doc-abc',
-                      ref: { update: mockOrderUpdate },
+                      ref: orderRef,
                       data: () => ({
                         orderId: 'PRONTO-123456',
+                        status: 'PENDIENTE_PAGO_MERCADOPAGO',
                         items: [{ productId: 'prod-turbine-1', quantity: 2 }]
                       })
                     }
@@ -139,7 +153,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
         }
         if (colName === 'products') {
           return {
-            doc: vi.fn().mockReturnValue({ id: 'prod-turbine-1' })
+            doc: vi.fn().mockReturnValue(productRef)
           }
         }
         return {}
@@ -165,8 +179,12 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     expect(res.status).toHaveBeenCalledWith(200)
     expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
 
-    // Verify order update
-    expect(mockOrderUpdate).toHaveBeenCalledWith(
+    // Verify atomic transaction was executed
+    expect(mockAdminDb.runTransaction).toHaveBeenCalledTimes(1)
+
+    // Verify order update inside transaction
+    expect(mockTransactionUpdate).toHaveBeenCalledWith(
+      orderRef,
       expect.objectContaining({
         status: 'PAGADO_MERCADOPAGO',
         mercadopagoPaymentId: '998877',
@@ -174,15 +192,207 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       })
     )
 
-    // Verify atomic stock deduction in transaction: 5 - 2 = 3
-    expect(mockAdminDb.runTransaction).toHaveBeenCalledTimes(1)
+    // Verify stock deduction inside transaction: 5 - 2 = 3
     expect(mockTransactionUpdate).toHaveBeenCalledWith(
-      expect.anything(),
+      productRef,
       expect.objectContaining({
         stockCount: 3,
         inStock: true
       })
     )
+  })
+
+  it('should acknowledge 200 with duplicate flag and skip transaction if order is already PAGADO_MERCADOPAGO (idempotency)', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        status: 'approved',
+        external_reference: 'PRONTO-123456',
+        id: 998877
+      })
+    } as Response)
+
+    const mockAdminDb = {
+      collection: vi.fn((colName: string) => {
+        if (colName === 'orders') {
+          return {
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                get: vi.fn().mockResolvedValue({
+                  empty: false,
+                  docs: [
+                    {
+                      id: 'order-doc-abc',
+                      ref: { id: 'order-doc-abc' },
+                      data: () => ({
+                        orderId: 'PRONTO-123456',
+                        status: 'PAGADO_MERCADOPAGO',
+                        mercadopagoPaymentId: '998877',
+                        items: [{ productId: 'prod-turbine-1', quantity: 2 }]
+                      })
+                    }
+                  ]
+                })
+              })
+            })
+          }
+        }
+        return {}
+      }),
+      runTransaction: vi.fn()
+    }
+
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+
+    const req = {
+      method: 'POST',
+      body: { data: { id: '998877' } }
+    } as unknown as VercelRequest
+    const res = createMockRes()
+
+    await handler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        received: true,
+        verifiedStatus: 'approved',
+        duplicate: true,
+        message: expect.stringContaining('already processed')
+      })
+    )
+
+    // CRITICAL: Must not run transaction or decrement stock again
+    expect(mockAdminDb.runTransaction).not.toHaveBeenCalled()
+  })
+
+  it('should acknowledge 200 with duplicate flag if order already recorded paymentId even if status differs', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        status: 'approved',
+        external_reference: 'PRONTO-123456',
+        id: 998877
+      })
+    } as Response)
+
+    const mockAdminDb = {
+      collection: vi.fn((colName: string) => {
+        if (colName === 'orders') {
+          return {
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                get: vi.fn().mockResolvedValue({
+                  empty: false,
+                  docs: [
+                    {
+                      id: 'order-doc-abc',
+                      ref: { id: 'order-doc-abc' },
+                      data: () => ({
+                        orderId: 'PRONTO-123456',
+                        status: 'EN_PROCESAMIENTO',
+                        mercadopagoPaymentId: '998877',
+                        items: [{ productId: 'prod-turbine-1', quantity: 2 }]
+                      })
+                    }
+                  ]
+                })
+              })
+            })
+          }
+        }
+        return {}
+      }),
+      runTransaction: vi.fn()
+    }
+
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+
+    const req = {
+      method: 'POST',
+      body: { data: { id: '998877' } }
+    } as unknown as VercelRequest
+    const res = createMockRes()
+
+    await handler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        received: true,
+        duplicate: true
+      })
+    )
+    expect(mockAdminDb.runTransaction).not.toHaveBeenCalled()
+  })
+
+  it('should abort transaction without writes if order was marked paid during concurrent transaction', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        status: 'approved',
+        external_reference: 'PRONTO-123456',
+        id: 998877
+      })
+    } as Response)
+
+    const orderRef = { id: 'order-doc-abc' }
+    const mockTransactionUpdate = vi.fn()
+    const mockTransactionGet = vi.fn().mockResolvedValue({
+      exists: true,
+      data: () => ({
+        status: 'PAGADO_MERCADOPAGO', // concurrently updated
+        mercadopagoPaymentId: '998877'
+      })
+    })
+
+    const mockAdminDb = {
+      collection: vi.fn((colName: string) => {
+        if (colName === 'orders') {
+          return {
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                get: vi.fn().mockResolvedValue({
+                  empty: false,
+                  docs: [
+                    {
+                      id: 'order-doc-abc',
+                      ref: orderRef,
+                      data: () => ({
+                        orderId: 'PRONTO-123456',
+                        status: 'PENDIENTE_PAGO_MERCADOPAGO' // initial read was pending
+                      })
+                    }
+                  ]
+                })
+              })
+            })
+          }
+        }
+        return {}
+      }),
+      runTransaction: vi.fn(async (cb: any) => {
+        await cb({
+          get: mockTransactionGet,
+          update: mockTransactionUpdate
+        })
+      })
+    }
+
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+
+    const req = {
+      method: 'POST',
+      body: { data: { id: '998877' } }
+    } as unknown as VercelRequest
+    const res = createMockRes()
+
+    await handler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(mockAdminDb.runTransaction).toHaveBeenCalledTimes(1)
+    // Concurrency guard inside transaction must prevent any updates
+    expect(mockTransactionUpdate).not.toHaveBeenCalled()
   })
 
   it('should not update order or stock if payment status is rejected or pending', async () => {

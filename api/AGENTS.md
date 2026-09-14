@@ -49,9 +49,9 @@ This directory contains the **Vercel Serverless Functions** for PRONTO. It serve
    * *As built in Task 0.2:* [`api/lib/firebaseAdmin.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firebaseAdmin.ts) provides singleton app and Firestore initialization. [`api/webhooks/mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/webhooks/mercadopago.ts) queries orders and performs atomic inventory decrements exclusively using `firebase-admin`.
 3. **Webhook Verification & Idempotency:**
    * Webhook handlers must validate cryptographic signatures (`x-signature` header via HMAC-SHA256) when configured.
-   * **Idempotency is mandatory:** Always inspect the order document before modifying state or stock. If `order.status === 'PAGADO_MERCADOPAGO'`, return `res.status(200).json({ received: true, message: 'Already processed' })` immediately.
+   * **Idempotency is mandatory:** Inspected in [`api/webhooks/mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/webhooks/mercadopago.ts) via both a fast-path check (`status === 'PAGADO_MERCADOPAGO' || mercadopagoPaymentId === String(paymentId)`) and a concurrent transaction guard. Duplicate events immediately return HTTP 200 with `{ received: true, duplicate: true }` without mutating database records or decrementing stock.
 4. **Atomic Inventory Decrements:**
-   * Stock decrements must be executed within a Firestore atomic transaction (`db.runTransaction`) to prevent inventory corruption during concurrent orders.
+   * Stock decrements and the order status transition are executed together within a Firestore atomic transaction (`adminDb.runTransaction`) adhering to Firestore's all-reads-before-all-writes rule. This prevents inventory corruption during concurrent orders or duplicate delivery attempts.
 5. **CORS & Response Standard:**
    * Set appropriate CORS headers for methods (`POST, OPTIONS`).
    * Respond with standardized JSON:

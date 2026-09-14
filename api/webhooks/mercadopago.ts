@@ -1,10 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
 
-// Placeholder fallback for Mercado Pago Access Token
-const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || 'YOUR_MERCADOPAGO_ACCESS_TOKEN'
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || 'YOUR_MERCADOPAGO_ACCESS_TOKEN'
+
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end()
@@ -48,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const orderId = paymentData.external_reference || paymentData.description
 
       if (orderId) {
+        const cleanOrderId = String(orderId).trim().toUpperCase()
         const adminDb = getAdminFirestore()
 
         if (!adminDb) {
@@ -62,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Find order in Firestore using Admin SDK
         const orderSnapshot = await adminDb
           .collection('orders')
-          .where('orderId', '==', orderId)
+          .where('orderId', '==', cleanOrderId)
           .limit(1)
           .get()
 
@@ -70,36 +70,85 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const orderDoc = orderSnapshot.docs[0]
           const orderData = orderDoc.data()
 
-          // Update order status to PAGADO_MERCADOPAGO
-          await orderDoc.ref.update({
-            status: 'PAGADO_MERCADOPAGO',
-            mercadopagoPaymentId: String(paymentId),
-            paidAt: new Date().toISOString()
-          })
-
-          // Execute atomic stock deduction in Firestore products collection
-          if (Array.isArray(orderData.items)) {
-            await adminDb.runTransaction(async (transaction) => {
-              for (const item of orderData.items) {
-                if (item.productId) {
-                  const productRef = adminDb.collection('products').doc(item.productId)
-                  const productSnap = await transaction.get(productRef)
-
-                  if (productSnap.exists) {
-                    const currentStock = Number(productSnap.data()?.stockCount) || 0
-                    const quantity = Math.max(1, Number(item.quantity) || 1)
-                    const newStock = Math.max(0, currentStock - quantity)
-                    transaction.update(productRef, {
-                      stockCount: newStock,
-                      inStock: newStock > 0
-                    })
-                  }
-                }
-              }
+          // Fast-Path Idempotency Check:
+          // If the order has already been marked as PAGADO_MERCADOPAGO or already recorded this payment ID,
+          // acknowledge immediately with HTTP 200 without re-decrementing stock.
+          if (
+            orderData.status === 'PAGADO_MERCADOPAGO' ||
+            orderData.mercadopagoPaymentId === String(paymentId)
+          ) {
+            console.info(
+              `[Mercado Pago Webhook] Order "${cleanOrderId}" is already processed (status: ${orderData.status}, paymentId: ${orderData.mercadopagoPaymentId}). Skipping duplicate processing.`
+            )
+            return res.status(200).json({
+              received: true,
+              verifiedStatus: paymentData.status,
+              duplicate: true,
+              message: 'Order already processed'
             })
           }
+
+          // Execute atomic transaction for order status update and stock deduction.
+          // In Firestore transactions, all reads MUST precede all writes.
+          await adminDb.runTransaction(async (transaction) => {
+            const freshOrderSnap = await transaction.get(orderDoc.ref)
+            const freshOrderData = freshOrderSnap.data()
+
+            // Concurrency Guard: verify order was not updated concurrently
+            if (
+              freshOrderData?.status === 'PAGADO_MERCADOPAGO' ||
+              freshOrderData?.mercadopagoPaymentId === String(paymentId)
+            ) {
+              console.info(
+                `[Mercado Pago Webhook] Order "${cleanOrderId}" was marked as paid during concurrent transaction.`
+              )
+              return
+            }
+
+            // 1. Read all product documents first (all reads before writes)
+            const items = Array.isArray(freshOrderData?.items)
+              ? freshOrderData.items
+              : Array.isArray(orderData.items)
+                ? orderData.items
+                : []
+
+            const productUpdates: Array<{ ref: any; newStock: number; inStock: boolean }> = []
+
+            for (const item of items) {
+              if (item.productId) {
+                const productRef = adminDb.collection('products').doc(item.productId)
+                const productSnap = await transaction.get(productRef)
+
+                if (productSnap.exists) {
+                  const currentStock = Number(productSnap.data()?.stockCount) || 0
+                  const quantity = Math.max(1, Number(item.quantity) || 1)
+                  const newStock = Math.max(0, currentStock - quantity)
+                  productUpdates.push({
+                    ref: productRef,
+                    newStock,
+                    inStock: newStock > 0
+                  })
+                }
+              }
+            }
+
+            // 2. Perform all writes: update order document
+            transaction.update(orderDoc.ref, {
+              status: 'PAGADO_MERCADOPAGO',
+              mercadopagoPaymentId: String(paymentId),
+              paidAt: new Date().toISOString()
+            })
+
+            // Perform all writes: update product stock documents
+            for (const prodUpdate of productUpdates) {
+              transaction.update(prodUpdate.ref, {
+                stockCount: prodUpdate.newStock,
+                inStock: prodUpdate.inStock
+              })
+            }
+          })
         } else {
-          console.warn(`[Mercado Pago Webhook] Order "${orderId}" not found in Firestore for payment ${paymentId}`)
+          console.warn(`[Mercado Pago Webhook] Order "${cleanOrderId}" not found in Firestore for payment ${paymentId}`)
         }
       }
     }
