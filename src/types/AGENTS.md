@@ -67,3 +67,6 @@ export type ShippingMethod =
 
 ### 4. Monetary Values in Chilean Pesos (CLP)
 All financial fields (`price`, `subtotal`, `tax`, `shippingCost`, `total`) represent whole Chilean Peso integers without decimals.
+
+### 5. Customer Privacy & PCI-DSS Scope (`CustomerInfo`)
+`CustomerInfo` contains only contact, Chilean tax identity (`RUT`, `documentType`, `razonSocial`, `giroComercial`), and shipping destination attributes. It must **never** contain payment card attributes (`cardNumber`, `expDate`, `cvc`). Card data collection is delegated entirely to Mercado Pago Checkout Pro.
