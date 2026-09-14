@@ -57,7 +57,15 @@ flowchart TD
 ### Step 7: Update Roadmap Checklist
 * Mark the task as completed `[x]` in [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
 
-### Step 8: Walkthrough & Transition
+### Step 8: Conventional Git Commit
+* When instructed to wrap up/proceed, stage and commit the completed task's changes:
+  ```bash
+  git add .
+  git commit -m "fix: <Task Title>" # or feat: <Task Title>
+  ```
+* Reference the task title directly (e.g., `fix: Fix False Client-Side Payment Approval` or `feat: Migrate Serverless Webhooks to firebase-admin`). This ensures each subsequent task starts on a clean Git working state without uncommitted changes.
+
+### Step 9: Walkthrough & Transition
 * Write/update `walkthrough.md` summarizing the completed changes, test results, and any human TODOs.
 * Inform the user that the task is finished and request permission to draft the plan for the next task.
 
