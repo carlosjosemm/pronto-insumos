@@ -1,8 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || ''
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || ''
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
@@ -10,9 +14,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { orderId, items, customer, total } = req.body || {}
 
-    if (!orderId || !items || !Array.isArray(items)) {
-      return res.status(400).json({ error: 'Missing required parameters: orderId and items array' })
+    if (!orderId || !items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Missing required parameters: orderId and non-empty items array' })
     }
+
+    const cleanOrderId = String(orderId).trim().toUpperCase()
 
     const host = req.headers.host || 'pronto-insumos.vercel.app'
     const protocol = host.includes('localhost') ? 'http' : 'https'
@@ -25,7 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         success: true,
         isSimulated: true,
         preferenceId: 'PREF-SIMULATED-' + Math.floor(100000 + Math.random() * 900000),
-        initPoint: `${baseUrl}/?status=approved&orderId=${orderId}`
+        initPoint: `${baseUrl}/?status=approved&orderId=${cleanOrderId}`
       })
     }
 
@@ -46,11 +52,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           number: customer.rut
         } : undefined
       },
-      external_reference: orderId,
+      external_reference: cleanOrderId,
       back_urls: {
-        success: `${baseUrl}/?status=approved&orderId=${orderId}`,
-        failure: `${baseUrl}/?status=failure&orderId=${orderId}`,
-        pending: `${baseUrl}/?status=pending&orderId=${orderId}`
+        success: `${baseUrl}/?status=approved&orderId=${cleanOrderId}`,
+        failure: `${baseUrl}/?status=failure&orderId=${cleanOrderId}`,
+        pending: `${baseUrl}/?status=pending&orderId=${cleanOrderId}`
       },
       auto_return: 'approved',
       notification_url: `${baseUrl}/api/webhooks/mercadopago`

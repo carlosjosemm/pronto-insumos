@@ -23,10 +23,13 @@ flowchart TD
     A["1. Select Next Task in TODO.md"] --> B["2. Draft Fresh implementation_plan.md"]
     B --> C["3. Await Explicit User Approval (Proceed)"]
     C --> D["4. Execute Code & Write Robust Unit Tests"]
-    D --> E["5. Verify: pnpm test (All Tests Pass)"]
-    E --> F["6. Document 'As-Built' in AGENTS.md"]
-    F --> G["7. Mark Checkbox [x] in TODO.md"]
-    G --> H["8. Create Walkthrough & Await Next Task"]
+    D --> E["5. Verify: pnpm test & pnpm build"]
+    E --> F["6. Adversarial Code Review (Read-Only)"]
+    F --> G["7. Address Code Review Issues & Re-Verify"]
+    G --> H["8. Update As-Built in AGENTS.md"]
+    H --> I["9. Mark Checkbox [x] in TODO.md"]
+    I --> J["10. Await Human Wrap-Up -> Conventional Git Commit"]
+    J --> K["11. Walkthrough & Ready Next Task"]
 ```
 
 ### Step 1: Select the Next Pending Task
@@ -47,27 +50,41 @@ flowchart TD
 * If third-party secrets or human credentials are required (e.g., Mercado Pago live keys, Firebase service account keys), use safe mock placeholders and clearly document human action items in `.env.example`.
 * **Implement robust unit tests** covering the new or modified logic in `src/tests/`.
 
-### Step 5: Verify via Automated Tests
-* Run `pnpm test` (Vitest).
-* **Zero Regression Policy:** All pre-existing tests (84+) plus newly added tests must pass 100%.
+### Step 5: Verify via Automated Tests & Production Build
+* Run `pnpm test` (Vitest) and `pnpm build`.
+* **Zero Regression Policy:** All pre-existing tests plus newly added tests must pass 100%.
 
-### Step 6: Update As-Built Documentation
+### Step 6: Adversarial Code Review (Read-Only Inspection)
+* Perform an independent, rigorous, read-only code review of all modified files.
+* Inspect for:
+  - Defensive programming: Input sanitation, accidental quotation wrapping in secrets, non-numeric quantity guards, boundary fallbacks.
+  - Runtime safety: Strict Node.js vs. browser runtime separation (`process.env` vs `import.meta.env`).
+  - Observability: Useful diagnostic warning logs on unhandled paths or missing database records.
+  - Test completeness: Negative assertions, CORS preflight (`OPTIONS`), error recovery.
+* Document findings clearly in a Code Review Report.
+
+### Step 7: Address Code Review Claims
+* Remediate every valid issue flagged in the review report directly in the working tree.
+* Add unit tests to verify each edge case and re-run `pnpm test` and `pnpm build`.
+
+### Step 8: Update As-Built Documentation
 * Document what was implemented and any new patterns in the relevant directory's `AGENTS.md` (e.g., `api/AGENTS.md`, `src/components/AGENTS.md`, etc.).
 
-### Step 7: Update Roadmap Checklist
+### Step 9: Update Roadmap Checklist
 * Mark the task as completed `[x]` in [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
 
-### Step 8: Conventional Git Commit
-* When instructed to wrap up/proceed, stage and commit the completed task's changes:
+### Step 10: Human Wrap-Up Approval & Conventional Git Commit
+* **CRITICAL TIMING RULE:** **NEVER commit prematurely.** Keep changes uncommitted in the working tree until the user explicitly reviews the code-review report and issues the command to **"wrap up and proceed"**.
+* Only upon receiving explicit wrap-up authorization, stage and commit:
   ```bash
   git add .
   git commit -m "fix: <Task Title>" # or feat: <Task Title>
   ```
-* Reference the task title directly (e.g., `fix: Fix False Client-Side Payment Approval` or `feat: Migrate Serverless Webhooks to firebase-admin`). This ensures each subsequent task starts on a clean Git working state without uncommitted changes.
+* Reference the task title directly (e.g., `fix: Synchronize Order Identifier across Mercado Pago and Firestore`).
 
-### Step 9: Walkthrough & Transition
+### Step 11: Walkthrough & Transition
 * Write/update `walkthrough.md` summarizing the completed changes, test results, and any human TODOs.
-* Inform the user that the task is finished and request permission to draft the plan for the next task.
+* Report back to the user and await instructions to draft the implementation plan for the next task.
 
 ---
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { CartItem, CustomerInfo, PaymentMethod, SubmitOrderResult } from '../types'
 import { X, CheckCircle, ShieldCheck, Lock, CreditCard, MessageSquare, Building2, ArrowRight } from 'lucide-react'
-import { submitOrder } from '../services/api'
+import { submitOrder, generateOrderId } from '../services/api'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
 import { processMercadoPagoPayment } from '../services/mercadopago'
 
@@ -67,42 +67,51 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
   const handleCompleteOrder = async () => {
     setIsSubmitting(true)
 
-    // Mercado Pago Online Payment Processing if selected
-    if (paymentMethod === 'mercadopago') {
-      await processMercadoPagoPayment({
-        orderId: 'PRONTO-MP',
-        items: cartItems,
-        total: totalAmount,
-        customer: formData
-      })
-    }
+    // Generate canonical order identifier shared across database and gateway preference
+    const canonicalOrderId = generateOrderId()
 
-    // Submit Order to Firestore with initial pending status (stock is deducted exclusively by serverless webhook)
+    // 1. Submit Order to Firestore FIRST with initial pending status
+    // (Must guarantee the order exists in database before redirecting away from the page)
     const result = await submitOrder({
+      orderId: canonicalOrderId,
       items: cartItems,
       total: totalAmount,
       customer: formData,
       paymentMethod
     })
 
+    if (!result.success) {
+      console.error('Failed to register initial pending order in database')
+      setIsSubmitting(false)
+      return
+    }
+
+    // 2. Initiate Mercado Pago Online Payment Processing if selected
+    if (paymentMethod === 'mercadopago') {
+      await processMercadoPagoPayment({
+        orderId: canonicalOrderId,
+        items: cartItems,
+        total: totalAmount,
+        customer: formData
+      })
+    }
+
     setIsSubmitting(false)
 
-    if (result.success) {
-      setOrderDetails(result)
+    setOrderDetails(result)
 
-      if (paymentMethod === 'whatsapp') {
-        const url = generateWhatsAppQuoteUrl({
-          orderId: result.orderId,
-          customer: formData,
-          items: cartItems,
-          total: totalAmount
-        })
-        setWhatsappUrl(url)
-      }
-
-      setStep(3)
-      onOrderSuccess()
+    if (paymentMethod === 'whatsapp') {
+      const url = generateWhatsAppQuoteUrl({
+        orderId: canonicalOrderId,
+        customer: formData,
+        items: cartItems,
+        total: totalAmount
+      })
+      setWhatsappUrl(url)
     }
+
+    setStep(3)
+    onOrderSuccess()
   }
 
   return (

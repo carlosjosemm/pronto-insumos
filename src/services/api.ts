@@ -11,10 +11,18 @@ export interface FetchProductsOptions {
 }
 
 export interface SubmitOrderOptions {
+  orderId?: string
   items: CartItem[]
   total: number
   customer: CustomerInfo
   paymentMethod: PaymentMethod
+}
+
+/**
+ * Generates a canonical order identifier in the format PRONTO-XXXXXX
+ */
+export function generateOrderId(): string {
+  return 'PRONTO-' + Math.floor(100000 + Math.random() * 900000)
 }
 
 export interface SubmitOrderResult {
@@ -116,7 +124,7 @@ export async function validatePromo(code: string): Promise<{ success: boolean; p
  * Physical stock is deducted EXCLUSIVELY by the verified serverless webhook upon payment confirmation.
  */
 export async function submitOrder(orderData: SubmitOrderOptions): Promise<SubmitOrderResult> {
-  const orderId = 'PRONTO-' + Math.floor(100000 + Math.random() * 900000)
+  const orderId = (orderData.orderId || generateOrderId()).trim().toUpperCase()
 
   const statusMap: Record<PaymentMethod, OrderStatus> = {
     mercadopago: 'PENDIENTE_PAGO_MERCADOPAGO',

@@ -41,3 +41,5 @@ This directory contains the **client-side integration adapters** for PRONTO. It 
    * Always log informative console warnings when operating in fallback mode.
 4. **Canonical Order ID Generation:**
    * Ensure `submitOrder()` and `processMercadoPagoPayment()` share the exact same `orderId` (e.g., `PRONTO-XXXXXX`) so Mercado Pago's `external_reference` matches the Firestore order document ID.
+   * *As built in Task 0.3:* [`generateOrderId()`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/api.ts) creates canonical order identifiers (`PRONTO-XXXXXX`). [`CheckoutModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CheckoutModal.tsx) generates this canonical ID upfront and passes it directly to `processMercadoPagoPayment`, `submitOrder`, and WhatsApp quotes.
+

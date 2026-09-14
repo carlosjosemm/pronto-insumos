@@ -14,7 +14,7 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: vi.fn(() => 'mock-timestamp')
 }))
 
-import { fetchProducts, validatePromo, submitOrder } from '../../services/api'
+import { fetchProducts, validatePromo, submitOrder, generateOrderId } from '../../services/api'
 import { PRODUCTS } from '../../data/products'
 
 describe('fetchProducts - filtering', () => {
@@ -241,6 +241,33 @@ describe('submitOrder', () => {
     expect(result.orderId).toMatch(/^PRONTO-\d{6}$/)
     expect(consoleSpy).toHaveBeenCalled()
     consoleSpy.mockRestore()
+  })
+
+  it('should accept and persist a custom canonical orderId', async () => {
+    const { addDoc } = await import('firebase/firestore')
+    const customId = 'PRONTO-999888'
+    const result = await submitOrder({
+      orderId: customId,
+      items: mockItems,
+      total: 50000,
+      customer: mockCustomer,
+      paymentMethod: 'mercadopago'
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.orderId).toBe(customId)
+
+    const submittedPayload = vi.mocked(addDoc).mock.calls[0][1] as any
+    expect(submittedPayload.orderId).toBe(customId)
+  })
+
+  it('generateOrderId should return unique identifiers in format PRONTO-XXXXXX', () => {
+    const id1 = generateOrderId()
+    const id2 = generateOrderId()
+
+    expect(id1).toMatch(/^PRONTO-\d{6}$/)
+    expect(id2).toMatch(/^PRONTO-\d{6}$/)
+    expect(id1).not.toBe(id2)
   })
 })
 

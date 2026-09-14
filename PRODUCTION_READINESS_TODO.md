@@ -49,11 +49,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 - [x] **0.2. Migrate Serverless Webhooks to `firebase-admin` with Service Account** ✅ *(Resolved: firebase-admin installed; api/lib/firebaseAdmin.ts singleton created; webhook uses admin Firestore queries & transactions; unit tests passing)*
 
-- [ ] **0.3. Synchronize Order Identifier (`orderId` / `external_reference`)**
-  - **Current Issue:** `processMercadoPagoPayment()` sends a hardcoded `orderId: 'PRONTO-MP'` when creating the preference in `api/create-preference.ts`. Later, `submitOrder()` generates a random order ID (`PRONTO-XXXXXX`). When Mercado Pago fires the webhook, its `external_reference` is `'PRONTO-MP'`, preventing the webhook from finding and updating the real order document in Firestore.
-  - **Required Action:**
-    - Generate the canonical `orderId` before invoking `/api/create-preference`.
-    - Pass that exact `orderId` both to the Mercado Pago preference payload and to the Firestore order record.
+- [x] **0.3. Synchronize Order Identifier (`orderId` / `external_reference`)** ✅ *(Resolved: generateOrderId creates canonical PRONTO-XXXXXX; unified across CheckoutModal, preference payload, and Firestore order document; unit tests passing)*
 
 - [ ] **0.4. Enforce Idempotency in the Mercado Pago Webhook**
   - **Current Issue:** Mercado Pago regularly delivers duplicate notifications (retries or multiple event triggers such as `payment.created` and `payment.updated`). If the webhook runs twice for the same payment, it executes `runTransaction` twice and decrements double the stock.
