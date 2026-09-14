@@ -45,9 +45,6 @@ export interface CustomerInfo {
   city: string
   zip: string
   transferReceipt?: string
-  cardNumber?: string
-  expDate?: string
-  cvc?: string
 }
 
 export type PaymentMethod = 'transferencia' | 'whatsapp' | 'mercadopago'

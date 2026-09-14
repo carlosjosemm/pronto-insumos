@@ -55,9 +55,10 @@ flowchart TD
 * **Zero Regression Policy:** All pre-existing tests plus newly added tests must pass 100%.
 
 ### Step 6: Adversarial Code Review (Read-Only Inspection)
-* Perform an independent, rigorous, read-only code review of all modified files.
+* **AUTOMATIC TRIGGER:** Proceed immediately and autonomously into this step as soon as Step 5 passes. **Do NOT stop or wait for the user to prompt or request the review.**
+* Perform an independent, rigorous, read-only code review of all modified and newly created files.
 * Inspect for:
-  - Defensive programming: Input sanitation, accidental quotation wrapping in secrets, non-numeric quantity guards, boundary fallbacks.
+  - Defensive programming: Input sanitation, accidental quotation wrapping in secrets, non-numeric quantity guards, boundary fallbacks, attribute injections.
   - Runtime safety: Strict Node.js vs. browser runtime separation (`process.env` vs `import.meta.env`).
   - Observability: Useful diagnostic warning logs on unhandled paths or missing database records.
   - Test completeness: Negative assertions, CORS preflight (`OPTIONS`), error recovery.

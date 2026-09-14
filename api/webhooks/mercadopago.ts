@@ -1,8 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
+import { verifyMercadoPagoSignature } from '../lib/mercadopagoSignature'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || 'YOUR_MERCADOPAGO_ACCESS_TOKEN'
+  const MERCADOPAGO_WEBHOOK_SECRET = process.env.MERCADOPAGO_WEBHOOK_SECRET || ''
 
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -26,6 +28,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!paymentId) {
       return res.status(200).json({ received: true, note: 'No payment ID in webhook payload' })
+    }
+
+    // Step 0: CRYPTOGRAPHIC SIGNATURE VERIFICATION (x-signature / x-request-id)
+    const headers = req.headers || {}
+    const dataIdForSignature = reqQuery?.['data.id'] || reqQuery?.id || body?.data?.id || body?.id
+    const signatureResult = verifyMercadoPagoSignature({
+      signatureHeader: headers['x-signature'],
+      requestIdHeader: headers['x-request-id'],
+      dataId: dataIdForSignature,
+      secret: MERCADOPAGO_WEBHOOK_SECRET
+    })
+
+    if (!signatureResult.valid) {
+      console.warn(`[Mercado Pago Webhook] Unauthorized request: ${signatureResult.reason}`)
+      return res.status(401).json({
+        error: 'Unauthorized: Invalid or missing webhook signature',
+        reason: signatureResult.reason
+      })
     }
 
     // Step 1: DOUBLE-CHECK PAYMENT WITH MERCADO PAGO OFFICIAL API USING SECRET TOKEN

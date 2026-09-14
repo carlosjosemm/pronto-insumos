@@ -91,3 +91,6 @@ export interface Product {
   packageContents?: string[];    // Itemized checklist of box contents for clinic
 }
 ```
+
+### 6. Customer Privacy & PCI-DSS Scope (`CustomerInfo`)
+`CustomerInfo` contains only contact, Chilean tax identity (`RUT`, `documentType`, `razonSocial`, `giroComercial`), and shipping destination attributes. It must **never** contain payment card attributes (`cardNumber`, `expDate`, `cvc`). Card data collection is delegated entirely to Mercado Pago Checkout Pro.

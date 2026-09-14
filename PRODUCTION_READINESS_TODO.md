@@ -53,24 +53,13 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 - [x] **0.4. Enforce Idempotency in the Mercado Pago Webhook** ✅ *(Resolved: Fast-path idempotency pre-check and atomic all-in-one Firestore transaction inside api/webhooks/mercadopago.ts; duplicate deliveries return HTTP 200 without mutating stock or orders; comprehensive unit tests passing)*
 
-- [ ] **0.5. Cryptographic Signature Verification on Webhooks (`x-signature`)**
-  - **Current Issue:** The webhook currently checks for a payment ID and queries Mercado Pago. Anyone can send fake POST payloads to `/api/webhooks/mercadopago` to trigger excessive outbound API calls or disrupt database states.
-  - **Required Action:**
-    - Store `MERCADOPAGO_WEBHOOK_SECRET` in Vercel environment variables.
-    - Validate the `x-signature` and `x-request-id` headers according to Mercado Pago's HMAC-SHA256 signature verification protocol before processing the request body.
+- [x] **0.5. Cryptographic Signature Verification on Webhooks (`x-signature`)** ✅ *(Resolved: api/lib/mercadopagoSignature.ts computes HMAC-SHA256 over Mercado Pago manifest template; timing-safe equality verification in api/webhooks/mercadopago.ts rejects unauthorized requests with 401; unit and integration tests passing)*
 
-- [ ] **0.6. Create and Deploy Firestore Security Rules (`firestore.rules`)**
-  - **Current Issue:** No `firestore.rules` file exists in the repository. If Firestore runs in test mode (`allow read, write: if true`), any visitor can alter products, manipulate prices, wipe orders, or inspect other clinics' private purchasing data via DevTools.
-  - **Required Action:**
-    - Create `firestore.rules` at the root of the repository.
-    - Enforce rules:
-      - `products` collection: Public read (`allow read: if true;`), write restricted exclusively to authenticated admin accounts (`allow write: if request.auth != null && request.auth.token.admin == true;`).
-      - `orders` collection: Public create allowed for new valid order schemas; update and delete operations restricted exclusively to admin service accounts.
-    - Add matching configuration in `firebase.json`.
+- [x] **0.6. Create and Deploy Firestore Security Rules (`firestore.rules`)** ✅ *(Resolved: firestore.rules created with public read-only catalog, admin-only catalog write, strict pending-only order creation schema preventing injection, client-side order read/update/delete denied; firebase.json configured and deploy:rules script added; unit tests passing)*
 
 - [x] **0.7. Remove Public Database Seed Button (`Footer.tsx`)** ✅ *(Resolved: Public seed button completely removed from Footer.tsx; footer restructured to authentic 4-column B2B distributor layout; unit tests verified)*
 
-- [x] **0.8. Purge Mock Data and Ensure Privacy / PCI-DSS Compliance** ✅ *(Resolved: Purged mock credit card fields and mock doctor data from CheckoutModal.tsx state; clean Chilean clinical inputs; verified in unit tests)*
+- [x] **0.8. Purge Mock Data and Ensure Privacy / PCI-DSS Compliance** ✅ *(Resolved: CheckoutModal form state initialized with empty strings and clean placeholders; cardNumber, expDate, and cvc eliminated from CustomerInfo and component state; input whitespace sanitization added; clean Chilean clinical inputs; comprehensive unit tests passing with zero regressions)*
 
 ---
 
@@ -161,30 +150,29 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 ## Phase 4: Backoffice Operations & Order Management Dashboard
 
-Currently, no administrative interface exists for PRONTO staff to operate the store without manually opening the Google Firebase web console.
+Currently, no administrative interface exists for PRONTO staff to operate the store without manually opening the Google Firebase web console. A dedicated, lightweight, and secure `/admin` portal must be created so the store owner and warehouse staff in Melipilla can consult orders and manage inventory without touching developer consoles.
 
-- [ ] **4.1. Admin Authentication (Firebase Auth & Custom Claims)**
-  - Implement a secured internal login view (`/admin/login`).
-  - Enforce administrative privileges using Firebase Custom Claims to safeguard admin routes and Firestore security rules.
-
-- [ ] **4.2. Order Management Dashboard**
-  - Order table with status filtering:
-    - `PENDIENTE_PAGO` / `PENDIENTE_TRANSFERENCIA`
-    - `PAGADO_MERCADOPAGO` / `PAGO_VERIFICADO_MANUAL`
-    - `EN_PREPARACION`
-    - `DESPACHADO`
-    - `ENTREGADO`
-    - `CANCELADO` / `REEMBOLSADO`
-  - Order detail inspection showing billing info (RUT, Razón Social, Giro), purchased line items, and uploaded bank transfer receipts.
-  - One-click **Approve Bank Transfer** action (which atomically deducts stock).
-  - Shipping dispatch tracking inputs (e.g., *"Starken - Tracking #982341234"*), triggering automatic customer notifications.
-
-- [ ] **4.3. Inventory & Catalog Management (Product CRUD)**
-  - Internal UI to:
-    - Update physical inventory counts when shipments arrive at warehouse.
-    - Adjust standard prices and promotional discounts.
-    - Toggle product visibility or mark items as out of stock.
-    - Create new product SKUs without modifying source code in `products.ts`.
+- [ ] **4.0. Dedicated Administrative Portal Route (`/admin`)**
+  - **Context & Objective:** Implement a functional internal backoffice portal accessible via the `/admin` path (using client routing or hash-based view toggle `#/admin`) to handle order consultations, fulfillment state transitions, and warehouse inventory adjustments.
+  - **Core Architecture & Guardrails:**
+    - **Single-Page Backoffice Module (`src/components/admin/AdminPortal.tsx`):** Keep the implementation lean without adding heavy state management (no Redux/Zustand) or third-party UI component libraries (no Tailwind, Bootstrap, or MUI). Use the existing Vanilla CSS design system in [`src/index.css`](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css).
+    - **Simple Admin Authentication:** Clean login view with Firebase Auth (Email/Password for staff e.g., `admin@prontoinsumos.cl`). Protect the route so unauthenticated visitors cannot view clinical order data or catalog mutation forms.
+    - **Firestore Security Alignment:** Admin mutations (updating inventory, approving bank transfers) must respect [`firestore.rules`](file:///c:/Users/ecmv2/Documents/PRONTO/firestore.rules) using authenticated admin claims (`request.auth.token.admin == true`) or serverless admin functions.
+  - **Sub-feature A: Order History & Clinical Invoicing Consultation (`/admin#orders`):**
+    - Searchable order table: filter by canonical `orderId` (e.g., `PRONTO-123456`), clinic name, or Chilean RUT.
+    - Status filters: `PENDIENTE_PAGO`, `PENDIENTE_TRANSFERENCIA`, `PAGADO_MERCADOPAGO`, `COTIZACION_SOLICITADA_WHATSAPP`, `DESPACHADO`, `ENTREGADO`.
+    - Clinical order inspector drawer/modal:
+      - Full Chilean tax invoicing attributes (RUT, Razón Social, Giro Comercial, Gabinete fiscal address, comuna, phone, and contact email).
+      - Itemized supply breakdown with unit integer CLP prices, 19% IVA, and total.
+      - Payment telemetry: gateway reference (`mercadopagoPaymentId`), ISO timestamp, and bank transfer receipt link.
+    - Operational actions:
+      - One-click **Aprobar Transferencia Manual** (executing atomic stock reduction for bank transfer orders).
+      - Dispatch fulfillment update (carrier selection: Starken, Chilexpress, Blue Express, or local Melipilla courier + tracking code).
+  - **Sub-feature B: Real-Time Warehouse Inventory Management (`/admin#inventory`):**
+    - Live product stock table displaying: SKU/REF code, product name, brand, category, integer CLP price (Neto and con IVA), and `stockCount`.
+    - Inline quick-adjustment counters (`+1`, `-1`, or direct numeric input) to update stock when restock shipments arrive at the Melipilla warehouse.
+    - Product editor modal: modify clinical presentations (e.g., *Caja 50 un.*, *Jeringa 4g*), technical datasheets, ISP health registry codes, and integer CLP prices.
+    - Instant visibility toggle (`inStock: true/false`) to pause sales of depleted or backordered items.
 
 ---
 

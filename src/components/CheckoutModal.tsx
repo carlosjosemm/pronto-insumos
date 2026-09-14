@@ -38,16 +38,41 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
     email: '',
     phone: '',
     rut: '',
-    documentType: 'factura',
+    documentType: 'boleta',
     razonSocial: '',
     giroComercial: '',
     address: '',
-    city: 'Melipilla',
-    zip: '9500000',
-    transferReceipt: ''
+    city: '',
+    zip: ''
   })
 
   if (!isOpen) return null
+
+  const resetForm = () => {
+    setStep(1)
+    setOrderDetails(null)
+    setWhatsappUrl('')
+    setRutError('')
+    setFormData({
+      fullName: '',
+      email: '',
+      phone: '',
+      rut: '',
+      documentType: 'boleta',
+      razonSocial: '',
+      giroComercial: '',
+      address: '',
+      city: '',
+      zip: ''
+    })
+  }
+
+  const handleClose = () => {
+    if (step === 3) {
+      resetForm()
+    }
+    onClose()
+  }
 
   const handleRutChange = (raw: string) => {
     const formatted = formatRut(raw)
@@ -78,12 +103,25 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
     // Canonical order identifier PRONTO-XXXXXX
     const canonicalOrderId = generateOrderId()
 
+    const sanitizedCustomer: CustomerInfo = {
+      fullName: formData.fullName.trim(),
+      email: formData.email.trim(),
+      phone: formData.phone.trim(),
+      rut: formData.rut.trim(),
+      documentType: formData.documentType,
+      razonSocial: formData.razonSocial ? formData.razonSocial.trim() : undefined,
+      giroComercial: formData.giroComercial ? formData.giroComercial.trim() : undefined,
+      address: formData.address.trim(),
+      city: formData.city.trim(),
+      zip: formData.zip.trim()
+    }
+
     // 1. Submit Order to Firestore FIRST with initial pending status
     const result = await submitOrder({
       orderId: canonicalOrderId,
       items: cartItems,
       total: totalAmount,
-      customer: formData,
+      customer: sanitizedCustomer,
       paymentMethod
     })
 
@@ -100,7 +138,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
         orderId: canonicalOrderId,
         items: cartItems,
         total: totalAmount,
-        customer: formData
+        customer: sanitizedCustomer
       })
     }
 
@@ -110,7 +148,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
     if (paymentMethod === 'whatsapp') {
       const url = generateWhatsAppQuoteUrl({
         orderId: canonicalOrderId,
-        customer: formData,
+        customer: sanitizedCustomer,
         items: cartItems,
         total: totalAmount
       })
@@ -122,9 +160,9 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-card" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close-btn" onClick={onClose} aria-label="Cerrar ventana de pago">
+    <div className="modal-overlay" onClick={handleClose} role="dialog" aria-modal="true">
+      <div className="modal-card" style={{ maxWidth: '620px' }} onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close-btn" onClick={handleClose} aria-label="Cerrar ventana">
           <X size={18} />
         </button>
 
@@ -133,7 +171,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
             <ShieldCheck size={22} style={{ color: 'var(--teal-600)' }} />
             <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--navy-900)' }}>
-              {step === 3 ? 'Pedido Registrado Exitosamente' : 'Gestión de Pedido & Facturación SII'}
+              {step === 3 ? 'Pedido Registrado' : 'Gestión de Pedido y Pago'}
             </h2>
           </div>
 
@@ -226,7 +264,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                 <input
                   type="text"
                   required
-                  placeholder="Ej: Dr. Roberto Muñoz"
+                  placeholder={formData.documentType === 'factura' ? 'Ej: Clínica Odontológica Melipilla SpA' : 'Ej: Dra. Camila Fuentes'}
                   value={formData.fullName}
                   onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                   style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
@@ -241,7 +279,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                   <input
                     type="text"
                     required
-                    placeholder="Ej: 77.123.456-7"
+                    placeholder="12.345.678-K"
                     value={formData.rut}
                     onChange={(e) => handleRutChange(e.target.value)}
                     style={{
@@ -265,7 +303,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                   <input
                     type="email"
                     required
-                    placeholder="contacto@clinicadental.cl"
+                    placeholder="contacto@clinica.cl"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
@@ -282,7 +320,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                     <input
                       type="text"
                       required
-                      placeholder="Ej: Odontología Integral SpA"
+                      placeholder="Ej: Clínica Odontológica SpA"
                       value={formData.razonSocial || ''}
                       onChange={(e) => setFormData({ ...formData, razonSocial: e.target.value })}
                       style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', background: '#ffffff' }}
@@ -325,7 +363,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                   <input
                     type="text"
                     required
-                    placeholder="Av. Ortúzar 750, Of. 301"
+                    placeholder="Ej: Av. Ortúzar 750, Of. 302"
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
@@ -341,6 +379,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                   <input
                     type="text"
                     required
+                    placeholder="Ej: Melipilla, Región Metropolitana"
                     value={formData.city}
                     onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                     style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
@@ -353,6 +392,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                   <input
                     type="text"
                     required
+                    placeholder="Ej: 9500000"
                     value={formData.zip}
                     onChange={(e) => setFormData({ ...formData, zip: e.target.value })}
                     style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
@@ -361,7 +401,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
               </div>
 
               <button type="submit" className="btn-primary" style={{ marginTop: '0.75rem', justifyContent: 'center' }}>
-                <span>Continuar a Selección de Pago</span>
+                <span>Seleccionar Método de Pago / Cotización</span>
                 <ArrowRight size={17} />
               </button>
             </form>
@@ -377,7 +417,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
               {/* Method Selection Cards */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.65rem' }}>
-                  Selecciona la Modalidad de Pago o Cotización:
+                  Selecciona la Opción Preferida para tu Clínica:
                 </label>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -454,7 +494,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                     />
                     <CreditCard size={20} style={{ color: '#0284c7' }} />
                     <div>
-                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--navy-900)' }}>Pago en Línea con Webpay Plus / Débito y Crédito</div>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--navy-900)' }}>Pago Inmediato Mercado Pago Chile / Webpay</div>
                       <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>Procesamiento protegido vía Mercado Pago Checkout Pro oficial.</div>
                     </div>
                   </label>
@@ -539,8 +579,8 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                 </a>
               )}
 
-              <button className="btn-secondary" style={{ width: '100%', justifyContent: 'center' }} onClick={onClose}>
-                <span>Volver al Catálogo</span>
+              <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleClose}>
+                <span>Volver a la Tienda</span>
               </button>
             </div>
           )}

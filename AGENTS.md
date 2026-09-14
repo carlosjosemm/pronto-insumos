@@ -73,6 +73,7 @@ Agents must strictly respect the payment boundaries defined in [PRODUCTION_READI
 * ✅ Serverless webhooks must verify HMAC-SHA256 signatures (`x-signature`) and enforce idempotency to prevent duplicate inventory decrement upon retries.
 * ✅ **Zero Card Data Handling (PCI-DSS):** Raw credit card fields must never be stored in component state or sent to our servers. Checkout Pro redirect/modal must handle payment collection.
 * ✅ **Strict Secret Separation:** Browser code uses `VITE_` variables only. Server credentials (`MERCADOPAGO_ACCESS_TOKEN`, `FIREBASE_PRIVATE_KEY`, etc.) belong strictly in `process.env` inside the `api/` directory.
+* ✅ **Firestore Security Rules Enforced (`firestore.rules`):** `products` is public read-only and admin-write only (`request.auth.token.admin == true`). `orders` can only be created with pending statuses without pre-injected payment attributes; client-side reads, updates, and deletes on `orders` are strictly denied (`allow read, update, delete: if false;`). Deploy with `pnpm run deploy:rules`.
 
 ---
 
@@ -109,6 +110,9 @@ pnpm build
 
 # Preview production build locally
 pnpm preview
+
+# Deploy Firestore Security Rules
+pnpm run deploy:rules
 ```
 
 Always verify that `pnpm test` passes completely without regressions after making changes.

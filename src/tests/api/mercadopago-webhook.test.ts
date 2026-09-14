@@ -508,5 +508,106 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     )
     consoleSpy.mockRestore()
   })
+
+  describe('Webhook Cryptographic Signature Verification (x-signature)', () => {
+    const testSecret = 'secret_webhook_key_12345'
+
+    it('should return 401 Unauthorized when MERCADOPAGO_WEBHOOK_SECRET is set but x-signature header is missing', async () => {
+      const originalSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = testSecret
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: {},
+        body: { data: { id: '998877' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(401)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Unauthorized'),
+          reason: 'missing_signature_headers_or_id'
+        })
+      )
+
+      consoleSpy.mockRestore()
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = originalSecret
+    })
+
+    it('should return 401 Unauthorized when x-signature contains invalid hash', async () => {
+      const originalSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = testSecret
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: {
+          'x-signature': 'ts=1710372000,v1=bad_hash_value_1234567890abcdef',
+          'x-request-id': 'req-test-uuid'
+        },
+        body: { data: { id: '998877' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(401)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Unauthorized')
+        })
+      )
+
+      consoleSpy.mockRestore()
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = originalSecret
+    })
+
+    it('should proceed and return 200 when signature is cryptographically valid', async () => {
+      const originalSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = testSecret
+
+      const paymentId = '998877'
+      const requestId = 'req-test-uuid-valid'
+      const ts = '1710372000'
+      const manifest = `id:${paymentId};request-id:${requestId};ts:${ts};`
+      const validHash = (await import('crypto')).default
+        .createHmac('sha256', testSecret)
+        .update(manifest)
+        .digest('hex')
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 'rejected',
+          external_reference: 'PRONTO-123456',
+          id: paymentId
+        })
+      } as Response)
+
+      const req = {
+        method: 'POST',
+        headers: {
+          'x-signature': `ts=${ts},v1=${validHash}`,
+          'x-request-id': requestId
+        },
+        body: { data: { id: paymentId } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'rejected' })
+
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = originalSecret
+    })
+  })
 })
+
 
