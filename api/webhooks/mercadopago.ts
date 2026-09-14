@@ -5,6 +5,11 @@ import { getAdminFirestore } from '../lib/firebaseAdmin'
 const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || 'YOUR_MERCADOPAGO_ACCESS_TOKEN'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
   // Only accept POST or GET ping requests
   if (req.method === 'GET') {
     return res.status(200).json({ status: 'ok', message: 'Mercado Pago Webhook Endpoint Active' })
@@ -81,8 +86,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   const productSnap = await transaction.get(productRef)
 
                   if (productSnap.exists) {
-                    const currentStock = productSnap.data()?.stockCount || 0
-                    const newStock = Math.max(0, currentStock - item.quantity)
+                    const currentStock = Number(productSnap.data()?.stockCount) || 0
+                    const quantity = Math.max(1, Number(item.quantity) || 1)
+                    const newStock = Math.max(0, currentStock - quantity)
                     transaction.update(productRef, {
                       stockCount: newStock,
                       inStock: newStock > 0
@@ -92,6 +98,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               }
             })
           }
+        } else {
+          console.warn(`[Mercado Pago Webhook] Order "${orderId}" not found in Firestore for payment ${paymentId}`)
         }
       }
     }

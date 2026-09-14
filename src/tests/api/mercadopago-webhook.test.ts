@@ -244,4 +244,59 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     )
     consoleSpy.mockRestore()
   })
+
+  it('should return 200 on OPTIONS preflight request', async () => {
+    const resEnd = vi.fn()
+    const req = { method: 'OPTIONS' } as VercelRequest
+    const res = {
+      status: vi.fn().mockReturnValue({ end: resEnd }),
+      statusCode: 200
+    } as unknown as VercelResponse
+
+    await handler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(resEnd).toHaveBeenCalled()
+  })
+
+  it('should log a warning and return 200 when approved order is not found in Firestore', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        status: 'approved',
+        external_reference: 'PRONTO-NONEXISTENT',
+        id: 778899
+      })
+    } as Response)
+
+    const mockAdminDb = {
+      collection: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
+          })
+        })
+      }),
+      runTransaction: vi.fn()
+    }
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const req = {
+      method: 'POST',
+      body: { data: { id: '778899' } }
+    } as unknown as VercelRequest
+    const res = createMockRes()
+
+    await handler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
+    expect(mockAdminDb.runTransaction).not.toHaveBeenCalled()
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Order "PRONTO-NONEXISTENT" not found in Firestore')
+    )
+    consoleSpy.mockRestore()
+  })
 })
+
