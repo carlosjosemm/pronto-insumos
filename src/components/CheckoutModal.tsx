@@ -1,10 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { CartItem, CustomerInfo, PaymentMethod, SubmitOrderResult } from '../types'
 import { X, CheckCircle, ShieldCheck, Lock, CreditCard, MessageSquare, Building2, ArrowRight } from 'lucide-react'
 import { submitOrder, generateOrderId } from '../services/api'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
 import { processMercadoPagoPayment } from '../services/mercadopago'
-
 import { validateRut, formatRut } from '../utils/rut'
 
 export interface CheckoutModalProps {
@@ -22,22 +21,30 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
   const [orderDetails, setOrderDetails] = useState<SubmitOrderResult | null>(null)
   const [whatsappUrl, setWhatsappUrl] = useState<string>('')
   const [rutError, setRutError] = useState<string>('')
+  const [submitError, setSubmitError] = useState<string>('')
 
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
+  // Clean form state without mock card details (PCI-DSS compliant)
   const [formData, setFormData] = useState<CustomerInfo>({
-    fullName: 'Dra. Camila Fuentes - Odontología Melipilla',
-    email: 'contacto@odontomelipilla.cl',
-    phone: '+56 9 1234 5678',
-    rut: '12.345.678-5',
-    documentType: 'boleta',
-    razonSocial: 'Clínica Odontológica Melipilla SpA',
-    giroComercial: 'Servicios Odontológicos Integrales',
-    address: 'Av. Ortúzar 750, Of. 302',
-    city: 'Melipilla, Región Metropolitana',
+    fullName: '',
+    email: '',
+    phone: '',
+    rut: '',
+    documentType: 'factura',
+    razonSocial: '',
+    giroComercial: '',
+    address: '',
+    city: 'Melipilla',
     zip: '9500000',
-    transferReceipt: '',
-    cardNumber: '•••• •••• •••• 4242',
-    expDate: '12/28',
-    cvc: '123'
+    transferReceipt: ''
   })
 
   if (!isOpen) return null
@@ -65,13 +72,13 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
   }
 
   const handleCompleteOrder = async () => {
+    setSubmitError('')
     setIsSubmitting(true)
 
-    // Generate canonical order identifier shared across database and gateway preference
+    // Canonical order identifier PRONTO-XXXXXX
     const canonicalOrderId = generateOrderId()
 
     // 1. Submit Order to Firestore FIRST with initial pending status
-    // (Must guarantee the order exists in database before redirecting away from the page)
     const result = await submitOrder({
       orderId: canonicalOrderId,
       items: cartItems,
@@ -82,6 +89,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
 
     if (!result.success) {
       console.error('Failed to register initial pending order in database')
+      setSubmitError('No fue posible registrar el pedido en el sistema. Por favor reintenta o comunícate vía WhatsApp.')
       setIsSubmitting(false)
       return
     }
@@ -97,7 +105,6 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
     }
 
     setIsSubmitting(false)
-
     setOrderDetails(result)
 
     if (paymentMethod === 'whatsapp') {
@@ -115,153 +122,183 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" style={{ maxWidth: '620px' }} onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close-btn" onClick={onClose} aria-label="Cerrar ventana">
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-card" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close-btn" onClick={onClose} aria-label="Cerrar ventana de pago">
           <X size={18} />
         </button>
 
         {/* Modal Header */}
-        <div style={{ padding: '1.5rem 1.5rem 1rem', borderBottom: '1px solid var(--slate-200)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <ShieldCheck size={20} style={{ color: 'var(--emerald-dark)' }} />
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '800' }}>
-              {step === 3 ? 'Pedido Registrado' : 'Gestión de Pedido y Pago'}
+        <div style={{ padding: '1.5rem 1.75rem 1rem', borderBottom: '1px solid var(--border-subtle)', background: '#ffffff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+            <ShieldCheck size={22} style={{ color: 'var(--teal-600)' }} />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--navy-900)' }}>
+              {step === 3 ? 'Pedido Registrado Exitosamente' : 'Gestión de Pedido & Facturación SII'}
             </h2>
           </div>
 
           {/* Stepper Indicators */}
           {step !== 3 && (
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '700', color: step >= 1 ? 'var(--emerald-dark)' : 'var(--slate-400)' }}>
-                <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: step >= 1 ? 'var(--emerald)' : 'var(--slate-200)', color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>1</span>
-                <span>Despacho</span>
+            <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem', fontWeight: '700', color: step >= 1 ? 'var(--navy-900)' : 'var(--text-muted)' }}>
+                <span style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: 'var(--radius-xs)',
+                  background: step >= 1 ? 'var(--teal-600)' : 'var(--border-subtle)',
+                  color: '#ffffff',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.75rem'
+                }}>1</span>
+                <span>Despacho & Facturación</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '700', color: step >= 2 ? 'var(--emerald-dark)' : 'var(--slate-400)' }}>
-                <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: step >= 2 ? 'var(--emerald)' : 'var(--slate-200)', color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>2</span>
-                <span>Forma de Pago / Cotización</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem', fontWeight: '700', color: step >= 2 ? 'var(--navy-900)' : 'var(--text-muted)' }}>
+                <span style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: 'var(--radius-xs)',
+                  background: step >= 2 ? 'var(--teal-600)' : 'var(--border-subtle)',
+                  color: '#ffffff',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.75rem'
+                }}>2</span>
+                <span>Modalidad de Pago / Cotización</span>
               </div>
             </div>
           )}
         </div>
 
         {/* Form Body */}
-        <div style={{ padding: '1.5rem' }}>
+        <div style={{ padding: '1.75rem' }}>
           {step === 1 && (
-            <form onSubmit={handleNextStep} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <form onSubmit={handleNextStep} style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
               {/* Document Type Selector (Boleta vs Factura) */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.35rem' }}>
-                  Tipo de Documento Tributario (Chile)
+                <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.4rem' }}>
+                  Tipo de Documento Tributario (Chile - SII)
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, documentType: 'boleta' })}
-                    style={{
-                      padding: '0.55rem',
-                      borderRadius: 'var(--radius-sm)',
-                      border: `2px solid ${formData.documentType === 'boleta' ? 'var(--emerald)' : 'var(--slate-200)'}`,
-                      background: formData.documentType === 'boleta' ? '#f0fdf4' : 'white',
-                      fontWeight: '700',
-                      fontSize: '0.85rem',
-                      cursor: 'pointer',
-                      color: formData.documentType === 'boleta' ? 'var(--emerald-dark)' : 'var(--slate-700)'
-                    }}
-                  >
-                    📄 Boleta Electrónica
-                  </button>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, documentType: 'factura' })}
                     style={{
-                      padding: '0.55rem',
+                      padding: '0.65rem',
                       borderRadius: 'var(--radius-sm)',
-                      border: `2px solid ${formData.documentType === 'factura' ? 'var(--emerald)' : 'var(--slate-200)'}`,
-                      background: formData.documentType === 'factura' ? '#f0fdf4' : 'white',
+                      border: `2px solid ${formData.documentType === 'factura' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
+                      background: formData.documentType === 'factura' ? 'var(--teal-50)' : '#ffffff',
                       fontWeight: '700',
                       fontSize: '0.85rem',
                       cursor: 'pointer',
-                      color: formData.documentType === 'factura' ? 'var(--emerald-dark)' : 'var(--slate-700)'
+                      color: formData.documentType === 'factura' ? 'var(--teal-700)' : 'var(--text-secondary)',
+                      transition: 'var(--transition-fast)'
                     }}
                   >
-                    🏢 Factura Electrónica
+                    🏢 Factura Electrónica (Clínicas)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, documentType: 'boleta' })}
+                    style={{
+                      padding: '0.65rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: `2px solid ${formData.documentType === 'boleta' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
+                      background: formData.documentType === 'boleta' ? 'var(--teal-50)' : '#ffffff',
+                      fontWeight: '700',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      color: formData.documentType === 'boleta' ? 'var(--teal-700)' : 'var(--text-secondary)',
+                      transition: 'var(--transition-fast)'
+                    }}
+                  >
+                    📄 Boleta Electrónica (Personal)
                   </button>
                 </div>
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>
-                  Nombre Completo {formData.documentType === 'factura' ? '/ Razón Social' : 'o Clínica'}
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                  Nombre del Profesional {formData.documentType === 'factura' ? 'o Representante Legal' : ''}
                 </label>
                 <input
                   type="text"
                   required
+                  placeholder="Ej: Dr. Roberto Muñoz"
                   value={formData.fullName}
                   onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                  style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
                 />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>
-                    RUT {formData.documentType === 'factura' ? 'Empresa' : 'Personal / Profesional'}
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                    RUT {formData.documentType === 'factura' ? 'Empresa / Sociedad' : 'Personal (RUN)'}
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="12.345.678-K"
+                    placeholder="Ej: 77.123.456-7"
                     value={formData.rut}
                     onChange={(e) => handleRutChange(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '0.6rem 0.85rem',
-                      border: `1px solid ${rutError ? '#ef4444' : 'var(--slate-200)'}`,
+                      border: `1px solid ${rutError ? '#dc2626' : 'var(--border-subtle)'}`,
                       borderRadius: 'var(--radius-sm)',
-                      outlineColor: rutError ? '#ef4444' : undefined
+                      outlineColor: rutError ? '#dc2626' : undefined
                     }}
                   />
                   {rutError && (
-                    <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '600', marginTop: '0.2rem', display: 'block' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: '600', marginTop: '0.25rem', display: 'block' }}>
                       {rutError}
                     </span>
                   )}
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Email para Documento SII</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                    Email para Documento SII
+                  </label>
                   <input
                     type="email"
                     required
+                    placeholder="contacto@clinicadental.cl"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
                   />
                 </div>
               </div>
 
               {formData.documentType === 'factura' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: '#f8fafc', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--slate-200)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: 'var(--surface-muted)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Razón Social Factura</label>
+                    <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                      Razón Social (según SII)
+                    </label>
                     <input
                       type="text"
                       required
-                      placeholder="Ej: Clínica Odontológica SpA"
+                      placeholder="Ej: Odontología Integral SpA"
                       value={formData.razonSocial || ''}
                       onChange={(e) => setFormData({ ...formData, razonSocial: e.target.value })}
-                      style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                      style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', background: '#ffffff' }}
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Giro Comercial SII</label>
+                    <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                      Giro Comercial
+                    </label>
                     <input
                       type="text"
                       required
                       placeholder="Ej: Servicios Odontológicos"
                       value={formData.giroComercial || ''}
                       onChange={(e) => setFormData({ ...formData, giroComercial: e.target.value })}
-                      style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                      style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', background: '#ffffff' }}
                     />
                   </div>
                 </div>
@@ -269,80 +306,92 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Teléfono Contacto</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                    Teléfono Móvil
+                  </label>
                   <input
                     type="text"
                     required
+                    placeholder="+56 9 1234 5678"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Dirección Gabinete / Consulta</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                    Dirección de Entrega / Consulta
+                  </label>
                   <input
                     type="text"
                     required
+                    placeholder="Av. Ortúzar 750, Of. 301"
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
                   />
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Ciudad / Región</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                    Ciudad / Comuna
+                  </label>
                   <input
                     type="text"
                     required
                     value={formData.city}
                     onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Comuna / Código Postal</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                    Código Postal / Región
+                  </label>
                   <input
                     type="text"
                     required
                     value={formData.zip}
                     onChange={(e) => setFormData({ ...formData, zip: e.target.value })}
-                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
                   />
                 </div>
               </div>
 
-              <button type="submit" className="btn-primary" style={{ marginTop: '1rem', justifyContent: 'center' }}>
-                <span>Seleccionar Método de Pago / Cotización</span>
+              <button type="submit" className="btn-primary" style={{ marginTop: '0.75rem', justifyContent: 'center' }}>
+                <span>Continuar a Selección de Pago</span>
+                <ArrowRight size={17} />
               </button>
             </form>
           )}
 
           {step === 2 && (
             <form onSubmit={handleNextStep} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div style={{ background: 'var(--slate-50)', padding: '0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--slate-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--slate-600)' }}>Total Pedido:</span>
-                <span style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--slate-900)' }}>${totalAmount.toFixed(2)}</span>
+              <div style={{ background: 'var(--surface-muted)', padding: '0.85rem 1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Total Facturado a Pagar:</span>
+                <span style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--navy-900)' }}>${totalAmount.toFixed(2)}</span>
               </div>
 
-              {/* Method Selection Tabs */}
+              {/* Method Selection Cards */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', marginBottom: '0.5rem' }}>
-                  Selecciona la Opción Preferida para tu Clínica:
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.65rem' }}>
+                  Selecciona la Modalidad de Pago o Cotización:
                 </label>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {/* Option 1: Transferencia Bancaria */}
                   <label style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.75rem',
-                    padding: '0.85rem',
-                    borderRadius: 'var(--radius-md)',
-                    border: `2px solid ${paymentMethod === 'transferencia' ? 'var(--emerald)' : 'var(--slate-200)'}`,
-                    background: paymentMethod === 'transferencia' ? '#f0fdf4' : 'white',
-                    cursor: 'pointer'
+                    padding: '0.85rem 1rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `2px solid ${paymentMethod === 'transferencia' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
+                    background: paymentMethod === 'transferencia' ? 'var(--teal-50)' : '#ffffff',
+                    cursor: 'pointer',
+                    transition: 'var(--transition-fast)'
                   }}>
                     <input
                       type="radio"
@@ -351,10 +400,10 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                       checked={paymentMethod === 'transferencia'}
                       onChange={() => setPaymentMethod('transferencia')}
                     />
-                    <Building2 size={20} style={{ color: 'var(--emerald-dark)' }} />
+                    <Building2 size={20} style={{ color: 'var(--teal-700)' }} />
                     <div>
-                      <div style={{ fontWeight: '700', fontSize: '0.9rem' }}>Transferencia Bancaria Directa (BCO)</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--slate-600)' }}>Datos bancarios para transferencia electrónica con boleta/factura.</div>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--navy-900)' }}>Transferencia Bancaria Directa (Banco de Chile)</div>
+                      <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>Cuenta corriente comercial con comprobante y emisión de Factura.</div>
                     </div>
                   </label>
 
@@ -363,11 +412,12 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.75rem',
-                    padding: '0.85rem',
-                    borderRadius: 'var(--radius-md)',
-                    border: `2px solid ${paymentMethod === 'whatsapp' ? 'var(--emerald)' : 'var(--slate-200)'}`,
-                    background: paymentMethod === 'whatsapp' ? '#f0fdf4' : 'white',
-                    cursor: 'pointer'
+                    padding: '0.85rem 1rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `2px solid ${paymentMethod === 'whatsapp' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
+                    background: paymentMethod === 'whatsapp' ? 'var(--teal-50)' : '#ffffff',
+                    cursor: 'pointer',
+                    transition: 'var(--transition-fast)'
                   }}>
                     <input
                       type="radio"
@@ -376,10 +426,10 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                       checked={paymentMethod === 'whatsapp'}
                       onChange={() => setPaymentMethod('whatsapp')}
                     />
-                    <MessageSquare size={20} style={{ color: '#25D366' }} />
+                    <MessageSquare size={20} style={{ color: '#059669' }} />
                     <div>
-                      <div style={{ fontWeight: '700', fontSize: '0.9rem' }}>Cotización por WhatsApp Melipilla</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--slate-600)' }}>Genera un mensaje de cotización instantáneo directo a nuestro ejecutivo.</div>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--navy-900)' }}>Cotización Formal Asistida por WhatsApp</div>
+                      <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>Genera una cotización formal para aprobación administrativa o presupuesto.</div>
                     </div>
                   </label>
 
@@ -388,11 +438,12 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.75rem',
-                    padding: '0.85rem',
-                    borderRadius: 'var(--radius-md)',
-                    border: `2px solid ${paymentMethod === 'mercadopago' ? 'var(--emerald)' : 'var(--slate-200)'}`,
-                    background: paymentMethod === 'mercadopago' ? '#f0fdf4' : 'white',
-                    cursor: 'pointer'
+                    padding: '0.85rem 1rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `2px solid ${paymentMethod === 'mercadopago' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
+                    background: paymentMethod === 'mercadopago' ? 'var(--teal-50)' : '#ffffff',
+                    cursor: 'pointer',
+                    transition: 'var(--transition-fast)'
                   }}>
                     <input
                       type="radio"
@@ -401,10 +452,10 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                       checked={paymentMethod === 'mercadopago'}
                       onChange={() => setPaymentMethod('mercadopago')}
                     />
-                    <CreditCard size={20} style={{ color: '#009EE3' }} />
+                    <CreditCard size={20} style={{ color: '#0284c7' }} />
                     <div>
-                      <div style={{ fontWeight: '700', fontSize: '0.9rem' }}>Pago Inmediato Mercado Pago Chile / Webpay</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--slate-600)' }}>Tarjeta de Crédito/Débito (descontará el stock de Firestore al instante).</div>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--navy-900)' }}>Pago en Línea con Webpay Plus / Débito y Crédito</div>
+                      <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>Procesamiento protegido vía Mercado Pago Checkout Pro oficial.</div>
                     </div>
                   </label>
                 </div>
@@ -412,36 +463,40 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
 
               {/* Dynamic Details by Method */}
               {paymentMethod === 'transferencia' && (
-                <div style={{ background: 'var(--slate-50)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--slate-200)', fontSize: '0.825rem' }}>
-                  <div style={{ fontWeight: '700', color: 'var(--slate-900)', marginBottom: '0.5rem' }}>Datos Bancarios PRONTO INSUMOS:</div>
+                <div style={{ background: 'var(--surface-muted)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', fontSize: '0.825rem' }}>
+                  <div style={{ fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.5rem' }}>Datos Bancarios Oficiales:</div>
                   <div>• <strong>Banco:</strong> Banco de Chile</div>
-                  <div>• <strong>Tipo Cuenta:</strong> Cuenta Corriente N° 849-01284-01</div>
+                  <div>• <strong>Tipo de Cuenta:</strong> Cuenta Corriente N° 849-01284-01</div>
                   <div>• <strong>RUT:</strong> 77.892.410-K</div>
-                  <div>• <strong>Email Transferencias:</strong> pagos@prontoinsumos.cl</div>
-                  <div style={{ marginTop: '0.5rem', color: 'var(--slate-500)', fontSize: '0.75rem' }}>
-                    *El stock no será descontado hasta que el pago sea verificado por el área de tesorería.
-                  </div>
+                  <div>• <strong>Razón Social:</strong> PRONTO INSUMOS ODONTOLÓGICOS SPA</div>
+                  <div>• <strong>Email para Comprobante:</strong> pagos@prontoinsumos.cl</div>
                 </div>
               )}
 
               {paymentMethod === 'whatsapp' && (
-                <div style={{ background: '#ecfdf5', color: '#047857', padding: '0.85rem', borderRadius: 'var(--radius-md)', fontSize: '0.825rem' }}>
-                  💡 Al continuar, serás redirigido a WhatsApp con el detalle formateado del pedido para coordinar despacho directo a Melipilla.
+                <div style={{ background: 'var(--teal-50)', color: 'var(--teal-700)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', fontSize: '0.825rem', border: '1px solid var(--teal-100)' }}>
+                  💡 Se generará el enlace directo con el desglose del pedido para gestionar la cotización y coordinar el despacho.
                 </div>
               )}
 
               {paymentMethod === 'mercadopago' && (
-                <div style={{ background: '#e0f2fe', color: '#0369a1', padding: '0.85rem', borderRadius: 'var(--radius-md)', fontSize: '0.825rem' }}>
-                  ⚡ **Descuento de Stock Automático**: Al aprobarse el pago, se actualizará el stock real en Firestore.
+                <div style={{ background: '#e0f2fe', color: '#0369a1', padding: '0.85rem', borderRadius: 'var(--radius-sm)', fontSize: '0.825rem', border: '1px solid #bae6fd' }}>
+                  🔒 Pago seguro sin manipulación de datos de tarjeta en el sitio. Serás dirigido a la pasarela bancaria oficial.
+                </div>
+              )}
+
+              {submitError && (
+                <div style={{ color: '#dc2626', background: '#fef2f2', border: '1px solid #fecdd3', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '600' }}>
+                  {submitError}
                 </div>
               )}
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-                <button type="button" className="btn-secondary" style={{ color: 'var(--slate-800)', borderColor: 'var(--slate-300)' }} onClick={() => setStep(1)}>
+                <button type="button" className="btn-secondary" onClick={() => { setSubmitError(''); setStep(1); }}>
                   Volver
                 </button>
                 <button type="submit" className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} disabled={isSubmitting}>
-                  <Lock size={18} />
+                  <Lock size={17} />
                   <span>{isSubmitting ? 'Procesando...' : paymentMethod === 'whatsapp' ? 'Generar Cotización' : 'Confirmar Pedido'}</span>
                 </button>
               </div>
@@ -450,23 +505,23 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
 
           {step === 3 && orderDetails && (
             <div style={{ textAlign: 'center', padding: '1rem 0' }}>
-              <CheckCircle size={56} style={{ color: 'var(--emerald)', margin: '0 auto 1rem' }} />
-              <h3 style={{ fontSize: '1.4rem', fontWeight: '800', marginBottom: '0.25rem' }}>
-                {paymentMethod === 'whatsapp' ? '¡Cotización Registrada!' : '¡Pedido Registrado con Éxito!'}
+              <CheckCircle size={52} style={{ color: 'var(--teal-600)', margin: '0 auto 1rem' }} />
+              <h3 style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                {paymentMethod === 'whatsapp' ? '¡Cotización Generada!' : '¡Pedido Registrado con Éxito!'}
               </h3>
 
-              <div style={{ background: 'var(--slate-50)', padding: '1.25rem', borderRadius: 'var(--radius-md)', textAlign: 'left', margin: '1.25rem 0', border: '1px solid var(--slate-200)' }}>
+              <div style={{ background: 'var(--surface-muted)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', textAlign: 'left', margin: '1.25rem 0', border: '1px solid var(--border-subtle)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                  <span style={{ color: 'var(--slate-500)' }}>ID de Pedido:</span>
-                  <span style={{ fontWeight: '800', color: 'var(--slate-900)' }}>{orderDetails.orderId}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Código de Pedido:</span>
+                  <span style={{ fontWeight: '800', color: 'var(--navy-900)', fontFamily: 'monospace' }}>{orderDetails.orderId}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                  <span style={{ color: 'var(--slate-500)' }}>Total:</span>
-                  <span style={{ fontWeight: '800', color: 'var(--emerald-dark)' }}>${totalAmount.toFixed(2)}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Total Facturado:</span>
+                  <span style={{ fontWeight: '800', color: 'var(--navy-900)' }}>${totalAmount.toFixed(2)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--slate-500)' }}>Método Seleccionado:</span>
-                  <span style={{ fontWeight: '700', color: 'var(--slate-800)', textTransform: 'capitalize' }}>{paymentMethod}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Método Seleccionado:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--navy-900)', textTransform: 'capitalize' }}>{paymentMethod}</span>
                 </div>
               </div>
 
@@ -476,16 +531,16 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-primary"
-                  style={{ background: '#25D366', width: '100%', justifyContent: 'center', marginBottom: '1rem', textDecoration: 'none' }}
+                  style={{ background: '#059669', width: '100%', justifyContent: 'center', marginBottom: '1rem', textDecoration: 'none' }}
                 >
                   <MessageSquare size={18} />
-                  <span>Enviar Cotización por WhatsApp Ahora</span>
+                  <span>Enviar Cotización a WhatsApp</span>
                   <ArrowRight size={18} />
                 </a>
               )}
 
-              <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={onClose}>
-                <span>Volver a la Tienda</span>
+              <button className="btn-secondary" style={{ width: '100%', justifyContent: 'center' }} onClick={onClose}>
+                <span>Volver al Catálogo</span>
               </button>
             </div>
           )}

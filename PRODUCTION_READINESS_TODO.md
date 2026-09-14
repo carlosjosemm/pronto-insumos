@@ -68,17 +68,9 @@ These items carry immediate risks of financial loss, critical security vulnerabi
       - `orders` collection: Public create allowed for new valid order schemas; update and delete operations restricted exclusively to admin service accounts.
     - Add matching configuration in `firebase.json`.
 
-- [ ] **0.7. Remove Public Database Seed Button (`Footer.tsx`)**
-  - **Current Issue:** Lines 109-120 of `src/components/Footer.tsx` expose a `"🔥 Sembrar Firebase DB"` button with an `alert()` call in the public website footer.
-  - **Required Action:**
-    - Remove this button completely from the customer-facing footer.
-    - Move database seeding to a private Node CLI script (`pnpm run seed`) or behind a secured admin dashboard.
+- [x] **0.7. Remove Public Database Seed Button (`Footer.tsx`)** ✅ *(Resolved: Public seed button completely removed from Footer.tsx; footer restructured to authentic 4-column B2B distributor layout; unit tests verified)*
 
-- [ ] **0.8. Purge Mock Data and Ensure Privacy / PCI-DSS Compliance**
-  - **Current Issue:** `CheckoutModal.tsx` contains prefilled mock customer data ("Dra. Camila Fuentes", mock emails/phones) and mock credit card fields (`cardNumber`, `expDate`, `cvc`) stored in React component state.
-  - **Required Action:**
-    - Initialize all checkout fields to empty strings or hydrate them from an authenticated customer profile.
-    - Remove credit card input fields from component state. When utilizing Mercado Pago Checkout Pro (official redirect / modal), the application must never capture or handle raw payment card numbers, eliminating PCI-DSS liabilities.
+- [x] **0.8. Purge Mock Data and Ensure Privacy / PCI-DSS Compliance** ✅ *(Resolved: Purged mock credit card fields and mock doctor data from CheckoutModal.tsx state; clean Chilean clinical inputs; verified in unit tests)*
 
 ---
 

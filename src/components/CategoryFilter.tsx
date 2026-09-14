@@ -32,8 +32,8 @@ export default function CategoryFilter({
 }: CategoryFilterProps) {
   return (
     <div className="controls-bar" id="catalog-section">
-      {/* Category Pills */}
-      <div className="category-pills">
+      {/* Segmented Category Control Bar */}
+      <div className="category-pills" role="tablist" aria-label="Categorías de insumos dentales">
         {CATEGORIES.map((cat) => {
           const IconComp = ICON_MAP[cat.icon] || Grid
           const isActive = selectedCategory === cat.id
@@ -41,6 +41,8 @@ export default function CategoryFilter({
           return (
             <button
               key={cat.id}
+              role="tab"
+              aria-selected={isActive}
               className={`category-pill-btn ${isActive ? 'active' : ''}`}
               onClick={() => onSelectCategory(cat.id)}
             >
@@ -64,18 +66,18 @@ export default function CategoryFilter({
               type="checkbox"
               checked={inStockOnly}
               onChange={(e) => onToggleInStock(e.target.checked)}
-              style={{ accentColor: 'var(--emerald)', width: '16px', height: '16px' }}
             />
             <span>Solo en Stock</span>
           </label>
 
           {/* Sort Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Filter size={15} style={{ color: 'var(--slate-500)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+            <Filter size={15} style={{ color: 'var(--text-muted)' }} />
             <select
               className="sort-select"
               value={sortBy}
               onChange={(e) => onSortChange(e.target.value)}
+              aria-label="Ordenar catálogo"
             >
               <option value="featured">Ordenar por: Destacados</option>
               <option value="price-low">Precio: Menor a Mayor</option>

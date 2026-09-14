@@ -1,23 +1,24 @@
 # PRONTO UI Components Guide (`src/components/`)
 
-This directory contains the user interface layer of PRONTO, built with **React 18** and styled using our custom, high-performance **Vanilla CSS Design System** located at [src/index.css](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css).
+This directory contains the user interface layer of PRONTO, built with **React 18** and styled using our custom, high-performance **Vanilla CSS Clinical Design System** located at [src/index.css](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css).
 
 ---
 
 ## 🎯 1. Directory Scope & Component Architecture
 
 * **Role:** Presentation and user interaction. Components receive props, maintain localized UI state, dispatch user actions, and emit events.
+* **Design Philosophy:** "Clinical Precision & Local Trust". Authentic Chilean dental depot aesthetic combining **Deep Navy (`#0b192c`)**, **Surgical Teal (`#088395`)**, crisp slate neutrals (`#334155`), and technical 6px–8px radii. Zero radioactive neon glowing halos or fake SaaS telemetry.
 * **Key Components:**
-  * [`Navbar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Navbar.tsx): Brand identity, search input, category navigation, and dynamic cart badge.
-  * [`Hero.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Hero.tsx): Value proposition (Melipilla express delivery, warranty, clinical supplies).
-  * [`CategoryFilter.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryFilter.tsx): Category pill selector.
-  * [`ProductCard.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductCard.tsx): Catalog item card with image/placeholder, stock indicator, price in CLP, and quick-add actions.
-  * [`ProductList.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductList.tsx): Responsive grid container with empty and loading states.
-  * [`ProductQuickView.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductQuickView.tsx): Deep-dive modal with technical specs, quantity selector, and stock alerts.
-  * [`Cart.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Cart.tsx): Slide-over cart drawer with line item editing and shipping threshold tracker.
-  * [`CheckoutModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CheckoutModal.tsx): Multi-step checkout (Contact, Chilean Delivery Zone, Boleta/Factura selection, Payment method).
-  * [`Footer.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Footer.tsx): Legal disclaimers, SERNAC policies, warehouse address, and contact links.
-  * [`ErrorBoundary.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ErrorBoundary.tsx): Fallback wrapper to catch and gracefully report runtime UI errors.
+  * [`Navbar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Navbar.tsx): Top commercial utility bar (Melipilla express delivery, Av. Ortúzar pickup, Factura Electrónica 19% IVA, WhatsApp clinical hotline), brand logo `PRONTO ODONTOLOGÍA`, technical search input, and dynamic cart badge.
+  * [`Hero.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Hero.tsx): Authentic clinical depot value proposition paired with the **Commercial Guarantee Card** (Factura Electrónica SII, Melipilla warehouse dispatch, ISP sanitary compliance, and technical WhatsApp line).
+  * [`CategoryFilter.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryFilter.tsx): Segmented category control tabs with accessible roles, instant stock toggle, and sort controls.
+  * [`ProductCard.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductCard.tsx): Clinical catalog item card featuring technical header with REF SKU code (e.g. `REF: OD-101`), discreet out-of-stock indicators (`Sin Stock` / `Agotado`), sterile media presentation, simple `IVA incluido` pricing, and dual quickview/add actions. Internal warehouse stock counts are strictly confidential and omitted from customer views.
+  * [`ProductList.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductList.tsx): Responsive grid container with clinical empty and loading states.
+  * [`ProductQuickView.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductQuickView.tsx): Clinical technical datasheet modal with ISP compliance notices, itemized tax pricing, structured specs checklist, and quantity controls.
+  * [`Cart.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Cart.tsx): Slide-over cart drawer with line item editing, Chilean free shipping threshold tracker ($150.000 / Melipilla), promo code support, and itemized tax calculation.
+  * [`CheckoutModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CheckoutModal.tsx): Multi-step checkout (Despacho, Chilean Delivery Zone, Boleta/Factura Electrónica with Chilean Modulo 11 RUT validation, Payment method selector). Zero raw credit card inputs stored in state (PCI-DSS compliant).
+  * [`Footer.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Footer.tsx): Grounded 4-column B2B distributor layout (RUT Empresa 77.892.410-K, Av. Ortúzar 750 warehouse address, regional routes, ISP compliance, and payment channels). Zero prototype seed buttons.
+  * [`ErrorBoundary.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ErrorBoundary.tsx): Fallback wrapper to catch and gracefully report runtime UI errors with direct WhatsApp escalation.
 
 ---
 
@@ -25,14 +26,14 @@ This directory contains the user interface layer of PRONTO, built with **React 1
 
 1. **NO External UI Libraries or Tailwind:**
    * Do **NOT** install Tailwind CSS, Bootstrap, MUI, Chakra, Radix, or Shadcn.
-   * Style components using semantic classes and CSS custom variables defined in [src/index.css](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css) (e.g., `btn`, `btn-primary`, `badge`, `card`, `modal-overlay`, `var(--color-teal-600)`).
+   * Style components using semantic classes and CSS custom variables defined in [src/index.css](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css) (e.g., `btn-primary`, `btn-secondary`, `product-card`, `modal-overlay`, `var(--navy-900)`, `var(--teal-600)`).
 2. **Icons:**
    * Use [`lucide-react`](https://lucide.dev) for UI icons (already installed).
-   * Always import icons by name (e.g., `import { ShoppingCart, ShieldCheck } from 'lucide-react'`).
+   * Always import icons by name (e.g., `import { ShoppingBag, ShieldCheck, MapPin } from 'lucide-react'`).
 3. **Keep Components Manageable:**
-   * Avoid giant monolith files. If a modal or component exceeds 400 lines, extract sub-views (e.g., sub-steps of `CheckoutModal.tsx`) into dedicated child components within this folder.
+   * Avoid giant monolith files. Keep component responsibilities focused on presentation and state dispatch.
 4. **No Heavy State Managers:**
-   * Manage local UI state with React hooks (`useState`, `useEffect`, `useCallback`, `useMemo`). Do not inject global store providers.
+   * Manage local UI state with standard React hooks (`useState`, `useEffect`, `useCallback`, `useMemo`). Do not inject global store providers.
 
 ---
 
@@ -44,13 +45,13 @@ This directory contains the user interface layer of PRONTO, built with **React 1
 
 1. **No Client-Side Inventory Decrement:**
    * ❌ **FORBIDDEN:** Calling `deductOrderStock()` or altering Firestore `stockCount` directly from `CheckoutModal.tsx`.
-   * ✅ Physical stock is deducted exclusively by the verified backend webhook.
+   * ✅ Physical stock is deducted exclusively by the verified serverless backend webhook at `/api/webhooks/mercadopago`.
 2. **Initial Order Status is Always Pending:**
    * When creating an order in checkout, it must be assigned `'PENDIENTE_PAGO_MERCADOPAGO'` or `'PENDIENTE_TRANSFERENCIA'`.
    * Never store an order as `'PAGADO_MERCADOPAGO'` from the client.
-3. **Zero Card Input Handling (PCI-DSS):**
-   * Never render raw credit card number, expiration, or CVC input fields.
-   * Mercado Pago payments must redirect to the official Checkout Pro URL generated by `/api/create-preference` or open the official secure Mercado Pago iframe/modal.
+3. **Zero Card Input Handling (PCI-DSS Compliance):**
+   * Never render raw credit card number, expiration, or CVC input fields, and never store mock card values in component state.
+   * Mercado Pago payments must redirect to the official Checkout Pro URL generated by `/api/create-preference` or open the official secure Mercado Pago modal.
 4. **No Database Admin Buttons in Public UI:**
    * The public `Footer.tsx` must never contain database wipe, seed, or debug buttons.
 
@@ -59,14 +60,14 @@ This directory contains the user interface layer of PRONTO, built with **React 1
 ## 🇨🇱 4. Chilean Localization in Components
 
 1. **Currency Display:**
-   * Always format monetary amounts using `formatCLP()` from [src/utils/currency.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/currency.ts) (e.g., `$189.990`). Never print raw numbers or decimal cents.
+   * Formatted as Chilean Pesos with clear indication that prices include tax (`IVA incluido`).
 2. **RUT Inputs & Validation:**
    * Any input capturing a Chilean RUT (personal or company) must format with thousands dots and dash (`12.345.678-K`) and validate using `validateRut()` from [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts).
 3. **B2B Factura Fields:**
-   * When the customer toggles **Factura**, the UI must require:
+   * When the customer toggles **Factura Electrónica**, the UI collects:
      * Company Name (*Razón Social*)
      * Company RUT (*RUT Empresa*)
      * Commercial Activity (*Giro Comercial*)
-     * Tax Address (*Dirección Tributaria*)
+     * Tax Address (*Dirección de Entrega / Consulta*)
 4. **Testing Contracts:**
-   * Interactive buttons, inputs, and badges must maintain accessible labels or `data-testid` attributes matching the test suites in [src/tests/components/](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components). Never break existing tests when updating markup.
+   * Interactive buttons, inputs, and badges maintain accessible labels and text attributes matching the test suites in [src/tests/components/](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components). Zero test regressions.
