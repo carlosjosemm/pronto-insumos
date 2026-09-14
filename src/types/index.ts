@@ -22,6 +22,8 @@ export interface Product {
   specs: string[]
   placeholderTheme: string
   mediaBadge: string
+  images?: string[]
+  packageContents?: string[]
 }
 
 export interface CartItem {

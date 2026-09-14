@@ -1,5 +1,5 @@
 import React from 'react'
-import { Sparkles, ArrowRight, ShieldCheck, Truck, Clock, MapPin } from 'lucide-react'
+import { ArrowRight, ShieldCheck, Truck, MapPin, FileText, CheckCircle2, MessageSquare } from 'lucide-react'
 
 export interface HeroProps {
   onExploreClick: () => void
@@ -8,74 +8,104 @@ export interface HeroProps {
 export default function Hero({ onExploreClick }: HeroProps) {
   return (
     <section className="hero-section">
-      <div className="hero-glow"></div>
-      
       <div className="hero-content-grid">
+        {/* Left Editorial Block */}
         <div className="hero-text-block">
           <div className="hero-pill-tag">
-            <Sparkles size={14} />
-            <span>Proveedor de Insumos Odontológicos - Melipilla & RM</span>
+            <ShieldCheck size={15} />
+            <span>Proveedor Especializado para Clínicas Dentales · Melipilla & RM</span>
           </div>
 
           <h1 className="hero-title">
-            Equipamiento e Insumos <span>Odontológicos de Precisión</span>
+            Abastecimiento Odontológico de Precisión para <span>Clínicas y Profesionales</span>
           </h1>
 
           <p className="hero-description">
-            Abasteciendo a odontólogos, clínicas dentales, ortodoncistas e implantólogos con tecnología de fotocurado, piezas de mano, instrumental de exploración y esterilización con despacho directo en Melipilla y la Región Metropolitana.
+            Piezas de mano, resinas restauradoras, instrumental de diagnóstico y bioseguridad con despacho directo a consultas en Melipilla, Talagante, Peñaflor y la Región Metropolitana.
           </p>
 
           <div className="hero-cta-group">
             <button className="btn-primary" onClick={onExploreClick}>
-              <span>Ver Catálogo Dental</span>
-              <ArrowRight size={18} />
+              <span>Explorar Catálogo de Insumos</span>
+              <ArrowRight size={17} />
             </button>
             
-            <a href="#catalog-section" className="btn-secondary">
-              <span>Especificaciones ISP</span>
+            <a
+              href="https://wa.me/56912345678?text=Hola,%20solicito%20cotizaci%C3%B3n%20de%20insumos%20para%20cl%C3%ADnica%20dental"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary"
+            >
+              <MessageSquare size={17} style={{ color: 'var(--teal-600)' }} />
+              <span>Cotización Directa para Clínicas</span>
             </a>
           </div>
 
           <div className="hero-trust-badges">
             <div className="trust-badge-item">
-              <ShieldCheck size={18} style={{ color: '#34d399' }} />
-              <span>Registro ISP Chile</span>
+              <ShieldCheck size={17} style={{ color: 'var(--teal-600)' }} />
+              <span>Normativa ISP Homologada</span>
             </div>
             <div className="trust-badge-item">
-              <MapPin size={18} style={{ color: '#38bdf8' }} />
-              <span>Despacho Directo Melipilla</span>
+              <MapPin size={17} style={{ color: 'var(--navy-800)' }} />
+              <span>Bodega & Retiro en Melipilla</span>
             </div>
             <div className="trust-badge-item">
-              <Truck size={18} style={{ color: '#fbbf24' }} />
-              <span>Express 24h RM</span>
+              <Truck size={17} style={{ color: '#d97706' }} />
+              <span>Rutas Semanales RM</span>
             </div>
           </div>
         </div>
 
-        {/* Hero Interactive Card Preview */}
+        {/* Right Commercial Guarantee Card (Replacing Fake Telemetry) */}
         <div className="hero-card-preview">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Clock size={18} style={{ color: '#34d399' }} />
-              <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#e2e8f0' }}>DESPACHO REGION DE MELIPILLA</span>
+          <div className="guarantee-card-header">
+            <div className="guarantee-title-block">
+              <FileText size={18} style={{ color: 'var(--teal-600)' }} />
+              <span className="guarantee-title">Garantías Comerciales B2B</span>
             </div>
-            <span className="brand-badge" style={{ background: '#064e3b', color: '#6ee7b7' }}>ZONA CENTRAL</span>
+            <span className="guarantee-badge">VALIDEZ SII</span>
           </div>
 
-          <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '1rem', borderRadius: '12px', marginBottom: '1rem' }}>
-            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Tiempo de Entrega Local</div>
-            <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#34d399' }}>Mismo Día / 24h</div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Entrega prioritaria para clínicas dentales en Melipilla y alrededores</div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '0.75rem', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Cumplimiento Stock</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#38bdf8' }}>99.8%</div>
+          <div className="guarantee-item-list">
+            <div className="guarantee-item">
+              <CheckCircle2 size={18} className="guarantee-icon" />
+              <div>
+                <div className="guarantee-item-title">Factura Electrónica Inmediata (19% IVA)</div>
+                <div className="guarantee-item-desc">
+                  Emisión formal con RUT de empresa y giro comercial para deducción de crédito fiscal clínico.
+                </div>
+              </div>
             </div>
-            <div style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '0.75rem', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Evaluación Odontólogos</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#fbbf24' }}>4.9 / 5.0</div>
+
+            <div className="guarantee-item">
+              <CheckCircle2 size={18} className="guarantee-icon" />
+              <div>
+                <div className="guarantee-item-title">Despacho Local y Retiro en Av. Ortúzar</div>
+                <div className="guarantee-item-desc">
+                  Entregas programadas en consultas de Melipilla o retiro express en punto comercial central.
+                </div>
+              </div>
+            </div>
+
+            <div className="guarantee-item">
+              <CheckCircle2 size={18} className="guarantee-icon" />
+              <div>
+                <div className="guarantee-item-title">Insumos Certificados y Homologados</div>
+                <div className="guarantee-item-desc">
+                  Trazabilidad de lote y fichas técnicas conformes a requerimientos de fiscalización sanitaria.
+                </div>
+              </div>
+            </div>
+
+            <div className="guarantee-item">
+              <CheckCircle2 size={18} className="guarantee-icon" />
+              <div>
+                <div className="guarantee-item-title">Mesa Técnica Directa WhatsApp</div>
+                <div className="guarantee-item-desc">
+                  Canal prioritario para requerimientos de urgencia en gabinetes odontológicos y reposiciones.
+                </div>
+              </div>
             </div>
           </div>
         </div>

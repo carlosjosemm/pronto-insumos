@@ -68,15 +68,17 @@ export default function App() {
   // Cart Operations
   const handleAddToCart = (product: Product, quantity = 1) => {
     setCart((prev) => {
+      const maxStock = product.stockCount && product.stockCount > 0 ? product.stockCount : 99
       const existing = prev.find((item) => item.product.id === product.id)
       if (existing) {
+        const newQty = Math.min(maxStock, existing.quantity + quantity)
         return prev.map((item) =>
           item.product.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
+            ? { ...item, quantity: newQty }
             : item
         )
       }
-      return [...prev, { product, quantity }]
+      return [...prev, { product, quantity: Math.min(maxStock, quantity) }]
     })
     addToast(`Se agregó "${product.name}" al carro`)
   }
@@ -86,9 +88,13 @@ export default function App() {
       handleRemoveFromCart(productId)
     } else {
       setCart((prev) =>
-        prev.map((item) =>
-          item.product.id === productId ? { ...item, quantity: newQty } : item
-        )
+        prev.map((item) => {
+          if (item.product.id === productId) {
+            const maxStock = item.product.stockCount && item.product.stockCount > 0 ? item.product.stockCount : 99
+            return { ...item, quantity: Math.min(maxStock, newQty) }
+          }
+          return item
+        })
       )
     }
   }
@@ -190,10 +196,10 @@ export default function App() {
       />
 
       {/* Toast Alerts */}
-      <div className="toast-container">
+      <div className="toast-container" role="status" aria-live="polite">
         {toasts.map((toast) => (
           <div key={toast.id} className="toast-item">
-            <CheckCircle2 size={18} style={{ color: 'var(--emerald)' }} />
+            <CheckCircle2 size={18} style={{ color: 'var(--teal-600)' }} />
             <span>{toast.message}</span>
           </div>
         ))}

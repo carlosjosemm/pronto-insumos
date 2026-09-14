@@ -1,6 +1,6 @@
 import React from 'react'
 import { Product } from '../types'
-import { Star, Eye, ShoppingBag, ShieldCheck, Activity, Heart, Home, ShieldAlert, LucideIcon } from 'lucide-react'
+import { Star, ShoppingBag, ShieldCheck, Activity, Heart, Home, ShieldAlert, LucideIcon } from 'lucide-react'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   Diagnostics: Activity,
@@ -18,16 +18,64 @@ export interface ProductCardProps {
 export default function ProductCard({ product, onAddToCart, onQuickView }: ProductCardProps) {
   const CategoryIcon = ICON_BY_CATEGORY[product.category] || Activity
 
+  // Defensive stock check
+  const isAvailable = product.inStock && (product.stockCount === undefined || product.stockCount > 0)
+
+  // Formatted SKU code (e.g. REF: OD-101)
+  const skuRef = product.id.toUpperCase().startsWith('OD-')
+    ? product.id.toUpperCase()
+    : product.id.replace(/^odon-?/i, 'OD-').toUpperCase()
+
+  const [imgError, setImgError] = React.useState<boolean>(false)
+  const hasPhoto = Boolean(product.images && product.images.length > 0 && !imgError)
+
+  const handleOpenDetail = () => {
+    onQuickView(product)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onQuickView(product)
+    }
+  }
+
   return (
-    <div className="product-card">
-      {/* Media Placeholder Box */}
+    <article
+      className="product-card"
+      aria-labelledby={`product-title-${product.id}`}
+      onClick={handleOpenDetail}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      role="article"
+      title={`Ver detalles de ${product.name}`}
+    >
+      {/* Technical Header */}
+      <div className="product-card-tech-header">
+        <span className="product-ref-badge">REF: {skuRef}</span>
+        {!isAvailable && (
+          <span className="product-stock-status" style={{ color: '#dc2626' }}>
+            <span className="product-stock-dot" style={{ background: '#dc2626' }} />
+            <span>Sin Stock</span>
+          </span>
+        )}
+      </div>
+
+      {/* Media Presentation Box (Sterile Clinical Frame) */}
       <div className={`media-placeholder-box ${product.placeholderTheme}`}>
-        <div className="placeholder-icon-symbol">
-          <CategoryIcon size={44} strokeWidth={1.5} />
-        </div>
-        <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'rgba(255,255,255,0.9)', textAlign: 'center', padding: '0 0.5rem' }}>
-          {product.name}
-        </div>
+        {hasPhoto ? (
+          <img
+            src={product.images![0]}
+            alt={product.name}
+            className="product-card-img"
+            onError={() => setImgError(true)}
+            loading="lazy"
+          />
+        ) : (
+          <div className="placeholder-icon-symbol">
+            <CategoryIcon size={42} strokeWidth={1.5} />
+          </div>
+        )}
 
         {/* Media Badge */}
         <div className="placeholder-badge">
@@ -37,76 +85,69 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
         {/* Rx Badge */}
         {product.prescriptionRequired && (
-          <div className="rx-badge">Receta Médica</div>
+          <div className="rx-badge">Uso Profesional</div>
         )}
       </div>
 
       {/* Product Content Body */}
       <div className="product-card-body">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="product-meta-row">
           <span className="product-category-tag">{product.category}</span>
-          <span
-            style={{
-              fontSize: '0.7rem',
-              fontWeight: '700',
-              padding: '0.15rem 0.45rem',
-              borderRadius: '4px',
-              background: 'var(--slate-100)',
-              color: 'var(--slate-700)'
-            }}
-          >
-            {product.tag}
-          </span>
+          <span className="product-tag-chip">{product.tag}</span>
         </div>
 
-        <h3 className="product-title">{product.name}</h3>
+        <h3 className="product-title" id={`product-title-${product.id}`}>
+          {product.name}
+        </h3>
 
-        {/* Rating Stars */}
-        <div className="product-rating">
-          <div style={{ display: 'flex', gap: '2px' }}>
-            {[...Array(5)].map((_, i) => (
-              <Star
-                key={i}
-                size={14}
-                className={i < Math.floor(product.rating) ? 'star-filled' : ''}
-                style={{ color: i < Math.floor(product.rating) ? '#f59e0b' : '#cbd5e1' }}
-              />
-            ))}
+        {/* Rating Stars (Optional - hidden when zero reviews) */}
+        {product.reviewsCount !== undefined && product.reviewsCount > 0 && (
+          <div className="product-rating">
+            <div style={{ display: 'flex', gap: '2px' }}>
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  size={13}
+                  className={i < Math.floor(product.rating) ? 'star-filled' : ''}
+                  style={{ color: i < Math.floor(product.rating) ? '#f59e0b' : '#cbd5e1' }}
+                />
+              ))}
+            </div>
+            <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
+            <span>({product.reviewsCount})</span>
           </div>
-          <span style={{ fontWeight: '700', color: 'var(--slate-800)' }}>{product.rating}</span>
-          <span>({product.reviewsCount})</span>
-        </div>
+        )}
 
         <p className="product-description-preview">{product.description}</p>
 
-        {/* Footer & Actions */}
-        <div className="product-card-footer">
-          <div className="product-price-block">
+        {/* Pricing Block */}
+        <div className="product-card-pricing-row">
+          <div className="price-primary-row">
             <span className="current-price">${product.price.toFixed(2)}</span>
             {product.originalPrice && (
               <span className="original-price">${product.originalPrice.toFixed(2)}</span>
             )}
           </div>
+          <span className="tax-breakdown-label">IVA incluido</span>
+        </div>
 
-          <div className="card-actions-group">
-            <button
-              className="btn-quickview"
-              onClick={() => onQuickView(product)}
-              title="Ver Especificaciones"
-            >
-              <Eye size={18} />
-            </button>
-
-            <button
-              className="btn-add-cart"
-              onClick={() => onAddToCart(product)}
-            >
-              <ShoppingBag size={15} />
-              <span>Agregar</span>
-            </button>
-          </div>
+        {/* Action Button Row (Full Width Agregar CTA) */}
+        <div className="product-card-footer">
+          <button
+            className="btn-add-cart"
+            onClick={(e) => {
+              e.stopPropagation()
+              onAddToCart(product)
+            }}
+            disabled={!isAvailable}
+            aria-label={`Agregar ${product.name} al carro`}
+            title={isAvailable ? 'Agregar al carro' : 'Sin stock disponible en bodega'}
+          >
+            <ShoppingBag size={15} />
+            <span>{isAvailable ? 'Agregar' : 'Agotado'}</span>
+          </button>
         </div>
       </div>
-    </div>
+    </article>
   )
 }

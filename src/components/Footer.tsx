@@ -1,121 +1,132 @@
 import React from 'react'
-import { Activity, ShieldCheck, Headphones, RefreshCw, ArrowRight, MapPin } from 'lucide-react'
+import { Activity, ShieldCheck, Headphones, RefreshCw, MapPin, Building2, Phone, CreditCard, Truck } from 'lucide-react'
 
 export default function Footer() {
   return (
-    <footer style={{ background: 'var(--slate-900)', color: 'white', marginTop: '4rem', paddingTop: '4rem', paddingBottom: '2rem' }}>
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1.5rem' }}>
+    <footer className="footer-container">
+      <div className="footer-inner">
         
         {/* Value Proposition Banners */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '3.5rem', paddingBottom: '3rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-            <div style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--emerald)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+        <div className="footer-value-props">
+          <div className="footer-value-prop-card">
+            <div className="footer-prop-icon">
               <ShieldCheck size={24} />
             </div>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>Registro ISP Chile</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)' }}>100% Insumos Certificados</div>
+              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Registro ISP Chile</div>
+              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Insumos Médicos Certificados</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-            <div style={{ background: 'rgba(6, 182, 212, 0.15)', color: 'var(--cyan)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+          <div className="footer-value-prop-card">
+            <div className="footer-prop-icon">
               <MapPin size={24} />
             </div>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>Despacho Melipilla & RM</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)' }}>Entrega Directa 24h a Clínicas</div>
+              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Bodega Melipilla</div>
+              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Retiro y Despacho Local Directo</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-            <div style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-              <Headphones size={24} />
+          <div className="footer-value-prop-card">
+            <div className="footer-prop-icon">
+              <Truck size={24} />
             </div>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>Asesoría Odontológica</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)' }}>Soporte Técnico en Equipamiento</div>
+              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Rutas Semanales RM</div>
+              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Melipilla, Talagante y Santiago</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-            <div style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+          <div className="footer-value-prop-card">
+            <div className="footer-prop-icon">
               <RefreshCw size={24} />
             </div>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>Garantía Dental</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)' }}>30 Días de Garantía Directa</div>
+              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Garantía SERNAC 6 Meses</div>
+              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Respaldo Técnico en Instrumental</div>
             </div>
           </div>
         </div>
 
-        {/* Footer Navigation Columns */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1.5fr', gap: '2rem', marginBottom: '3rem' }}>
+        {/* Grounded 4-Column B2B Distribution Structure */}
+        <div className="footer-grid-4col">
+          {/* Column 1: Corporate Identity & Local Presence */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontWeight: '800', fontSize: '1.35rem', marginBottom: '1rem' }}>
-              <div className="brand-icon-wrapper">
-                <Activity size={24} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontWeight: '800', fontSize: '1.25rem', color: '#ffffff', marginBottom: '0.75rem' }}>
+              <div className="brand-icon-wrapper" style={{ width: '32px', height: '32px' }}>
+                <Activity size={20} />
               </div>
               <span>PRONTO ODONTOLOGÍA</span>
             </div>
-            <p style={{ color: 'var(--slate-400)', fontSize: '0.875rem', lineHeight: '1.6', maxWidth: '320px' }}>
-              Distribuidor especialista en insumos y equipamiento odontológico, piezas de mano, materiales de impresión y restauración para clínicas dentales en Melipilla y la Región Metropolitana.
+            <p style={{ color: '#94a3b8', fontSize: '0.825rem', lineHeight: '1.6', marginBottom: '1rem' }}>
+              Distribuidor especializado en insumos y equipamiento odontológico para gabinetes, clínicas dentales y laboratorios en Melipilla y la Región Metropolitana.
             </p>
-          </div>
-
-          <div>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '1rem', color: '#f8fafc' }}>Categorías Dentales</h4>
-            <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.875rem', color: 'var(--slate-400)' }}>
-              <li><a href="#catalog-section" style={{ color: 'inherit', textDecoration: 'none' }}>Diagnóstico y Exploración</a></li>
-              <li><a href="#catalog-section" style={{ color: 'inherit', textDecoration: 'none' }}>Instrumental y Piezas de Mano</a></li>
-              <li><a href="#catalog-section" style={{ color: 'inherit', textDecoration: 'none' }}>Materiales y Restauración</a></li>
-              <li><a href="#catalog-section" style={{ color: 'inherit', textDecoration: 'none' }}>Esterilización e Higiene</a></li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '1rem', color: '#f8fafc' }}>Atención Clínicas</h4>
-            <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.875rem', color: 'var(--slate-400)' }}>
-              <li><a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Convenios Clínicos Melipilla</a></li>
-              <li><a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Normativa ISP Odontología</a></li>
-              <li><a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Rutas de Despacho RM</a></li>
-              <li><a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Términos y Privacidad</a></li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '1rem', color: '#f8fafc' }}>Boletín Odontológico</h4>
-            <p style={{ color: 'var(--slate-400)', fontSize: '0.85rem', marginBottom: '0.85rem' }}>
-              Suscríbete para recibir ofertas exclusivas en insumos y convenios para gabinetes en Melipilla.
-            </p>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <input
-                type="email"
-                placeholder="Ingresa tu correo..."
-                style={{ flex: 1, padding: '0.55rem 0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--slate-700)', background: 'var(--slate-800)', color: 'white' }}
-              />
-              <button className="btn-primary" style={{ padding: '0 0.85rem' }}>
-                <ArrowRight size={16} />
-              </button>
+            <div style={{ fontSize: '0.8rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <div><strong>RUT Empresa:</strong> 77.892.410-K</div>
+              <div><strong>Bodega & Despacho:</strong> Av. Ortúzar 750, Melipilla, Chile</div>
+              <div><strong>Horario de Atención:</strong> Lunes a Viernes 08:30 – 18:30 hrs</div>
             </div>
+          </div>
+
+          {/* Column 2: Regional Logistics & Delivery Routes */}
+          <div>
+            <h4 className="footer-heading">Logística Regional</h4>
+            <ul className="footer-links-list">
+              <li>• Despacho Express Clínicas Melipilla</li>
+              <li>• Retiro Presencial en Av. Ortúzar</li>
+              <li>• Ruta Pomaire, Talagante y Peñaflor</li>
+              <li>• Envíos Región Metropolitana (Starken / Chilexpress)</li>
+              <li>• Despacho Gratuito sobre $100.000</li>
+            </ul>
+          </div>
+
+          {/* Column 3: Clinical Compliance & Invoicing */}
+          <div>
+            <h4 className="footer-heading">Cumplimiento Clínico</h4>
+            <ul className="footer-links-list">
+              <li>• Factura Electrónica Inmediata (19% IVA)</li>
+              <li>• Dispositivos Homologados Registro ISP</li>
+              <li>• Fichas de Seguridad de Materiales</li>
+              <li>• Convenios Especiales para Clínicas Dentales</li>
+              <li>• Términos y Condiciones de Venta B2B</li>
+            </ul>
+          </div>
+
+          {/* Column 4: Customer Care & Payment Pathways */}
+          <div>
+            <h4 className="footer-heading">Contacto y Formas de Pago</h4>
+            <p style={{ color: '#94a3b8', fontSize: '0.8rem', lineHeight: '1.5', marginBottom: '0.85rem' }}>
+              Atención directa para presupuestos de insumos y equipamiento clínico.
+            </p>
+            <div style={{ fontSize: '0.825rem', color: '#cbd5e1', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Phone size={14} style={{ color: 'var(--teal-600)' }} />
+                <span>Mesa Clínica: +56 9 1234 5678</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <CreditCard size={14} style={{ color: 'var(--teal-600)' }} />
+                <span>Webpay Plus, Redcompra y Banco de Chile</span>
+              </div>
+            </div>
+            <a
+              href="https://wa.me/56912345678?text=Hola,%20necesito%20asistencia%20t%C3%A9cnica%20de%20insumos"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary"
+              style={{ padding: '0.55rem 1rem', fontSize: '0.825rem', width: 'fit-content' }}
+            >
+              <span>Consultar por WhatsApp</span>
+            </a>
           </div>
         </div>
 
-        {/* Bottom Legal Disclaimer */}
-        <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', fontSize: '0.8rem', color: 'var(--slate-500)' }}>
-          <span>© {new Date().getFullYear()} PRONTO INSUMOS ODONTOLÓGICOS. Melipilla, Región Metropolitana, Chile.</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <span>Proveedor Especializado en Salud Oral</span>
-            <button
-              onClick={async () => {
-                const { seedProductsToFirestore } = await import('../services/firebase')
-                const res = await seedProductsToFirestore()
-                alert(res.message || res.error)
-              }}
-              style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--slate-400)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem' }}
-            >
-              🔥 Sembrar Firebase DB
-            </button>
+        {/* Bottom Legal Disclaimer (Seed button eliminated) */}
+        <div className="footer-bottom-bar">
+          <span>© {new Date().getFullYear()} PRONTO INSUMOS ODONTOLÓGICOS SPA. Todos los derechos reservados. Melipilla, Chile.</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+            <span>Depósito Dental Certificado</span>
+            <span>Facturación Electrónica SII</span>
           </div>
         </div>
       </div>

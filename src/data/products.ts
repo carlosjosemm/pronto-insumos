@@ -29,7 +29,18 @@ export const PRODUCTS: Product[] = [
       'Conexión Midwest 4 vías autoclaveable a 135°C'
     ],
     placeholderTheme: 'gradient-teal',
-    mediaBadge: 'Fibra Óptica LED'
+    mediaBadge: 'Fibra Óptica LED',
+    images: [
+      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=800&q=80'
+    ],
+    packageContents: [
+      '1x Turbina de alta velocidad LED MasterTorque (Midwest 4 vías)',
+      '1x Llave extractora y calibradora para cambio de rotor',
+      '1x Mandril limpiador para ductos de irrigación triple',
+      '1x Manual técnico y garantía de 6 meses'
+    ]
   },
   {
     id: 'odon-102',
@@ -51,7 +62,17 @@ export const PRODUCTS: Product[] = [
       'Batería de litio con indicador de carga en pantalla'
     ],
     placeholderTheme: 'gradient-blue',
-    mediaBadge: '3000 mW/cm²'
+    mediaBadge: '3000 mW/cm²',
+    images: [
+      'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80'
+    ],
+    packageContents: [
+      '1x Lámpara de fotocurado inalámbrica CuringPro 3000',
+      '1x Base de carga con conector de alimentación',
+      '1x Fibra óptica conductora autoclaveable',
+      '2x Protectores visuales de radiación ámbar'
+    ]
   },
   {
     id: 'odon-103',
@@ -73,7 +94,18 @@ export const PRODUCTS: Product[] = [
       'Pedal de control ergonómico manos libres'
     ],
     placeholderTheme: 'gradient-cyan',
-    mediaBadge: 'Piezoeléctrico 32kHz'
+    mediaBadge: 'Piezoeléctrico 32kHz',
+    images: [
+      'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80'
+    ],
+    packageContents: [
+      '1x Unidad principal de detartraje OdonClean Pro',
+      '1x Pieza de mano ultrasónica desmontable',
+      '5x Puntas de detartraje y profilaxis en titanio',
+      '1x Llave de torque dinamométrica para puntas',
+      '1x Pedal de accionamiento clínico'
+    ]
   },
   {
     id: 'odon-104',
@@ -95,7 +127,18 @@ export const PRODUCTS: Product[] = [
       'Incluye ácido grabador 37% y adhesivo universal de 5ml'
     ],
     placeholderTheme: 'gradient-emerald',
-    mediaBadge: 'Nano-Híbrido'
+    mediaBadge: 'Nano-Híbrido',
+    images: [
+      'https://images.unsplash.com/photo-1629909615184-74f495363b67?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80'
+    ],
+    packageContents: [
+      '8x Jeringas de resina compuesta de 4g (A1, A2, A3, A3.5, B2, C2, Incisal, Denti)',
+      '1x Frasco de adhesivo universal 5ml',
+      '1x Jeringa de ácido ortofosfórico al 37% (3ml)',
+      '10x Puntas aplicadoras desechables',
+      '1x Guía de colorimetría clínica'
+    ]
   },
   {
     id: 'odon-201',
@@ -117,7 +160,18 @@ export const PRODUCTS: Product[] = [
       'Cumple estrictamente normativa de esterilización ISP Chile'
     ],
     placeholderTheme: 'gradient-indigo',
-    mediaBadge: 'Clase B Vacío'
+    mediaBadge: 'Clase B Vacío',
+    images: [
+      'https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80'
+    ],
+    packageContents: [
+      '1x Autoclave Clase B 18L SterilMax',
+      '3x Bandejas de acero inoxidable para instrumental',
+      '1x Pinza extractora de bandejas calientes',
+      '1x Manguera de drenaje y cable de poder industrial',
+      '1x Rollo de papel térmico para impresora de ciclos'
+    ]
   },
   {
     id: 'odon-202',
@@ -139,7 +193,15 @@ export const PRODUCTS: Product[] = [
       'Aroma fresco a menta para comodidad del paciente'
     ],
     placeholderTheme: 'gradient-slate',
-    mediaBadge: 'Guía Cromática'
+    mediaBadge: 'Guía Cromática',
+    images: [
+      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80'
+    ],
+    packageContents: [
+      '1x Bolsa sellada al vacío de 500g de alginato cromático',
+      '1x Cuchara dosificadora de polvo milimetrada',
+      '1x Probeta para medición precisa de agua'
+    ]
   },
   {
     id: 'odon-301',
@@ -161,7 +223,18 @@ export const PRODUCTS: Product[] = [
       'Accesorios autoclaveables (ganchos labiales y clips de lima)'
     ],
     placeholderTheme: 'gradient-emerald',
-    mediaBadge: 'Precisión 98.4%'
+    mediaBadge: 'Precisión 98.4%',
+    images: [
+      'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=800&q=80'
+    ],
+    packageContents: [
+      '1x Localizador de ápice digital ApexPro V',
+      '1x Cable de prueba y conexión',
+      '4x Ganchos labiales en acero inoxidable autoclaveables',
+      '2x Clips portalimas de endodoncia',
+      '1x Adaptador de corriente con batería recargable'
+    ]
   },
   {
     id: 'odon-302',
@@ -183,7 +256,18 @@ export const PRODUCTS: Product[] = [
       'Resistente a desinfección química y autoclave a 135°C'
     ],
     placeholderTheme: 'gradient-blue',
-    mediaBadge: 'Acero Alemán 316L'
+    mediaBadge: 'Acero Alemán 316L',
+    images: [
+      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=800&q=80'
+    ],
+    packageContents: [
+      '2x Espejos bucales planos nº 5 con mango ergonómico',
+      '2x Exploradores dentales dobles nº 23/17',
+      '2x Pinzas de curación porta-algodón con cierre',
+      '2x Sondas periodontales tipo OMS con esfera calibrada',
+      '1x Estuche metálico porta-instrumental esterilizable'
+    ]
   },
   {
     id: 'odon-401',
@@ -191,12 +275,12 @@ export const PRODUCTS: Product[] = [
     category: 'Sterilization',
     price: 32.99,
     originalPrice: 42.00,
-    rating: 4.8,
-    reviewsCount: 98,
+    rating: 0,
+    reviewsCount: 0,
     inStock: true,
     stockCount: 45,
     prescriptionRequired: false,
-    tag: 'Higiene Clínica',
+    tag: 'Nuevo Ingreso',
     description: 'Sabanillas clínicas de doble capa (papel absorbente + polietileno impermeable) para protección del sillón y paciente.',
     specs: [
       'Dimensiones: 33 cm x 45 cm (tamaño estándar pechera/campo)',
@@ -205,7 +289,13 @@ export const PRODUCTS: Product[] = [
       'Disponibles en azul clínico y verde quirúrgico'
     ],
     placeholderTheme: 'gradient-red',
-    mediaBadge: 'Doble Capa Barredor'
+    mediaBadge: 'Doble Capa Barredor',
+    images: [
+      'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80'
+    ],
+    packageContents: [
+      '1x Caja dispensadora con 100 campos impermeables 33x45cm'
+    ]
   },
   {
     id: 'odon-402',
@@ -227,7 +317,19 @@ export const PRODUCTS: Product[] = [
       'Pantalla táctil intuitiva con curva de torque en tiempo real'
     ],
     placeholderTheme: 'gradient-amber',
-    mediaBadge: 'Torque 80 Ncm'
+    mediaBadge: 'Torque 80 Ncm',
+    images: [
+      'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80'
+    ],
+    packageContents: [
+      '1x Consola principal quirúrgica ImplaDrive Pro con pantalla táctil',
+      '1x Micromotor quirúrgico esterilizable en autoclave',
+      '1x Contra-ángulo reductor 20:1 con luz LED',
+      '1x Pedal multifuncional ergonómico',
+      '1x Varilla soporte para suero fisiológico',
+      '4x Tubos de irrigación descartables'
+    ]
   }
 ]
 

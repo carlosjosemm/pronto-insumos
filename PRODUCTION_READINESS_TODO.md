@@ -57,13 +57,9 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 - [x] **0.6. Create and Deploy Firestore Security Rules (`firestore.rules`)** ✅ *(Resolved: firestore.rules created with public read-only catalog, admin-only catalog write, strict pending-only order creation schema preventing injection, client-side order read/update/delete denied; firebase.json configured and deploy:rules script added; unit tests passing)*
 
-- [ ] **0.7. Remove Public Database Seed Button (`Footer.tsx`)**
-  - **Current Issue:** Lines 109-120 of `src/components/Footer.tsx` expose a `"🔥 Sembrar Firebase DB"` button with an `alert()` call in the public website footer.
-  - **Required Action:**
-    - Remove this button completely from the customer-facing footer.
-    - Move database seeding to a private Node CLI script (`pnpm run seed`) or behind a secured admin dashboard.
+- [x] **0.7. Remove Public Database Seed Button (`Footer.tsx`)** ✅ *(Resolved: Public seed button completely removed from Footer.tsx; footer restructured to authentic 4-column B2B distributor layout; unit tests verified)*
 
-- [x] **0.8. Purge Mock Data and Ensure Privacy / PCI-DSS Compliance** ✅ *(Resolved: CheckoutModal form state initialized with empty strings and clean placeholders; cardNumber, expDate, and cvc eliminated from CustomerInfo and component state; input whitespace sanitization added; comprehensive unit tests passing with zero regressions)*
+- [x] **0.8. Purge Mock Data and Ensure Privacy / PCI-DSS Compliance** ✅ *(Resolved: CheckoutModal form state initialized with empty strings and clean placeholders; cardNumber, expDate, and cvc eliminated from CustomerInfo and component state; input whitespace sanitization added; clean Chilean clinical inputs; comprehensive unit tests passing with zero regressions)*
 
 ---
 

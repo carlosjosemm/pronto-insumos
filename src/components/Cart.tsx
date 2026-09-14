@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { CartItem, PromoCode } from '../types'
-import { X, ShoppingBag, Plus, Minus, Trash2, Tag, Lock, ArrowRight } from 'lucide-react'
+import { X, ShoppingBag, Plus, Minus, Trash2, Tag, Lock, ArrowRight, ShieldCheck } from 'lucide-react'
 import { validatePromo } from '../services/api'
 
 const FREE_SHIPPING_THRESHOLD = 150.00
@@ -29,6 +29,15 @@ export default function Cart({
   const [promoInput, setPromoInput] = useState<string>('')
   const [promoError, setPromoError] = useState<string>('')
 
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
   if (!isOpen) return null
 
   const subtotal = items.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
@@ -54,14 +63,14 @@ export default function Cart({
   return (
     <>
       <div className="cart-drawer-overlay" onClick={onClose}></div>
-      <div className="cart-drawer">
+      <aside className="cart-drawer" aria-label="Carro de compras">
         {/* Header */}
         <div className="cart-drawer-header">
           <div className="cart-drawer-title">
-            <ShoppingBag size={20} style={{ color: 'var(--emerald-dark)' }} />
+            <ShoppingBag size={20} style={{ color: 'var(--teal-600)' }} />
             <span>Carro Odontológico ({items.reduce((acc, i) => acc + i.quantity, 0)})</span>
           </div>
-          <button className="modal-close-btn" style={{ position: 'static' }} onClick={onClose}>
+          <button className="modal-close-btn" style={{ position: 'static' }} onClick={onClose} aria-label="Cerrar carro">
             <X size={18} />
           </button>
         </div>
@@ -72,7 +81,7 @@ export default function Cart({
             <span>
               {remainingForFreeShipping > 0
                 ? `Agrega $${remainingForFreeShipping.toFixed(2)} más para Despacho GRATIS Melipilla & RM`
-                : '🎉 ¡Desbloqueaste Despacho GRATIS a tu Clínica!'}
+                : '✓ Despacho prioritario sin costo a tu Clínica'}
             </span>
             <span>{Math.round(progressPercent)}%</span>
           </div>
@@ -84,19 +93,20 @@ export default function Cart({
         {/* Scrollable Items List */}
         <div className="cart-items-scroll">
           {items.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--slate-500)' }}>
-              <ShoppingBag size={48} style={{ margin: '0 auto 1rem', opacity: 0.4 }} />
-              <p style={{ fontWeight: '700', fontSize: '1rem', marginBottom: '0.25rem' }}>Tu carro está vacío</p>
-              <p style={{ fontSize: '0.85rem' }}>Explora el catálogo odontológico para agregar insumos.</p>
+            <div style={{ textAlign: 'center', padding: '3.5rem 1.5rem', color: 'var(--text-muted)' }}>
+              <ShoppingBag size={44} style={{ margin: '0 auto 1rem', opacity: 0.35, color: 'var(--navy-900)' }} />
+              <p style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--navy-900)', marginBottom: '0.35rem' }}>
+                Tu carro está vacío
+              </p>
+              <p style={{ fontSize: '0.85rem' }}>
+                Explora el catálogo de insumos odontológicos para equipar tu consulta.
+              </p>
             </div>
           ) : (
             items.map((item) => (
               <div key={item.product.id} className="cart-item-row">
-                <div
-                  className={`cart-item-thumb ${item.product.placeholderTheme}`}
-                  style={{ backgroundSize: 'cover' }}
-                >
-                  <ShoppingBag size={20} />
+                <div className="cart-item-thumb">
+                  <ShoppingBag size={20} style={{ color: 'var(--teal-600)' }} />
                 </div>
 
                 <div className="cart-item-info">
@@ -109,6 +119,7 @@ export default function Cart({
                   <button
                     className="qty-btn"
                     onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)}
+                    aria-label={`Reducir cantidad de ${item.product.name}`}
                   >
                     <Minus size={12} />
                   </button>
@@ -116,6 +127,8 @@ export default function Cart({
                   <button
                     className="qty-btn"
                     onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
+                    disabled={item.quantity >= (item.product.stockCount || 99)}
+                    aria-label={`Aumentar cantidad de ${item.product.name}`}
                   >
                     <Plus size={12} />
                   </button>
@@ -124,8 +137,9 @@ export default function Cart({
                 {/* Delete Button */}
                 <button
                   onClick={() => onRemoveItem(item.product.id)}
-                  style={{ color: 'var(--slate-400)', padding: '0.35rem', transition: 'var(--transition)' }}
+                  style={{ color: 'var(--text-muted)', padding: '0.4rem', borderRadius: 'var(--radius-xs)' }}
                   title="Eliminar producto"
+                  aria-label={`Eliminar ${item.product.name} del carro`}
                 >
                   <Trash2 size={16} />
                 </button>
@@ -144,6 +158,13 @@ export default function Cart({
                 placeholder="Código Convenio (ej: DENT20)"
                 value={promoInput}
                 onChange={(e) => setPromoInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleApplyPromoCode()
+                  }
+                }}
+                aria-label="Código de convenio o cupón de descuento"
               />
               <button className="btn-apply-promo" onClick={handleApplyPromoCode}>
                 Aplicar
@@ -151,16 +172,17 @@ export default function Cart({
             </div>
 
             {promoError && (
-              <div style={{ color: '#e11d48', fontSize: '0.75rem', marginBottom: '0.5rem', fontWeight: '600' }}>
+              <div style={{ color: '#dc2626', fontSize: '0.75rem', marginBottom: '0.5rem', fontWeight: '600' }}>
                 {promoError}
               </div>
             )}
 
             {appliedPromo && (
               <div style={{
-                background: '#ecfdf5',
-                color: '#047857',
-                padding: '0.4rem 0.75rem',
+                background: 'var(--teal-50)',
+                color: 'var(--teal-700)',
+                border: '1px solid var(--teal-100)',
+                padding: '0.45rem 0.75rem',
                 borderRadius: 'var(--radius-sm)',
                 fontSize: '0.8rem',
                 fontWeight: '700',
@@ -184,30 +206,30 @@ export default function Cart({
             </div>
 
             {appliedPromo && (
-              <div className="cart-summary-line" style={{ color: '#047857', fontWeight: '600' }}>
+              <div className="cart-summary-line" style={{ color: 'var(--teal-700)', fontWeight: '600' }}>
                 <span>Descuento ({appliedPromo.discountPercent}%)</span>
                 <span>-${discountAmount.toFixed(2)}</span>
               </div>
             )}
 
             <div className="cart-summary-line">
-              <span>IVA Estimado (19%)</span>
+              <span>IVA (19%) Estimado</span>
               <span>${tax.toFixed(2)}</span>
             </div>
 
             <div className="cart-summary-total">
-              <span>Total</span>
+              <span>Total Facturado</span>
               <span>${total.toFixed(2)}</span>
             </div>
 
             <button className="btn-checkout" onClick={onCheckout}>
-              <Lock size={18} />
+              <Lock size={17} />
               <span>Proceder al Pago</span>
-              <ArrowRight size={18} />
+              <ArrowRight size={17} />
             </button>
           </div>
         )}
-      </div>
+      </aside>
     </>
   )
 }

@@ -1,6 +1,32 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Product } from '../types'
-import { X, Star, ShieldCheck, Check, ShoppingBag, Plus, Minus, AlertTriangle } from 'lucide-react'
+import {
+  X,
+  Star,
+  ShieldCheck,
+  Check,
+  ShoppingBag,
+  Plus,
+  Minus,
+  AlertTriangle,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Package,
+  MessageCircle,
+  Activity,
+  Heart,
+  Home,
+  ShieldAlert,
+  LucideIcon
+} from 'lucide-react'
+
+const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
+  Diagnostics: Activity,
+  Instruments: Home,
+  Materials: Heart,
+  Sterilization: ShieldAlert
+}
 
 export interface ProductQuickViewProps {
   product: Product | null
@@ -10,117 +36,346 @@ export interface ProductQuickViewProps {
 
 export default function ProductQuickView({ product, onClose, onAddToCart }: ProductQuickViewProps) {
   const [quantity, setQuantity] = useState<number>(1)
+  const [activeImgIndex, setActiveImgIndex] = useState<number>(0)
+  const [failedImages, setFailedImages] = useState<Record<number, boolean>>({})
+
+  // Reset states when product changes
+  useEffect(() => {
+    setQuantity(1)
+    setActiveImgIndex(0)
+    setFailedImages({})
+  }, [product])
+
+  const photos = product?.images && product.images.length > 0 ? product.images : []
+  const hasMultiplePhotos = photos.length > 1
+
+  // Handle keyboard shortcuts: Escape to close, Left/Right arrows to navigate photos
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      } else if (hasMultiplePhotos) {
+        if (e.key === 'ArrowLeft') {
+          setActiveImgIndex((prev) => (prev > 0 ? prev - 1 : photos.length - 1))
+        } else if (e.key === 'ArrowRight') {
+          setActiveImgIndex((prev) => (prev < photos.length - 1 ? prev + 1 : 0))
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose, hasMultiplePhotos, photos.length])
 
   if (!product) return null
 
+  const isAvailable = product.inStock && (product.stockCount === undefined || product.stockCount > 0)
+  const maxStock = product.stockCount && product.stockCount > 0 ? product.stockCount : 99
+
   const handleAdd = () => {
+    if (!isAvailable) return
     onAddToCart(product, quantity)
     onClose()
   }
 
+  const skuRef = product.id.toUpperCase().startsWith('OD-')
+    ? product.id.toUpperCase()
+    : product.id.replace(/^odon-?/i, 'OD-').toUpperCase()
+
+  const totalPrice = product.price * quantity
+  const CategoryIcon = ICON_BY_CATEGORY[product.category] || Activity
+  const isCurrentImgFailed = failedImages[activeImgIndex]
+  const currentPhotoUrl = photos[activeImgIndex]
+
+  const handlePrevPhoto = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setActiveImgIndex((prev) => (prev > 0 ? prev - 1 : photos.length - 1))
+  }
+
+  const handleNextPhoto = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setActiveImgIndex((prev) => (prev < photos.length - 1 ? prev + 1 : 0))
+  }
+
+  const handleImageError = (index: number) => {
+    setFailedImages((prev) => ({ ...prev, [index]: true }))
+  }
+
+  // Generate pre-filled WhatsApp link for inquiries
+  const whatsappUrl = `https://wa.me/56912345678?text=${encodeURIComponent(
+    `Hola PRONTO Insumos, quisiera consultar sobre el producto: ${product.name} (REF: ${skuRef}).`
+  )}`
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-product-title">
+      <div className="modal-card modal-card-vertical" onClick={(e) => e.stopPropagation()}>
+        {/* Modal Close Button */}
         <button className="modal-close-btn" onClick={onClose} aria-label="Cerrar ventana">
           <X size={18} />
         </button>
 
-        <div className="quickview-grid" style={{ padding: '1.5rem' }}>
-          {/* Left Media Preview */}
-          <div className={`media-placeholder-box ${product.placeholderTheme}`} style={{ height: '100%', minHeight: '220px', borderRadius: 'var(--radius-md)' }}>
-            <div className="placeholder-badge">
-              <ShieldCheck size={12} />
-              <span>{product.mediaBadge}</span>
-            </div>
-            <div style={{ fontSize: '0.9rem', fontWeight: '800', color: 'white', textAlign: 'center', padding: '1rem' }}>
-              {product.name}
-            </div>
-          </div>
+        <div className="product-detail-modal-body">
+          {/* ================================================================
+              TOP: MULTI-PHOTO GALLERY
+              ================================================================ */}
+          <div className="product-gallery-section">
+            {/* Main Image Viewport */}
+            <div className={`gallery-main-view ${product.placeholderTheme}`}>
+              {currentPhotoUrl && !isCurrentImgFailed ? (
+                <img
+                  src={currentPhotoUrl}
+                  alt={`${product.name} - Vista ${activeImgIndex + 1}`}
+                  className="gallery-main-img"
+                  onError={() => handleImageError(activeImgIndex)}
+                />
+              ) : (
+                <div className="gallery-placeholder-fallback">
+                  <CategoryIcon size={56} strokeWidth={1.5} />
+                  <span className="gallery-placeholder-text">{product.name}</span>
+                </div>
+              )}
 
-          {/* Right Product Details */}
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--emerald-dark)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
-              {product.category}
-            </div>
+              {/* Badges Overlay */}
+              <div className="placeholder-badge">
+                <ShieldCheck size={12} />
+                <span>{product.mediaBadge}</span>
+              </div>
 
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', lineHeight: '1.25', marginBottom: '0.5rem' }}>
-              {product.name}
-            </h2>
+              {product.prescriptionRequired && (
+                <div className="rx-badge">Uso Profesional</div>
+              )}
 
-            {/* Rating */}
-            <div className="product-rating" style={{ marginBottom: '0.85rem' }}>
-              <Star size={15} className="star-filled" />
-              <span style={{ fontWeight: '700', color: 'var(--slate-900)' }}>{product.rating}</span>
-              <span>({product.reviewsCount} reseñas odontológicas)</span>
-            </div>
+              {/* Photo Counter Pill */}
+              {hasMultiplePhotos && (
+                <div className="gallery-counter-pill">
+                  {activeImgIndex + 1} / {photos.length}
+                </div>
+              )}
 
-            {/* Price */}
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', marginBottom: '0.85rem' }}>
-              <span style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--slate-900)' }}>
-                ${product.price.toFixed(2)}
-              </span>
-              {product.originalPrice && (
-                <span style={{ fontSize: '0.95rem', color: 'var(--slate-400)', textDecoration: 'line-through' }}>
-                  ${product.originalPrice.toFixed(2)}
-                </span>
+              {/* Prev / Next Navigation Controls */}
+              {hasMultiplePhotos && (
+                <>
+                  <button
+                    className="gallery-nav-btn gallery-nav-prev"
+                    onClick={handlePrevPhoto}
+                    aria-label="Foto anterior"
+                    title="Foto anterior"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  <button
+                    className="gallery-nav-btn gallery-nav-next"
+                    onClick={handleNextPhoto}
+                    aria-label="Foto siguiente"
+                    title="Foto siguiente"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </>
               )}
             </div>
 
-            <p style={{ fontSize: '0.85rem', color: 'var(--slate-600)', marginBottom: '1rem', lineHeight: '1.5' }}>
-              {product.description}
-            </p>
+            {/* Horizontal Thumbnail Strip */}
+            {hasMultiplePhotos && (
+              <div className="gallery-thumbs-strip" role="tablist" aria-label="Miniaturas del producto">
+                {photos.map((photoUrl, idx) => {
+                  const isThumbFailed = failedImages[idx]
+                  const isActive = idx === activeImgIndex
 
-            {/* Technical Specs List */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: '700', textTransform: 'uppercase', color: 'var(--slate-700)', marginBottom: '0.5rem' }}>
-                Especificaciones Técnicas:
+                  return (
+                    <button
+                      key={idx}
+                      className={`gallery-thumb-btn ${isActive ? 'active' : ''}`}
+                      onClick={() => setActiveImgIndex(idx)}
+                      role="tab"
+                      aria-selected={isActive}
+                      aria-label={`Ver foto ${idx + 1}`}
+                      title={`Foto ${idx + 1}`}
+                    >
+                      {!isThumbFailed ? (
+                        <img
+                          src={photoUrl}
+                          alt=""
+                          className="gallery-thumb-img"
+                          onError={() => handleImageError(idx)}
+                        />
+                      ) : (
+                        <div className="gallery-thumb-fallback">
+                          <CategoryIcon size={16} />
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
-              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                {product.specs.map((spec, idx) => (
-                  <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.825rem', color: 'var(--slate-700)' }}>
-                    <Check size={14} style={{ color: 'var(--emerald)', flexShrink: 0 }} />
-                    <span>{spec}</span>
-                  </li>
-                ))}
-              </ul>
+            )}
+          </div>
+
+          {/* ================================================================
+              MIDDLE: CLINICAL DETAILS & SPECIFICATIONS (VERTICAL FLOW)
+              ================================================================ */}
+          <div className="product-detail-info-section">
+            {/* Category Chip & SKU Code */}
+            <div className="detail-meta-header">
+              <span className="product-category-tag">{product.category}</span>
+              <span className="product-ref-badge">REF: {skuRef}</span>
+              <span className="product-tag-chip">{product.tag}</span>
             </div>
 
-            {/* Rx Warning Notice */}
-            {product.prescriptionRequired && (
-              <div style={{
-                background: '#fff1f2',
-                border: '1px solid #fecdd3',
-                color: '#be123c',
-                padding: '0.6rem 0.85rem',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '0.8rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                marginBottom: '1.25rem'
-              }}>
-                <AlertTriangle size={16} />
-                <span>Dispositivo odontológico especializado. Verificación según normativa ISP.</span>
+            {/* Product Title */}
+            <h2 id="modal-product-title" className="detail-product-title">
+              {product.name}
+            </h2>
+
+            {/* Clinical Rating (Optional - hidden when zero reviews) */}
+            {product.reviewsCount !== undefined && product.reviewsCount > 0 && (
+              <div className="product-rating detail-rating-row">
+                <div style={{ display: 'flex', gap: '2px' }}>
+                  {[...Array(5)].map((_, i) => (
+                    <Star
+                      key={i}
+                      size={14}
+                      className={i < Math.floor(product.rating) ? 'star-filled' : ''}
+                      style={{ color: i < Math.floor(product.rating) ? '#f59e0b' : '#cbd5e1' }}
+                    />
+                  ))}
+                </div>
+                <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
+                <span>({product.reviewsCount} reseñas clínicas verificadas)</span>
               </div>
             )}
 
-            {/* Quantity Selector & Add Button */}
-            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <div className="quantity-controls">
-                <button className="qty-btn" onClick={() => setQuantity(Math.max(1, quantity - 1))}>
-                  <Minus size={14} />
-                </button>
-                <span className="qty-val">{quantity}</span>
-                <button className="qty-btn" onClick={() => setQuantity(quantity + 1)}>
-                  <Plus size={14} />
-                </button>
+            {/* Pricing Row */}
+            <div className="detail-pricing-box">
+              <div className="detail-price-main">
+                <span className="current-price" style={{ fontSize: '1.6rem' }}>
+                  ${product.price.toFixed(2)}
+                </span>
+                {product.originalPrice && (
+                  <span className="original-price" style={{ fontSize: '1rem' }}>
+                    ${product.originalPrice.toFixed(2)}
+                  </span>
+                )}
+                <span className="tax-breakdown-label" style={{ fontSize: '0.8rem' }}>
+                  IVA incluido
+                </span>
               </div>
 
-              <button className="btn-primary" style={{ flex: 1, minWidth: '160px', justifyContent: 'center' }} onClick={handleAdd}>
-                <ShoppingBag size={18} />
-                <span>Agregar ${ (product.price * quantity).toFixed(2) }</span>
+              <div className="detail-stock-indicator">
+                <span
+                  className="product-stock-dot"
+                  style={{ background: isAvailable ? '#059669' : '#dc2626' }}
+                />
+                <span style={{ color: isAvailable ? '#059669' : '#dc2626', fontWeight: '600', fontSize: '0.8rem' }}>
+                  {isAvailable ? 'Disponible para despacho y retiro en Melipilla' : 'Sin stock inmediato en bodega'}
+                </span>
+              </div>
+            </div>
+
+            {/* Product Clinical Description */}
+            <p className="detail-description-text">{product.description}</p>
+
+            {/* Technical Specifications */}
+            {product.specs && product.specs.length > 0 && (
+              <div className="detail-section-block">
+                <div className="detail-section-heading">
+                  <FileText size={15} style={{ color: 'var(--teal-600)' }} />
+                  <span>Especificaciones Técnicas</span>
+                </div>
+                <ul className="detail-specs-list">
+                  {product.specs.map((spec, idx) => (
+                    <li key={idx} className="detail-spec-item">
+                      <Check size={14} className="detail-check-icon" />
+                      <span>{spec}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Package Contents ("Contenido del Empaque") */}
+            {product.packageContents && product.packageContents.length > 0 && (
+              <div className="detail-section-block">
+                <div className="detail-section-heading">
+                  <Package size={15} style={{ color: 'var(--teal-600)' }} />
+                  <span>Contenido del Empaque</span>
+                </div>
+                <div className="package-contents-box">
+                  <ul className="package-contents-list">
+                    {product.packageContents.map((item, idx) => (
+                      <li key={idx} className="package-contents-item">
+                        <span className="package-bullet">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Rx Professional Notice */}
+            {product.prescriptionRequired && (
+              <div className="detail-rx-alert">
+                <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                <span>Dispositivo odontológico especializado de uso profesional clínico exclusivo.</span>
+              </div>
+            )}
+
+            {/* Regulatory & Warranty Note */}
+            <div className="detail-guarantee-note">
+              <span>Normativa ISP Homologada</span>
+              <span className="divider">•</span>
+              <span>Garantía Legal SERNAC 6 meses</span>
+              <span className="divider">•</span>
+              <span>Factura Electrónica Inmediata (19% IVA)</span>
+            </div>
+          </div>
+
+          {/* ================================================================
+              BOTTOM: QUANTITY STEPPER & ACTION BUTTONS
+              ================================================================ */}
+          <div className="detail-modal-footer">
+            <div className="quantity-controls">
+              <button
+                className="qty-btn"
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                disabled={quantity <= 1}
+                aria-label="Disminuir cantidad"
+              >
+                <Minus size={14} />
+              </button>
+              <span className="qty-val">{quantity}</span>
+              <button
+                className="qty-btn"
+                onClick={() => setQuantity(Math.min(maxStock, quantity + 1))}
+                disabled={quantity >= maxStock || !isAvailable}
+                aria-label="Aumentar cantidad"
+              >
+                <Plus size={14} />
               </button>
             </div>
+
+            <button
+              className="btn-primary detail-add-btn"
+              onClick={handleAdd}
+              disabled={!isAvailable}
+              title={isAvailable ? 'Agregar insumo al carro' : 'Sin stock disponible'}
+            >
+              <ShoppingBag size={17} />
+              <span>
+                {isAvailable ? `Agregar al Carro • $${totalPrice.toFixed(2)}` : 'Sin Stock Inmediato'}
+              </span>
+            </button>
+
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-whatsapp-inquiry"
+              title="Consultar dudas técnicas a mesa clínica"
+            >
+              <MessageCircle size={16} />
+              <span>Consultar</span>
+            </a>
           </div>
         </div>
       </div>
