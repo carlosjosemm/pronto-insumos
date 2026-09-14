@@ -47,12 +47,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 - [x] **0.1. Fix False Client-Side Payment Approval (`CheckoutModal.tsx` & `src/services/api.ts`)** ✅ *(Resolved: Orders initialized with PENDIENTE_PAGO_MERCADOPAGO; client stock deduction purged; verified by unit tests)*
 
-- [ ] **0.2. Migrate Serverless Webhooks to `firebase-admin` with Service Account**
-  - **Current Issue:** `api/webhooks/mercadopago.ts` imports `db` from `src/services/firebase.ts`. That file uses Vite's `import.meta.env` (browser-only), triggering runtime exceptions in Vercel's Node.js serverless environment. Additionally, it uses the unauthenticated client Web SDK.
-  - **Required Action:**
-    - Install `firebase-admin` in dependencies.
-    - Create a serverless Firebase Admin helper in `api/lib/firebaseAdmin.ts` utilizing server-only environment variables: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`.
-    - Handle order updates and inventory transactions securely with administrative privileges.
+- [x] **0.2. Migrate Serverless Webhooks to `firebase-admin` with Service Account** ✅ *(Resolved: firebase-admin installed; api/lib/firebaseAdmin.ts singleton created; webhook uses admin Firestore queries & transactions; unit tests passing)*
 
 - [ ] **0.3. Synchronize Order Identifier (`orderId` / `external_reference`)**
   - **Current Issue:** `processMercadoPagoPayment()` sends a hardcoded `orderId: 'PRONTO-MP'` when creating the preference in `api/create-preference.ts`. Later, `submitOrder()` generates a random order ID (`PRONTO-XXXXXX`). When Mercado Pago fires the webhook, its `external_reference` is `'PRONTO-MP'`, preventing the webhook from finding and updating the real order document in Firestore.

@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { db } from '../../src/services/firebase'
-import { collection, query, where, getDocs, updateDoc, doc, runTransaction } from 'firebase/firestore'
+import { getAdminFirestore } from '../lib/firebaseAdmin'
 
 // Placeholder fallback for Mercado Pago Access Token
 const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || 'YOUR_MERCADOPAGO_ACCESS_TOKEN'
@@ -44,32 +43,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const orderId = paymentData.external_reference || paymentData.description
 
       if (orderId) {
-        // Find order in Firestore
-        const ordersRef = collection(db, 'orders')
-        const q = query(ordersRef, where('orderId', '==', orderId))
-        const orderSnapshot = await getDocs(q)
+        const adminDb = getAdminFirestore()
+
+        if (!adminDb) {
+          console.warn('Firestore Admin not initialized; skipping database updates')
+          return res.status(200).json({
+            received: true,
+            verifiedStatus: paymentData.status,
+            warning: 'Firestore Admin unavailable'
+          })
+        }
+
+        // Find order in Firestore using Admin SDK
+        const orderSnapshot = await adminDb
+          .collection('orders')
+          .where('orderId', '==', orderId)
+          .limit(1)
+          .get()
 
         if (!orderSnapshot.empty) {
           const orderDoc = orderSnapshot.docs[0]
           const orderData = orderDoc.data()
 
           // Update order status to PAGADO_MERCADOPAGO
-          await updateDoc(doc(db, 'orders', orderDoc.id), {
+          await orderDoc.ref.update({
             status: 'PAGADO_MERCADOPAGO',
-            mercadopagoPaymentId: paymentId,
+            mercadopagoPaymentId: String(paymentId),
             paidAt: new Date().toISOString()
           })
 
           // Execute atomic stock deduction in Firestore products collection
           if (Array.isArray(orderData.items)) {
-            await runTransaction(db, async (transaction: any) => {
+            await adminDb.runTransaction(async (transaction) => {
               for (const item of orderData.items) {
                 if (item.productId) {
-                  const productRef = doc(db, 'products', item.productId)
+                  const productRef = adminDb.collection('products').doc(item.productId)
                   const productSnap = await transaction.get(productRef)
 
-                  if (productSnap.exists()) {
-                    const currentStock = productSnap.data().stockCount || 0
+                  if (productSnap.exists) {
+                    const currentStock = productSnap.data()?.stockCount || 0
                     const newStock = Math.max(0, currentStock - item.quantity)
                     transaction.update(productRef, {
                       stockCount: newStock,

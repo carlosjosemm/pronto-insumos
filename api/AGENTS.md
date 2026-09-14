@@ -45,7 +45,8 @@ This directory contains the **Vercel Serverless Functions** for PRONTO. It serve
    * ✅ Server secrets (`MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET`, `FIREBASE_PRIVATE_KEY`, etc.) belong **exclusively** here and must NEVER have a `VITE_` prefix.
 2. **Database Access (`firebase-admin` ONLY):**
    * ❌ **NEVER** import `db` or `auth` from `src/services/firebase.ts`. That file uses the client Web SDK and Vite environment variables.
-   * ✅ Use `firebase-admin` initialized with service account credentials (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`).
+   * ✅ Use `getAdminFirestore()` from [`api/lib/firebaseAdmin.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firebaseAdmin.ts) initialized with service account credentials (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`).
+   * *As built in Task 0.2:* [`api/lib/firebaseAdmin.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firebaseAdmin.ts) provides singleton app and Firestore initialization. [`api/webhooks/mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/webhooks/mercadopago.ts) queries orders and performs atomic inventory decrements exclusively using `firebase-admin`.
 3. **Webhook Verification & Idempotency:**
    * Webhook handlers must validate cryptographic signatures (`x-signature` header via HMAC-SHA256) when configured.
    * **Idempotency is mandatory:** Always inspect the order document before modifying state or stock. If `order.status === 'PAGADO_MERCADOPAGO'`, return `res.status(200).json({ received: true, message: 'Already processed' })` immediately.
