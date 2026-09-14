@@ -7,9 +7,11 @@ This directory contains the **Vercel Serverless Functions** for PRONTO. It serve
 ## 🎯 1. Directory Scope & Purpose
 
 * **Runtime:** Node.js (Vercel Serverless Function environment).
-* **Current Functions:**
+* **Current Functions & Libraries:**
   * [`create-preference.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/create-preference.ts): Generates Mercado Pago Checkout Pro preferences using the server-side access token.
-  * [`webhooks/mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/webhooks/mercadopago.ts): Receives asynchronous payment status notifications from Mercado Pago, verifies legitimacy, updates order records, and atomically decrements stock.
+  * [`webhooks/mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/webhooks/mercadopago.ts): Receives asynchronous payment status notifications from Mercado Pago, validates cryptographic signatures, updates order records, and atomically decrements stock.
+  * [`lib/firebaseAdmin.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firebaseAdmin.ts): Admin SDK singleton managing Firestore transactions and authentication.
+  * [`lib/mercadopagoSignature.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/mercadopagoSignature.ts): Native Node HMAC-SHA256 signature verification over `x-signature` and `x-request-id` headers with constant-time equality checks.
 * **Roadmap Additions:**
   * Transactional email triggers (e.g., via Resend / SendGrid).
   * Chilean DTE Electronic Invoicing dispatch (Boleta/Factura via SII API provider).
@@ -48,7 +50,7 @@ This directory contains the **Vercel Serverless Functions** for PRONTO. It serve
    * ✅ Use `getAdminFirestore()` from [`api/lib/firebaseAdmin.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firebaseAdmin.ts) initialized with service account credentials (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`).
    * *As built in Task 0.2:* [`api/lib/firebaseAdmin.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firebaseAdmin.ts) provides singleton app and Firestore initialization. [`api/webhooks/mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/webhooks/mercadopago.ts) queries orders and performs atomic inventory decrements exclusively using `firebase-admin`.
 3. **Webhook Verification & Idempotency:**
-   * Webhook handlers must validate cryptographic signatures (`x-signature` header via HMAC-SHA256) when configured.
+   * Webhook handlers cryptographically validate HMAC-SHA256 signatures (`x-signature` and `x-request-id` headers) via [`api/lib/mercadopagoSignature.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/mercadopagoSignature.ts). Requests with invalid signatures are rejected with `401 Unauthorized`.
    * **Idempotency is mandatory:** Inspected in [`api/webhooks/mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/webhooks/mercadopago.ts) via both a fast-path check (`status === 'PAGADO_MERCADOPAGO' || mercadopagoPaymentId === String(paymentId)`) and a concurrent transaction guard. Duplicate events immediately return HTTP 200 with `{ received: true, duplicate: true }` without mutating database records or decrementing stock.
 4. **Atomic Inventory Decrements:**
    * Stock decrements and the order status transition are executed together within a Firestore atomic transaction (`adminDb.runTransaction`) adhering to Firestore's all-reads-before-all-writes rule. This prevents inventory corruption during concurrent orders or duplicate delivery attempts.

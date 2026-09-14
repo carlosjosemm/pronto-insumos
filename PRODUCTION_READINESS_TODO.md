@@ -53,11 +53,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 - [x] **0.4. Enforce Idempotency in the Mercado Pago Webhook** ✅ *(Resolved: Fast-path idempotency pre-check and atomic all-in-one Firestore transaction inside api/webhooks/mercadopago.ts; duplicate deliveries return HTTP 200 without mutating stock or orders; comprehensive unit tests passing)*
 
-- [ ] **0.5. Cryptographic Signature Verification on Webhooks (`x-signature`)**
-  - **Current Issue:** The webhook currently checks for a payment ID and queries Mercado Pago. Anyone can send fake POST payloads to `/api/webhooks/mercadopago` to trigger excessive outbound API calls or disrupt database states.
-  - **Required Action:**
-    - Store `MERCADOPAGO_WEBHOOK_SECRET` in Vercel environment variables.
-    - Validate the `x-signature` and `x-request-id` headers according to Mercado Pago's HMAC-SHA256 signature verification protocol before processing the request body.
+- [x] **0.5. Cryptographic Signature Verification on Webhooks (`x-signature`)** ✅ *(Resolved: api/lib/mercadopagoSignature.ts computes HMAC-SHA256 over Mercado Pago manifest template; timing-safe equality verification in api/webhooks/mercadopago.ts rejects unauthorized requests with 401; unit and integration tests passing)*
 
 - [ ] **0.6. Create and Deploy Firestore Security Rules (`firestore.rules`)**
   - **Current Issue:** No `firestore.rules` file exists in the repository. If Firestore runs in test mode (`allow read, write: if true`), any visitor can alter products, manipulate prices, wipe orders, or inspect other clinics' private purchasing data via DevTools.
