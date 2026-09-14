@@ -6,6 +6,8 @@ const mockCustomer: CustomerInfo = {
   fullName: 'Dra. Camila Fuentes - Clínica Odontológica Melipilla',
   email: 'contacto@odontomelipilla.cl',
   phone: '+56 9 1234 5678',
+  rut: '12.345.678-5',
+  documentType: 'boleta',
   address: 'Av. Ortúzar 750, Of. 302',
   city: 'Melipilla, Región Metropolitana',
   zip: '9500000'

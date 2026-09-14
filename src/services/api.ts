@@ -1,6 +1,6 @@
 import { PRODUCTS, MOCK_PROMOS } from '../data/products'
 import { db } from './firebase'
-import { collection, getDocs, addDoc, doc, runTransaction, serverTimestamp } from 'firebase/firestore'
+import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'
 import { CartItem, CustomerInfo, Order, OrderStatus, PaymentMethod, Product, PromoCode } from '../types'
 
 export interface FetchProductsOptions {
@@ -23,33 +23,6 @@ export interface SubmitOrderResult {
   timestamp: string
   total: number
   itemsCount: number
-}
-
-/**
- * Atomic stock deduction for approved instant payments (Mercado Pago)
- */
-export async function deductOrderStock(items: CartItem[]): Promise<{ success: boolean; error?: string }> {
-  try {
-    await runTransaction(db, async (transaction) => {
-      for (const item of items) {
-        const productRef = doc(db, 'products', item.product.id)
-        const productDoc = await transaction.get(productRef)
-
-        if (productDoc.exists()) {
-          const currentStock = productDoc.data().stockCount || 0
-          const newStock = Math.max(0, currentStock - item.quantity)
-          transaction.update(productRef, {
-            stockCount: newStock,
-            inStock: newStock > 0
-          })
-        }
-      }
-    })
-    return { success: true }
-  } catch (error: any) {
-    console.warn('Atomic stock deduction notice:', error.message)
-    return { success: false, error: error.message }
-  }
 }
 
 /**
@@ -139,14 +112,14 @@ export async function validatePromo(code: string): Promise<{ success: boolean; p
 
 /**
  * Submit order to Firestore
- * Note: Stock deduction is executed ONLY if paymentMethod is 'mercadopago'
+ * Orders start in pending state (e.g., PENDIENTE_PAGO_MERCADOPAGO, PENDIENTE_TRANSFERENCIA).
+ * Physical stock is deducted EXCLUSIVELY by the verified serverless webhook upon payment confirmation.
  */
 export async function submitOrder(orderData: SubmitOrderOptions): Promise<SubmitOrderResult> {
   const orderId = 'PRONTO-' + Math.floor(100000 + Math.random() * 900000)
-  const isPaidLocally = orderData.paymentMethod === 'mercadopago'
 
   const statusMap: Record<PaymentMethod, OrderStatus> = {
-    mercadopago: 'PAGADO_MERCADOPAGO',
+    mercadopago: 'PENDIENTE_PAGO_MERCADOPAGO',
     transferencia: 'PENDIENTE_TRANSFERENCIA',
     whatsapp: 'COTIZACION_SOLICITADA_WHATSAPP'
   }
@@ -169,11 +142,6 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
   try {
     const ordersRef = collection(db, 'orders')
     await addDoc(ordersRef, payload)
-
-    // DEDUCT STOCK ONLY IF INSTANTLY PAID VIA MERCADO PAGO
-    if (isPaidLocally) {
-      await deductOrderStock(orderData.items)
-    }
   } catch (err: any) {
     console.warn('Firestore order submit notice:', err.message)
   }

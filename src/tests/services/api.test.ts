@@ -14,7 +14,7 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: vi.fn(() => 'mock-timestamp')
 }))
 
-import { fetchProducts, validatePromo } from '../../services/api'
+import { fetchProducts, validatePromo, submitOrder } from '../../services/api'
 import { PRODUCTS } from '../../data/products'
 
 describe('fetchProducts - filtering', () => {
@@ -147,3 +147,100 @@ describe('validatePromo', () => {
     expect(result.success).toBe(false)
   })
 })
+
+describe('submitOrder', () => {
+  const mockCustomer = {
+    fullName: 'Dr. Test',
+    email: 'test@clinic.cl',
+    phone: '+56912345678',
+    rut: '12.345.678-5',
+    documentType: 'boleta' as const,
+    address: 'Av. Ortuzar 100',
+    city: 'Melipilla',
+    zip: '9500000'
+  }
+
+  const mockItems = [
+    {
+      product: PRODUCTS[0],
+      quantity: 2
+    }
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should initialize Mercado Pago orders with status PENDIENTE_PAGO_MERCADOPAGO and NOT deduct stock', async () => {
+    const { addDoc } = await import('firebase/firestore')
+    const result = await submitOrder({
+      items: mockItems,
+      total: 100000,
+      customer: mockCustomer,
+      paymentMethod: 'mercadopago'
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.orderId).toMatch(/^PRONTO-\d{6}$/)
+    expect(result.total).toBe(100000)
+    expect(result.itemsCount).toBe(2)
+
+    expect(addDoc).toHaveBeenCalledTimes(1)
+    const submittedPayload = vi.mocked(addDoc).mock.calls[0][1] as any
+    expect(submittedPayload.status).toBe('PENDIENTE_PAGO_MERCADOPAGO')
+    expect(submittedPayload.paymentMethod).toBe('mercadopago')
+    expect(submittedPayload.orderId).toBe(result.orderId)
+    expect(submittedPayload.items).toHaveLength(1)
+    expect(submittedPayload.items[0].quantity).toBe(2)
+  })
+
+  it('should initialize Transferencia orders with status PENDIENTE_TRANSFERENCIA', async () => {
+    const { addDoc } = await import('firebase/firestore')
+    const result = await submitOrder({
+      items: mockItems,
+      total: 50000,
+      customer: mockCustomer,
+      paymentMethod: 'transferencia'
+    })
+
+    expect(result.success).toBe(true)
+    expect(addDoc).toHaveBeenCalledTimes(1)
+    const submittedPayload = vi.mocked(addDoc).mock.calls[0][1] as any
+    expect(submittedPayload.status).toBe('PENDIENTE_TRANSFERENCIA')
+    expect(submittedPayload.paymentMethod).toBe('transferencia')
+  })
+
+  it('should initialize WhatsApp orders with status COTIZACION_SOLICITADA_WHATSAPP', async () => {
+    const { addDoc } = await import('firebase/firestore')
+    const result = await submitOrder({
+      items: mockItems,
+      total: 75000,
+      customer: mockCustomer,
+      paymentMethod: 'whatsapp'
+    })
+
+    expect(result.success).toBe(true)
+    expect(addDoc).toHaveBeenCalledTimes(1)
+    const submittedPayload = vi.mocked(addDoc).mock.calls[0][1] as any
+    expect(submittedPayload.status).toBe('COTIZACION_SOLICITADA_WHATSAPP')
+  })
+
+  it('should handle Firestore save error gracefully without throwing', async () => {
+    const { addDoc } = await import('firebase/firestore')
+    vi.mocked(addDoc).mockRejectedValueOnce(new Error('Network disconnected'))
+
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = await submitOrder({
+      items: mockItems,
+      total: 50000,
+      customer: mockCustomer,
+      paymentMethod: 'mercadopago'
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.orderId).toMatch(/^PRONTO-\d{6}$/)
+    expect(consoleSpy).toHaveBeenCalled()
+    consoleSpy.mockRestore()
+  })
+})
+

@@ -6,6 +6,8 @@ const mockCustomer: CustomerInfo = {
   fullName: 'Clínica Dental Sur',
   email: 'admin@clinicasur.cl',
   phone: '+56 9 8765 4321',
+  rut: '76.543.210-3',
+  documentType: 'factura',
   address: 'Calle Comercio 100',
   city: 'Melipilla',
   zip: '9500000'

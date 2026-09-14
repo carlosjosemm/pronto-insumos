@@ -5,6 +5,8 @@ import { submitOrder } from '../services/api'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
 import { processMercadoPagoPayment } from '../services/mercadopago'
 
+import { validateRut, formatRut } from '../utils/rut'
+
 export interface CheckoutModalProps {
   isOpen: boolean
   onClose: () => void
@@ -19,11 +21,16 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
   const [orderDetails, setOrderDetails] = useState<SubmitOrderResult | null>(null)
   const [whatsappUrl, setWhatsappUrl] = useState<string>('')
+  const [rutError, setRutError] = useState<string>('')
 
   const [formData, setFormData] = useState<CustomerInfo>({
     fullName: 'Dra. Camila Fuentes - Odontología Melipilla',
     email: 'contacto@odontomelipilla.cl',
     phone: '+56 9 1234 5678',
+    rut: '12.345.678-5',
+    documentType: 'boleta',
+    razonSocial: 'Clínica Odontológica Melipilla SpA',
+    giroComercial: 'Servicios Odontológicos Integrales',
     address: 'Av. Ortúzar 750, Of. 302',
     city: 'Melipilla, Región Metropolitana',
     zip: '9500000',
@@ -35,9 +42,22 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
 
   if (!isOpen) return null
 
+  const handleRutChange = (raw: string) => {
+    const formatted = formatRut(raw)
+    setFormData(prev => ({ ...prev, rut: formatted }))
+    if (rutError && validateRut(formatted)) {
+      setRutError('')
+    }
+  }
+
   const handleNextStep = (e: React.FormEvent) => {
     e.preventDefault()
     if (step === 1) {
+      if (!validateRut(formData.rut)) {
+        setRutError('RUT inválido. Por favor verifica el número y el dígito verificador.')
+        return
+      }
+      setRutError('')
       setStep(2)
     } else if (step === 2) {
       handleCompleteOrder()
@@ -57,7 +77,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
       })
     }
 
-    // Submit Order to Firestore (Stock deduction runs automatically in api.ts ONLY IF paymentMethod === 'mercadopago')
+    // Submit Order to Firestore with initial pending status (stock is deducted exclusively by serverless webhook)
     const result = await submitOrder({
       items: cartItems,
       total: totalAmount,
@@ -120,8 +140,51 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
         <div style={{ padding: '1.5rem' }}>
           {step === 1 && (
             <form onSubmit={handleNextStep} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Document Type Selector (Boleta vs Factura) */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Nombre Completo o Razón Social Clínica Dental</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                  Tipo de Documento Tributario (Chile)
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, documentType: 'boleta' })}
+                    style={{
+                      padding: '0.55rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: `2px solid ${formData.documentType === 'boleta' ? 'var(--emerald)' : 'var(--slate-200)'}`,
+                      background: formData.documentType === 'boleta' ? '#f0fdf4' : 'white',
+                      fontWeight: '700',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      color: formData.documentType === 'boleta' ? 'var(--emerald-dark)' : 'var(--slate-700)'
+                    }}
+                  >
+                    📄 Boleta Electrónica
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, documentType: 'factura' })}
+                    style={{
+                      padding: '0.55rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: `2px solid ${formData.documentType === 'factura' ? 'var(--emerald)' : 'var(--slate-200)'}`,
+                      background: formData.documentType === 'factura' ? '#f0fdf4' : 'white',
+                      fontWeight: '700',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      color: formData.documentType === 'factura' ? 'var(--emerald-dark)' : 'var(--slate-700)'
+                    }}
+                  >
+                    🏢 Factura Electrónica
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>
+                  Nombre Completo {formData.documentType === 'factura' ? '/ Razón Social' : 'o Clínica'}
+                </label>
                 <input
                   type="text"
                   required
@@ -133,7 +196,31 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Email para Factura / Boleta</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>
+                    RUT {formData.documentType === 'factura' ? 'Empresa' : 'Personal / Profesional'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="12.345.678-K"
+                    value={formData.rut}
+                    onChange={(e) => handleRutChange(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 0.85rem',
+                      border: `1px solid ${rutError ? '#ef4444' : 'var(--slate-200)'}`,
+                      borderRadius: 'var(--radius-sm)',
+                      outlineColor: rutError ? '#ef4444' : undefined
+                    }}
+                  />
+                  {rutError && (
+                    <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '600', marginTop: '0.2rem', display: 'block' }}>
+                      {rutError}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Email para Documento SII</label>
                   <input
                     type="email"
                     required
@@ -142,8 +229,38 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                     style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
                   />
                 </div>
+              </div>
+
+              {formData.documentType === 'factura' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: '#f8fafc', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--slate-200)' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Razón Social Factura</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: Clínica Odontológica SpA"
+                      value={formData.razonSocial || ''}
+                      onChange={(e) => setFormData({ ...formData, razonSocial: e.target.value })}
+                      style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Giro Comercial SII</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: Servicios Odontológicos"
+                      value={formData.giroComercial || ''}
+                      onChange={(e) => setFormData({ ...formData, giroComercial: e.target.value })}
+                      style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Teléfono WhatsApp Contacto</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Teléfono Contacto</label>
                   <input
                     type="text"
                     required
@@ -152,17 +269,16 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                     style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
                   />
                 </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Dirección de Gabinete / Consulta Dental</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
-                />
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', marginBottom: '0.25rem' }}>Dirección Gabinete / Consulta</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--slate-200)', borderRadius: 'var(--radius-sm)' }}
+                  />
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>

@@ -29,10 +29,16 @@ export interface CartItem {
   quantity: number
 }
 
+export type DocumentType = 'boleta' | 'factura'
+
 export interface CustomerInfo {
   fullName: string
   email: string
   phone: string
+  rut: string
+  documentType: DocumentType
+  razonSocial?: string
+  giroComercial?: string
   address: string
   city: string
   zip: string
@@ -45,6 +51,7 @@ export interface CustomerInfo {
 export type PaymentMethod = 'transferencia' | 'whatsapp' | 'mercadopago'
 
 export type OrderStatus =
+  | 'PENDIENTE_PAGO_MERCADOPAGO'
   | 'PAGADO_MERCADOPAGO'
   | 'PENDIENTE_TRANSFERENCIA'
   | 'COTIZACION_SOLICITADA_WHATSAPP'
