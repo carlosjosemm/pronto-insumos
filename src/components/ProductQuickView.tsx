@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Product } from '../types'
+import { formatCLP } from '../utils/currency'
 import {
   X,
   Star,
@@ -248,11 +249,11 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             <div className="detail-pricing-box">
               <div className="detail-price-main">
                 <span className="current-price" style={{ fontSize: '1.6rem' }}>
-                  ${product.price.toFixed(2)}
+                  {formatCLP(product.price)}
                 </span>
                 {product.originalPrice && (
                   <span className="original-price" style={{ fontSize: '1rem' }}>
-                    ${product.originalPrice.toFixed(2)}
+                    {formatCLP(product.originalPrice)}
                   </span>
                 )}
                 <span className="tax-breakdown-label" style={{ fontSize: '0.8rem' }}>
@@ -362,7 +363,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             >
               <ShoppingBag size={17} />
               <span>
-                {isAvailable ? `Agregar al Carro • $${totalPrice.toFixed(2)}` : 'Sin Stock Inmediato'}
+                {isAvailable ? `Agregar al Carro • ${formatCLP(totalPrice)}` : 'Sin Stock Inmediato'}
               </span>
             </button>
 

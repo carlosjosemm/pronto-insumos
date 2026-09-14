@@ -65,7 +65,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 ## Phase 1: Chilean Localization, Pricing & Tax Compliance (SII / ISP / CLP)
 
-- [ ] **1.1. Standardize Pricing in Chilean Pesos (CLP) Without Decimals**
+- [x] **1.1. Standardize Pricing in Chilean Pesos (CLP) Without Decimals** ✅ *(Resolved: Standardized all 10 catalog product prices to integer CLP; implemented formatCLP, calculateIVA, and parseCLP in src/utils/currency.ts; updated ProductCard, ProductQuickView, Cart, App, CheckoutModal, and WhatsApp service; free shipping threshold updated to $150.000 CLP; 100% test coverage with 173 passing tests)*
   - **Current Issue:** `src/data/products.ts` uses decimal currency numbers (`189.99`, `129.50`). In Chile, CLP has no decimal subdivisions. Sending `189.99` with currency `CLP` to Mercado Pago results in charging only $190 Chilean Pesos for a professional dental turbine.
   - **Required Action:**
     - Update all catalog items to valid CLP values: e.g., LED Turbine `$189.990 CLP`, Composite Kit `$79.990 CLP`, Ultrasonic Scaler `$245.000 CLP`.

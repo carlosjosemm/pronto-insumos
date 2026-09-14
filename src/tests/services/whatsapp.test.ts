@@ -19,7 +19,7 @@ const mockCartItems: CartItem[] = [
       id: 'odon-101',
       name: 'Turbina Odontológica LED MasterTorque',
       category: 'Instruments',
-      price: 189.99,
+      price: 189990,
       rating: 4.9,
       reviewsCount: 86,
       inStock: true,
@@ -38,7 +38,7 @@ const mockCartItems: CartItem[] = [
       id: 'odon-104',
       name: 'Kit de Resinas Compuestas Nano-Híbridas DentFill',
       category: 'Materials',
-      price: 79.99,
+      price: 79990,
       rating: 4.7,
       reviewsCount: 145,
       inStock: true,
@@ -60,7 +60,7 @@ describe('generateWhatsAppQuoteUrl', () => {
       orderId: 'PRONTO-123456',
       customer: mockCustomer,
       items: mockCartItems,
-      total: 459.97
+      total: 459970
     })
 
     expect(url).toMatch(/^https:\/\/wa\.me\//)
@@ -71,7 +71,7 @@ describe('generateWhatsAppQuoteUrl', () => {
       orderId: 'PRONTO-123456',
       customer: mockCustomer,
       items: mockCartItems,
-      total: 459.97
+      total: 459970
     })
 
     expect(url).toContain('wa.me/56912345678')
@@ -82,7 +82,7 @@ describe('generateWhatsAppQuoteUrl', () => {
       orderId: 'PRONTO-999999',
       customer: mockCustomer,
       items: mockCartItems,
-      total: 459.97
+      total: 459970
     })
 
     const decoded = decodeURIComponent(url)
@@ -94,7 +94,7 @@ describe('generateWhatsAppQuoteUrl', () => {
       orderId: 'PRONTO-123456',
       customer: mockCustomer,
       items: mockCartItems,
-      total: 459.97
+      total: 459970
     })
 
     const decoded = decodeURIComponent(url)
@@ -106,7 +106,7 @@ describe('generateWhatsAppQuoteUrl', () => {
       orderId: 'PRONTO-123456',
       customer: mockCustomer,
       items: mockCartItems,
-      total: 459.97
+      total: 459970
     })
 
     const decoded = decodeURIComponent(url)
@@ -114,16 +114,16 @@ describe('generateWhatsAppQuoteUrl', () => {
     expect(decoded).toContain('Kit de Resinas Compuestas Nano-Híbridas DentFill')
   })
 
-  it('should include the total amount formatted to 2 decimals', () => {
+  it('should include the total amount formatted in CLP', () => {
     const url = generateWhatsAppQuoteUrl({
       orderId: 'PRONTO-123456',
       customer: mockCustomer,
       items: mockCartItems,
-      total: 459.97
+      total: 459970
     })
 
     const decoded = decodeURIComponent(url)
-    expect(decoded).toContain('$459.97')
+    expect(decoded).toContain('$459.970')
   })
 
   it('should include quantities with product prices', () => {
@@ -131,16 +131,16 @@ describe('generateWhatsAppQuoteUrl', () => {
       orderId: 'PRONTO-123456',
       customer: mockCustomer,
       items: mockCartItems,
-      total: 459.97
+      total: 459970
     })
 
     const decoded = decodeURIComponent(url)
-    // 2x Turbina @ 189.99 = $379.98
+    // 2x Turbina @ 189990 = $379.980
     expect(decoded).toContain('2x')
-    expect(decoded).toContain('$379.98')
-    // 1x Resinas @ 79.99 = $79.99
+    expect(decoded).toContain('$379.980')
+    // 1x Resinas @ 79990 = $79.990
     expect(decoded).toContain('1x')
-    expect(decoded).toContain('$79.99')
+    expect(decoded).toContain('$79.990')
   })
 
   it('should include Melipilla delivery reference', () => {

@@ -5,6 +5,7 @@ import { submitOrder, generateOrderId } from '../services/api'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
 import { processMercadoPagoPayment } from '../services/mercadopago'
 import { validateRut, formatRut } from '../utils/rut'
+import { formatCLP } from '../utils/currency'
 
 export interface CheckoutModalProps {
   isOpen: boolean
@@ -411,7 +412,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
             <form onSubmit={handleNextStep} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={{ background: 'var(--surface-muted)', padding: '0.85rem 1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Total Facturado a Pagar:</span>
-                <span style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--navy-900)' }}>${totalAmount.toFixed(2)}</span>
+                <span style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--navy-900)' }}>{formatCLP(totalAmount)}</span>
               </div>
 
               {/* Method Selection Cards */}
@@ -557,7 +558,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Total Facturado:</span>
-                  <span style={{ fontWeight: '800', color: 'var(--navy-900)' }}>${totalAmount.toFixed(2)}</span>
+                  <span style={{ fontWeight: '800', color: 'var(--navy-900)' }}>{formatCLP(totalAmount)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Método Seleccionado:</span>

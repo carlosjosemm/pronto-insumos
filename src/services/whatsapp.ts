@@ -1,4 +1,5 @@
 import { CartItem, CustomerInfo } from '../types'
+import { formatCLP } from '../utils/currency'
 
 export interface WhatsAppQuoteParams {
   orderId: string
@@ -14,7 +15,7 @@ export function generateWhatsAppQuoteUrl({ orderId, customer, items, total }: Wh
   const phone = import.meta.env.VITE_WHATSAPP_NUMBER || '56912345678'
   
   const itemsText = items
-    .map(i => `• *${i.quantity}x* ${i.product.name} - $${(i.product.price * i.quantity).toFixed(2)}`)
+    .map(i => `• *${i.quantity}x* ${i.product.name} - ${formatCLP(i.product.price * i.quantity)}`)
     .join('\n')
 
   const message = `🏥 *SOLICITUD DE COTIZACIÓN - PRONTO INSUMOS ODONTOLÓGICOS*
@@ -27,7 +28,7 @@ export function generateWhatsAppQuoteUrl({ orderId, customer, items, total }: Wh
 📋 *DETALLE DE INSUMOS:*
 ${itemsText}
 
-💰 *TOTAL ESTIMADO (incluye IVA):* $${total.toFixed(2)}
+💰 *TOTAL ESTIMADO (incluye IVA):* ${formatCLP(total)}
 
 ----------------------------------------------
 *Nota:* Por favor confirmar disponibilidad inmediata y condiciones de despacho para Melipilla.`

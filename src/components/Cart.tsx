@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { CartItem, PromoCode } from '../types'
 import { X, ShoppingBag, Plus, Minus, Trash2, Tag, Lock, ArrowRight, ShieldCheck } from 'lucide-react'
 import { validatePromo } from '../services/api'
+import { formatCLP, calculateIVA } from '../utils/currency'
 
-const FREE_SHIPPING_THRESHOLD = 150.00
+const FREE_SHIPPING_THRESHOLD = 150000
 
 export interface CartProps {
   isOpen: boolean
@@ -41,9 +42,10 @@ export default function Cart({
   if (!isOpen) return null
 
   const subtotal = items.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
-  const discountAmount = appliedPromo ? (subtotal * appliedPromo.discountPercent) / 100 : 0
-  const tax = (subtotal - discountAmount) * 0.19 // 19% IVA Chile
-  const total = Math.max(0, subtotal - discountAmount + tax)
+  const discountAmount = appliedPromo ? Math.round((subtotal * appliedPromo.discountPercent) / 100) : 0
+  const taxable = subtotal - discountAmount
+  const tax = calculateIVA(taxable) // 19% IVA Chile
+  const total = Math.max(0, taxable + tax)
 
   const progressPercent = Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100)
   const remainingForFreeShipping = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal)
@@ -80,7 +82,7 @@ export default function Cart({
           <div className="free-shipping-text">
             <span>
               {remainingForFreeShipping > 0
-                ? `Agrega $${remainingForFreeShipping.toFixed(2)} más para Despacho GRATIS Melipilla & RM`
+                ? `Agrega ${formatCLP(remainingForFreeShipping)} más para Despacho GRATIS Melipilla & RM`
                 : '✓ Despacho prioritario sin costo a tu Clínica'}
             </span>
             <span>{Math.round(progressPercent)}%</span>
@@ -111,7 +113,7 @@ export default function Cart({
 
                 <div className="cart-item-info">
                   <div className="cart-item-title">{item.product.name}</div>
-                  <div className="cart-item-price">${(item.product.price * item.quantity).toFixed(2)}</div>
+                  <div className="cart-item-price">{formatCLP(item.product.price * item.quantity)}</div>
                 </div>
 
                 {/* Quantity Controls */}
@@ -195,31 +197,31 @@ export default function Cart({
                   <Tag size={14} />
                   <span>{appliedPromo.label} ({appliedPromo.code})</span>
                 </div>
-                <span>-${discountAmount.toFixed(2)}</span>
+                <span>{formatCLP(-discountAmount)}</span>
               </div>
             )}
 
             {/* Calculations Breakdown */}
             <div className="cart-summary-line">
               <span>Subtotal</span>
-              <span>${subtotal.toFixed(2)}</span>
+              <span>{formatCLP(subtotal)}</span>
             </div>
 
             {appliedPromo && (
               <div className="cart-summary-line" style={{ color: 'var(--teal-700)', fontWeight: '600' }}>
                 <span>Descuento ({appliedPromo.discountPercent}%)</span>
-                <span>-${discountAmount.toFixed(2)}</span>
+                <span>{formatCLP(-discountAmount)}</span>
               </div>
             )}
 
             <div className="cart-summary-line">
               <span>IVA (19%) Estimado</span>
-              <span>${tax.toFixed(2)}</span>
+              <span>{formatCLP(tax)}</span>
             </div>
 
             <div className="cart-summary-total">
               <span>Total Facturado</span>
-              <span>${total.toFixed(2)}</span>
+              <span>{formatCLP(total)}</span>
             </div>
 
             <button className="btn-checkout" onClick={onCheckout}>

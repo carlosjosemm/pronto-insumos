@@ -20,16 +20,18 @@ describe('PRODUCTS catalog data integrity', () => {
     }
   })
 
-  it('every product should have a positive price', () => {
+  it('every product should have a positive integer price', () => {
     for (const product of PRODUCTS) {
       expect(product.price).toBeGreaterThan(0)
+      expect(Number.isInteger(product.price)).toBe(true)
     }
   })
 
-  it('originalPrice should be greater than price when present', () => {
+  it('originalPrice should be greater than price and an integer when present', () => {
     for (const product of PRODUCTS) {
       if (product.originalPrice !== undefined) {
         expect(product.originalPrice).toBeGreaterThan(product.price)
+        expect(Number.isInteger(product.originalPrice)).toBe(true)
       }
     }
   })

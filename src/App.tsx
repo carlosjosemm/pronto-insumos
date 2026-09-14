@@ -10,6 +10,7 @@ import Footer from './components/Footer'
 import { fetchProducts } from './services/api'
 import { CartItem, Product, ProductCategory, PromoCode, Toast } from './types'
 import { CheckCircle2 } from 'lucide-react'
+import { calculateIVA } from './utils/currency'
 
 export default function App() {
   const [search, setSearch] = useState<string>('')
@@ -106,9 +107,10 @@ export default function App() {
   const totalCartCount = cart.reduce((acc, item) => acc + item.quantity, 0)
   
   const subtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
-  const discountAmount = appliedPromo ? (subtotal * appliedPromo.discountPercent) / 100 : 0
-  const tax = (subtotal - discountAmount) * 0.19
-  const cartTotal = Math.max(0, subtotal - discountAmount + tax)
+  const discountAmount = appliedPromo ? Math.round((subtotal * appliedPromo.discountPercent) / 100) : 0
+  const taxable = subtotal - discountAmount
+  const tax = calculateIVA(taxable)
+  const cartTotal = Math.max(0, taxable + tax)
 
   const handleOpenCheckout = () => {
     setIsCartOpen(false)

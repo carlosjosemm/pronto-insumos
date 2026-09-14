@@ -14,7 +14,7 @@ const mockProduct1: Product = {
   id: 'odon-101',
   name: 'Turbina Odontológica LED MasterTorque',
   category: 'Instruments',
-  price: 189.99,
+  price: 189990,
   rating: 4.9,
   reviewsCount: 86,
   inStock: true,
@@ -31,7 +31,7 @@ const mockProduct2: Product = {
   id: 'odon-104',
   name: 'Kit de Resinas DentFill',
   category: 'Materials',
-  price: 79.99,
+  price: 79990,
   rating: 4.7,
   reviewsCount: 145,
   inStock: true,
@@ -85,8 +85,8 @@ describe('Cart component', () => {
 
   it('should display the subtotal correctly', () => {
     render(<Cart {...defaultProps} />)
-    // 189.99 * 2 + 79.99 * 1 = 459.97
-    const subtotalElements = screen.getAllByText('$459.97')
+    // 189990 * 2 + 79990 * 1 = 459970
+    const subtotalElements = screen.getAllByText('$459.970')
     expect(subtotalElements.length).toBeGreaterThanOrEqual(1)
   })
 

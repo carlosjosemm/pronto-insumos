@@ -62,7 +62,9 @@ describe('CheckoutModal Component', () => {
     vi.mocked(submitOrder).mockResolvedValue({
       success: true,
       orderId: 'PRONTO-TEST1234',
-      message: 'Order registered'
+      timestamp: new Date().toISOString(),
+      total: 189990,
+      itemsCount: 1
     })
   })
 
@@ -212,7 +214,7 @@ describe('CheckoutModal Component', () => {
     })
 
     const callPayload = vi.mocked(submitOrder).mock.calls[0][0]
-    const customerPayload = callPayload.customer as Record<string, unknown>
+    const customerPayload = (callPayload.customer as unknown) as Record<string, unknown>
 
     // Verify critical privacy & PCI-DSS rules
     expect(customerPayload).toBeDefined()
@@ -252,7 +254,7 @@ describe('CheckoutModal Component', () => {
     })
 
     const mpCallPayload = vi.mocked(processMercadoPagoPayment).mock.calls[0][0]
-    const mpCustomer = mpCallPayload.customer as Record<string, unknown>
+    const mpCustomer = (mpCallPayload.customer as unknown) as Record<string, unknown>
 
     expect(mpCustomer).not.toHaveProperty('cardNumber')
     expect(mpCustomer).not.toHaveProperty('expDate')

@@ -9,7 +9,8 @@ This directory contains **pure, side-effect-free helper functions** and domain l
 * **Role:** Houses algorithmic calculations, string formatters, Chilean tax logic, and national identity validation.
 * **Key Files:**
   * [`rut.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts): Chilean national tax ID (RUT/RUN) cleaner, formatter, check digit calculator, and Modulo 11 validator.
-  * *Roadmap:* `currency.ts` (Chilean Peso formatting without decimals) and `tax.ts` (SII 19% IVA math).
+  * [`currency.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/currency.ts): Chilean Peso formatting without decimals (`formatCLP`), 19% IVA computation (`calculateIVA`), and integer string parser (`parseCLP`).
+  * *Roadmap:* `tax.ts` (SII Factura Electrónica and Boleta Electrónica tax helpers).
 
 ---
 

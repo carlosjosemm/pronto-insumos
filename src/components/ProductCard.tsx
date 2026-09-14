@@ -1,6 +1,7 @@
 import React from 'react'
 import { Product } from '../types'
 import { Star, ShoppingBag, ShieldCheck, Activity, Heart, Home, ShieldAlert, LucideIcon } from 'lucide-react'
+import { formatCLP } from '../utils/currency'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   Diagnostics: Activity,
@@ -123,9 +124,9 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
         {/* Pricing Block */}
         <div className="product-card-pricing-row">
           <div className="price-primary-row">
-            <span className="current-price">${product.price.toFixed(2)}</span>
+            <span className="current-price">{formatCLP(product.price)}</span>
             {product.originalPrice && (
-              <span className="original-price">${product.originalPrice.toFixed(2)}</span>
+              <span className="original-price">{formatCLP(product.originalPrice)}</span>
             )}
           </div>
           <span className="tax-breakdown-label">IVA incluido</span>

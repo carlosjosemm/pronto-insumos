@@ -59,8 +59,8 @@ describe('Product Detail Modal (ProductQuickView)', () => {
     expect(screen.getByRole('heading', { name: mockProduct.name })).toBeInTheDocument()
     expect(screen.getByText('REF: OD-101')).toBeInTheDocument()
     expect(screen.getByText(/IVA incluido/i)).toBeInTheDocument()
-    expect(screen.getByText('$189990.00')).toBeInTheDocument()
-    expect(screen.getByText('$229990.00')).toBeInTheDocument()
+    expect(screen.getByText('$189.990')).toBeInTheDocument()
+    expect(screen.getByText('$229.990')).toBeInTheDocument()
     expect(screen.getByText('Dispositivo odontológico especializado de uso profesional clínico exclusivo.')).toBeInTheDocument()
   })
 

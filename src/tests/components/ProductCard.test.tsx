@@ -8,8 +8,8 @@ const mockProduct: Product = {
   id: 'odon-test-001',
   name: 'Autoclave Clase B 18L SterilMax',
   category: 'Sterilization',
-  price: 899.00,
-  originalPrice: 1100.00,
+  price: 899000,
+  originalPrice: 1100000,
   rating: 5.0,
   reviewsCount: 42,
   inStock: true,
@@ -43,7 +43,7 @@ describe('ProductCard component', () => {
         onQuickView={() => {}}
       />
     )
-    expect(screen.getByText('$899.00')).toBeInTheDocument()
+    expect(screen.getByText('$899.000')).toBeInTheDocument()
   })
 
   it('should render the original (strikethrough) price when present', () => {
@@ -54,7 +54,7 @@ describe('ProductCard component', () => {
         onQuickView={() => {}}
       />
     )
-    expect(screen.getByText('$1100.00')).toBeInTheDocument()
+    expect(screen.getByText('$1.100.000')).toBeInTheDocument()
   })
 
   it('should render the product category', () => {
