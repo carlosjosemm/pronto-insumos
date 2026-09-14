@@ -67,3 +67,27 @@ export type ShippingMethod =
 
 ### 4. Monetary Values in Chilean Pesos (CLP)
 All financial fields (`price`, `subtotal`, `tax`, `shippingCost`, `total`) represent whole Chilean Peso integers without decimals.
+
+### 5. Product Catalog & Firestore Schema (`Product`)
+The `Product` contract supports multi-photo galleries and clinical delivery details:
+```typescript
+export interface Product {
+  id: string;                    // Canonical SKU (e.g. 'odon-101' -> display 'REF: OD-101')
+  name: string;
+  category: string;
+  price: number;
+  originalPrice?: number;
+  rating: number;
+  reviewsCount: number;
+  inStock: boolean;
+  stockCount: number;            // Confidential internal count (never rendered to customers)
+  prescriptionRequired: boolean; // Triggers 'Uso Profesional' badge & clinical notice
+  tag: string;
+  description: string;
+  specs: string[];               // Technical specifications checklist
+  placeholderTheme: string;      // Fallback CSS theme class
+  mediaBadge: string;
+  images?: string[];             // URLs of product photos in Firebase Storage/CDN
+  packageContents?: string[];    // Itemized checklist of box contents for clinic
+}
+```

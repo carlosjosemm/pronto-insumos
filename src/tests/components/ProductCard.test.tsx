@@ -99,12 +99,12 @@ describe('ProductCard component', () => {
         onQuickView={() => {}}
       />
     )
-    fireEvent.click(screen.getByText('Agregar'))
+    fireEvent.click(screen.getByText(/Agregar/i))
     expect(onAddToCart).toHaveBeenCalledTimes(1)
     expect(onAddToCart).toHaveBeenCalledWith(mockProduct)
   })
 
-  it('should call onQuickView when eye button is clicked', () => {
+  it('should call onQuickView when product card is clicked', () => {
     const onQuickView = vi.fn()
     render(
       <ProductCard
@@ -113,8 +113,8 @@ describe('ProductCard component', () => {
         onQuickView={onQuickView}
       />
     )
-    const quickViewBtn = screen.getByTitle('Ver Especificaciones')
-    fireEvent.click(quickViewBtn)
+    const card = screen.getByRole('article')
+    fireEvent.click(card)
     expect(onQuickView).toHaveBeenCalledTimes(1)
     expect(onQuickView).toHaveBeenCalledWith(mockProduct)
   })
@@ -141,5 +141,21 @@ describe('ProductCard component', () => {
       />
     )
     expect(screen.getByText('Clase B Vacío')).toBeInTheDocument()
+  })
+
+  it('should omit rating section when product has zero reviews', () => {
+    const productZeroReviews = {
+      ...mockProduct,
+      reviewsCount: 0,
+      rating: 0
+    }
+    render(
+      <ProductCard
+        product={productZeroReviews}
+        onAddToCart={() => {}}
+        onQuickView={() => {}}
+      />
+    )
+    expect(screen.queryByText('(0)')).toBeNull()
   })
 })

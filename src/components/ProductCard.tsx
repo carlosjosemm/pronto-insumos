@@ -1,6 +1,6 @@
 import React from 'react'
 import { Product } from '../types'
-import { Star, Eye, ShoppingBag, ShieldCheck, Activity, Heart, Home, ShieldAlert, LucideIcon } from 'lucide-react'
+import { Star, ShoppingBag, ShieldCheck, Activity, Heart, Home, ShieldAlert, LucideIcon } from 'lucide-react'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   Diagnostics: Activity,
@@ -26,8 +26,30 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
     ? product.id.toUpperCase()
     : product.id.replace(/^odon-?/i, 'OD-').toUpperCase()
 
+  const [imgError, setImgError] = React.useState<boolean>(false)
+  const hasPhoto = Boolean(product.images && product.images.length > 0 && !imgError)
+
+  const handleOpenDetail = () => {
+    onQuickView(product)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onQuickView(product)
+    }
+  }
+
   return (
-    <article className="product-card" aria-labelledby={`product-title-${product.id}`}>
+    <article
+      className="product-card"
+      aria-labelledby={`product-title-${product.id}`}
+      onClick={handleOpenDetail}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      role="article"
+      title={`Ver detalles de ${product.name}`}
+    >
       {/* Technical Header */}
       <div className="product-card-tech-header">
         <span className="product-ref-badge">REF: {skuRef}</span>
@@ -41,9 +63,19 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
       {/* Media Presentation Box (Sterile Clinical Frame) */}
       <div className={`media-placeholder-box ${product.placeholderTheme}`}>
-        <div className="placeholder-icon-symbol">
-          <CategoryIcon size={42} strokeWidth={1.5} />
-        </div>
+        {hasPhoto ? (
+          <img
+            src={product.images![0]}
+            alt={product.name}
+            className="product-card-img"
+            onError={() => setImgError(true)}
+            loading="lazy"
+          />
+        ) : (
+          <div className="placeholder-icon-symbol">
+            <CategoryIcon size={42} strokeWidth={1.5} />
+          </div>
+        )}
 
         {/* Media Badge */}
         <div className="placeholder-badge">
@@ -68,21 +100,23 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
           {product.name}
         </h3>
 
-        {/* Rating Stars */}
-        <div className="product-rating">
-          <div style={{ display: 'flex', gap: '2px' }}>
-            {[...Array(5)].map((_, i) => (
-              <Star
-                key={i}
-                size={13}
-                className={i < Math.floor(product.rating) ? 'star-filled' : ''}
-                style={{ color: i < Math.floor(product.rating) ? '#f59e0b' : '#cbd5e1' }}
-              />
-            ))}
+        {/* Rating Stars (Optional - hidden when zero reviews) */}
+        {product.reviewsCount !== undefined && product.reviewsCount > 0 && (
+          <div className="product-rating">
+            <div style={{ display: 'flex', gap: '2px' }}>
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  size={13}
+                  className={i < Math.floor(product.rating) ? 'star-filled' : ''}
+                  style={{ color: i < Math.floor(product.rating) ? '#f59e0b' : '#cbd5e1' }}
+                />
+              ))}
+            </div>
+            <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
+            <span>({product.reviewsCount})</span>
           </div>
-          <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
-          <span>({product.reviewsCount})</span>
-        </div>
+        )}
 
         <p className="product-description-preview">{product.description}</p>
 
@@ -97,20 +131,14 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
           <span className="tax-breakdown-label">IVA incluido</span>
         </div>
 
-        {/* Action Buttons Row */}
+        {/* Action Button Row (Full Width Agregar CTA) */}
         <div className="product-card-footer">
           <button
-            className="btn-quickview"
-            onClick={() => onQuickView(product)}
-            title="Ver Especificaciones"
-            aria-label={`Ver especificaciones de ${product.name}`}
-          >
-            <Eye size={17} />
-          </button>
-
-          <button
             className="btn-add-cart"
-            onClick={() => onAddToCart(product)}
+            onClick={(e) => {
+              e.stopPropagation()
+              onAddToCart(product)
+            }}
             disabled={!isAvailable}
             aria-label={`Agregar ${product.name} al carro`}
             title={isAvailable ? 'Agregar al carro' : 'Sin stock disponible en bodega'}
