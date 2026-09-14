@@ -1,0 +1,54 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
+
+    function isValidOrderCreate() {
+      let data = request.resource.data;
+      return data.orderId is string && data.orderId.size() > 0
+        && data.totalAmount is number && data.totalAmount > 0
+        && data.status in [
+          'PENDIENTE_PAGO_MERCADOPAGO',
+          'PENDIENTE_TRANSFERENCIA',
+          'COTIZACION_SOLICITADA_WHATSAPP'
+        ]
+        && data.customer is map
+        && data.items is list
+        && data.items.size() > 0
+        && !('mercadopagoPaymentId' in data)
+        && !('paidAt' in data);
+    }
+
+    // Products catalog:
+    // Public read-only access for storefront visitors.
+    // Writes restricted exclusively to authenticated administrators.
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Orders:
+    // Storefront checkout can create initial pending orders.
+    // Read, update, and delete are strictly forbidden from client SDKs.
+    // Backend updates (payment approvals & inventory deductions) run exclusively
+    // via Firebase Admin SDK (which inherently bypasses security rules).
+    match /orders/{orderId} {
+      allow create: if isValidOrderCreate();
+      allow read, update, delete: if false;
+    }
+
+    // Default deny for all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
