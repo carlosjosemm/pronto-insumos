@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { CartItem, CustomerInfo, PaymentMethod, SubmitOrderResult } from '../types'
-import { X, CheckCircle, ShieldCheck, Lock, CreditCard, MessageSquare, Building2, ArrowRight } from 'lucide-react'
+import { CartItem, CustomerInfo, PaymentMethod, SubmitOrderResult, BillingInfo } from '../types'
+import { X, CheckCircle, ShieldCheck, Lock, CreditCard, MessageSquare, Building2, ArrowRight, Printer, FileText } from 'lucide-react'
 import { submitOrder, generateOrderId } from '../services/api'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
 import { processMercadoPagoPayment } from '../services/mercadopago'
 import { validateRut, formatRut } from '../utils/rut'
 import { formatCLP } from '../utils/currency'
+import { calculateTaxBreakdown, validateFacturaFields } from '../utils/tax'
 
 export interface CheckoutModalProps {
   isOpen: boolean
@@ -22,7 +23,9 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
   const [orderDetails, setOrderDetails] = useState<SubmitOrderResult | null>(null)
   const [whatsappUrl, setWhatsappUrl] = useState<string>('')
   const [rutError, setRutError] = useState<string>('')
+  const [facturaErrors, setFacturaErrors] = useState<Record<string, string>>({})
   const [submitError, setSubmitError] = useState<string>('')
+  const [showVoucher, setShowVoucher] = useState<boolean>(false)
 
   useEffect(() => {
     if (!isOpen) return
@@ -54,6 +57,8 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
     setOrderDetails(null)
     setWhatsappUrl('')
     setRutError('')
+    setFacturaErrors({})
+    setShowVoucher(false)
     setFormData({
       fullName: '',
       email: '',
@@ -81,16 +86,39 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
     if (rutError && validateRut(formatted)) {
       setRutError('')
     }
+    if (facturaErrors.rut && validateRut(formatted)) {
+      setFacturaErrors(prev => ({ ...prev, rut: '' }))
+    }
   }
 
   const handleNextStep = (e: React.FormEvent) => {
     e.preventDefault()
     if (step === 1) {
-      if (!validateRut(formData.rut)) {
-        setRutError('RUT inválido. Por favor verifica el número y el dígito verificador.')
-        return
+      if (formData.documentType === 'factura') {
+        const validation = validateFacturaFields({
+          rut: formData.rut,
+          razonSocial: formData.razonSocial,
+          giroComercial: formData.giroComercial,
+          address: formData.address,
+          city: formData.city
+        })
+
+        if (!validation.isValid) {
+          setFacturaErrors(validation.errors)
+          if (validation.errors.rut) {
+            setRutError(validation.errors.rut)
+          }
+          return
+        }
+      } else {
+        if (!validateRut(formData.rut)) {
+          setRutError('RUT inválido. Por favor verifica el número y el dígito verificador.')
+          return
+        }
       }
+
       setRutError('')
+      setFacturaErrors({})
       setStep(2)
     } else if (step === 2) {
       handleCompleteOrder()
@@ -117,13 +145,26 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
       zip: formData.zip.trim()
     }
 
-    // 1. Submit Order to Firestore FIRST with initial pending status
+    const taxBreakdown = calculateTaxBreakdown(totalAmount)
+    const billing: BillingInfo = {
+      documentType: formData.documentType,
+      rut: sanitizedCustomer.rut,
+      razonSocial: formData.documentType === 'factura' ? sanitizedCustomer.razonSocial : undefined,
+      giroComercial: formData.documentType === 'factura' ? sanitizedCustomer.giroComercial : undefined,
+      direccionFiscal: sanitizedCustomer.address,
+      comunaFiscal: sanitizedCustomer.city,
+      taxBreakdown,
+      status: 'PENDIENTE_EMISION_SII'
+    }
+
+    // 1. Submit Order to Firestore FIRST with initial pending status & structured billing
     const result = await submitOrder({
       orderId: canonicalOrderId,
       items: cartItems,
       total: totalAmount,
       customer: sanitizedCustomer,
-      paymentMethod
+      paymentMethod,
+      billing
     })
 
     if (!result.success) {
@@ -265,7 +306,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                 <input
                   type="text"
                   required
-                  placeholder={formData.documentType === 'factura' ? 'Ej: Clínica Odontológica Melipilla SpA' : 'Ej: Dra. Camila Fuentes'}
+                  placeholder={formData.documentType === 'factura' ? 'Ej: Dra. Camila Fuentes (Contacto / Solicitante)' : 'Ej: Dra. Camila Fuentes'}
                   value={formData.fullName}
                   onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                   style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
@@ -313,32 +354,64 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
               </div>
 
               {formData.documentType === 'factura' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: 'var(--surface-muted)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
-                      Razón Social (según SII)
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ej: Clínica Odontológica SpA"
-                      value={formData.razonSocial || ''}
-                      onChange={(e) => setFormData({ ...formData, razonSocial: e.target.value })}
-                      style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', background: '#ffffff' }}
-                    />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', background: 'var(--surface-muted)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--teal-800)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Building2 size={16} />
+                    <span>Datos Tributarios de la Clínica (SII)</span>
                   </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
-                      Giro Comercial
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ej: Servicios Odontológicos"
-                      value={formData.giroComercial || ''}
-                      onChange={(e) => setFormData({ ...formData, giroComercial: e.target.value })}
-                      style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', background: '#ffffff' }}
-                    />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                        Razón Social (según SII) *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Centro Dental San Pedro SpA"
+                        value={formData.razonSocial || ''}
+                        onChange={(e) => {
+                          setFormData({ ...formData, razonSocial: e.target.value })
+                          if (facturaErrors.razonSocial) setFacturaErrors(prev => ({ ...prev, razonSocial: '' }))
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.55rem 0.75rem',
+                          border: `1px solid ${facturaErrors.razonSocial ? '#dc2626' : 'var(--border-subtle)'}`,
+                          borderRadius: 'var(--radius-sm)',
+                          background: '#ffffff'
+                        }}
+                      />
+                      {facturaErrors.razonSocial && (
+                        <span style={{ fontSize: '0.725rem', color: '#dc2626', fontWeight: '600', marginTop: '0.25rem', display: 'block' }}>
+                          {facturaErrors.razonSocial}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+                        Giro Comercial Registrado *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Servicios Odontológicos"
+                        value={formData.giroComercial || ''}
+                        onChange={(e) => {
+                          setFormData({ ...formData, giroComercial: e.target.value })
+                          if (facturaErrors.giroComercial) setFacturaErrors(prev => ({ ...prev, giroComercial: '' }))
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.55rem 0.75rem',
+                          border: `1px solid ${facturaErrors.giroComercial ? '#dc2626' : 'var(--border-subtle)'}`,
+                          borderRadius: 'var(--radius-sm)',
+                          background: '#ffffff'
+                        }}
+                      />
+                      {facturaErrors.giroComercial && (
+                        <span style={{ fontSize: '0.725rem', color: '#dc2626', fontWeight: '600', marginTop: '0.25rem', display: 'block' }}>
+                          {facturaErrors.giroComercial}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -359,32 +432,58 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
-                    Dirección de Entrega / Consulta
+                    Dirección de Entrega / Fiscal *
                   </label>
                   <input
                     type="text"
                     required
                     placeholder="Ej: Av. Ortúzar 750, Of. 302"
                     value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
+                    onChange={(e) => {
+                      setFormData({ ...formData, address: e.target.value })
+                      if (facturaErrors.address) setFacturaErrors(prev => ({ ...prev, address: '' }))
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 0.85rem',
+                      border: `1px solid ${facturaErrors.address ? '#dc2626' : 'var(--border-subtle)'}`,
+                      borderRadius: 'var(--radius-sm)'
+                    }}
                   />
+                  {facturaErrors.address && (
+                    <span style={{ fontSize: '0.725rem', color: '#dc2626', fontWeight: '600', marginTop: '0.25rem', display: 'block' }}>
+                      {facturaErrors.address}
+                    </span>
+                  )}
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
-                    Ciudad / Comuna
+                    Ciudad / Comuna Fiscal *
                   </label>
                   <input
                     type="text"
                     required
                     placeholder="Ej: Melipilla, Región Metropolitana"
                     value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    style={{ width: '100%', padding: '0.6rem 0.85rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}
+                    onChange={(e) => {
+                      setFormData({ ...formData, city: e.target.value })
+                      if (facturaErrors.city) setFacturaErrors(prev => ({ ...prev, city: '' }))
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 0.85rem',
+                      border: `1px solid ${facturaErrors.city ? '#dc2626' : 'var(--border-subtle)'}`,
+                      borderRadius: 'var(--radius-sm)'
+                    }}
                   />
+                  {facturaErrors.city && (
+                    <span style={{ fontSize: '0.725rem', color: '#dc2626', fontWeight: '600', marginTop: '0.25rem', display: 'block' }}>
+                      {facturaErrors.city}
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
@@ -560,10 +659,131 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                   <span style={{ color: 'var(--text-muted)' }}>Total Facturado:</span>
                   <span style={{ fontWeight: '800', color: 'var(--navy-900)' }}>{formatCLP(totalAmount)}</span>
                 </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Documento Tributario:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>
+                    {formData.documentType === 'factura' ? 'Factura Electrónica (Clínica)' : 'Boleta Electrónica'}
+                  </span>
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Método Seleccionado:</span>
                   <span style={{ fontWeight: '700', color: 'var(--navy-900)', textTransform: 'capitalize' }}>{paymentMethod}</span>
                 </div>
+              </div>
+
+              {/* Printable Voucher Section */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowVoucher(!showVoucher)}
+                  style={{ width: '100%', justifyContent: 'center', fontWeight: '700', gap: '0.5rem' }}
+                >
+                  <FileText size={18} />
+                  <span>{showVoucher ? 'Ocultar Comprobante' : 'Ver Comprobante de Compra (Pro-Forma)'}</span>
+                </button>
+
+                {showVoucher && (
+                  <div
+                    id="pronto-purchase-voucher"
+                    style={{
+                      background: '#ffffff',
+                      border: '2px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '1.25rem',
+                      textAlign: 'left',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    {/* Header */}
+                    <div style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontWeight: '800', fontSize: '1rem', color: 'var(--navy-900)' }}>PRONTO INSUMOS ODONTOLÓGICOS</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Distribuidora Dental • Melipilla, Región Metropolitana</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>RUT Distribuidor: 77.892.410-K</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: 'var(--radius-xs)',
+                          background: formData.documentType === 'factura' ? 'var(--teal-50)' : '#f1f5f9',
+                          color: formData.documentType === 'factura' ? 'var(--teal-800)' : 'var(--navy-900)',
+                          fontWeight: '800',
+                          fontSize: '0.75rem',
+                          border: '1px solid var(--border-subtle)'
+                        }}>
+                          {formData.documentType === 'factura' ? 'COMPROBANTE FACTURA' : 'COMPROBANTE BOLETA'}
+                        </span>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{orderDetails.orderId}</div>
+                      </div>
+                    </div>
+
+                    {/* Fiscal Details */}
+                    <div style={{ background: 'var(--surface-muted)', padding: '0.75rem', borderRadius: 'var(--radius-xs)', marginBottom: '0.75rem', fontSize: '0.775rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                      <div><strong>{formData.documentType === 'factura' ? 'Razón Social' : 'Cliente'}:</strong> {formData.documentType === 'factura' ? formData.razonSocial || formData.fullName : formData.fullName}</div>
+                      <div><strong>RUT:</strong> {formData.rut}</div>
+                      {formData.documentType === 'factura' && formData.giroComercial && (
+                        <div><strong>Giro:</strong> {formData.giroComercial}</div>
+                      )}
+                      <div><strong>Dirección:</strong> {formData.address}, {formData.city}</div>
+                      <div><strong>Email de Contacto:</strong> {formData.email}</div>
+                    </div>
+
+                    {/* Items List */}
+                    <div style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
+                      <div style={{ fontWeight: '700', fontSize: '0.775rem', color: 'var(--text-muted)', marginBottom: '0.35rem', display: 'grid', gridTemplateColumns: '2rem 1fr auto' }}>
+                        <span>Cant</span>
+                        <span>Insumo</span>
+                        <span>Subtotal</span>
+                      </div>
+                      {cartItems.map((item, idx) => (
+                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2rem 1fr auto', fontSize: '0.775rem', padding: '0.2rem 0' }}>
+                          <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{item.quantity}x</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{item.product.name}</span>
+                          <span style={{ fontWeight: '600' }}>{formatCLP(item.product.price * item.quantity)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Tax Breakdown Table */}
+                    {(() => {
+                      const breakdown = calculateTaxBreakdown(totalAmount)
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.8rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+                            <span>Monto Neto:</span>
+                            <span>{formatCLP(breakdown.neto)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+                            <span>IVA (19%):</span>
+                            <span>{formatCLP(breakdown.iva)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', color: 'var(--navy-900)', fontSize: '0.9rem' }}>
+                            <span>Total Facturado (CLP):</span>
+                            <span>{formatCLP(breakdown.total)}</span>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Legal Notice */}
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '0.75rem', lineHeight: '1.3' }}>
+                      * Comprobante pro-forma de respaldo interno. El documento tributario oficial ({formData.documentType === 'factura' ? 'Factura Electrónica' : 'Boleta Electrónica'}) con firma y timbre del SII será generado mediante el Portal Tributario y remitido al correo de la clínica.
+                    </div>
+
+                    {/* Print Button */}
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => window.print()}
+                      style={{ width: '100%', justifyContent: 'center', fontSize: '0.8rem', gap: '0.5rem' }}
+                    >
+                      <Printer size={15} />
+                      <span>Imprimir / Guardar en PDF</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {paymentMethod === 'whatsapp' && whatsappUrl && (

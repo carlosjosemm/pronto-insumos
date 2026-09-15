@@ -33,6 +33,23 @@ export interface CartItem {
 
 export type DocumentType = 'boleta' | 'factura'
 
+export interface TaxBreakdown {
+  neto: number
+  iva: number
+  total: number
+}
+
+export interface BillingInfo {
+  documentType: DocumentType
+  rut: string
+  razonSocial?: string
+  giroComercial?: string
+  direccionFiscal: string
+  comunaFiscal: string
+  taxBreakdown: TaxBreakdown
+  status: 'PENDIENTE_EMISION_SII' | 'EMITIDO'
+}
+
 export interface CustomerInfo {
   fullName: string
   email: string
@@ -63,6 +80,7 @@ export interface Order {
   status: OrderStatus
   totalAmount: number
   customer: CustomerInfo
+  billing?: BillingInfo
   items: {
     productId: string
     name: string

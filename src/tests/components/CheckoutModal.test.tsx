@@ -112,7 +112,7 @@ describe('CheckoutModal Component', () => {
     render(<CheckoutModal {...defaultProps} />)
 
     // Initially Boleta is selected, Factura fields should not be in document
-    expect(screen.queryByPlaceholderText('Ej: Clínica Odontológica SpA')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Ej: Centro Dental San Pedro SpA')).not.toBeInTheDocument()
     expect(screen.queryByPlaceholderText('Ej: Servicios Odontológicos')).not.toBeInTheDocument()
 
     // Click Factura Electrónica button
@@ -120,7 +120,7 @@ describe('CheckoutModal Component', () => {
     fireEvent.click(facturaBtn)
 
     // Factura fields should now appear
-    expect(screen.getByPlaceholderText('Ej: Clínica Odontológica SpA')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Ej: Centro Dental San Pedro SpA')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Ej: Servicios Odontológicos')).toBeInTheDocument()
   })
 
@@ -319,5 +319,94 @@ describe('CheckoutModal Component', () => {
     expect(screen.getByText(/Gestión de Pedido y Pago/i)).toBeInTheDocument()
     const nameInput = screen.getByPlaceholderText(/Dra\. Camila Fuentes/i) as HTMLInputElement
     expect(nameInput.value).toBe('')
+  })
+
+  it('should require and validate Razón Social and Giro Comercial when Factura is selected', () => {
+    render(<CheckoutModal {...defaultProps} />)
+
+    // Select Factura
+    fireEvent.click(screen.getByText(/Factura Electrónica/i))
+
+    // Fill common fields
+    fireEvent.change(screen.getByPlaceholderText(/Contacto \/ Solicitante/i), { target: { value: 'Dra. Camila Fuentes' } })
+    fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
+    fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'camila@clinica.cl' } })
+    fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 1234 5678' } })
+    fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 750' } })
+    fireEvent.change(screen.getByPlaceholderText(/Región Metropolitana/i), { target: { value: 'Melipilla' } })
+    fireEvent.change(screen.getByPlaceholderText('Ej: 9500000'), { target: { value: '9500000' } })
+
+    // Try to advance without Razón Social and Giro
+    fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+
+    // Should stay on Step 1 and display errors
+    expect(screen.getByText(/Razón Social.*obligatoria/i)).toBeInTheDocument()
+    expect(screen.getByText(/Giro Comercial.*obligatorio/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Transferencia Bancaria Directa/i)).not.toBeInTheDocument()
+
+    // Fill Razón Social and Giro
+    fireEvent.change(screen.getByPlaceholderText(/Centro Dental San Pedro/i), { target: { value: 'Centro Dental Melipilla SpA' } })
+    fireEvent.change(screen.getByPlaceholderText(/Servicios Odontológicos/i), { target: { value: 'Servicios Odontológicos' } })
+
+    // Advance
+    fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+
+    // Should now reach Step 2
+    expect(screen.getByText(/Transferencia Bancaria Directa/i)).toBeInTheDocument()
+  })
+
+  it('should include structured billing payload and display pro-forma voucher in Step 3', async () => {
+    render(<CheckoutModal {...defaultProps} totalAmount={189990} />)
+
+    // Select Factura
+    fireEvent.click(screen.getByText(/Factura Electrónica/i))
+
+    fireEvent.change(screen.getByPlaceholderText(/Contacto \/ Solicitante/i), { target: { value: 'Dra. Camila Fuentes' } })
+    fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
+    fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'camila@clinica.cl' } })
+    fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 1234 5678' } })
+    fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 750' } })
+    fireEvent.change(screen.getByPlaceholderText(/Región Metropolitana/i), { target: { value: 'Melipilla' } })
+    fireEvent.change(screen.getByPlaceholderText('Ej: 9500000'), { target: { value: '9500000' } })
+    fireEvent.change(screen.getByPlaceholderText(/Centro Dental San Pedro/i), { target: { value: 'Centro Dental Melipilla SpA' } })
+    fireEvent.change(screen.getByPlaceholderText(/Servicios Odontológicos/i), { target: { value: 'Servicios Odontológicos' } })
+
+    // Step 2
+    fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+
+    // Confirm Order
+    fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+    await waitFor(() => {
+      expect(submitOrder).toHaveBeenCalledTimes(1)
+    })
+
+    // Verify structured billing payload
+    const submitCall = vi.mocked(submitOrder).mock.calls[0][0]
+    expect(submitCall.billing).toBeDefined()
+    expect(submitCall.billing?.documentType).toBe('factura')
+    expect(submitCall.billing?.rut).toBe('12.345.678-5')
+    expect(submitCall.billing?.razonSocial).toBe('Centro Dental Melipilla SpA')
+    expect(submitCall.billing?.giroComercial).toBe('Servicios Odontológicos')
+    expect(submitCall.billing?.taxBreakdown.total).toBe(189990)
+    expect(submitCall.billing?.taxBreakdown.neto).toBe(159655)
+    expect(submitCall.billing?.taxBreakdown.iva).toBe(30335)
+    expect(submitCall.billing?.status).toBe('PENDIENTE_EMISION_SII')
+
+    // Step 3 UI
+    expect(screen.getByText(/Factura Electrónica \(Clínica\)/i)).toBeInTheDocument()
+
+    // Toggle Voucher
+    const voucherBtn = screen.getByText(/Ver Comprobante de Compra/i)
+    fireEvent.click(voucherBtn)
+
+    // Verify Voucher Content
+    expect(screen.getByText('PRONTO INSUMOS ODONTOLÓGICOS')).toBeInTheDocument()
+    expect(screen.getByText(/RUT Distribuidor: 77.892.410-K/i)).toBeInTheDocument()
+    expect(screen.getByText('COMPROBANTE FACTURA')).toBeInTheDocument()
+    expect(screen.getByText('Centro Dental Melipilla SpA')).toBeInTheDocument()
+    expect(screen.getByText('$159.655')).toBeInTheDocument() // Neto
+    expect(screen.getByText('$30.335')).toBeInTheDocument()  // IVA
+    expect(screen.getByText('Imprimir / Guardar en PDF')).toBeInTheDocument()
   })
 })

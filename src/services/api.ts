@@ -1,7 +1,8 @@
 import { PRODUCTS, MOCK_PROMOS } from '../data/products'
 import { db } from './firebase'
 import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'
-import { CartItem, CustomerInfo, Order, OrderStatus, PaymentMethod, Product, PromoCode } from '../types'
+import { BillingInfo, CartItem, CustomerInfo, Order, OrderStatus, PaymentMethod, Product, PromoCode } from '../types'
+import { calculateTaxBreakdown } from '../utils/tax'
 
 export interface FetchProductsOptions {
   category?: string
@@ -16,6 +17,7 @@ export interface SubmitOrderOptions {
   total: number
   customer: CustomerInfo
   paymentMethod: PaymentMethod
+  billing?: BillingInfo
 }
 
 /**
@@ -132,6 +134,17 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     whatsapp: 'COTIZACION_SOLICITADA_WHATSAPP'
   }
 
+  const billing: BillingInfo = orderData.billing || {
+    documentType: orderData.customer.documentType,
+    rut: orderData.customer.rut,
+    razonSocial: orderData.customer.razonSocial,
+    giroComercial: orderData.customer.giroComercial,
+    direccionFiscal: orderData.customer.address,
+    comunaFiscal: orderData.customer.city,
+    taxBreakdown: calculateTaxBreakdown(orderData.total),
+    status: 'PENDIENTE_EMISION_SII'
+  }
+
   const payload: Order = {
     orderId,
     createdAt: serverTimestamp(),
@@ -139,6 +152,7 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     status: statusMap[orderData.paymentMethod] || 'PENDIENTE_PAGO',
     totalAmount: orderData.total,
     customer: orderData.customer,
+    billing,
     items: orderData.items.map(item => ({
       productId: item.product.id,
       name: item.product.name,

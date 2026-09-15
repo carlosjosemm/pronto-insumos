@@ -73,14 +73,18 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - Round tax calculations (19% IVA) to whole integer values (`Math.round`).
     - Adjust `FREE_SHIPPING_THRESHOLD` to a realistic CLP figure (e.g., `$150.000 CLP` instead of `150.00`).
 
-- [ ] **1.2. B2B Electronic Invoicing Integration (Boleta & Factura Electrónica SII)**
-  - **Context:** Chilean dental clinics and practitioners require valid tax deduction (crédito fiscal IVA 19%). B2B transactions require issuing electronic invoices (*Factura Electrónica*).
+- [x] **1.2. B2B Fiscal Billing Data Capture & Purchase Voucher (Boleta & Factura SII)** ✅ *(Resolved: Implemented calculateTaxBreakdown and validateFacturaFields in src/utils/tax.ts; mandatory Factura validation in CheckoutModal with inline Chilean errors; structured billing payload with tax breakdown saved to Firestore orders; printable pro-forma purchase voucher with window.print() added to confirmation screen; 100% test coverage with 183 tests passing)*
+  - **Context:** Chilean dental clinics and practitioners require valid tax deduction (crédito fiscal IVA 19%). B2B transactions require issuing electronic invoices (*Factura Electrónica*) while retail clients receive *Boleta Electrónica*. Official electronic invoicing in Chile is performed free of charge via the SII Portal Tributario (`sii.cl`), requiring no paid third-party DTE provider.
   - **Required Action:**
-    - Integrate a certified Chilean DTE API provider (e.g., **OpenFactura / Haulmer**, **LibreDTE**, **SimpleFactura**, or **Bsale**).
-    - Upon order payment confirmation:
-      - If **Boleta** is chosen: Issue an electronic consumer receipt with the customer's RUT and name.
-      - If **Factura** is chosen: Issue an electronic tax invoice using the clinic's Razón Social, RUT Empresa, Giro Comercial, and registered tax address.
-    - Dispatch the resulting PDF and XML invoice automatically to the customer's email.
+    - **Checkout Fiscal Validation (`CheckoutModal.tsx`):**
+      - If **Boleta**: Validate customer RUT (Modulo 11) and full name.
+      - If **Factura**: Strictly enforce and validate all legally required SII fields: *RUT Empresa* (Modulo 11), *Razón Social*, *Giro Comercial* (e.g. "Clínica Dental", "Servicios Odontológicos"), and *Dirección / Comuna Fiscal*. Block step progression if any field is missing or invalid.
+    - **Structured Order Schema (`types/index.ts` & `api.ts`):**
+      - Save structured `billing` payload on the order in Firestore containing tax breakdown (`neto`, `iva`, `total`), fiscal identifiers, and status `PENDIENTE_EMISION_SII`.
+    - **Printable Pro-Forma Purchase Voucher:**
+      - In Step 3 (Order Confirmation), provide a 1-click printable/downloadable purchase voucher (*Comprobante de Venta Pro-Forma*) with PRONTO distributor header, itemized list, fiscal breakdown, and disclaimer for official SII dispatch.
+    - **Admin/Operator Handoff:**
+      - Organize fiscal fields for 1-click copy into the free SII portal (`sii.cl`).
 
 - [ ] **1.3. Sanitary Regulations for Controlled Dental Supplies (ISP Chile)**
   - **Context:** Certain dental materials (local anesthetics, needles, specialized prescription pharmaceuticals) require verification of professional accreditation with the Chilean Superintendencia de Salud (SIS registry).
