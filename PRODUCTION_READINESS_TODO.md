@@ -126,11 +126,12 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - Sync cart state with `localStorage` (`pronto_cart_items`).
     - Validate that stored items still exist in catalog and have available inventory upon session recovery.
 
-- [ ] **2.3. Pre-Checkout Inventory Validation**
-  - **Current Issue:** A clinic can add 10 units of an item that only has 2 units in stock and proceed to payment without warnings.
+- [ ] **2.3. Pre-Checkout Inventory Validation & Max-Stock Cues**
+  - **Context & Current State:** Front-end quantity steppers in `App.tsx` and `ProductQuickView.tsx` already clamp item additions to `product.stockCount`. However, if stock depletes while a customer is browsing or if an item in the cart reaches max stock, additional safeguards are needed.
   - **Required Action:**
-    - Validate in `Cart.tsx` and serverless endpoints that `item.quantity <= product.stockCount`.
-    - If stock depletes while a customer is browsing, disable the checkout button and alert the user.
+    - In `Cart.tsx`: disable the `+` button when `item.quantity >= item.product.stockCount`, displaying a clear `"Máximo disponible"` or `"Sin stock"` status indicator.
+    - In `Cart.tsx` and `CheckoutModal.tsx`: if an item becomes unavailable or exceeds stock, block checkout progression and alert the user.
+    - In serverless `/api/create-preference.ts`: validate requested quantities against current Firestore inventory before generating Mercado Pago preference.
 
 - [ ] **2.4. End-to-End Bank Transfer Workflow (Transferencia Bancaria)**
   - **Current Issue:** Selecting bank transfer displays static account details, leaving the order in an unverified limbo with no verification mechanism.
@@ -149,15 +150,15 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 ## Phase 3: Logistics, Shipping & Local Warehouse Pickup (Melipilla / RM)
 
 - [ ] **3.1. Delivery Zone Selector & Dynamic Shipping Rates**
-  - **Current Issue:** The store only displays generic copy and an incorrect USD free-shipping threshold (`150.00`).
+  - **Context & Current State:** The free shipping progress tracker is standardized to `$150.000 CLP` in `Cart.tsx`, `Navbar.tsx`, and `Hero.tsx`. However, checkout currently lacks a dedicated Chilean delivery zone selector to calculate freight charges for orders below the threshold or for regional couriers.
   - **Required Action:**
     - Add a delivery method selector at Step 1 of checkout:
-      1. **Local Pickup at Melipilla Warehouse** (Free - physical address: Av. Ortúzar).
-      2. **Urban Melipilla Direct Delivery** (Flat fee or free over $80.000 CLP).
-      3. **Rural Melipilla & Outskirts** (Bollenar, San Manuel, Culiprán, Pabellón, Chocalán).
-      4. **Región Metropolitana Communes** (Talagante, Peñaflor, Buin, Santiago Centro, Providencia, Las Condes, etc.).
-      5. **Regional Chile Courier** (Freight-collect via Starken, Chilexpress, or Blue Express).
-    - Automatically add freight charges to the subtotal before creating payment preferences.
+      1. **Retiro en Local (Bodega Melipilla - Av. Ortúzar):** Gratis ($0 CLP).
+      2. **Despacho Urbano Melipilla:** Tarifa plana ($3.500 CLP o gratis sobre $80.000 CLP).
+      3. **Comunas Periféricas & Rurales Melipilla:** Bollenar, San Manuel, Culiprán, Pabellón, Chocalán ($5.000 CLP).
+      4. **Región Metropolitana:** Talagante, Peñaflor, Buin, Santiago Centro, Providencia, Las Condes, etc. ($4.990 CLP o gratis sobre $150.000 CLP).
+      5. **Envíos a Regiones:** Envío por pagar a sucursal o domicilio vía Starken / Chilexpress / Blue Express ($0 CLP en carrito, cobro en destino).
+    - Automatically add freight charges to the subtotal and include in tax/billing breakdown before creating payment preferences.
 
 - [ ] **3.2. Estimated Delivery Time Windows**
   - Display estimated fulfillment times in the cart and checkout (e.g., *"Same-day / 24-hour delivery for clinics in Melipilla"* and *"24-48 hours for wider RM"*).
@@ -212,12 +213,12 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 
 ## Phase 6: Real Catalog Assets, Photography & Technical Datasheets
 
-- [ ] **6.1. Replace CSS Gradient Placeholders with Real Photography**
-  - **Current Issue:** Products display generic CSS color gradient boxes (`gradient-teal`, `gradient-blue`) with abstract category icons. Dental clinics will not purchase high-ticket surgical instruments or rotary equipment without high-resolution product photography showing connectors, packaging, and manufacturer branding.
-  - **Required Action:**
-    - Add an `images: string[]` field to the `Product` data model.
-    - Store images in Firebase Storage or an image CDN in WebP format (800x800 px).
-    - Implement an image gallery with thumbnail selection and zoom in `ProductQuickView.tsx` and `ProductCard.tsx`.
+- [x] **6.1. Replace CSS Gradient Placeholders with Real Photography**
+  - **Context & Status (Fulfilled in UI/UX Overhaul):**
+    - `Product` data model updated with `images?: string[]` and `packageContents?: string[]`.
+    - Curated high-resolution dental photography URLs configured across catalog items in `src/data/products.ts`.
+    - Interactive multi-photo gallery implemented in `ProductQuickView.tsx` with thumbnail navigation, keyboard controls, and full fallback to category iconography in `ProductCard.tsx`.
+    - *(Optional future enhancement: migrate images to dedicated Firebase Storage bucket when custom assets are photographed).*
 
 - [ ] **6.2. Downloadable Technical Documentation (Datasheets & ISP Registration)**
   - For clinic sanitization audits, dentists require technical datasheets and sanitary registration codes.
@@ -270,17 +271,19 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
   - **Required Action:**
     - Configure `tsconfig.server.json` or update `"include"` to cover `"api/**/*"` in a Node.js compilation context.
 
-- [ ] **8.3. Automated Integration Tests for Serverless Endpoints**
-  - **Current Issue:** While 84 tests cover frontend components, **zero automated tests** validate `api/create-preference.ts` or `api/webhooks/mercadopago.ts`.
-  - **Required Action:**
-    - Add integration tests mocking Mercado Pago API responses and Firestore transactions.
-    - Test failure scenarios: invalid webhook signatures, repeated webhooks, missing order IDs, and stock race conditions.
+- [x] **8.3. Automated Integration Tests for Serverless Endpoints**
+  - **Context & Status (Fulfilled & Verified):**
+    - Implemented comprehensive Vitest integration test suites for serverless functions in `src/tests/api/`:
+      - `create-preference.test.ts` (6 tests): validates preference creation, payload structure, integer CLP currency, and error handling.
+      - `mercadopago-signature.test.ts` (13 tests): verifies HMAC-SHA256 signature verification, timing tolerance, and malformed header rejections.
+      - `mercadopago-webhook.test.ts` (15 tests): verifies idempotency, duplicate prevention, concurrent transactions, and Firestore order status transitions.
+    - Total: 34 tests maintaining 100% test reliability.
 
-- [ ] **8.4. Continuous Integration (CI/CD) with GitHub Actions**
-  - Create `.github/workflows/ci.yml` running on each pull request:
-    1. Type checking (`pnpm tsc --noEmit`).
-    2. Unit tests (`pnpm test`).
-    3. Production bundle build (`pnpm run build`).
+- [ ] **8.4. Continuous Integration (CI/CD) & Pre-Flight Quality Guardrails**
+  - **Note on Guardrails:** In strict adherence to `AGENTS.md` (Anti-Overshooting Principle #5 and Section 7), PRONTO uses lean Vercel CLI deployments without bloated multi-stage runners or heavy container pipelines.
+  - **Required Action:**
+    - Enforce local mandatory pre-flight checks (`pnpm test && pnpm exec tsc --noEmit && pnpm build`) before releases.
+    - *(Optional)* Add a minimal GitHub Actions workflow (`.github/workflows/ci.yml`) running only `pnpm test` and `pnpm build` on pull requests.
 
 - [ ] **8.5. Real-Time Error Monitoring & Analytics (Sentry & GA4)**
   - Integrate **Sentry for React** to capture unhandled client runtime errors across mobile devices and browsers.
@@ -317,10 +320,10 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 
 The store is officially ready to process its first real commercial transaction with a dental clinic when **all** of the following conditions are satisfied:
 
-1. [ ] No customer can purchase any dental equipment or supply at incorrect decimal rates (charges are 100% accurate in CLP integers).
-2. [ ] Approved Mercado Pago transactions update the Firestore order status and deduct physical stock **exclusively** via the verified serverless webhook.
-3. [ ] If a customer abandons or gets rejected on the payment gateway, inventory remains intact and the order is not marked as paid.
-4. [ ] Secret server keys for Firebase and Mercado Pago are stored strictly in serverless environment variables.
+1. [x] No customer can purchase any dental equipment or supply at incorrect decimal rates (charges are 100% accurate in CLP integers).
+2. [x] Approved Mercado Pago transactions update the Firestore order status and deduct physical stock **exclusively** via the verified serverless webhook.
+3. [x] If a customer abandons or gets rejected on the payment gateway, inventory remains intact and the order is not marked as paid.
+4. [x] Secret server keys for Firebase and Mercado Pago are stored strictly in serverless environment variables.
 5. [ ] The purchasing clinic receives an immediate formal order confirmation with an order number via email and/or WhatsApp.
-6. [ ] Customers can select Boleta or Factura with validated RUT and company data, and the business issues the corresponding legal tax invoice.
+6. [x] Customers can select Boleta or Factura with validated RUT and company data, and the business issues the corresponding legal tax invoice.
 7. [ ] The storefront runs on a branded `.cl` domain with active SSL and visible consumer legal terms conforming to Chilean law.
