@@ -50,6 +50,13 @@ export interface BillingInfo {
   status: 'PENDIENTE_EMISION_SII' | 'EMITIDO'
 }
 
+export interface SanitaryVerification {
+  sisRegistryNumber: string
+  credentialFileName?: string
+  verified: boolean
+  regulatoryNote: string
+}
+
 export interface CustomerInfo {
   fullName: string
   email: string
@@ -62,6 +69,7 @@ export interface CustomerInfo {
   city: string
   zip: string
   transferReceipt?: string
+  sanitaryVerification?: SanitaryVerification
 }
 
 export type PaymentMethod = 'transferencia' | 'whatsapp' | 'mercadopago'
@@ -81,6 +89,7 @@ export interface Order {
   totalAmount: number
   customer: CustomerInfo
   billing?: BillingInfo
+  sanitaryVerification?: SanitaryVerification
   items: {
     productId: string
     name: string

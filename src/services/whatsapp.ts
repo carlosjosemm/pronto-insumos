@@ -18,12 +18,16 @@ export function generateWhatsAppQuoteUrl({ orderId, customer, items, total }: Wh
     .map(i => `• *${i.quantity}x* ${i.product.name} - ${formatCLP(i.product.price * i.quantity)}`)
     .join('\n')
 
+  const sisText = customer.sanitaryVerification?.sisRegistryNumber
+    ? `\n*Registro Sanitario SIS:* ${customer.sanitaryVerification.sisRegistryNumber}`
+    : ''
+
   const message = `🏥 *SOLICITUD DE COTIZACIÓN - PRONTO INSUMOS ODONTOLÓGICOS*
 
 *N° Pedido:* ${orderId}
 *Cliente/Clínica:* ${customer.fullName}
 *Email:* ${customer.email}
-*Dirección Despacho:* ${customer.address}, ${customer.city}
+*Dirección Despacho:* ${customer.address}, ${customer.city}${sisText}
 
 📋 *DETALLE DE INSUMOS:*
 ${itemsText}

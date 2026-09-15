@@ -1,7 +1,7 @@
 import { PRODUCTS, MOCK_PROMOS } from '../data/products'
 import { db } from './firebase'
 import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'
-import { BillingInfo, CartItem, CustomerInfo, Order, OrderStatus, PaymentMethod, Product, PromoCode } from '../types'
+import { BillingInfo, CartItem, CustomerInfo, Order, OrderStatus, PaymentMethod, Product, PromoCode, SanitaryVerification } from '../types'
 import { calculateTaxBreakdown } from '../utils/tax'
 
 export interface FetchProductsOptions {
@@ -18,6 +18,7 @@ export interface SubmitOrderOptions {
   customer: CustomerInfo
   paymentMethod: PaymentMethod
   billing?: BillingInfo
+  sanitaryVerification?: SanitaryVerification
 }
 
 /**
@@ -153,6 +154,7 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     totalAmount: orderData.total,
     customer: orderData.customer,
     billing,
+    sanitaryVerification: orderData.sanitaryVerification || orderData.customer.sanitaryVerification,
     items: orderData.items.map(item => ({
       productId: item.product.id,
       name: item.product.name,

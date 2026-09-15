@@ -95,6 +95,26 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
         <div className="product-meta-row">
           <span className="product-category-tag">{product.category}</span>
           <span className="product-tag-chip">{product.tag}</span>
+          {product.prescriptionRequired && (
+            <span
+              className="product-regulated-chip"
+              style={{
+                fontSize: '0.65rem',
+                fontWeight: '800',
+                color: '#b45309',
+                background: '#fef3c7',
+                border: '1px solid #fde68a',
+                borderRadius: 'var(--radius-xs)',
+                padding: '0.15rem 0.4rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.2rem'
+              }}
+              title="Venta regulada por ISP - Requiere N° Registro Superintendencia de Salud"
+            >
+              ⚕️ Requiere SIS
+            </span>
+          )}
         </div>
 
         <h3 className="product-title" id={`product-title-${product.id}`}>

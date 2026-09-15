@@ -93,4 +93,15 @@ export interface Product {
 ```
 
 ### 6. Customer Privacy & PCI-DSS Scope (`CustomerInfo`)
-`CustomerInfo` contains only contact, Chilean tax identity (`RUT`, `documentType`, `razonSocial`, `giroComercial`), and shipping destination attributes. It must **never** contain payment card attributes (`cardNumber`, `expDate`, `cvc`). Card data collection is delegated entirely to Mercado Pago Checkout Pro.
+`CustomerInfo` contains only contact, Chilean tax identity (`RUT`, `documentType`, `razonSocial`, `giroComercial`), shipping destination attributes, and optional `sanitaryVerification`. It must **never** contain payment card attributes (`cardNumber`, `expDate`, `cvc`). Card data collection is delegated entirely to Mercado Pago Checkout Pro.
+
+### 7. Sanitary Regulations Interface (`SanitaryVerification`)
+```typescript
+export interface SanitaryVerification {
+  sisRegistryNumber: string;    // Chilean SIS registration (Superintendencia de Salud RNPI)
+  credentialFileName?: string;  // Attached credential or prescription filename
+  verified: boolean;            // Flag indicating verification
+  regulatoryNote: string;       // Legal compliance citation (Art. 101 DFL 725 / DTO 466)
+}
+```
+Attached to `CustomerInfo` and `Order` when cart contains items with `prescriptionRequired: true`.

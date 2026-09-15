@@ -73,5 +73,11 @@ This directory contains the user interface layer of PRONTO, built with **React 1
      * Company RUT (*RUT Empresa*)
      * Commercial Activity (*Giro Comercial*)
      * Tax Address (*Dirección de Entrega / Consulta*)
-4. **Testing Contracts:**
+4. **Sanitary Compliance (ISP Chile & SIS):**
+   * When the cart contains controlled/prescription dental products (`prescriptionRequired: true`), the UI displays:
+     * `⚕️ Requiere SIS` badge on product cards and in quick-view modal.
+     * Amber alert banner in cart drawer notifying customer of controlled supply status.
+     * Mandatory **Validación Sanitaria ISP / SIS** section in `CheckoutModal.tsx` requiring the dentist's Superintendencia de Salud (SIS) registration number (minimum 4 digits) and optional credential/prescription file attachment before progressing to payment.
+     * Confirmation summary and pro-forma purchase voucher display the verified SIS registration number.
+5. **Testing Contracts:**
    * Interactive buttons, inputs, and badges maintain accessible labels and text attributes matching the test suites in [src/tests/components/](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components). Zero test regressions.

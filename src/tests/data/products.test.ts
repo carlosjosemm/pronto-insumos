@@ -2,8 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { PRODUCTS, CATEGORIES, MOCK_PROMOS } from '../../data/products'
 
 describe('PRODUCTS catalog data integrity', () => {
-  it('should contain exactly 10 dental products', () => {
-    expect(PRODUCTS).toHaveLength(10)
+  it('should contain exactly 11 dental products', () => {
+    expect(PRODUCTS).toHaveLength(11)
+  })
+
+  it('should contain items flagged with prescriptionRequired for ISP compliance', () => {
+    const controlledItems = PRODUCTS.filter(p => p.prescriptionRequired)
+    expect(controlledItems.length).toBeGreaterThanOrEqual(1)
   })
 
   it('every product should have all required fields', () => {
