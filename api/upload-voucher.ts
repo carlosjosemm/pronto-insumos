@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from './lib/firebaseAdmin'
+import { getCollectionName } from './lib/firestoreEnv'
 
 function normalizeRut(raw: string): string {
   return (raw || '').replace(/[^0-9kK]/g, '').toUpperCase()
@@ -46,7 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Query order by orderId
     const snapshot = await adminDb
-      .collection('orders')
+      .collection(getCollectionName('orders'))
       .where('orderId', '==', cleanOrderId)
       .limit(1)
       .get()
@@ -80,7 +81,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatedAt: timestamp
     })
 
-    const historyRef = adminDb.collection('order_status_history').doc()
+    const historyRef = adminDb.collection(getCollectionName('order_status_history')).doc()
     batch.set(historyRef, {
       id: historyRef.id,
       orderId: cleanOrderId,

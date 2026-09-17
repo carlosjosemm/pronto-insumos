@@ -1,5 +1,6 @@
 import { PRODUCTS, MOCK_PROMOS } from '../data/products'
 import { db } from './firebase'
+import { getCollectionName } from './firestoreEnv'
 import { collection, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { BillingInfo, CartItem, CustomerInfo, Order, OrderStatus, PaymentMethod, Product, PromoCode, SanitaryVerification } from '../types'
 import { calculateTaxBreakdown } from '../utils/tax'
@@ -55,7 +56,7 @@ export async function fetchProducts({
   if (hasFirebaseConfig) {
     try {
       const fetchPromise = (async () => {
-        const productsRef = collection(db, 'products')
+        const productsRef = collection(db, getCollectionName('products'))
         const snapshot = await getDocs(productsRef)
         if (!snapshot.empty) {
           return snapshot.docs.map(d => ({ id: d.id, ...d.data() }) as Product)
@@ -164,7 +165,7 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
   }
 
   try {
-    const orderDocRef = doc(db, 'orders', orderId)
+    const orderDocRef = doc(db, getCollectionName('orders'), orderId)
     await setDoc(orderDocRef, payload)
   } catch (err: any) {
     console.warn('Firestore order submit notice:', err.message)

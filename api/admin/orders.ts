@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
 import { verifyAdminToken } from '../lib/adminAuth'
+import { getCollectionName } from '../lib/firestoreEnv'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -26,14 +27,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const { orderId, status, search, limit } = req.query
+  const ordersCol = getCollectionName('orders')
 
   try {
     // If orderId requested specifically
     if (orderId && typeof orderId === 'string') {
-      const doc = await db.collection('orders').doc(orderId.trim()).get()
+      const doc = await db.collection(ordersCol).doc(orderId.trim()).get()
       if (!doc.exists) {
         // Try searching by orderId field
-        const snap = await db.collection('orders').where('orderId', '==', orderId.trim()).limit(1).get()
+        const snap = await db.collection(ordersCol).where('orderId', '==', orderId.trim()).limit(1).get()
         if (snap.empty) {
           return res.status(404).json({ success: false, error: 'Pedido no encontrado' })
         }
@@ -43,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, order: { ...doc.data(), orderId: doc.id } })
     }
 
-    const snap = await db.collection('orders').get()
+    const snap = await db.collection(ordersCol).get()
     let orders: any[] = []
 
     snap.forEach(doc => {

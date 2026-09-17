@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
 import { verifyAdminToken } from '../lib/adminAuth'
+import { getCollectionName } from '../lib/firestoreEnv'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -30,11 +31,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ success: false, error: 'Base de datos no inicializada' })
   }
 
+  const ordersCol = getCollectionName('orders')
+
   try {
-    let orderRef = db.collection('orders').doc(orderId.trim())
+    let orderRef = db.collection(ordersCol).doc(orderId.trim())
     const initialCheck = await orderRef.get()
     if (!initialCheck.exists) {
-      const querySnap = await db.collection('orders').where('orderId', '==', orderId.trim()).limit(1).get()
+      const querySnap = await db.collection(ordersCol).where('orderId', '==', orderId.trim()).limit(1).get()
       if (querySnap.empty) {
         return res.status(404).json({ success: false, error: `Pedido "${orderId}" no encontrado en Firestore` })
       }
@@ -85,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }[] = []
 
       for (const [productId, itemInfo] of consolidatedQty.entries()) {
-        const productRef = db.collection('products').doc(productId)
+        const productRef = db.collection(getCollectionName('products')).doc(productId)
         const productDoc = await transaction.get(productRef)
 
         if (productDoc.exists) {
@@ -118,7 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           updatedAt: nowIso
         })
 
-        const auditRef = db.collection('inventory_audit_logs').doc()
+        const auditRef = db.collection(getCollectionName('inventory_audit_logs')).doc()
         transaction.set(auditRef, {
           id: auditRef.id,
           productId: update.productId,
@@ -147,7 +150,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
 
       // Record order status history
-      const historyRef = db.collection('order_status_history').doc()
+      const historyRef = db.collection(getCollectionName('order_status_history')).doc()
       transaction.set(historyRef, {
         id: historyRef.id,
         orderId,

@@ -103,16 +103,21 @@ export interface OrderTrackingInfo {
 ### 2.5 Catalog Product Contract (`Product`)
 ```typescript
 export interface Product {
-  id: string;                    // Canonical SKU identifier (e.g. 'odon-101' -> display 'REF: OD-101')
+  id: string;                    // Canonical identifier (e.g. 'odon-101')
+  sku?: string;                  // Clinical SKU code (e.g. 'REF: OD-101')
   name: string;                  // Clinical product title
+  brand?: string;                // Manufacturer or dental brand (e.g. '3M ESPE', 'Dentsply Sirona')
   category: string;              // Dental specialty category
   price: number;                 // Integer Chilean Pesos (IVA incluido)
+  priceNeto?: number;            // Integer Chilean Pesos (Neto sin IVA, Math.round(price / 1.19))
   originalPrice?: number;        // Strikethrough price for promotions
   rating: number;                // Customer evaluation (1 to 5)
   reviewsCount: number;          // Total clinician reviews
-  inStock: boolean;              // Public stock flag
-  stockCount: number;            // Confidential warehouse count (never exposed to public client DOM)
+  inStock: boolean;              // Public stock flag: (stockCount > 0 && isActive !== false)
+  stockCount: number;            // Physical warehouse count in Melipilla
+  isActive?: boolean;            // Decoupled visibility switch (default: true). False pauses product from sales.
   prescriptionRequired: boolean; // Triggers 'Uso Profesional' badge & SIS check in checkout
+  ispRegistrationNumber?: string;// Chilean ISP health registry code for controlled pharmaceuticals/devices
   tag: string;                   // Visual badge (e.g., 'MÁS VENDIDO', 'OFERTA CLÍNICA')
   description: string;           // Detailed technical overview
   specs: string[];               // Technical specifications checklist
@@ -120,6 +125,57 @@ export interface Product {
   mediaBadge: string;            // Secondary visual badge
   images?: string[];             // URLs of product photos in Firebase Storage / CDN
   packageContents?: string[];    // Itemized checklist of box contents for clinic
+  manufacturer?: string;         // Clinical manufacturer
+  createdAt?: string;            // ISO timestamp
+  updatedAt?: string;            // ISO timestamp
+}
+```
+
+### 2.6 Relational Audit Trail Contracts
+
+#### Order Status Transition History (`OrderStatusHistory`):
+```typescript
+export type AuditActorRole = 'ADMIN' | 'CUSTOMER' | 'SYSTEM_WEBHOOK' | 'SYSTEM_SEED' | 'SYSTEM_CRON';
+
+export interface OrderStatusHistory {
+  id: string;                    // Document ID in order_status_history
+  orderId: string;               // Foreign key pointing to orders collection
+  previousStatus: OrderStatus | null;
+  newStatus: OrderStatus;
+  changedBy: string;             // User UID or system identifier
+  changedByEmail?: string | null;// Staff email or 'mercadopago-webhook'
+  actorRole: AuditActorRole;     // Security attribution role
+  timestamp: string;             // ISO 8601 timestamp
+  reason: string;                // Operational justification
+  metadata?: Record<string, any>;// Carrier, tracking number, payment ID, etc.
+}
+```
+
+#### Inventory & Warehouse Audit Log (`InventoryAuditLog`):
+```typescript
+export type InventoryChangeType =
+  | 'STOCK_ADJUSTMENT'
+  | 'ORDER_FULFILLMENT_DEDUCTION'
+  | 'METADATA_UPDATE'
+  | 'VISIBILITY_TOGGLE'
+  | 'CATALOG_SEED';
+
+export interface InventoryAuditLog {
+  id: string;                    // Document ID in inventory_audit_logs
+  productId: string;             // Foreign key pointing to products collection
+  productSku?: string;
+  productName?: string;
+  changeType: InventoryChangeType;
+  previousStock?: number | null;
+  newStock?: number | null;
+  delta?: number | null;
+  reasonCode?: string;           // 'reposicion', 'merma', 'correccion', 'venta_manual', etc.
+  operatorNotes?: string;
+  changedBy: string;
+  changedByEmail?: string | null;
+  actorRole: AuditActorRole;
+  timestamp: string;
+  metadata?: Record<string, any>;
 }
 ```
 
@@ -133,3 +189,5 @@ export interface Product {
 2. **IVA Included in Display Prices:**
    * Per Chilean consumer law (**SERNAC**), public consumer-facing prices always include 19% IVA (`IVA incluido`).
    * When invoicing, the net amount is extracted using `Math.round(total / 1.19)` and IVA is `Math.round(total - net)`.
+3. **Synchronized Net Pricing (`priceNeto`):**
+   * In catalog updates, `priceNeto` is always stored as `Math.round(price / 1.19)` to maintain alignment between inventory valuation and Chilean SII tax books.

@@ -126,16 +126,16 @@ The internal administrative portal communicates with dedicated serverless endpoi
 
 | Endpoint | Method | Role & Transaction Behavior |
 | :--- | :--- | :--- |
-| [`/api/admin/dashboard-stats`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/dashboard-stats.ts) | `GET` | Aggregates daily sales in CLP, counts pending bank transfers, identifies low-stock items (<5 units), and counts monthly orders. |
+| [`/api/admin/dashboard-stats`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/dashboard-stats.ts) | `GET` | Aggregates daily sales in CLP (localized to `America/Santiago`), counts pending bank transfers, identifies low-stock items (<5 units), and counts monthly orders. |
 | [`/api/admin/orders`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/orders.ts) | `GET` | Fetches orders sorted by creation date with optional status filtering and pagination. Returns customer tax data, sanitary verification, and uploaded transfer vouchers. |
-| [`/api/admin/approve-transfer`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/approve-transfer.ts) | `POST` | **Crucial Operational Transition:** Approves a bank transfer order inside a Firestore atomic transaction (`adminDb.runTransaction`). Decrements physical stock in `products` for all items, transitions order status to `'TRANSFERENCIA_APROBADA'`, and records `approvedBy` (admin email) and `approvedAt` timestamp. |
-| [`/api/admin/dispatch-order`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/dispatch-order.ts) | `POST` | Updates fulfillment state to `'DESPACHADO'`. Records carrier name (e.g. Starken, Chilexpress, Blue Express, Melipilla Express), tracking number, and dispatch timestamp. |
-| [`/api/admin/mark-delivered`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/mark-delivered.ts) | `POST` | Updates fulfillment state to `'ENTREGADO'`, recording final delivery confirmation timestamp. |
-| [`/api/admin/products`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/products.ts) | `GET` | Retrieves full catalog inventory with live `stockCount`, `inStock` flags, and pricing for backoffice staff. |
-| [`/api/admin/update-stock`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/update-stock.ts) | `POST` | Adjusts product inventory count. Supports audit logging with reason codes (`reposicion`, `merma`, `correccion`, `venta_manual`) and operator notes. Automatically sets `inStock: false` if count reaches 0. |
-| [`/api/admin/update-product`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/update-product.ts) | `POST` | Updates product metadata: name, description, category, integer CLP price, manufacturer, package contents, and specs. |
-| [`/api/admin/toggle-visibility`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/toggle-visibility.ts) | `POST` | Instant catalog visibility switch: toggles `inStock` without modifying the physical stock count. |
-| [`/api/admin/order-history`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/order-history.ts) | `GET` | Retrieves chronological status transition timeline from `order_status_history` for an order. |
+| [`/api/admin/approve-transfer`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/approve-transfer.ts) | `POST` | **Crucial Operational Transition:** Approves a bank transfer order inside a Firestore atomic transaction (`adminDb.runTransaction`). Decrements physical stock in `products` for all consolidated items, transitions order status to `'TRANSFERENCIA_APROBADA'`, records `approvedBy` (admin email) and `approvedAt` timestamp, and writes an audit event to `order_status_history`. |
+| [`/api/admin/dispatch-order`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/dispatch-order.ts) | `POST` | Updates fulfillment state to `'DESPACHADO'`. Records carrier name (e.g. Starken, Chilexpress, Blue Express, Melipilla Express), tracking number, and dispatch timestamp. Records audit trail. |
+| [`/api/admin/mark-delivered`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/mark-delivered.ts) | `POST` | Updates fulfillment state to `'ENTREGADO'`, recording final delivery confirmation timestamp and audit trail. |
+| [`/api/admin/products`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/products.ts) | `GET` | Retrieves full catalog inventory with live `stockCount`, `inStock` flags, `isActive` visibility state, and pricing for backoffice staff. |
+| [`/api/admin/update-stock`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/update-stock.ts) | `POST` | Adjusts product inventory count. Supports audit logging in `inventory_audit_logs` with reason codes (`reposicion`, `merma`, `correccion`, `venta_manual`) and operator notes. Updates `inStock = (newStock > 0 && isActive !== false)`. |
+| [`/api/admin/update-product`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/update-product.ts) | `POST` | Updates product metadata: name, description, category, integer CLP price (with automatic `priceNeto = Math.round(price / 1.19)` re-calculation), manufacturer, package contents, and specs. Records audit log. |
+| [`/api/admin/toggle-visibility`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/toggle-visibility.ts) | `POST` | Instant catalog visibility switch: toggles `isActive` without zeroing or clearing physical warehouse `stockCount`. Updates `inStock = (stockCount > 0 && newIsActive)`. |
+| [`/api/admin/order-history`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/order-history.ts) | `GET` | Retrieves chronological status transition timeline from `order_status_history` for an order, supporting both direct Document ID and `orderId` fallback query. |
 
 ### 5.3 Relational Traceability & Audit Trail Architecture
 To achieve tamper-proof traceability without an external SQL database, the serverless layer enforces an **append-only audit pattern** across two dedicated root collections:
@@ -151,7 +151,78 @@ To achieve tamper-proof traceability without an external SQL database, the serve
 
 ---
 
-## 🚀 6. Deployment & Vercel Linking
+## 🧪 6. Multi-Environment Firestore Isolation (`api/lib/firestoreEnv.ts`)
+
+### 6.1 The Development & QA Testing Bottleneck
+Previously, PRONTO operated against a single Firestore database. Running local development servers or manual QA tests risked contaminating live clinical orders and altering real Melipilla warehouse inventory stock. Provisioning a second Google Cloud project introduced unnecessary architectural overhead, additional IAM credential management, and monthly billing complexity.
+
+### 6.2 Dynamic Collection Namespacing Resolution
+The serverless backend resolves collection targets dynamically via `getCollectionName()` in [`api/lib/firestoreEnv.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firestoreEnv.ts):
+
+```typescript
+export function getFirestoreEnv(): 'production' | 'development' | 'test' {
+  if (process.env.FIRESTORE_ENV === 'production' || process.env.FIRESTORE_ENV === 'development' || process.env.FIRESTORE_ENV === 'test') {
+    return process.env.FIRESTORE_ENV;
+  }
+  if (process.env.NODE_ENV === 'test') return 'test';
+  if (process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV === 'development') {
+    return 'development';
+  }
+  return 'production';
+}
+
+export function getCollectionName(baseCollection: CanonicalCollection): string {
+  const env = getFirestoreEnv();
+  return env === 'development' ? `dev_${baseCollection}` : baseCollection;
+}
+```
+
+* **Environment Separation:**
+  - **Development (`dev_*`):** Used during local development (`pnpm dev`) and Vercel Preview deployments (`VERCEL_ENV === 'preview'`). Collections accessed: `dev_orders`, `dev_products`, `dev_order_status_history`, `dev_inventory_audit_logs`.
+  - **Production:** Live production deployments point to canonical root collections: `orders`, `products`, `order_status_history`, `inventory_audit_logs`.
+  - **Unit Testing (`NODE_ENV === 'test'`):** Points strictly to canonical names, guaranteeing 100% test determinism across all Vitest suites and mocks.
+* **Complete Scoping:** All 11 serverless functions in `api/` access collections exclusively via `getCollectionName()`.
+
+---
+
+## 🛡️ 7. Key Algorithmic Decisions & Edge-Case Safeguards
+
+### 7.1 Document ID Lookup Dual-Strategy (Storefront & Admin Alignment)
+* **The Challenge:** The public storefront creates order documents using `setDoc(doc(db, col, orderId))`, making the Firestore Document ID equal to the canonical order code (e.g. `PRONTO-8N4K2P`). However, legacy test data or manual entries might use auto-generated Firestore document IDs with `orderId` stored only as an internal field.
+* **The Solution:** Admin endpoints (`approve-transfer`, `dispatch-order`, `mark-delivered`, `order-history`, and `track-order`) implement a dual lookup strategy:
+  1. Fast direct lookup: `db.collection(col).doc(orderId).get()`.
+  2. Fallback query: If the document does not exist, execute `.where('orderId', '==', orderId).limit(1).get()`.
+  3. This guarantees zero 404 errors regardless of how the document was created.
+
+### 7.2 Line-Item Consolidation Before Stock Mutation
+* **The Challenge:** If a customer adds the same dental product to their cart in multiple batches (e.g. two line items of `odon-101` with quantities 2 and 3), iterating over the raw array inside `adminDb.runTransaction()` causes duplicate reads and writes on the exact same Firestore product document reference, violating Firestore transactional invariants and causing under-decrement or transaction failures.
+* **The Solution:** In both `/api/webhooks/mercadopago` and `/api/admin/approve-transfer`, items are consolidated by `productId` into a `Map<string, { qty: number; title: string }>` **before** entering the transaction:
+  ```typescript
+  const consolidated = new Map<string, { qty: number; title: string }>();
+  for (const item of order.items) {
+    const existing = consolidated.get(item.id);
+    if (existing) {
+      existing.qty += item.quantity;
+    } else {
+      consolidated.set(item.id, { qty: item.quantity, title: item.title });
+    }
+  }
+  ```
+  All transaction reads are performed upfront for each unique product, followed by all transaction writes.
+
+### 7.3 Chilean Timezone Alignment in Executive Metrics
+* **The Challenge:** Standard UTC dates cause sales made in Chile between 20:00 and 23:59 (CLT/CLST) to be assigned to the *next day's* sales bucket, confusing Melipilla warehouse accounting.
+* **The Solution:** `/api/admin/dashboard-stats` uses `Intl.DateTimeFormat` with `timeZone: 'America/Santiago'` to extract `YYYY-MM-DD` and `YYYY-MM` keys, ensuring daily revenue and monthly volume strictly match the Chilean business day.
+
+### 7.4 Decoupled Catalog Visibility (`isActive`) vs Physical Stock (`stockCount`)
+* Physical inventory count (`stockCount`) and storefront purchasing visibility (`isActive`) are decoupled:
+  - `stockCount`: Physical inventory in the warehouse.
+  - `isActive`: Admin toggle to pause a product from the catalog (e.g. supplier price review or temporary regulatory hold) without zeroing the physical warehouse count.
+  - `inStock`: Computed invariant `stockCount > 0 && isActive !== false`.
+
+---
+
+## 🚀 8. Deployment & Vercel Linking
 
 Serverless functions are deployed directly using the **Vercel CLI**:
 * Staging Preview: `pnpm dlx vercel`

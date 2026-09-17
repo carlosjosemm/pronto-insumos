@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
 import { verifyAdminToken } from '../lib/adminAuth'
+import { getCollectionName } from '../lib/firestoreEnv'
 
 function getChileDate(dateInput?: any): string {
   if (!dateInput) return ''
@@ -45,8 +46,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const ordersSnap = await db.collection('orders').get()
-    const productsSnap = await db.collection('products').get()
+    const ordersSnap = await db.collection(getCollectionName('orders')).get()
+    const productsSnap = await db.collection(getCollectionName('products')).get()
     const todayStr = getChileDate(new Date())
     const currentMonthStr = todayStr.slice(0, 7)
 

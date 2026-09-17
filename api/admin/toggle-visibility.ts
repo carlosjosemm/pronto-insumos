@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
 import { verifyAdminToken } from '../lib/adminAuth'
+import { getCollectionName } from '../lib/firestoreEnv'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -34,7 +35,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const productRef = db.collection('products').doc(productId.trim())
+    const productRef = db.collection(getCollectionName('products')).doc(productId.trim())
     const doc = await productRef.get()
     if (!doc.exists) {
       return res.status(404).json({ success: false, error: 'Producto no encontrado' })
@@ -52,7 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatedAt: nowIso
     })
 
-    const auditRef = db.collection('inventory_audit_logs').doc()
+    const auditRef = db.collection(getCollectionName('inventory_audit_logs')).doc()
     batch.set(auditRef, {
       id: auditRef.id,
       productId: productId.trim(),

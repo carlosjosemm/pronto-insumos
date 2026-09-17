@@ -83,12 +83,13 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 
 | Directory | Scope & Purpose | Local Guide |
 | :--- | :--- | :--- |
-| [`api/`](file:///c:/Users/ecmv2/Documents/PRONTO/api) | Vercel Serverless Functions (Node.js runtime, MP preferences, webhooks) | [api/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/api/AGENTS.md) |
+| [`api/`](file:///c:/Users/ecmv2/Documents/PRONTO/api) | Vercel Serverless Functions (Node.js runtime, MP preferences, webhooks, admin ops, multi-environment resolution) | [api/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/api/AGENTS.md) |
+| [`src/admin/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin) | Administrative Backoffice Portal (`admin.html`, RBAC claims, orders inspection, stock adjustments) | [src/admin/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/AGENTS.md) |
 | [`src/components/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components) | React 18 UI components (Cart, CheckoutModal, ProductCard, etc.) | [src/components/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/AGENTS.md) |
-| [`src/services/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services) | Client-side adapters (Firebase client, MP gateway client, WhatsApp) | [src/services/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/AGENTS.md) |
+| [`src/services/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services) | Client-side adapters (Firebase client, MP gateway client, WhatsApp, dynamic collection environment resolver) | [src/services/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/AGENTS.md) |
 | [`src/data/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/data) | Static product catalog definitions, categories, and seed fixtures | [src/data/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/data/AGENTS.md) |
-| [`src/types/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/types) | Central domain models and TypeScript contracts | [src/types/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/AGENTS.md) |
-| [`src/utils/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils) | Pure helper functions (RUT validation, CLP formatting, tax math) | [src/utils/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/AGENTS.md) |
+| [`src/types/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/types) | Central domain models, relational audit history interfaces, and TypeScript contracts | [src/types/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/AGENTS.md) |
+| [`src/utils/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils) | Pure helper functions (RUT Modulo 11 validation, CLP formatting, tax math, schema validators) | [src/utils/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/AGENTS.md) |
 | [`src/tests/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests) | Vitest test suites maintaining 100% test reliability | [src/tests/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/AGENTS.md) |
 
 ---
@@ -96,26 +97,35 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 ## ⚡ 6. Development & Testing Commands
 
 ```bash
-# Start local Vite development server
+# Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest)
+# Run all automated tests (Vitest, 50 suites / 325 tests)
 pnpm test
 
 # Run tests with live file watcher
 pnpm test:watch
 
-# Build production bundle for Vercel
+# Build production bundle for Vercel (dist/index.html & dist/admin.html)
 pnpm build
 
 # Preview production build locally
 pnpm preview
 
-# Deploy Firestore Security Rules
+# Deploy Firestore Security Rules (protects both canonical and dev_* collections)
 pnpm run deploy:rules
 
 # Provision an administrator account for the backoffice portal (/admin)
 pnpm run setup:admin tu-email@prontoinsumos.cl TuPasswordSegura123!
+
+# --- Isolated Development / QA Testing Database Operations ---
+pnpm run schema:validate:dev     # Validate isolated dev_* collections against frozen schema
+pnpm run schema:seed:dev         # Seed catalog and sample order into dev_* collections
+pnpm run schema:purge:dev        # Safely wipe dev_* collections without touching production
+
+# --- Live Production Database Operations ---
+pnpm run schema:validate         # Validate live production collections (Read-Only)
+pnpm run schema:seed             # Seed production catalog
 ```
 
 Always verify that `pnpm test` passes completely without regressions after making changes.
@@ -134,7 +144,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 84+ tests pass
+pnpm test          # Ensure all 325+ tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Deploy a Staging / Preview Release (Generates a unique preview URL)

@@ -20,6 +20,12 @@ Object.assign(import.meta.env, {
   ...import.meta.env
 })
 
+// Ensure developer .env.local Firestore environment settings do not leak into unit tests
+delete process.env.FIRESTORE_ENV
+delete process.env.VITE_FIRESTORE_ENV
+delete (import.meta.env as any).FIRESTORE_ENV
+delete (import.meta.env as any).VITE_FIRESTORE_ENV
+
 // Clean in-memory Storage implementation for test environment (fixes Node 22 jsdom limitation)
 class LocalStorageMock implements Storage {
   private store: Record<string, string> = {}

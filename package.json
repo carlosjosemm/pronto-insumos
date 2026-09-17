@@ -12,9 +12,12 @@
     "test:coverage": "vitest run --coverage",
     "deploy:rules": "firebase deploy --only firestore:rules",
     "setup:admin": "pnpm dlx tsx scripts/setup-admin.ts",
-    "schema:validate": "pnpm dlx tsx scripts/manage-firestore-schema.ts --validate",
-    "schema:seed": "pnpm dlx tsx scripts/manage-firestore-schema.ts --seed",
-    "schema:purge-and-seed": "pnpm dlx tsx scripts/manage-firestore-schema.ts --purge-and-seed"
+    "schema:validate": "pnpm dlx tsx scripts/manage-firestore-schema.ts --validate --env=prod",
+    "schema:validate:dev": "pnpm dlx tsx scripts/manage-firestore-schema.ts --validate --env=dev",
+    "schema:seed": "pnpm dlx tsx scripts/manage-firestore-schema.ts --seed --env=prod",
+    "schema:seed:dev": "pnpm dlx tsx scripts/manage-firestore-schema.ts --seed --env=dev",
+    "schema:purge-and-seed": "pnpm dlx tsx scripts/manage-firestore-schema.ts --purge-and-seed --env=prod",
+    "schema:purge:dev": "pnpm dlx tsx scripts/manage-firestore-schema.ts --purge-and-seed --force --env=dev"
   },
   "dependencies": {
     "firebase": "^12.16.0",

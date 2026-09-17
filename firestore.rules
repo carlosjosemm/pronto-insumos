@@ -28,15 +28,19 @@ service cloud.firestore {
         && !('paidAt' in data);
     }
 
-    // Products catalog:
+    // Products catalog (Production & Development/QA):
     // Public read-only access for storefront visitors.
     // Writes restricted exclusively to authenticated administrators.
     match /products/{productId} {
       allow read: if true;
       allow write: if isAdmin();
     }
+    match /dev_products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
 
-    // Orders:
+    // Orders (Production & Development/QA):
     // Storefront checkout can create initial pending orders.
     // Read, update, and delete are strictly forbidden from client SDKs.
     // Backend updates (payment approvals & inventory deductions) run exclusively
@@ -45,19 +49,31 @@ service cloud.firestore {
       allow create: if isValidOrderCreate();
       allow read, update, delete: if false;
     }
+    match /dev_orders/{orderId} {
+      allow create: if isValidOrderCreate();
+      allow read, update, delete: if false;
+    }
 
-    // Order Lifecycle & Audit History:
+    // Order Lifecycle & Audit History (Production & Development/QA):
     // Append-only tamper-proof log.
     // Read-only for authenticated administrators; client-side writes forbidden.
     match /order_status_history/{historyId} {
       allow read: if isAdmin();
       allow write: if false;
     }
+    match /dev_order_status_history/{historyId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
 
-    // Inventory Audit Logs:
+    // Inventory Audit Logs (Production & Development/QA):
     // Append-only stock adjustment and catalog changes log.
     // Read-only for authenticated administrators; client-side writes forbidden.
     match /inventory_audit_logs/{auditId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /dev_inventory_audit_logs/{auditId} {
       allow read: if isAdmin();
       allow write: if false;
     }

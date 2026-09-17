@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
 import { verifyAdminToken } from '../lib/adminAuth'
+import { getCollectionName } from '../lib/firestoreEnv'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -32,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const snap = await db
-      .collection('order_status_history')
+      .collection(getCollectionName('order_status_history'))
       .where('orderId', '==', orderId.trim())
       .get()
 

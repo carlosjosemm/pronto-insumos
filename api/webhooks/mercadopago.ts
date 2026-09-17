@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
 import { verifyMercadoPagoSignature } from '../lib/mercadopagoSignature'
+import { getCollectionName } from '../lib/firestoreEnv'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || 'YOUR_MERCADOPAGO_ACCESS_TOKEN'
@@ -81,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Find order in Firestore using Admin SDK
         const orderSnapshot = await adminDb
-          .collection('orders')
+          .collection(getCollectionName('orders'))
           .where('orderId', '==', cleanOrderId)
           .limit(1)
           .get()
@@ -155,7 +156,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
 
             for (const [productId, info] of consolidatedItems.entries()) {
-              const productRef = adminDb.collection('products').doc(productId)
+              const productRef = adminDb.collection(getCollectionName('products')).doc(productId)
               const productSnap = await transaction.get(productRef)
 
               if (productSnap.exists) {
@@ -187,7 +188,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             })
 
             // Record order status history
-            const historyRef = adminDb.collection('order_status_history').doc()
+            const historyRef = adminDb.collection(getCollectionName('order_status_history')).doc()
             transaction.set(historyRef, {
               id: historyRef.id,
               orderId: cleanOrderId,
@@ -213,7 +214,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 updatedAt: nowIso
               })
 
-              const auditRef = adminDb.collection('inventory_audit_logs').doc()
+              const auditRef = adminDb.collection(getCollectionName('inventory_audit_logs')).doc()
               transaction.set(auditRef, {
                 id: auditRef.id,
                 productId: prodUpdate.productId,

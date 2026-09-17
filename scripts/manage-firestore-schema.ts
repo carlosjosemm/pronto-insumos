@@ -54,13 +54,22 @@ const db = getFirestore(app)
 
 const mode = process.argv[2] || '--validate'
 const forceFlag = process.argv.includes('--force')
+const isExplicitDev = process.argv.includes('--env=dev')
+const isExplicitProd = process.argv.includes('--env=prod') || process.argv.includes('--prod')
+const isDev = isExplicitDev || (!isExplicitProd && process.env.FIRESTORE_ENV === 'development')
+const colPrefix = isDev ? 'dev_' : ''
+const targetEnv = isDev ? 'DESARROLLO (dev_*)' : 'PRODUCCIÓN'
+
+function col(baseName: string): string {
+  return `${colPrefix}${baseName}`
+}
 
 async function runValidate() {
-  console.log('\n🔍 [SCHEMA AUDIT] Escaneando colecciones en Firestore...\n')
+  console.log(`\n🔍 [SCHEMA AUDIT] Escaneando colecciones en Firestore [Entorno: ${targetEnv}]...\n`)
 
   // 1. Validate Products
-  const productsSnap = await db.collection('products').get()
-  console.log(`📦 Colección "products": ${productsSnap.size} documentos encontrados.`)
+  const productsSnap = await db.collection(col('products')).get()
+  console.log(`📦 Colección "${col('products')}": ${productsSnap.size} documentos encontrados.`)
 
   let validProducts = 0
   let invalidProducts = 0
@@ -79,8 +88,8 @@ async function runValidate() {
   console.log(`   Resultado: ${validProducts} válidos, ${invalidProducts} con observaciones de esquema.`)
 
   // 2. Validate Orders
-  const ordersSnap = await db.collection('orders').get()
-  console.log(`\n📋 Colección "orders": ${ordersSnap.size} documentos encontrados.`)
+  const ordersSnap = await db.collection(col('orders')).get()
+  console.log(`\n📋 Colección "${col('orders')}": ${ordersSnap.size} documentos encontrados.`)
 
   let validOrders = 0
   let invalidOrders = 0
@@ -99,11 +108,11 @@ async function runValidate() {
   console.log(`   Resultado: ${validOrders} válidos, ${invalidOrders} con observaciones de esquema.`)
 
   // 3. Count Audit Logs
-  const historySnap = await db.collection('order_status_history').get()
-  const inventoryAuditSnap = await db.collection('inventory_audit_logs').get()
+  const historySnap = await db.collection(col('order_status_history')).get()
+  const inventoryAuditSnap = await db.collection(col('inventory_audit_logs')).get()
   console.log(`\n🛡️ Auditoría:`)
-  console.log(`   - Eventos en "order_status_history": ${historySnap.size}`)
-  console.log(`   - Eventos en "inventory_audit_logs": ${inventoryAuditSnap.size}\n`)
+  console.log(`   - Eventos en "${col('order_status_history')}": ${historySnap.size}`)
+  console.log(`   - Eventos en "${col('inventory_audit_logs')}": ${inventoryAuditSnap.size}\n`)
 }
 
 async function runSeed() {
@@ -114,7 +123,7 @@ async function runSeed() {
 
   // Seed Products
   for (const prod of canonicalProducts) {
-    const prodRef = db.collection('products').doc(prod.id)
+    const prodRef = db.collection(col('products')).doc(prod.id)
     const existing = await prodRef.get()
 
     const cleanProduct = {
@@ -144,7 +153,7 @@ async function runSeed() {
 
     if (!existing.exists) {
       // Record initial inventory audit
-      const auditRef = db.collection('inventory_audit_logs').doc()
+      const auditRef = db.collection(col('inventory_audit_logs')).doc()
       await auditRef.set({
         id: auditRef.id,
         productId: prod.id,
@@ -170,7 +179,7 @@ async function runSeed() {
 
   // Check if a sample order exists, if not seed one
   const sampleOrderId = 'PRONTO-SAMPLE-001'
-  const sampleOrderRef = db.collection('orders').doc(sampleOrderId)
+  const sampleOrderRef = db.collection(col('orders')).doc(sampleOrderId)
   const existingOrder = await sampleOrderRef.get()
 
   if (!existingOrder.exists) {
@@ -227,8 +236,8 @@ async function runSeed() {
 
     await sampleOrderRef.set(sampleOrder)
 
-    // Initial order status history
-    const historyRef = db.collection('order_status_history').doc()
+    // Record order status history
+    const historyRef = db.collection(col('order_status_history')).doc()
     await historyRef.set({
       id: historyRef.id,
       orderId: sampleOrderId,
@@ -259,9 +268,18 @@ async function runPurgeAndSeed() {
     process.exit(1)
   }
 
-  console.log('\n⚠️ [SCHEMA PURGE] Eliminando documentos antiguos para recrear con el esquema congelado...\n')
+  if (!isDev && !process.argv.includes('--confirm-production-wipe')) {
+    console.error('\n🛑 OPERACIÓN ABORTADA POR SEGURIDAD:')
+    console.error('Estás intentando purgar la base de datos de PRODUCCIÓN (colecciones canónicas).')
+    console.error('Para purgar el entorno de desarrollo/pruebas ejecuta: pnpm run schema:purge:dev')
+    console.error('Si REALMENTE deseas purgar producción, debes incluir: --confirm-production-wipe')
+    console.error('Ejemplo: npx tsx scripts/manage-firestore-schema.ts --purge-and-seed --force --confirm-production-wipe\n')
+    process.exit(1)
+  }
 
-  const collectionsToPurge = ['products', 'orders', 'order_status_history', 'inventory_audit_logs']
+  console.log(`\n⚠️ [SCHEMA PURGE] Eliminando documentos antiguos [Entorno: ${targetEnv}]...\n`)
+
+  const collectionsToPurge = [col('products'), col('orders'), col('order_status_history'), col('inventory_audit_logs')]
 
   for (const colName of collectionsToPurge) {
     const snap = await db.collection(colName).get()
@@ -297,7 +315,10 @@ async function main() {
       break
     default:
       console.log(`Comando desconocido: ${mode}`)
-      console.log('Opciones disponibles: --validate | --seed | --purge-and-seed --force')
+      console.log('Opciones disponibles:')
+      console.log('  --validate [--env=dev]            : Audita colecciones contra el esquema')
+      console.log('  --seed [--env=dev]                : Siembra catálogo canónico y pedido de prueba')
+      console.log('  --purge-and-seed --force [--env=dev]: Purga y recrea colecciones del entorno')
       process.exit(1)
   }
 }

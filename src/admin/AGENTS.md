@@ -117,27 +117,61 @@ When staff click **"Aprobar Transferencia y Rebajar Stock"**:
 5. Updates order status to `'TRANSFERENCIA_APROBADA'`, recording `approvedBy` (admin email) and `approvedAt` (ISO timestamp).
 6. Ensures Melipilla warehouse physical inventory matches database counts in real-time.
 
-### 4.4 Lifecycle Traceability & Audit Trail Timeline
+### 4.4 Decoupled Catalog Visibility (`isActive`) vs Physical Stock (`stockCount`)
+In `InventoryTable.tsx` and `AdminInventory.tsx`, warehouse stock and catalog visibility are clearly decoupled:
+- **`stockCount` (Physical Warehouse Count):** The real unit count in the Melipilla storage facility. If `stockCount === 0`, the product is flagged as **Agotado**.
+- **`isActive` (Storefront Visibility):** Allows staff to temporarily hide or pause a product from the public customer storefront without erasing or zeroing the inventory count. When paused, the product displays a **Pausado** badge and its public `inStock` flag is set to `false`.
+- **Toggle Visibility Action:** Staff can click "Pausar" / "Activar" in `InventoryTable.tsx` to call `/api/admin/toggle-visibility`, immediately updating the storefront catalog while preserving the warehouse inventory record.
+
+### 4.5 Executive Metrics & Chilean Timezone Localization
+In `AdminDashboard.tsx` and `/api/admin/dashboard-stats`, sales figures and order counts are localized strictly to the Chilean time zone (`America/Santiago`).
+- Today's sales KPI reflects orders placed between 00:00 and 23:59 Chilean local time.
+- Integer CLP formatting (`$189.990`) is enforced with zero decimals.
+- Pending bank transfer card highlights transactions needing Banco de Chile reconciliation.
+
+### 4.6 Lifecycle Traceability & Audit Trail Timeline
 In `OrderDetailPanel.tsx`, staff can review the **Historial de Estados y Auditoría** timeline for any order.
-- Fetches chronological transitions from `api/admin/order-history?orderId=...`.
+- Fetches chronological transitions from `api/admin/order-history?orderId=...` (supporting direct ID and fallback query).
 - Displays who executed the state change (staff email, customer, or Mercado Pago webhook), the exact timestamp, the reason, and delivery/payment telemetry.
 
 ---
 
-## 🛠️ 5. Database Schema & Migration CLI Tooling
+## 🛠️ 5. Database Schema, Migration & Multi-Environment CLI Tooling
 
-PRONTO provides an administrative CLI utility ([`scripts/manage-firestore-schema.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/manage-firestore-schema.ts)) to enforce data quality and manage database lifecycles:
+PRONTO provides an administrative CLI utility ([`scripts/manage-firestore-schema.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/manage-firestore-schema.ts)) to enforce data quality and manage database lifecycles across production and isolated development environments:
+
+### 5.1 Environment Isolation Commands
+To prevent developmental work or testing from touching live clinic orders and warehouse inventory, all operations support an isolated `dev_*` mode:
 
 ```powershell
-# 1. Inspect live Firestore documents against the frozen schema (Read-Only)
+# --- DEVELOPMENT / TESTING ENVIRONMENT (dev_orders, dev_products, etc.) ---
+# 1. Validate isolated development collections against the frozen schema
+pnpm run schema:validate:dev
+
+# 2. Seed canonical catalog and sample orders into development collections
+pnpm run schema:seed:dev
+
+# 3. Purge all development documents safely without touching production
+pnpm run schema:purge:dev
+
+# --- PRODUCTION ENVIRONMENT (Strict Safeguards) ---
+# 1. Inspect live production documents against the frozen schema (Read-Only)
 pnpm run schema:validate
 
-# 2. Seed canonical products and initial sample order with audit logs
+# 2. Seed canonical products into production collections
 pnpm run schema:seed
 
-# 3. Purge legacy test documents and re-initialize with frozen schema
+# 3. Purge legacy production collections (Requires explicit --force flag)
 pnpm run schema:purge-and-seed --force
 ```
+
+### 5.2 Batch Operation Chunking Guardrail
+Firestore enforces a strict hard limit of 500 operations per `batch.commit()`. The CLI migration tool automatically divides bulk operations into safe chunks of 450 documents, preventing `INVALID_ARGUMENT: maximum 500 writes allowed per batch` failures during catalog resets.
+
+### 5.3 UI Environment Indicator Badge
+The admin topbar ([`src/admin/components/AdminTopbar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminTopbar.tsx)) renders an environment badge:
+- In development / preview mode: Displays an amber `🧪 DEV (dev_*)` pill badge so staff immediately know they are operating against test data.
+- In production: Displays a clean emerald `🟢 PROD` badge.
 
 ---
 
@@ -152,15 +186,15 @@ pnpm run schema:purge-and-seed --force
 | [`src/admin/services/adminApi.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/services/adminApi.ts) | Authenticated client adapter injecting Firebase Bearer tokens with offline fallbacks. |
 | [`src/admin/components/AdminLayout.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminLayout.tsx) | Fixed sidebar + topbar + main scroll content shell. |
 | [`src/admin/components/AdminSidebar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminSidebar.tsx) | 240px navy navigation sidebar with route indicators. |
-| [`src/admin/components/AdminTopbar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminTopbar.tsx) | Utility header with breadcrumb, staff email, and sign-out button. |
+| [`src/admin/components/AdminTopbar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminTopbar.tsx) | Utility header with breadcrumb, staff email, environment badge (`DEV`/`PROD`), and sign-out button. |
 | [`src/admin/components/AdminDashboard.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminDashboard.tsx) | 4 KPI cards, split orders table (65%), and low-stock alerts (35%). |
 | [`src/admin/components/AdminOrders.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminOrders.tsx) | Order management view with search, filter chips, and table. |
 | [`src/admin/components/OrderTable.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/OrderTable.tsx) | Sortable, paginated order list with quick inspect actions. |
 | [`src/admin/components/OrderDetailPanel.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/OrderDetailPanel.tsx) | 420px slide-over inspector for invoicing, receipts, fulfillment actions, and audit timeline. |
 | [`src/admin/components/AdminInventory.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminInventory.tsx) | Product inventory view with stock counters and quick actions. |
-| [`src/admin/components/InventoryTable.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/InventoryTable.tsx) | Real-time product table with instant visibility switch. |
+| [`src/admin/components/InventoryTable.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/InventoryTable.tsx) | Real-time product table with decoupled `isActive` and `inStock` states. |
 | [`src/admin/components/StockAdjustModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/StockAdjustModal.tsx) | 420px modal for stock adjustments with audit reason codes. |
-| [`src/admin/components/ProductEditModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/ProductEditModal.tsx) | 560px modal for editing clinical product metadata and integer CLP prices. |
+| [`src/admin/components/ProductEditModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/ProductEditModal.tsx) | 560px modal for editing clinical product metadata, integer CLP prices, and synchronized `priceNeto`. |
 | [`src/admin/components/AdminSettings.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminSettings.tsx) | Warehouse location, fulfillment cut-offs, and service integrations. |
 | [`src/admin/components/MetricCard.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/MetricCard.tsx) | Reusable KPI metric card with trend indicators. |
 | [`src/admin/components/StatusBadge.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/StatusBadge.tsx) | Standardized badge with Chilean order status coloring. |

@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
 import { verifyAdminToken } from '../lib/adminAuth'
+import { getCollectionName } from '../lib/firestoreEnv'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -33,11 +34,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ success: false, error: 'Base de datos no inicializada' })
   }
 
+  const ordersCol = getCollectionName('orders')
+
   try {
-    let orderRef = db.collection('orders').doc(orderId.trim())
+    let orderRef = db.collection(ordersCol).doc(orderId.trim())
     let doc = await orderRef.get()
     if (!doc.exists) {
-      const querySnap = await db.collection('orders').where('orderId', '==', orderId.trim()).limit(1).get()
+      const querySnap = await db.collection(ordersCol).where('orderId', '==', orderId.trim()).limit(1).get()
       if (querySnap.empty) {
         return res.status(404).json({ success: false, error: 'Pedido no encontrado' })
       }
@@ -63,7 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updatedAt: nowIso
     })
 
-    const historyRef = db.collection('order_status_history').doc()
+    const historyRef = db.collection(getCollectionName('order_status_history')).doc()
     batch.set(historyRef, {
       id: historyRef.id,
       orderId: orderId.trim(),

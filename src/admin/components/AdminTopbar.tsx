@@ -1,6 +1,7 @@
 import React from 'react'
 import { LogOut, User, MapPin } from 'lucide-react'
 import type { AdminView } from '../types'
+import { getFirestoreEnv } from '../../services/firestoreEnv'
 
 interface AdminTopbarProps {
   activeView: AdminView
@@ -16,10 +17,28 @@ const VIEW_TITLES: Record<AdminView, string> = {
 }
 
 export const AdminTopbar: React.FC<AdminTopbarProps> = ({ activeView, userEmail, onSignOut }) => {
+  const env = getFirestoreEnv()
+  const isDev = env === 'development'
+
   return (
     <header className="admin-topbar">
-      <div>
+      <div className="admin-topbar-heading">
         <h1 className="admin-topbar-title">{VIEW_TITLES[activeView]}</h1>
+        {isDev ? (
+          <span
+            className="admin-env-badge admin-env-badge--dev"
+            title="Conectado al entorno de desarrollo y pruebas (colecciones dev_*)"
+          >
+            🧪 DEV (dev_*)
+          </span>
+        ) : (
+          <span
+            className="admin-env-badge admin-env-badge--prod"
+            title="Conectado al entorno de producción oficial"
+          >
+            🟢 PROD
+          </span>
+        )}
       </div>
 
       <div className="admin-topbar-user">
