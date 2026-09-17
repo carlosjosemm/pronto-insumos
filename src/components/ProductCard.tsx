@@ -1,9 +1,29 @@
 import React from 'react'
 import { Product } from '../types'
-import { Star, ShoppingBag, ShieldCheck, Activity, Heart, Home, ShieldAlert, LucideIcon } from 'lucide-react'
+import {
+  Star,
+  ShoppingBag,
+  ShieldCheck,
+  Activity,
+  Heart,
+  Home,
+  ShieldAlert,
+  Scissors,
+  Wrench,
+  Sparkles,
+  Layers,
+  LucideIcon
+} from 'lucide-react'
 import { formatCLP } from '../utils/currency'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
+  'INSTRUMENTAL Y ACCESORIOS': Scissors,
+  'DESECHABLES, ESTERILIZACION Y DESINFECCION': ShieldCheck,
+  'OPERATORIA': Wrench,
+  'ENDODONCIA': Activity,
+  'HIGIENE BUCAL': Sparkles,
+  'IMPRESION': Layers,
+  // Legacy & fallback category keys
   Diagnostics: Activity,
   Instruments: Home,
   Materials: Heart,

@@ -1,28 +1,56 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@400;500;600;700;800&family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-  /* Typography */
-  --font-sans: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'DM Sans', system-ui, -apple-system, sans-serif;
-  --font-body: 'DM Sans', system-ui, -apple-system, sans-serif;
+  /* ==========================================================================
+     BRAND MANUAL PALETTE — PRONTO INSUMOS ODONTOLÓGICOS (CHILE)
+     ========================================================================== */
+
+  /* Typography — Brand Manual alignment */
+  --font-sans: 'Syne', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Baloo Da 2', 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-body: 'Syne', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Mono', monospace;
 
-  /* Primary Clinical Palette (Authentic Dental Depot) */
-  --navy-950: #07101d;   /* Top utility bar, dark contrast anchors */
-  --navy-900: #0b192c;   /* Main text, primary brand dark, formal headers */
-  --navy-800: #1e3e62;   /* Secondary brand elements, dark buttons */
-  --navy-700: #274972;
-  --teal-600: #088395;   /* Primary clinical action, badges, verified tags */
-  --teal-700: #0a6371;   /* Hover state for primary actions */
-  --teal-800: #0b4e5a;
-  --teal-50:  #f0fdfa;   /* Subtle teal background tint for alerts/highlights */
-  --teal-100: #ccfbf1;
+  /* Intense Blue — Primary brand foundation (structure, trust, reliability) */
+  --brand-blue: #102748;
+  --brand-blue-light: #1a3a6a;     /* Hover / interactive variant */
+  --brand-blue-dark: #0b1a33;      /* Deepest anchor (utility bar, footer bg) */
+  --brand-blue-muted: #1e3f70;     /* Secondary buttons, borders on dark */
 
-  /* Neutral Surface Palette */
-  --surface-bg:    #f8fafb; /* Low-saturation medical gray background */
-  --surface-card:  #ffffff; /* Crisp white card background */
-  --surface-muted: #f1f5f9; /* Control backgrounds, inputs */
-  --surface-hover: #e2e8f0;
+  /* Cayenne Red-Orange — Energetic warm accent (urgency, badges, accents) */
+  --brand-cayenne: #C84B31;        /* Primary warm accent */
+  --brand-cayenne-light: #E06B50;  /* Hover state */
+  --brand-cayenne-dark: #A33D28;   /* Active / pressed state */
+  --brand-cayenne-bg: #FFF0EC;     /* Light warm background tint */
+  --brand-cayenne-border: #F5C6B8; /* Warm badge border */
+
+  /* Almond Cream / Frozen Water — Clean backgrounds and negative space */
+  --brand-cream: #FDF8F3;          /* Page background (warm off-white) */
+  --brand-frozen: #F0F4F8;         /* Card / input backgrounds (cool pale tint) */
+  --brand-almond: #F5EDE4;         /* Slightly warmer card highlights */
+
+  /* Limonade Cream and Accent Green/Yellow — CTA buttons, highlights */
+  --brand-limonade: #ECEFBE;       /* CTA button backgrounds, pill highlights */
+  --brand-accent-green: #CAE400;   /* Primary CTA accent, active indicators */
+  --brand-accent-green-dark: #A8BF00; /* CTA hover state */
+  --brand-accent-green-text: #3D4A00; /* Text on accent-green backgrounds */
+
+  /* Backward Compatibility Aliases & Semantic System Overrides */
+  --navy-950: var(--brand-blue-dark);
+  --navy-900: var(--brand-blue);
+  --navy-800: var(--brand-blue-light);
+  --navy-700: var(--brand-blue-muted);
+  --teal-600: var(--brand-blue);
+  --teal-700: var(--brand-blue-light);
+  --teal-800: var(--brand-blue-dark);
+  --teal-50:  var(--brand-limonade);
+  --teal-100: #DDE1A0;
+
+  /* Neutral Surface Palette (Almond Cream foundation) */
+  --surface-bg:    var(--brand-cream);
+  --surface-card:  #ffffff;
+  --surface-muted: var(--brand-frozen);
+  --surface-hover: var(--brand-almond);
 
   /* Slate Text Hierarchy */
   --text-primary:   #0f172a;
@@ -30,50 +58,50 @@
   --text-muted:     #64748b;
   --text-inverse:   #ffffff;
 
-  /* Backward Compatibility Aliases */
-  --primary: #088395;
-  --primary-hover: #0a6371;
-  --emerald: #088395;
-  --emerald-dark: #0a6371;
-  --cyan: #0b192c;
-  --slate-900: #0b192c;
-  --slate-800: #1e3e62;
+  /* Legacy Semantic Aliases */
+  --primary: var(--brand-accent-green);
+  --primary-hover: var(--brand-accent-green-dark);
+  --emerald: var(--brand-blue);
+  --emerald-dark: var(--brand-blue-light);
+  --cyan: var(--brand-blue);
+  --slate-900: var(--brand-blue);
+  --slate-800: var(--brand-blue-light);
   --slate-700: #334155;
   --slate-600: #475569;
   --slate-500: #64748b;
   --slate-400: #94a3b8;
   --slate-300: #cbd5e1;
   --slate-200: #e2e8f0;
-  --slate-100: #f1f5f9;
-  --slate-50:  #f8fafc;
-  --bg-main:   #f8fafb;
+  --slate-100: var(--brand-frozen);
+  --slate-50:  var(--brand-cream);
+  --bg-main:   var(--brand-cream);
 
   /* Status & Commercial Accents */
-  --success: #059669;  /* Stock available */
-  --warning: #d97706;  /* Low stock notice */
-  --danger:  #dc2626;  /* Prescription required / Error */
-  --accent-warm: #b45309;        /* Warm amber for pricing emphasis, promo tags, urgency */
-  --accent-warm-bg: #fffbeb;     /* Warm highlight background */
-  --accent-warm-border: #fde68a; /* Warm highlight border */
-  --accent-info: #3b82f6;        /* Informational links, secondary badges */
+  --success: #059669;
+  --warning: #d97706;
+  --danger:  #dc2626;
+  --accent-warm: var(--brand-cayenne);
+  --accent-warm-bg: var(--brand-cayenne-bg);
+  --accent-warm-border: var(--brand-cayenne-border);
+  --accent-info: #3b82f6;
 
   /* Borders & Dividers */
-  --border-subtle: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --border-focus:  #088395;
+  --border-subtle: #E5DDD4;
+  --border-strong: #D4C9BB;
+  --border-focus:  var(--brand-accent-green);
 
-  /* Geometry & Radii - Crisp 6px-8px clinical radii (No 9999px pills) */
-  --radius-xs: 4px;    /* Badges, tags */
-  --radius-sm: 6px;    /* Inputs, buttons, controls */
-  --radius-md: 8px;    /* Cards, dropdowns */
-  --radius-lg: 12px;   /* Modals, drawers */
-  --radius-full: 8px;  /* Normalized to crisp structured 8px */
+  /* Geometry & Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 8px;
 
-  /* Shadows (Neutral, surgical precision, no radioactive neon glows) */
-  --shadow-xs: 0 1px 2px rgba(11, 25, 44, 0.04);
-  --shadow-sm: 0 2px 5px -1px rgba(11, 25, 44, 0.06), 0 1px 3px rgba(11, 25, 44, 0.03);
-  --shadow-md: 0 6px 16px -3px rgba(11, 25, 44, 0.08), 0 2px 6px -1px rgba(11, 25, 44, 0.04);
-  --shadow-lg: 0 16px 32px -4px rgba(11, 25, 44, 0.12), 0 4px 12px -2px rgba(11, 25, 44, 0.04);
+  /* Shadows (Tuned to Intense Blue foundation) */
+  --shadow-xs: 0 1px 2px rgba(16, 39, 72, 0.04);
+  --shadow-sm: 0 2px 5px -1px rgba(16, 39, 72, 0.06), 0 1px 3px rgba(16, 39, 72, 0.03);
+  --shadow-md: 0 6px 16px -3px rgba(16, 39, 72, 0.08), 0 2px 6px -1px rgba(16, 39, 72, 0.04);
+  --shadow-lg: 0 16px 32px -4px rgba(16, 39, 72, 0.12), 0 4px 12px -2px rgba(16, 39, 72, 0.04);
   --shadow-glow: none;
 
   /* Transitions */
@@ -111,7 +139,7 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible {
-  outline: 2px solid var(--teal-600);
+  outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }
 
@@ -149,7 +177,7 @@ input, select, textarea {
    TOP COMMERCIAL UTILITY BAR
    ========================================================================== */
 .top-utility-bar {
-  background: var(--navy-950);
+  background: var(--brand-blue-dark);
   color: #94a3b8;
   font-size: 0.775rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -182,7 +210,7 @@ input, select, textarea {
 }
 
 .top-utility-link:hover {
-  color: #38bdf8;
+  color: var(--brand-accent-green);
 }
 
 .top-utility-divider {
@@ -217,19 +245,19 @@ input, select, textarea {
   align-items: center;
   gap: 0.75rem;
   text-decoration: none;
-  color: var(--navy-900);
+  color: var(--brand-blue);
 }
 
 .brand-icon-wrapper {
-  background: var(--navy-900);
-  color: #ffffff;
+  background: var(--brand-blue);
+  color: var(--brand-accent-green);
   width: 38px;
   height: 38px;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--navy-800);
+  border: 1px solid var(--brand-blue-light);
 }
 
 .brand-text-group {
@@ -239,17 +267,18 @@ input, select, textarea {
 
 .brand-name {
   font-family: var(--font-display);
-  font-weight: 900;
-  font-size: 1.5rem;
+  font-weight: 800;
+  font-size: 1.6rem;
   letter-spacing: -0.01em;
-  color: var(--navy-900);
+  color: var(--brand-blue);
   line-height: 1.1;
 }
 
 .brand-badge {
-  background: var(--teal-50);
-  color: var(--teal-700);
-  border: 1px solid var(--teal-100);
+  background: var(--brand-limonade);
+  color: var(--brand-accent-green-text);
+  border: 1px solid #DDE1A0;
+  font-family: var(--font-display);
   font-size: 0.65rem;
   font-weight: 700;
   padding: 0.1rem 0.45rem;
@@ -354,7 +383,7 @@ input, select, textarea {
 }
 
 .cart-count-badge {
-  background: var(--teal-600);
+  background: var(--brand-cayenne);
   color: #ffffff;
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -384,7 +413,7 @@ input, select, textarea {
    ========================================================================== */
 .hero-section {
   position: relative;
-  background: linear-gradient(135deg, #ffffff 0%, #f0f5ff 50%, #e8f0fe 100%);
+  background: linear-gradient(135deg, #ffffff 0%, var(--brand-frozen) 50%, var(--brand-almond) 100%);
   color: var(--text-primary);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
@@ -414,9 +443,9 @@ input, select, textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  background: var(--teal-50);
-  border: 1px solid var(--teal-100);
-  color: var(--teal-700);
+  background: var(--brand-limonade);
+  border: 1px solid #DDE1A0;
+  color: var(--brand-accent-green-text);
   padding: 0.35rem 0.75rem;
   border-radius: var(--radius-xs);
   font-size: 0.8rem;
@@ -426,16 +455,17 @@ input, select, textarea {
 }
 
 .hero-title {
-  font-size: 2.4rem;
+  font-family: var(--font-display);
+  font-size: 2.6rem;
   font-weight: 800;
   line-height: 1.2;
-  letter-spacing: -0.025em;
-  color: var(--navy-900);
+  letter-spacing: -0.02em;
+  color: var(--brand-blue);
   margin-bottom: 1rem;
 }
 
 .hero-title span {
-  color: var(--teal-600);
+  color: var(--brand-cayenne);
   background: none;
   -webkit-background-clip: unset;
   -webkit-text-fill-color: unset;
@@ -457,8 +487,8 @@ input, select, textarea {
 }
 
 .btn-primary {
-  background: var(--teal-600);
-  color: #ffffff;
+  background: var(--brand-accent-green);
+  color: var(--brand-accent-green-text);
   padding: 0.75rem 1.4rem;
   border-radius: var(--radius-sm);
   font-weight: 700;
@@ -468,12 +498,13 @@ input, select, textarea {
   align-items: center;
   gap: 0.5rem;
   transition: var(--transition-fast);
-  border: 1px solid var(--teal-700);
+  border: 1px solid var(--brand-accent-green-dark);
   text-decoration: none;
 }
 
 .btn-primary:hover {
-  background: var(--teal-700);
+  background: var(--brand-accent-green-dark);
+  color: var(--brand-accent-green-text);
   box-shadow: var(--shadow-sm);
 }
 
@@ -511,7 +542,7 @@ input, select, textarea {
 .hero-card-preview {
   background: var(--surface-bg);
   border: 1px solid var(--border-subtle);
-  border-left: 4px solid var(--teal-600);
+  border-left: 4px solid var(--brand-accent-green);
   border-radius: var(--radius-md);
   padding: 1.75rem;
   display: flex;
@@ -565,7 +596,7 @@ input, select, textarea {
 }
 
 .guarantee-icon {
-  color: var(--teal-600);
+  color: var(--brand-blue);
   margin-top: 2px;
   flex-shrink: 0;
 }
@@ -627,20 +658,32 @@ input, select, textarea {
 }
 
 .category-pill-btn:hover {
-  color: var(--navy-900);
-  background: rgba(0, 0, 0, 0.04);
+  color: var(--brand-blue);
+  background: var(--brand-almond);
 }
 
 .category-pill-btn.active {
   background: #ffffff;
-  color: var(--navy-900);
+  color: var(--brand-blue);
   border-color: var(--border-subtle);
   box-shadow: var(--shadow-sm);
   font-weight: 700;
+  position: relative;
+}
+
+.category-pill-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 15%;
+  right: 15%;
+  height: 2px;
+  background: var(--brand-accent-green);
+  border-radius: 2px;
 }
 
 .category-pill-count {
-  background: rgba(11, 25, 44, 0.06);
+  background: rgba(16, 39, 72, 0.06);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.725rem;
@@ -652,8 +695,8 @@ input, select, textarea {
 }
 
 .category-pill-btn.active .category-pill-count {
-  background: var(--teal-50);
-  color: var(--teal-700);
+  background: var(--brand-limonade);
+  color: var(--brand-accent-green-text);
 }
 
 .filter-controls-row {
@@ -694,7 +737,7 @@ input, select, textarea {
 }
 
 .stock-toggle-label input[type="checkbox"] {
-  accent-color: var(--teal-600);
+  accent-color: var(--brand-blue);
   width: 16px;
   height: 16px;
   cursor: pointer;
@@ -748,7 +791,7 @@ input, select, textarea {
 }
 
 .product-card:focus-visible {
-  outline: 2px solid var(--teal-600);
+  outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }
 
@@ -771,8 +814,8 @@ input, select, textarea {
 .product-ref-badge {
   font-family: var(--font-mono);
   font-weight: 700;
-  color: var(--navy-800);
-  background: #e2e8f0;
+  color: var(--brand-blue-light);
+  background: var(--brand-frozen);
   padding: 0.15rem 0.4rem;
   border-radius: var(--radius-xs);
 }
@@ -821,22 +864,40 @@ input, select, textarea {
   overflow: hidden;
   background:
     radial-gradient(circle, #cbd5e1 1.2px, transparent 1.2px),
-    #f8fafc;
+    var(--brand-frozen);
   background-size: 16px 16px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .media-placeholder-box.gradient-teal,
-.media-placeholder-box.gradient-blue,
-.media-placeholder-box.gradient-cyan,
-.media-placeholder-box.gradient-emerald,
-.media-placeholder-box.gradient-indigo,
-.media-placeholder-box.gradient-slate,
-.media-placeholder-box.gradient-red,
-.media-placeholder-box.gradient-amber {
+.media-placeholder-box.gradient-blue {
   background:
-    radial-gradient(circle, #cbd5e1 1.2px, transparent 1.2px),
-    #f8fafc;
+    radial-gradient(circle, #c4d4e6 1.2px, transparent 1.2px),
+    #E8EDF5;
+  background-size: 16px 16px;
+}
+
+.media-placeholder-box.gradient-emerald,
+.media-placeholder-box.gradient-cyan {
+  background:
+    radial-gradient(circle, #dbe4aa 1.2px, transparent 1.2px),
+    #F5F7E8;
+  background-size: 16px 16px;
+}
+
+.media-placeholder-box.gradient-amber,
+.media-placeholder-box.gradient-red {
+  background:
+    radial-gradient(circle, #f0d6c8 1.2px, transparent 1.2px),
+    #F9F3EC;
+  background-size: 16px 16px;
+}
+
+.media-placeholder-box.gradient-slate,
+.media-placeholder-box.gradient-indigo {
+  background:
+    radial-gradient(circle, #cbd7e4 1.2px, transparent 1.2px),
+    #EDF1F5;
   background-size: 16px 16px;
 }
 
@@ -854,16 +915,17 @@ input, select, textarea {
   width: 58px;
   height: 58px;
   border-radius: 50%;
-  background: #e2e8f0;
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 0.5rem;
   box-shadow: var(--shadow-xs);
+  border: 1px solid var(--border-subtle);
 }
 
 .placeholder-icon-frame svg {
-  color: var(--teal-600);
+  color: var(--brand-blue);
 }
 
 .placeholder-product-label {
@@ -888,7 +950,7 @@ input, select, textarea {
 }
 
 .card-clickable-media:focus-visible {
-  outline: 2px solid var(--teal-600);
+  outline: 2px solid var(--border-focus);
   outline-offset: -2px;
 }
 
@@ -905,11 +967,11 @@ input, select, textarea {
 }
 
 .card-clickable-title:hover {
-  color: var(--teal-700);
+  color: var(--brand-blue-light);
 }
 
 .card-clickable-title:focus-visible {
-  outline: 2px solid var(--teal-600);
+  outline: 2px solid var(--border-focus);
   border-radius: var(--radius-xs);
 }
 
@@ -963,7 +1025,7 @@ input, select, textarea {
 }
 
 .placeholder-icon-symbol {
-  color: var(--teal-600);
+  color: var(--brand-blue);
   margin-bottom: 0.4rem;
 }
 
@@ -984,7 +1046,7 @@ input, select, textarea {
 .product-category-tag {
   font-size: 0.725rem;
   font-weight: 700;
-  color: var(--teal-700);
+  color: var(--brand-blue-light);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -994,8 +1056,9 @@ input, select, textarea {
   font-weight: 700;
   padding: 0.15rem 0.45rem;
   border-radius: var(--radius-xs);
-  background: var(--surface-muted);
-  color: var(--text-secondary);
+  background: var(--brand-cayenne-bg);
+  color: var(--brand-cayenne);
+  border: 1px solid var(--brand-cayenne-border);
 }
 
 .product-manufacturer-line {
@@ -1008,9 +1071,10 @@ input, select, textarea {
 }
 
 .product-title {
-  font-size: 1rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
   font-weight: 700;
-  color: var(--navy-900);
+  color: var(--brand-blue);
   line-height: 1.35;
   margin-bottom: 0.5rem;
   display: -webkit-box;
@@ -1133,7 +1197,7 @@ input, select, textarea {
 }
 
 .btn-add-cart {
-  background: var(--teal-600);
+  background: var(--brand-blue);
   color: #ffffff;
   padding: 0.55rem 1rem;
   min-height: 40px;
@@ -1144,14 +1208,24 @@ input, select, textarea {
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  border: 1px solid var(--teal-700);
+  border: 1px solid var(--brand-blue-light);
   transition: var(--transition-fast);
   width: 100%;
   white-space: nowrap;
 }
 
-.btn-add-cart:hover {
-  background: var(--teal-700);
+.btn-add-cart:hover:not(:disabled) {
+  background: var(--brand-blue-light);
+  border-color: var(--brand-blue);
+  box-shadow: 0 2px 6px rgba(16, 39, 72, 0.25);
+}
+
+.btn-add-cart:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  border-color: var(--border-subtle);
 }
 
 /* ==========================================================================
@@ -1264,7 +1338,7 @@ input, select, textarea {
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  color: var(--teal-600);
+  color: var(--brand-blue);
   text-align: center;
   padding: 1.5rem;
 }
@@ -1312,7 +1386,7 @@ input, select, textarea {
 
 .gallery-nav-btn:hover {
   background: #ffffff;
-  color: var(--teal-600);
+  color: var(--brand-blue);
   box-shadow: var(--shadow-md);
   transform: translateY(-50%) scale(1.05);
 }
@@ -1350,8 +1424,8 @@ input, select, textarea {
 }
 
 .gallery-thumb-btn.active {
-  border-color: var(--teal-600);
-  box-shadow: 0 0 0 1px var(--teal-600);
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 1px var(--brand-blue);
 }
 
 .gallery-thumb-img {
@@ -1368,7 +1442,7 @@ input, select, textarea {
   align-items: center;
   justify-content: center;
   background: var(--surface-muted);
-  color: var(--teal-600);
+  color: var(--brand-blue);
 }
 
 /* Product Info Section */
@@ -1464,7 +1538,7 @@ input, select, textarea {
 }
 
 .detail-check-icon {
-  color: var(--teal-600);
+  color: var(--brand-blue);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -1494,7 +1568,7 @@ input, select, textarea {
 }
 
 .package-bullet {
-  color: var(--teal-600);
+  color: var(--brand-blue);
   font-weight: bold;
 }
 
@@ -1668,7 +1742,7 @@ input, select, textarea {
 
 .progress-fill {
   height: 100%;
-  background: var(--teal-600);
+  background: var(--brand-accent-green);
   transition: width 0.4s ease;
 }
 
@@ -1777,8 +1851,8 @@ input, select, textarea {
 
 .btn-checkout {
   width: 100%;
-  background: var(--teal-600);
-  color: #ffffff;
+  background: var(--brand-accent-green);
+  color: var(--brand-accent-green-text);
   padding: 0.85rem;
   min-height: 46px;
   border-radius: var(--radius-sm);
@@ -1789,12 +1863,13 @@ input, select, textarea {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border: 1px solid var(--teal-700);
+  border: 1px solid var(--brand-accent-green-dark);
   transition: var(--transition-fast);
 }
 
-.btn-checkout:hover {
-  background: var(--teal-700);
+.btn-checkout:hover:not(:disabled) {
+  background: var(--brand-accent-green-dark);
+  box-shadow: 0 2px 8px rgba(202, 228, 0, 0.35);
 }
 
 .btn-checkout:disabled,
@@ -1878,7 +1953,7 @@ input, select, textarea {
   font-size: 0.875rem;
   font-weight: 600;
   animation: slideUp 0.25s ease-out;
-  border-left: 4px solid var(--teal-600);
+  border-left: 4px solid var(--brand-accent-green);
   position: relative;
   overflow: hidden;
 }
@@ -1888,7 +1963,7 @@ input, select, textarea {
   bottom: 0;
   left: 0;
   height: 3px;
-  background: var(--teal-600);
+  background: var(--brand-accent-green);
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   animation: toastDrain 3s linear forwards;
 }
@@ -1962,8 +2037,8 @@ input, select, textarea {
 }
 
 .footer-prop-icon {
-  background: var(--teal-600);
-  color: #ffffff;
+  background: var(--brand-blue-muted);
+  color: var(--brand-accent-green);
   padding: 0.75rem;
   border-radius: var(--radius-sm);
   display: flex;
