@@ -113,6 +113,9 @@ pnpm preview
 
 # Deploy Firestore Security Rules
 pnpm run deploy:rules
+
+# Provision an administrator account for the backoffice portal (/admin)
+pnpm run setup:admin tu-email@prontoinsumos.cl TuPasswordSegura123!
 ```
 
 Always verify that `pnpm test` passes completely without regressions after making changes.

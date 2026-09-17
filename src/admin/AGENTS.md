@@ -76,6 +76,16 @@ Staff authentication is powered by Firebase Authentication with administrative c
    - Verifies `idTokenResult.claims.admin === true`. If false, the session is immediately terminated with `signOut()` and access is denied.
 2. **Admin Provisioning Script (`scripts/setup-admin.ts`):**
    - Node.js CLI script using Firebase Admin SDK to create staff accounts and set `{ admin: true }` claims.
+   - Automatically loads `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` from your local `.env.local` or `.env` file in the repository root.
+   - Run directly from your local terminal:
+     ```powershell
+     # Opción 1: Con el comando directo de pnpm
+     pnpm run setup:admin tu-email@prontoinsumos.cl TuPasswordSegura123!
+
+     # Opción 2: Invocación directa vía npx/tsx
+     npx tsx scripts/setup-admin.ts tu-email@prontoinsumos.cl TuPasswordSegura123!
+     ```
+   - Connects to Firebase Authentication via Google Cloud, creates the user (or retrieves existing UID), and persists the custom claim. Once completed, the user can immediately log in at `/admin`.
 3. **Serverless Token Verification Middleware (`api/lib/adminAuth.ts`):**
    - Validates `Authorization: Bearer <ID_TOKEN>`.
    - Verifies signature, expiry, and `decodedToken.admin === true`.
