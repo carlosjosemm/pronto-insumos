@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
+import PromoStrip from './components/PromoStrip'
 import CategoryFilter from './components/CategoryFilter'
 import ProductList from './components/ProductList'
 import ProductQuickView from './components/ProductQuickView'
@@ -253,6 +254,9 @@ export default function App() {
       <main className="main-content">
         {/* Landing Hero */}
         <Hero onExploreClick={scrollToCatalog} />
+
+        {/* Promotional Value Strip */}
+        <PromoStrip />
 
         {/* Category & Controls Bar */}
         <CategoryFilter
