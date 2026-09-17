@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
 import CategoryFilter from './components/CategoryFilter'
@@ -9,6 +9,12 @@ import CheckoutModal from './components/CheckoutModal'
 import PaymentReturnModal from './components/PaymentReturnModal'
 import Footer from './components/Footer'
 import { fetchProducts } from './services/api'
+import {
+  saveCartToStorage,
+  loadCartFromStorage,
+  clearCartFromStorage,
+  revalidateCartAgainstCatalog
+} from './services/cartStorage'
 import { CartItem, Product, ProductCategory, PromoCode, Toast } from './types'
 import { CheckCircle2 } from 'lucide-react'
 import { calculateIVA } from './utils/currency'
@@ -21,12 +27,19 @@ export default function App() {
   
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState<boolean>(true)
+  const hasRevalidated = useRef(false)
 
-  const [cart, setCart] = useState<CartItem[]>([])
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    const stored = loadCartFromStorage()
+    return stored ? stored.items : []
+  })
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false)
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false)
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null)
-  const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(null)
+  const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(() => {
+    const stored = loadCartFromStorage()
+    return stored ? stored.appliedPromo : null
+  })
   const [toasts, setToasts] = useState<Toast[]>([])
   const [paymentReturn, setPaymentReturn] = useState<{
     isOpen: boolean
@@ -69,9 +82,31 @@ export default function App() {
     }
   }, [selectedCategory, search, sortBy, inStockOnly])
 
+  // Revalidate cart items on initial catalog load against full inventory
+  useEffect(() => {
+    if (hasRevalidated.current || cart.length === 0) return
+
+    if (products.length > 0 && selectedCategory === 'all' && !search && !inStockOnly) {
+      hasRevalidated.current = true
+      const reval = revalidateCartAgainstCatalog(cart, products)
+      if (reval.hasChanges) {
+        setCart(reval.items)
+        if (reval.removedCount > 0 || reval.adjustedCount > 0) {
+          addToast('Se actualizó el carro según el stock disponible en bodega')
+        }
+      }
+    }
+  }, [products, selectedCategory, search, inStockOnly])
+
+  // Persist cart and promo code changes to localStorage
+  useEffect(() => {
+    saveCartToStorage(cart, appliedPromo)
+  }, [cart, appliedPromo])
+
   const handleOrderSuccess = () => {
     setCart([])
     setAppliedPromo(null)
+    clearCartFromStorage()
   }
 
   // Check for Mercado Pago return query parameters on mount

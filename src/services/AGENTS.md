@@ -9,6 +9,7 @@ This directory contains the **client-side integration adapters** for PRONTO. It 
 * **Role:** Data fetching, client-side database reads/writes, external payment preference calls, and communication helpers.
 * **Key Files:**
   * [`api.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/api.ts): Storefront data operations (`fetchProducts`, `fetchProductById`, `submitOrder`).
+  * [`cartStorage.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/cartStorage.ts): Browser `localStorage` shopping cart persistence adapter (`saveCartToStorage`, `loadCartFromStorage`, `clearCartFromStorage`, `revalidateCartAgainstCatalog`) supporting schema versioning (`pronto_cart_v1`), 7-day TTL retention, quota error defense, and catalog stock revalidation.
   * [`firebase.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/firebase.ts): Initializes the Google Firebase Web Client SDK (`initializeApp`, `getFirestore`, `getAuth`) using Vite public variables.
   * [`mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/mercadopago.ts): Client payment adapter invoking the `/api/create-preference` serverless endpoint to retrieve Mercado Pago Checkout Pro URLs.
   * [`whatsapp.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/whatsapp.ts): URL builder for WhatsApp Business order inquiries and instant support (`https://wa.me/...`).
