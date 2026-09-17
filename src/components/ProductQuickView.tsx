@@ -332,7 +332,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             {product.specs && product.specs.length > 0 && (
               <div className="detail-section-block">
                 <div className="detail-section-heading">
-                  <FileText size={15} style={{ color: 'var(--teal-600)' }} />
+                  <FileText size={15} style={{ color: 'var(--brand-blue)' }} />
                   <span>Especificaciones Técnicas</span>
                 </div>
                 <ul className="detail-specs-list">
@@ -350,7 +350,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             {product.packageContents && product.packageContents.length > 0 && (
               <div className="detail-section-block">
                 <div className="detail-section-heading">
-                  <Package size={15} style={{ color: 'var(--teal-600)' }} />
+                  <Package size={15} style={{ color: 'var(--brand-blue)' }} />
                   <span>Contenido del Empaque</span>
                 </div>
                 <div className="package-contents-box">
