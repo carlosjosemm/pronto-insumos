@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from './lib/firebaseAdmin'
+import { getCollectionName } from './lib/firestoreEnv'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || ''
@@ -29,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const quantity = Math.max(1, Number(item.quantity) || 1)
 
         if (productId) {
-          const productRef = adminDb.collection('products').doc(productId)
+          const productRef = adminDb.collection(getCollectionName('products')).doc(productId)
           const productSnap = await productRef.get()
 
           if (!productSnap.exists) {

@@ -1,4 +1,15 @@
-export type ProductCategory = 'Diagnostics' | 'Instruments' | 'Materials' | 'Sterilization' | 'all'
+export type ChileanDentalCategory =
+  | 'DESECHABLES, ESTERILIZACION Y DESINFECCION'
+  | 'ENDODONCIA'
+  | 'HIGIENE BUCAL'
+  | 'IMPRESION'
+  | 'INSTRUMENTAL Y ACCESORIOS'
+  | 'OPERATORIA'
+
+export type ProductCategory =
+  | 'all'
+  | ChileanDentalCategory
+  | (string & {})
 
 export interface Category {
   id: ProductCategory
@@ -8,15 +19,20 @@ export interface Category {
 
 export interface Product {
   id: string
+  sku?: string
   name: string
+  brand?: string
   category: string
   price: number
+  priceNeto?: number
   originalPrice?: number
   rating: number
   reviewsCount: number
   inStock: boolean
   stockCount: number
+  isActive?: boolean
   prescriptionRequired: boolean
+  ispRegistrationNumber?: string
   tag: string
   description: string
   specs: string[]
@@ -25,6 +41,8 @@ export interface Product {
   images?: string[]
   packageContents?: string[]
   manufacturer?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface CartItem {
@@ -80,6 +98,7 @@ export type OrderStatus =
   | 'PAGADO_MERCADOPAGO'
   | 'PENDIENTE_TRANSFERENCIA'
   | 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
+  | 'TRANSFERENCIA_APROBADA'
   | 'PAGADO_TRANSFERENCIA'
   | 'EN_PREPARACION'
   | 'DESPACHADO'
@@ -108,6 +127,17 @@ export interface Order {
   voucherUploadedAt?: string
   courier?: string
   trackingNumber?: string
+  mercadopagoPaymentId?: string
+  paidAt?: string
+  approvedAt?: string
+  approvedBy?: string
+  dispatch?: {
+    carrier: 'starken' | 'chilexpress' | 'blue_express' | 'despacho_local_melipilla' | string
+    trackingCode?: string
+    dispatchedAt: string
+    dispatchedBy: string
+  }
+  deliveredAt?: string
 }
 
 export interface PromoCode {
@@ -178,3 +208,44 @@ export interface UploadVoucherResult {
   message?: string
   error?: string
 }
+
+export type AuditActorRole = 'ADMIN' | 'CUSTOMER' | 'SYSTEM_WEBHOOK' | 'SYSTEM_SEED' | 'SYSTEM_CRON'
+
+export interface OrderStatusHistory {
+  id: string
+  orderId: string
+  previousStatus: OrderStatus | null
+  newStatus: OrderStatus
+  changedBy: string
+  changedByEmail?: string | null
+  actorRole: AuditActorRole
+  timestamp: string
+  reason: string
+  metadata?: Record<string, any>
+}
+
+export type InventoryChangeType =
+  | 'STOCK_ADJUSTMENT'
+  | 'ORDER_FULFILLMENT_DEDUCTION'
+  | 'METADATA_UPDATE'
+  | 'VISIBILITY_TOGGLE'
+  | 'CATALOG_SEED'
+
+export interface InventoryAuditLog {
+  id: string
+  productId: string
+  productSku?: string
+  productName?: string
+  changeType: InventoryChangeType
+  previousStock?: number | null
+  newStock?: number | null
+  delta?: number | null
+  reasonCode?: string
+  operatorNotes?: string
+  changedBy: string
+  changedByEmail?: string | null
+  actorRole: AuditActorRole
+  timestamp: string
+  metadata?: Record<string, any>
+}
+

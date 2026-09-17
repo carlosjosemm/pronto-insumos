@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
 import { verifyMercadoPagoSignature } from '../lib/mercadopagoSignature'
+import { getCollectionName } from '../lib/firestoreEnv'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || 'YOUR_MERCADOPAGO_ACCESS_TOKEN'
@@ -81,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Find order in Firestore using Admin SDK
         const orderSnapshot = await adminDb
-          .collection('orders')
+          .collection(getCollectionName('orders'))
           .where('orderId', '==', cleanOrderId)
           .limit(1)
           .get()
@@ -132,38 +133,104 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 ? orderData.items
                 : []
 
-            const productUpdates: Array<{ ref: any; newStock: number; inStock: boolean }> = []
+            const productUpdates: Array<{
+              ref: any
+              productId: string
+              name: string
+              sku: string
+              previousStock: number
+              newStock: number
+              quantity: number
+              inStock: boolean
+            }> = []
 
+            // Consolidate duplicate line items by productId to prevent transactional overwrite
+            const consolidatedItems = new Map<string, { qty: number; name?: string }>()
             for (const item of items) {
-              if (item.productId) {
-                const productRef = adminDb.collection('products').doc(item.productId)
-                const productSnap = await transaction.get(productRef)
+              const pid = item.productId || item.id
+              if (!pid) continue
+              const existing = consolidatedItems.get(pid) || { qty: 0, name: item.name }
+              existing.qty += Math.max(1, Number(item.quantity) || 1)
+              if (item.name) existing.name = item.name
+              consolidatedItems.set(pid, existing)
+            }
 
-                if (productSnap.exists) {
-                  const currentStock = Number(productSnap.data()?.stockCount) || 0
-                  const quantity = Math.max(1, Number(item.quantity) || 1)
-                  const newStock = Math.max(0, currentStock - quantity)
-                  productUpdates.push({
-                    ref: productRef,
-                    newStock,
-                    inStock: newStock > 0
-                  })
-                }
+            for (const [productId, info] of consolidatedItems.entries()) {
+              const productRef = adminDb.collection(getCollectionName('products')).doc(productId)
+              const productSnap = await transaction.get(productRef)
+
+              if (productSnap.exists) {
+                const pData = productSnap.data() || {}
+                const currentStock = Number(pData.stockCount) || 0
+                const newStock = Math.max(0, currentStock - info.qty)
+                const isActive = pData.isActive !== false
+                productUpdates.push({
+                  ref: productRef,
+                  productId,
+                  name: pData.name || info.name || productId,
+                  sku: pData.sku || '',
+                  previousStock: currentStock,
+                  newStock,
+                  quantity: info.qty,
+                  inStock: newStock > 0 && isActive
+                })
               }
             }
+
+            const nowIso = new Date().toISOString()
 
             // 2. Perform all writes: update order document
             transaction.update(orderDoc.ref, {
               status: 'PAGADO_MERCADOPAGO',
               mercadopagoPaymentId: String(paymentId),
-              paidAt: new Date().toISOString()
+              paidAt: nowIso,
+              updatedAt: nowIso
             })
 
-            // Perform all writes: update product stock documents
+            // Record order status history
+            const historyRef = adminDb.collection(getCollectionName('order_status_history')).doc()
+            transaction.set(historyRef, {
+              id: historyRef.id,
+              orderId: cleanOrderId,
+              previousStatus: freshOrderData?.status || orderData.status || null,
+              newStatus: 'PAGADO_MERCADOPAGO',
+              changedBy: 'MERCADOPAGO_WEBHOOK',
+              changedByEmail: 'webhook@mercadopago.cl',
+              actorRole: 'SYSTEM_WEBHOOK',
+              timestamp: nowIso,
+              reason: `Pago aprobado por Mercado Pago (ID: ${paymentId})`,
+              metadata: {
+                paymentId: String(paymentId),
+                paymentStatus: paymentData.status,
+                transactionAmount: paymentData.transaction_amount
+              }
+            })
+
+            // Perform all writes: update product stock documents and audit logs
             for (const prodUpdate of productUpdates) {
               transaction.update(prodUpdate.ref, {
                 stockCount: prodUpdate.newStock,
-                inStock: prodUpdate.inStock
+                inStock: prodUpdate.inStock,
+                updatedAt: nowIso
+              })
+
+              const auditRef = adminDb.collection(getCollectionName('inventory_audit_logs')).doc()
+              transaction.set(auditRef, {
+                id: auditRef.id,
+                productId: prodUpdate.productId,
+                productSku: prodUpdate.sku,
+                productName: prodUpdate.name,
+                changeType: 'ORDER_FULFILLMENT_DEDUCTION',
+                previousStock: prodUpdate.previousStock,
+                newStock: prodUpdate.newStock,
+                delta: -prodUpdate.quantity,
+                reasonCode: 'orden_compra',
+                operatorNotes: `Rebaja automática por pago Mercado Pago de orden ${cleanOrderId}`,
+                changedBy: 'MERCADOPAGO_WEBHOOK',
+                changedByEmail: 'webhook@mercadopago.cl',
+                actorRole: 'SYSTEM_WEBHOOK',
+                timestamp: nowIso,
+                metadata: { orderId: cleanOrderId, paymentId: String(paymentId) }
               })
             }
           })

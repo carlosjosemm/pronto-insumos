@@ -76,3 +76,34 @@ Validates the mandatory attributes required by the SII before a Factura Electró
 * `giroComercial`: Minimum 3 characters (e.g., *"Atención odontológica"*).
 * `address`: Registered fiscal domicile street and office/suite number.
 * `city`: Official commune in Chile.
+
+---
+
+### 2.4 Document Schema Freezing & Validation Engine (`src/utils/schemaValidation.ts`)
+
+To prevent data drift and ensure that all Firestore documents strictly satisfy domain rules before writing or migrating, `src/utils/schemaValidation.ts` implements pure, deterministic schema validators:
+
+#### 1. `validateProductSchema(doc: any): ValidationResult`
+* Enforces required string `id`, `name`, and `category`.
+* Validates `price`: Must be a positive integer in CLP (zero decimals, no floating points).
+* Validates `stockCount`: Must be a non-negative integer (`>= 0`).
+* Validates boolean flags: `inStock`, `prescriptionRequired`, and optional `isActive`.
+* Asserts that array attributes (`specs`, `images`) are valid arrays.
+
+#### 2. `validateOrderSchema(doc: any): ValidationResult`
+* Validates canonical `orderId` (`PRONTO-XXXXXX`).
+* Enforces membership in `VALID_ORDER_STATUSES`.
+* Validates `totalAmount`: Must be a positive integer in CLP.
+* Enforces Chilean Modulo 11 RUT validation on `customer.rut`.
+* If `customer.documentType === 'factura'`, enforces non-empty `razonSocial`, `giroComercial`, and valid company tax attributes.
+* Verifies item line integrity: ensures each item contains integer `price` and quantity `>= 1`.
+
+#### 3. `validateOrderStatusHistorySchema(doc: any): ValidationResult`
+* Enforces relational foreign key `orderId`.
+* Validates `actorRole`: Must belong to `'ADMIN' | 'CUSTOMER' | 'SYSTEM_WEBHOOK' | 'SYSTEM_SEED' | 'SYSTEM_CRON'`.
+* Asserts valid ISO 8601 `timestamp` and non-empty `reason`.
+
+#### 4. `validateInventoryAuditLogSchema(doc: any): ValidationResult`
+* Enforces relational foreign key `productId`.
+* Validates `changeType`: Must belong to `'STOCK_ADJUSTMENT' | 'ORDER_FULFILLMENT_DEDUCTION' | 'METADATA_UPDATE' | 'VISIBILITY_TOGGLE' | 'CATALOG_SEED'`.
+* Asserts integer deltas and valid ISO 8601 `timestamp`.

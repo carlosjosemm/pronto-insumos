@@ -128,13 +128,22 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
       }),
       ref: { update: updateSpy }
     }
+    const batchSetSpy = vi.fn()
+    const batchCommitSpy = vi.fn().mockResolvedValue([])
+
     const mockAdminDb = {
       collection: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
           limit: vi.fn().mockReturnValue({
             get: vi.fn().mockResolvedValue({ empty: false, docs: [mockOrderDoc] })
           })
-        })
+        }),
+        doc: vi.fn().mockReturnValue({ id: 'osh-123' })
+      }),
+      batch: vi.fn().mockReturnValue({
+        update: updateSpy,
+        set: batchSetSpy,
+        commit: batchCommitSpy
       })
     }
     vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
@@ -155,6 +164,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
 
     expect(res.status).toHaveBeenCalledWith(200)
     expect(updateSpy).toHaveBeenCalledWith(
+      mockOrderDoc.ref,
       expect.objectContaining({
         voucherUrl: 'data:application/pdf;base64,samplepdfcontent',
         voucherFileName: 'comprobante_banco_chile.pdf',

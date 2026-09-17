@@ -67,9 +67,54 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     expect(content).toContain("!('paidAt' in data)")
   })
 
+  it('should enforce read-only for admins and write-deny on audit log collections', () => {
+    const content = fs.readFileSync(rulesPath, 'utf8')
+
+    // order_status_history rules
+    expect(content).toMatch(/match\s+\/order_status_history\/\{historyId\}\s*\{/)
+    expect(content).toMatch(/match\s+\/inventory_audit_logs\/\{auditId\}\s*\{/)
+
+    // Ensure client-side writes are forbidden
+    const historyBlock = content.split('match /order_status_history/{historyId}')[1].split('}')[0]
+    expect(historyBlock).toContain('allow read: if isAdmin();')
+    expect(historyBlock).toContain('allow write: if false;')
+
+    const inventoryAuditBlock = content.split('match /inventory_audit_logs/{auditId}')[1].split('}')[0]
+    expect(inventoryAuditBlock).toContain('allow read: if isAdmin();')
+    expect(inventoryAuditBlock).toContain('allow write: if false;')
+  })
+
   it('should enforce a default-deny rule on all unspecified collections', () => {
     const content = fs.readFileSync(rulesPath, 'utf8')
     expect(content).toMatch(/match\s+\/\{document=\*\*\}\s*\{\s*allow\s+read,\s*write:\s*if\s+false;\s*\}/)
+  })
+
+  it('should enforce symmetric security rules on isolated development dev_* collections', () => {
+    const content = fs.readFileSync(rulesPath, 'utf8')
+
+    // dev_products rules (public read, admin write)
+    expect(content).toMatch(/match\s+\/dev_products\/\{productId\}\s*\{/)
+    const devProductsBlock = content.split('match /dev_products/{productId}')[1].split('}')[0]
+    expect(devProductsBlock).toContain('allow read: if true;')
+    expect(devProductsBlock).toContain('allow write: if isAdmin();')
+
+    // dev_orders rules (valid create only, client read/update/delete blocked)
+    expect(content).toMatch(/match\s+\/dev_orders\/\{orderId\}\s*\{/)
+    const devOrdersBlock = content.split('match /dev_orders/{orderId}')[1].split('}')[0]
+    expect(devOrdersBlock).toContain('allow create: if isValidOrderCreate();')
+    expect(devOrdersBlock).toContain('allow read, update, delete: if false;')
+
+    // dev_order_status_history rules (admin read-only, write denied)
+    expect(content).toMatch(/match\s+\/dev_order_status_history\/\{historyId\}\s*\{/)
+    const devHistoryBlock = content.split('match /dev_order_status_history/{historyId}')[1].split('}')[0]
+    expect(devHistoryBlock).toContain('allow read: if isAdmin();')
+    expect(devHistoryBlock).toContain('allow write: if false;')
+
+    // dev_inventory_audit_logs rules (admin read-only, write denied)
+    expect(content).toMatch(/match\s+\/dev_inventory_audit_logs\/\{auditId\}\s*\{/)
+    const devInventoryBlock = content.split('match /dev_inventory_audit_logs/{auditId}')[1].split('}')[0]
+    expect(devInventoryBlock).toContain('allow read: if isAdmin();')
+    expect(devInventoryBlock).toContain('allow write: if false;')
   })
 
   it('should have deploy:rules script configured in package.json', () => {

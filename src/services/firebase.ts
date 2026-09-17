@@ -1,5 +1,7 @@
 import { initializeApp } from 'firebase/app'
 import { getFirestore, collection, doc, setDoc, getDocs, serverTimestamp } from 'firebase/firestore'
+import { getAuth } from 'firebase/auth'
+import { getCollectionName } from './firestoreEnv'
 import { PRODUCTS } from '../data/products'
 
 // Firebase Configuration via Vite environment variables
@@ -16,6 +18,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig)
 export const db = getFirestore(app)
+export const auth = getAuth(app)
 
 export interface SeedResult {
   success: boolean
@@ -29,13 +32,14 @@ export interface SeedResult {
  */
 export async function seedProductsToFirestore(): Promise<SeedResult> {
   try {
-    const productsRef = collection(db, 'products')
+    const colName = getCollectionName('products')
+    const productsRef = collection(db, colName)
     const snapshot = await getDocs(productsRef)
     
     // Seed only if collection is empty
     if (snapshot.empty) {
       for (const product of PRODUCTS) {
-        await setDoc(doc(db, 'products', product.id), {
+        await setDoc(doc(db, colName, product.id), {
           ...product,
           createdAt: serverTimestamp()
         })

@@ -9,3 +9,6 @@ node_modules
 # Vercel & Build Artifacts
 .vercel
 dist
+
+# Raw Data Imports (Do not commit price lists)
+*.csv

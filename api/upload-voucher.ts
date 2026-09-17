@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from './lib/firebaseAdmin'
+import { getCollectionName } from './lib/firestoreEnv'
 
 function normalizeRut(raw: string): string {
   return (raw || '').replace(/[^0-9kK]/g, '').toUpperCase()
@@ -46,7 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Query order by orderId
     const snapshot = await adminDb
-      .collection('orders')
+      .collection(getCollectionName('orders'))
       .where('orderId', '==', cleanOrderId)
       .limit(1)
       .get()
@@ -69,14 +70,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const cleanFileName = String(fileName || 'comprobante_transferencia.pdf').trim()
     const timestamp = new Date().toISOString()
 
-    // Update order in Firestore via Admin SDK
-    await orderDoc.ref.update({
+    // Update order in Firestore via Admin SDK and record status history
+    const batch = adminDb.batch()
+    batch.update(orderDoc.ref, {
       voucherUrl: dataUrl,
       voucherFileName: cleanFileName,
       voucherContentType: contentType || 'application/octet-stream',
       voucherUploadedAt: timestamp,
-      status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
+      status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+      updatedAt: timestamp
     })
+
+    const historyRef = adminDb.collection(getCollectionName('order_status_history')).doc()
+    batch.set(historyRef, {
+      id: historyRef.id,
+      orderId: cleanOrderId,
+      previousStatus: orderData.status || 'PENDIENTE_TRANSFERENCIA',
+      newStatus: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+      changedBy: 'CUSTOMER',
+      changedByEmail: orderData.customer?.email || null,
+      actorRole: 'CUSTOMER',
+      timestamp,
+      reason: `Comprobante de transferencia bancaria adjuntado (${cleanFileName})`,
+      metadata: {
+        fileName: cleanFileName,
+        contentType: contentType || 'application/octet-stream'
+      }
+    })
+
+    await batch.commit()
 
     return res.status(200).json({
       success: true,

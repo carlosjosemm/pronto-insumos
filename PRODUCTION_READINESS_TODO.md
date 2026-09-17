@@ -231,27 +231,55 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 Currently, no administrative interface exists for PRONTO staff to operate the store without manually opening the Google Firebase web console. A dedicated, lightweight, and secure `/admin` portal must be created so the store owner and warehouse staff in Melipilla can consult orders and manage inventory without touching developer consoles.
 
-- [ ] **4.0. Dedicated Administrative Portal Route (`/admin`)**
+- [x] **4.0. Dedicated Administrative Portal Route (`/admin`)**
   - **Context & Objective:** Implement a functional internal backoffice portal accessible via the `/admin` path (using client routing or hash-based view toggle `#/admin`) to handle order consultations, fulfillment state transitions, and warehouse inventory adjustments.
   - **Core Architecture & Guardrails:**
-    - **Single-Page Backoffice Module (`src/components/admin/AdminPortal.tsx`):** Keep the implementation lean without adding heavy state management (no Redux/Zustand) or third-party UI component libraries (no Tailwind, Bootstrap, or MUI). Use the existing Vanilla CSS design system in [`src/index.css`](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css).
-    - **Simple Admin Authentication:** Clean login view with Firebase Auth (Email/Password for staff e.g., `admin@prontoinsumos.cl`). Protect the route so unauthenticated visitors cannot view clinical order data or catalog mutation forms.
-    - **Firestore Security Alignment:** Admin mutations (updating inventory, approving bank transfers) must respect [`firestore.rules`](file:///c:/Users/ecmv2/Documents/PRONTO/firestore.rules) using authenticated admin claims (`request.auth.token.admin == true`) or serverless admin functions.
+    - **Separate Vite Multi-Page App (`admin.html` + `src/admin/`):** Complete isolation between storefront and backoffice. Zero bundle overhead on customer storefront (`dist/index.html` ~111 kB JS, `dist/admin.html` ~63 kB JS).
+    - **Admin Authentication Engine:** Firebase Auth Email/Password + `{ admin: true }` custom claims gate in `AdminLogin.tsx` and `AdminApp.tsx`. CLI provisioning script in `scripts/setup-admin.ts`. Serverless middleware verification in `api/lib/adminAuth.ts`.
+    - **Firestore Security Alignment:** Admin mutations routed through dedicated `/api/admin/*` serverless endpoints with Bearer token authentication. Atomic stock decrement inside Firestore transactions upon transfer approval.
   - **Sub-feature A: Order History & Clinical Invoicing Consultation (`/admin#orders`):**
     - Searchable order table: filter by canonical `orderId` (e.g., `PRONTO-123456`), clinic name, or Chilean RUT.
     - Status filters: `PENDIENTE_PAGO`, `PENDIENTE_TRANSFERENCIA`, `PAGADO_MERCADOPAGO`, `COTIZACION_SOLICITADA_WHATSAPP`, `DESPACHADO`, `ENTREGADO`.
-    - Clinical order inspector drawer/modal:
+    - Clinical order inspector drawer/modal (`OrderDetailPanel.tsx`):
       - Full Chilean tax invoicing attributes (RUT, Razón Social, Giro Comercial, Gabinete fiscal address, comuna, phone, and contact email).
+      - Sanitary verification inspector: SIS registry number and credential attachments.
       - Itemized supply breakdown with unit integer CLP prices, 19% IVA, and total.
       - Payment telemetry: gateway reference (`mercadopagoPaymentId`), ISO timestamp, and bank transfer receipt link.
     - Operational actions:
-      - One-click **Aprobar Transferencia Manual** (executing atomic stock reduction for bank transfer orders).
-      - Dispatch fulfillment update (carrier selection: Starken, Chilexpress, Blue Express, or local Melipilla courier + tracking code).
+      - One-click **Aprobar Transferencia Manual** (`/api/admin/approve-transfer`, executing atomic stock reduction for bank transfer orders).
+      - Dispatch fulfillment update (`/api/admin/dispatch-order`, carrier selection: Starken, Chilexpress, Blue Express, or local Melipilla courier + tracking code).
+      - Mark delivered confirmation (`/api/admin/mark-delivered`).
   - **Sub-feature B: Real-Time Warehouse Inventory Management (`/admin#inventory`):**
     - Live product stock table displaying: SKU/REF code, product name, brand, category, integer CLP price (Neto and con IVA), and `stockCount`.
-    - Inline quick-adjustment counters (`+1`, `-1`, or direct numeric input) to update stock when restock shipments arrive at the Melipilla warehouse.
-    - Product editor modal: modify clinical presentations (e.g., *Caja 50 un.*, *Jeringa 4g*), technical datasheets, ISP health registry codes, and integer CLP prices.
-    - Instant visibility toggle (`inStock: true/false`) to pause sales of depleted or backordered items.
+    - Stock adjustment modal (`StockAdjustModal.tsx`) with audit reason codes (`reposicion`, `merma`, `correccion`, `venta_manual`) and operator notes (`/api/admin/update-stock`).
+    - Product editor modal (`ProductEditModal.tsx`): modify clinical presentations, technical specs, manufacturer tags, package contents, and integer CLP prices (`/api/admin/update-product`).
+    - Instant visibility toggle (`/api/admin/toggle-visibility`, `inStock: true/false`) to pause sales of depleted or backordered items.
+  - **Sub-feature C: Executive KPI Dashboard (`/admin#dashboard`):**
+    - 4 KPI metric cards: Ventas Hoy (CLP), Pedidos Pendientes, Stock Bajo (<5 unidades), Pedidos del Mes.
+    - Split overview: Recent orders table (65% width) and critical low-stock supply alerts (35% width).
+    - Analytics integration placeholders: Google Tag Manager (GTM) and Google Analytics 4 (GA4).
+  - **Automated Test Coverage:** 16 dedicated admin test suites (both UI and serverless endpoints) ensuring 100% test pass rate across 296 tests.
+
+- [x] **4.1. Firestore Schema Freezing, Lifecycle Audit Trails & Migration Tooling**
+  - **Context & Objective:** Prevent data corruption, ensure Chilean legal/tax compliance (SII Factura Electrónica and ISP regulations), and establish complete auditability and traceability for all order and inventory state transitions in Google Firebase Firestore.
+  - **Relational Simulation Pattern:**
+    - Established append-only audit collections linked to primary entities via indexed foreign keys (`orderId`, `productId`).
+    - Multi-document transactions (`adminDb.runTransaction`) and atomic batches (`adminDb.batch`) ensure that no order status or inventory stock can be modified without writing an audit record in the exact same transaction.
+  - **Schema Freezing:**
+    - `products`: Complete frozen schema with integer CLP pricing, SKU references, clinical specifications, packaging inventories, and ISP sanitary registration codes.
+    - `orders`: Complete frozen schema with customer tax details (RUT Modulo 11, Razón Social, Giro Comercial, Dirección Fiscal), sanitary verification, item price snapshots, and fulfillment telemetry.
+    - `order_status_history`: Tracks `previousStatus`, `newStatus`, `changedBy`, `changedByEmail`, `actorRole`, `timestamp`, `reason`, and metadata (tracking numbers, payment IDs).
+    - `inventory_audit_logs`: Tracks `changeType` (`STOCK_ADJUSTMENT`, `ORDER_FULFILLMENT_DEDUCTION`, `METADATA_UPDATE`, `VISIBILITY_TOGGLE`, `CATALOG_SEED`), `previousStock`, `newStock`, `delta`, `reasonCode`, operator notes, and timestamps.
+  - **Serverless Atomic Audit Integration:**
+    - Updated `approve-transfer`, `dispatch-order`, `mark-delivered`, `update-stock`, `update-product`, `toggle-visibility`, `upload-voucher`, and `webhooks/mercadopago` to record audit logs inside their atomic transactions.
+    - Created new `/api/admin/order-history` endpoint.
+  - **CLI Migration & Audit Tooling:**
+    - Created `scripts/manage-firestore-schema.ts` with `--validate` (read-only audit report), `--seed` (canonical catalog & sample order seeding), and `--purge-and-seed --force` (database clean reinitialization).
+    - Added npm scripts: `schema:validate`, `schema:seed`, and `schema:purge-and-seed`.
+  - **Admin UI & Security:**
+    - Embedded an interactive "Historial de Estados y Auditoría" timeline in `OrderDetailPanel.tsx`.
+    - Updated `firestore.rules` making audit collections read-only for admins and strictly write-blocked for all client SDKs.
+    - Added comprehensive Vitest tests bringing total test coverage to **305 passing tests across 46 test files**.
 
 ---
 

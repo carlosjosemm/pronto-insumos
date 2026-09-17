@@ -156,12 +156,15 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
             doc: vi.fn().mockReturnValue(productRef)
           }
         }
-        return {}
+        return {
+          doc: vi.fn().mockReturnValue({ id: 'audit-dummy-id' })
+        }
       }),
       runTransaction: vi.fn(async (cb: any) => {
         await cb({
           get: mockTransactionGet,
-          update: mockTransactionUpdate
+          update: mockTransactionUpdate,
+          set: vi.fn()
         })
       })
     }

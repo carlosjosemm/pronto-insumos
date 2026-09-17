@@ -1,14 +1,34 @@
 import React from 'react'
 import { CATEGORIES, PRODUCTS } from '../data/products'
-import { ProductCategory } from '../types'
-import { Activity, Home, Heart, ShieldAlert, Grid, Filter, LucideIcon } from 'lucide-react'
-
-const ICON_MAP: Record<string, LucideIcon> = {
-  Grid,
+import { ProductCategory, Product } from '../types'
+import {
   Activity,
   Home,
   Heart,
-  ShieldAlert
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Layers,
+  Wrench,
+  Scissors,
+  LayoutGrid,
+  Grid,
+  Filter,
+  LucideIcon
+} from 'lucide-react'
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  Grid,
+  LayoutGrid,
+  Activity,
+  Home,
+  Heart,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Layers,
+  Wrench,
+  Scissors
 }
 
 export interface CategoryFilterProps {
@@ -41,11 +61,34 @@ export default function CategoryFilter({
     return counts
   }, [catalog])
 
+  const displayedCategories = React.useMemo(() => {
+    const knownIds = new Set(CATEGORIES.map(c => c.id))
+    const extraCategories: typeof CATEGORIES = []
+
+    catalog.forEach((p) => {
+      if (p.category && !knownIds.has(p.category)) {
+        knownIds.add(p.category)
+        const displayName = p.category
+          .toLowerCase()
+          .split(' ')
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' ')
+        extraCategories.push({
+          id: p.category,
+          name: displayName,
+          icon: 'Grid'
+        })
+      }
+    })
+
+    return [...CATEGORIES, ...extraCategories]
+  }, [catalog])
+
   return (
     <div className="controls-bar" id="catalog-section">
       {/* Segmented Category Control Bar */}
       <div className="category-pills" role="tablist" aria-label="Categorías de insumos dentales">
-        {CATEGORIES.map((cat) => {
+        {displayedCategories.map((cat) => {
           const IconComp = ICON_MAP[cat.icon] || Grid
           const isActive = selectedCategory === cat.id
 

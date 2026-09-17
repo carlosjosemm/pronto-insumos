@@ -9,7 +9,8 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   getDocs: vi.fn(),
   addDoc: vi.fn(),
-  doc: vi.fn(),
+  setDoc: vi.fn(),
+  doc: vi.fn((_db, _col, id) => ({ id, path: `orders/${id}` })),
   runTransaction: vi.fn(),
   serverTimestamp: vi.fn(() => 'mock-timestamp')
 }))
@@ -23,19 +24,19 @@ describe('fetchProducts - filtering', () => {
     expect(result.length).toBe(PRODUCTS.length)
   })
 
-  it('should filter by category "Instruments"', async () => {
-    const result = await fetchProducts({ category: 'Instruments' })
+  it('should filter by category "INSTRUMENTAL Y ACCESORIOS"', async () => {
+    const result = await fetchProducts({ category: 'INSTRUMENTAL Y ACCESORIOS' })
     expect(result.length).toBeGreaterThan(0)
     for (const p of result) {
-      expect(p.category.toLowerCase()).toBe('instruments')
+      expect(p.category.toLowerCase()).toBe('instrumental y accesorios')
     }
   })
 
-  it('should filter by category "Materials"', async () => {
-    const result = await fetchProducts({ category: 'Materials' })
+  it('should filter by category "OPERATORIA"', async () => {
+    const result = await fetchProducts({ category: 'OPERATORIA' })
     expect(result.length).toBeGreaterThan(0)
     for (const p of result) {
-      expect(p.category.toLowerCase()).toBe('materials')
+      expect(p.category.toLowerCase()).toBe('operatoria')
     }
   })
 
@@ -73,10 +74,10 @@ describe('fetchProducts - filtering', () => {
   })
 
   it('should combine category and search filters', async () => {
-    const result = await fetchProducts({ category: 'Instruments', search: 'turbina' })
+    const result = await fetchProducts({ category: 'INSTRUMENTAL Y ACCESORIOS', search: 'turbina' })
     expect(result.length).toBeGreaterThan(0)
     for (const p of result) {
-      expect(p.category.toLowerCase()).toBe('instruments')
+      expect(p.category.toLowerCase()).toBe('instrumental y accesorios')
       expect(p.name.toLowerCase()).toContain('turbina')
     }
   })
@@ -171,8 +172,8 @@ describe('submitOrder', () => {
     vi.clearAllMocks()
   })
 
-  it('should initialize Mercado Pago orders with status PENDIENTE_PAGO_MERCADOPAGO and NOT deduct stock', async () => {
-    const { addDoc } = await import('firebase/firestore')
+  it('should initialize Mercado Pago orders with status PENDIENTE_PAGO_MERCADOPAGO and write with orderId as document ID', async () => {
+    const { setDoc } = await import('firebase/firestore')
     const result = await submitOrder({
       items: mockItems,
       total: 100000,
@@ -185,8 +186,9 @@ describe('submitOrder', () => {
     expect(result.total).toBe(100000)
     expect(result.itemsCount).toBe(2)
 
-    expect(addDoc).toHaveBeenCalledTimes(1)
-    const submittedPayload = vi.mocked(addDoc).mock.calls[0][1] as any
+    expect(setDoc).toHaveBeenCalledTimes(1)
+    const [docRef, submittedPayload] = vi.mocked(setDoc).mock.calls[0] as any
+    expect(docRef.id).toBe(result.orderId)
     expect(submittedPayload.status).toBe('PENDIENTE_PAGO_MERCADOPAGO')
     expect(submittedPayload.paymentMethod).toBe('mercadopago')
     expect(submittedPayload.orderId).toBe(result.orderId)
@@ -195,7 +197,7 @@ describe('submitOrder', () => {
   })
 
   it('should initialize Transferencia orders with status PENDIENTE_TRANSFERENCIA', async () => {
-    const { addDoc } = await import('firebase/firestore')
+    const { setDoc } = await import('firebase/firestore')
     const result = await submitOrder({
       items: mockItems,
       total: 50000,
@@ -204,14 +206,14 @@ describe('submitOrder', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(addDoc).toHaveBeenCalledTimes(1)
-    const submittedPayload = vi.mocked(addDoc).mock.calls[0][1] as any
+    expect(setDoc).toHaveBeenCalledTimes(1)
+    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as any
     expect(submittedPayload.status).toBe('PENDIENTE_TRANSFERENCIA')
     expect(submittedPayload.paymentMethod).toBe('transferencia')
   })
 
   it('should initialize WhatsApp orders with status COTIZACION_SOLICITADA_WHATSAPP', async () => {
-    const { addDoc } = await import('firebase/firestore')
+    const { setDoc } = await import('firebase/firestore')
     const result = await submitOrder({
       items: mockItems,
       total: 75000,
@@ -220,14 +222,14 @@ describe('submitOrder', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(addDoc).toHaveBeenCalledTimes(1)
-    const submittedPayload = vi.mocked(addDoc).mock.calls[0][1] as any
+    expect(setDoc).toHaveBeenCalledTimes(1)
+    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as any
     expect(submittedPayload.status).toBe('COTIZACION_SOLICITADA_WHATSAPP')
   })
 
   it('should handle Firestore save error gracefully without throwing', async () => {
-    const { addDoc } = await import('firebase/firestore')
-    vi.mocked(addDoc).mockRejectedValueOnce(new Error('Network disconnected'))
+    const { setDoc } = await import('firebase/firestore')
+    vi.mocked(setDoc).mockRejectedValueOnce(new Error('Network disconnected'))
 
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const result = await submitOrder({
@@ -244,7 +246,7 @@ describe('submitOrder', () => {
   })
 
   it('should accept and persist a custom canonical orderId', async () => {
-    const { addDoc } = await import('firebase/firestore')
+    const { setDoc } = await import('firebase/firestore')
     const customId = 'PRONTO-999888'
     const result = await submitOrder({
       orderId: customId,
@@ -257,7 +259,8 @@ describe('submitOrder', () => {
     expect(result.success).toBe(true)
     expect(result.orderId).toBe(customId)
 
-    const submittedPayload = vi.mocked(addDoc).mock.calls[0][1] as any
+    const [docRef, submittedPayload] = vi.mocked(setDoc).mock.calls[0] as any
+    expect(docRef.id).toBe(customId)
     expect(submittedPayload.orderId).toBe(customId)
   })
 

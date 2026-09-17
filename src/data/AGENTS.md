@@ -14,17 +14,21 @@ This document is the **authoritative domain and technical reference** for the ba
 
 ## 🦷 2. Dental Catalog Architecture & Chilean Clinical Specialties
 
-The catalog is structured around standard Chilean dental practice and specialties:
+The catalog is structured around 6 authentic Chilean dental specialties reconciled directly from the distributor's official price list:
 
-| Specialty Category | Scope & Clinical Applications | Typical Supplies |
+| Official Chilean Category | Scope & Clinical Applications | Typical Supplies |
 | :--- | :--- | :--- |
-| **Instrumental** | Hand instruments for diagnostics, surgery, and operative dentistry. Must be sterilizable in autoclave at 134°C. | Espejos bucales con mango ergonómico, exploradores dobles, pinzas algodoneras, fórceps de extracción, curetas Gracey. |
-| **Equipamiento** | Rotary handpieces and electromechanical clinic equipment. Requires coupling standard specifications (Borden / Midwest 4 vías) and ISP sanitary registry. | Turbinas dentales LED con acople Borden 2 vías o Midwest 4 vías, micromotores neumáticos, lámparas de fotocurado LED inalámbricas, ultrasonidos para destartraje. |
-| **Materiales Restauradores** | Consumables for restorative and aesthetic dentistry. Subject to expiration dates and shade matching (VITA classical). | Resinas compuestas nanohíbridas (Composite jeringas), adhesivos universales de 8ª generación, ionómeros de vidrio restauradores, matrices seccionales. |
-| **Desechables** | Single-use hygiene and infection control supplies for operating chairs. High turnover B2B consumables. | Baberos impermeables tricapa, mangas/rollos de esterilización para autoclave con indicador químico, eyectores de saliva descartables, gasas estériles. |
-| **Endodoncia** | Supplies and equipment for root canal therapies. | Limas rotatorias NiTi térmicamente tratadas, conos de gutapercha estandarizados, cementos selladores biocerámicos. |
-| **Ortodoncia** | Consumables for fixed and removable orthodontic mechanics. | Brackets metálicos prescripción Roth/MBT, arcos NiTi térmicos termoactivados, tubos para molares. |
-| **Periodoncia** | Supplies for periodontal surgery and prophylaxis. | Puntas de ultrasonido tipo scaler, pastas profilácticas de granulometría media/fina con flúor. |
+| **`DESECHABLES, ESTERILIZACION Y DESINFECCION`** | Single-use infection control, patient draping, and autoclave sterilization consumables. | Mascarillas tricapa, campos quirúrgicos impermeables, bolsas de esterilización para autoclave, desinfectantes de superficies clínicas. |
+| **`ENDODONCIA`** | Specialized root canal instruments, apex locators, and obturation materials. | Localizadores de ápice digitales, limas rotatorias NiTi térmicamente tratadas, conos de gutapercha, cementos selladores endodónticos. |
+| **`HIGIENE BUCAL`** | Clinical oral hygiene, scaling, and preventive prophylaxis supplies. | Escariadores y puntas ultrasónicas para detartraje, pastas de profilaxis, cepillos y copas de pulido. |
+| **`IMPRESION`** | Accurate dental impression materials for prosthetics and study models. | Alginatos cromáticos de alta precisión, siliconas de adición y condensación, cubetas de impresión. |
+| **`INSTRUMENTAL Y ACCESORIOS`** | Autoclaveable stainless steel hand instruments and surgical rotary handpieces. | Turbinas dentales LED Midwest 4 vías, contra-ángulos, espejos bucales n° 5, exploradores dobles, motores de implante. |
+| **`OPERATORIA`** | Direct restorative materials, light-curing adhesives, and local anesthetics. | Lámparas de fotocurado LED inalámbricas, resinas compuestas nanohíbridas (composites), adhesivos universales, anestésicos locales (Lidocaína 2%). |
+
+### 2.1 Catalog Ingestion & Lifecycle Management
+1. **Official Price List Ingestion:** The catalog is populated using [`scripts/import-catalog-csv.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/import-catalog-csv.ts) reading from `listo-of-prices-pronto-basic.csv` (75 official clinical supplies, default inventory of 10 units each, IDs `pronto-001` through `pronto-075`).
+2. **Prototype Item Inactivation:** Legacy mock products starting with `odon-*` are retained in code and Firestore for test safety and audit compliance, but marked inactive (`isActive: false`, `inStock: false`) so they never display to storefront customers.
+3. **Dynamic Category Extensibility:** While the 6 core categories form the baseline catalog, the store backend and backoffice support open dynamic categories (e.g. `ORTODONCIA`, `PERIODONCIA`, `CIRUGIA`) registered on the fly.
 
 ---
 
