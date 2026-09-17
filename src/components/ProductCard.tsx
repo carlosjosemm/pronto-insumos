@@ -21,6 +21,16 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
   // Defensive stock check
   const isAvailable = product.inStock && (product.stockCount === undefined || product.stockCount > 0)
+  const isLowStock = isAvailable && product.stockCount !== undefined && product.stockCount <= 5
+
+  // Featured card accent strip
+  const isFeatured = product.tag === 'Más Vendido' || product.tag === 'Recomendado' || product.tag === 'Recomendado Melipilla'
+
+  // Discount percentage (show only when >= 5%)
+  const discountPercent = (product.originalPrice && product.originalPrice > product.price)
+    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+    : 0
+  const showDiscount = discountPercent >= 5
 
   // Formatted SKU code (e.g. REF: OD-101)
   const skuRef = product.id.toUpperCase().startsWith('OD-')
@@ -43,7 +53,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
   return (
     <article
-      className="product-card"
+      className={`product-card ${isFeatured ? 'product-card--featured' : ''}`}
       aria-labelledby={`product-title-${product.id}`}
       onClick={handleOpenDetail}
       onKeyDown={handleKeyDown}
@@ -54,15 +64,20 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
       {/* Technical Header */}
       <div className="product-card-tech-header">
         <span className="product-ref-badge">REF: {skuRef}</span>
-        {!isAvailable && (
-          <span className="product-stock-status" style={{ color: '#dc2626' }}>
-            <span className="product-stock-dot" style={{ background: '#dc2626' }} />
+        {!isAvailable ? (
+          <span className="product-stock-status stock-danger" style={{ color: 'var(--danger)' }}>
+            <span className="product-stock-dot" style={{ background: 'var(--danger)' }} />
             <span>Sin Stock</span>
           </span>
-        )}
+        ) : isLowStock ? (
+          <span className="product-stock-status stock-warning" style={{ color: 'var(--accent-warm)' }}>
+            <span className="product-stock-dot" style={{ background: 'var(--accent-warm)' }} />
+            <span>Últimas {product.stockCount} unid.</span>
+          </span>
+        ) : null}
       </div>
 
-      {/* Media Presentation Box (Sterile Clinical Frame) */}
+      {/* Media Presentation Box (Sterile Clinical Frame with Textured Dot-Grid) */}
       <div className={`media-placeholder-box ${product.placeholderTheme}`}>
         {hasPhoto ? (
           <img
@@ -73,8 +88,11 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
             loading="lazy"
           />
         ) : (
-          <div className="placeholder-icon-symbol">
-            <CategoryIcon size={42} strokeWidth={1.5} />
+          <div className="media-placeholder-content">
+            <div className="placeholder-icon-frame">
+              <CategoryIcon size={34} strokeWidth={1.75} />
+            </div>
+            <span className="placeholder-product-label">{product.name}</span>
           </div>
         )}
 
@@ -83,6 +101,11 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
           <ShieldCheck size={12} />
           <span>{product.mediaBadge}</span>
         </div>
+
+        {/* Discount Badge */}
+        {showDiscount && (
+          <div className="discount-badge">-{discountPercent}%</div>
+        )}
 
         {/* Rx Badge */}
         {product.prescriptionRequired && (
@@ -117,12 +140,19 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
           )}
         </div>
 
+        {/* Brand / Manufacturer Attribution Line */}
+        {product.manufacturer && (
+          <div className="product-manufacturer-line">
+            {product.category} · {product.manufacturer}
+          </div>
+        )}
+
         <h3 className="product-title" id={`product-title-${product.id}`}>
           {product.name}
         </h3>
 
-        {/* Rating Stars (Optional - hidden when zero reviews) */}
-        {product.reviewsCount !== undefined && product.reviewsCount > 0 && (
+        {/* Rating Stars (Shows stars & count when available, or empty state placeholder) */}
+        {product.reviewsCount !== undefined && product.reviewsCount > 0 ? (
           <div className="product-rating">
             <div style={{ display: 'flex', gap: '2px' }}>
               {[...Array(5)].map((_, i) => (
@@ -136,6 +166,10 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
             </div>
             <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
             <span>({product.reviewsCount})</span>
+          </div>
+        ) : (
+          <div className="product-rating product-rating--empty">
+            <span className="no-reviews-label">Sin reseñas aún</span>
           </div>
         )}
 

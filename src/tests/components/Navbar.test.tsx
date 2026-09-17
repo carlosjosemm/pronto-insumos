@@ -46,4 +46,18 @@ describe('Navbar component', () => {
     render(<Navbar {...defaultProps} />)
     expect(screen.getByText('Melipilla & RM')).toBeInTheDocument()
   })
+
+  it('should pulse cart badge when count increases', () => {
+    const { rerender } = render(<Navbar {...defaultProps} cartCount={1} />)
+    expect(screen.getByText('1')).not.toHaveClass('cart-count-badge--pulse')
+
+    rerender(<Navbar {...defaultProps} cartCount={2} />)
+    expect(screen.getByText('2')).toHaveClass('cart-count-badge--pulse')
+  })
+
+  it('should NOT pulse cart badge when count decreases', () => {
+    const { rerender } = render(<Navbar {...defaultProps} cartCount={2} />)
+    rerender(<Navbar {...defaultProps} cartCount={1} />)
+    expect(screen.getByText('1')).not.toHaveClass('cart-count-badge--pulse')
+  })
 })

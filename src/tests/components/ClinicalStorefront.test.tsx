@@ -11,6 +11,7 @@ const mockProduct: Product = {
   id: 'odon-test-500',
   name: 'Fotocurador Clínico LED Spectrum',
   category: 'Diagnostics',
+  manufacturer: 'Woodpecker',
   price: 150.00,
   originalPrice: 190.00,
   rating: 4.9,

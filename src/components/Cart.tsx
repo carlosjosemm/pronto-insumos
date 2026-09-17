@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { CartItem, PromoCode } from '../types'
-import { X, ShoppingBag, Plus, Minus, Trash2, Tag, Lock, ArrowRight, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { X, ShoppingBag, Plus, Minus, Trash2, Tag, Lock, ArrowRight, ShieldCheck, Activity, Heart, Home, ShieldAlert, LucideIcon } from 'lucide-react'
 import { validatePromo } from '../services/api'
 import { formatCLP, calculateIVA } from '../utils/currency'
+
+const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
+  Diagnostics: Activity,
+  Instruments: Home,
+  Materials: Heart,
+  Sterilization: ShieldAlert
+}
 
 const FREE_SHIPPING_THRESHOLD = 150000
 
@@ -129,21 +136,24 @@ export default function Cart({
               </p>
             </div>
           ) : (
-            items.map((item) => (
-              <div key={item.product.id} className="cart-item-row">
-                <div className="cart-item-thumb">
-                  <ShoppingBag size={20} style={{ color: 'var(--teal-600)' }} />
-                </div>
+            items.map((item) => {
+              const ItemCategoryIcon = ICON_BY_CATEGORY[item.product.category] || ShoppingBag
 
-                <div className="cart-item-info">
-                  <div className="cart-item-title">{item.product.name}</div>
-                  {item.product.prescriptionRequired && (
-                    <span style={{ fontSize: '0.65rem', color: '#b45309', background: '#fef3c7', padding: '0.1rem 0.35rem', borderRadius: 'var(--radius-xs)', display: 'inline-block', marginBottom: '0.2rem', fontWeight: '700' }}>
-                      ⚕️ Requiere SIS (ISP)
-                    </span>
-                  )}
-                  <div className="cart-item-price">{formatCLP(item.product.price * item.quantity)}</div>
-                </div>
+              return (
+                <div key={item.product.id} className="cart-item-row">
+                  <div className="cart-item-thumb">
+                    <ItemCategoryIcon size={20} style={{ color: 'var(--teal-600)' }} />
+                  </div>
+
+                  <div className="cart-item-info">
+                    <div className="cart-item-title">{item.product.name}</div>
+                    {item.product.prescriptionRequired && (
+                      <span style={{ fontSize: '0.65rem', color: '#b45309', background: '#fef3c7', padding: '0.1rem 0.35rem', borderRadius: 'var(--radius-xs)', display: 'inline-block', marginBottom: '0.2rem', fontWeight: '700' }}>
+                        ⚕️ Requiere SIS (ISP)
+                      </span>
+                    )}
+                    <div className="cart-item-price">{formatCLP(item.product.price * item.quantity)}</div>
+                  </div>
 
                 {/* Quantity Controls */}
                 <div className="quantity-controls">
@@ -175,8 +185,8 @@ export default function Cart({
                   <Trash2 size={16} />
                 </button>
               </div>
-            ))
-          )}
+            )
+          }))}
         </div>
 
         {/* Cart Drawer Footer */}
@@ -258,6 +268,11 @@ export default function Cart({
               <span>Proceder al Pago</span>
               <ArrowRight size={17} />
             </button>
+
+            <div className="cart-checkout-trust">
+              <ShieldCheck size={13} style={{ color: 'var(--teal-600)' }} />
+              <span>Transacción Segura · Factura Electrónica B2B</span>
+            </div>
           </div>
         )}
       </aside>

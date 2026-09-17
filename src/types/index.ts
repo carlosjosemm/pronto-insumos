@@ -24,6 +24,7 @@ export interface Product {
   mediaBadge: string
   images?: string[]
   packageContents?: string[]
+  manufacturer?: string
 }
 
 export interface CartItem {

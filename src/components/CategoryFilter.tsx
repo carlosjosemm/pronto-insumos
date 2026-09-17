@@ -1,5 +1,5 @@
 import React from 'react'
-import { CATEGORIES } from '../data/products'
+import { CATEGORIES, PRODUCTS } from '../data/products'
 import { ProductCategory } from '../types'
 import { Activity, Home, Heart, ShieldAlert, Grid, Filter, LucideIcon } from 'lucide-react'
 
@@ -19,6 +19,7 @@ export interface CategoryFilterProps {
   inStockOnly: boolean
   onToggleInStock: (checked: boolean) => void
   totalResults: number
+  products?: Product[]
 }
 
 export default function CategoryFilter({
@@ -28,8 +29,18 @@ export default function CategoryFilter({
   onSortChange,
   inStockOnly,
   onToggleInStock,
-  totalResults
+  totalResults,
+  products
 }: CategoryFilterProps) {
+  const catalog = products || PRODUCTS
+  const categoryCounts = React.useMemo(() => {
+    const counts: Record<string, number> = { all: catalog.length }
+    catalog.forEach((p) => {
+      counts[p.category] = (counts[p.category] || 0) + 1
+    })
+    return counts
+  }, [catalog])
+
   return (
     <div className="controls-bar" id="catalog-section">
       {/* Segmented Category Control Bar */}
@@ -48,6 +59,7 @@ export default function CategoryFilter({
             >
               <IconComp size={16} />
               <span>{cat.name}</span>
+              <span className="category-pill-count">{categoryCounts[cat.id] ?? 0}</span>
             </button>
           )
         })}

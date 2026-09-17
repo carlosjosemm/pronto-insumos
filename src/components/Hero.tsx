@@ -1,5 +1,4 @@
-import React from 'react'
-import { ArrowRight, ShieldCheck, Truck, MapPin, FileText, CheckCircle2, MessageSquare } from 'lucide-react'
+import { ArrowRight, ShieldCheck, Truck, MapPin, FileText, FileCheck, MessageSquare } from 'lucide-react'
 
 export interface HeroProps {
   onExploreClick: () => void
@@ -69,7 +68,7 @@ export default function Hero({ onExploreClick }: HeroProps) {
 
           <div className="guarantee-item-list">
             <div className="guarantee-item">
-              <CheckCircle2 size={18} className="guarantee-icon" />
+              <FileCheck size={18} className="guarantee-icon" />
               <div>
                 <div className="guarantee-item-title">Factura Electrónica Inmediata (19% IVA)</div>
                 <div className="guarantee-item-desc">
@@ -79,7 +78,7 @@ export default function Hero({ onExploreClick }: HeroProps) {
             </div>
 
             <div className="guarantee-item">
-              <CheckCircle2 size={18} className="guarantee-icon" />
+              <Truck size={18} className="guarantee-icon" />
               <div>
                 <div className="guarantee-item-title">Despacho Local y Retiro en Av. Ortúzar</div>
                 <div className="guarantee-item-desc">
@@ -89,7 +88,7 @@ export default function Hero({ onExploreClick }: HeroProps) {
             </div>
 
             <div className="guarantee-item">
-              <CheckCircle2 size={18} className="guarantee-icon" />
+              <ShieldCheck size={18} className="guarantee-icon" />
               <div>
                 <div className="guarantee-item-title">Insumos Certificados y Homologados</div>
                 <div className="guarantee-item-desc">
@@ -99,7 +98,7 @@ export default function Hero({ onExploreClick }: HeroProps) {
             </div>
 
             <div className="guarantee-item">
-              <CheckCircle2 size={18} className="guarantee-icon" />
+              <MessageSquare size={18} className="guarantee-icon" />
               <div>
                 <div className="guarantee-item-title">Mesa Técnica Directa WhatsApp</div>
                 <div className="guarantee-item-desc">

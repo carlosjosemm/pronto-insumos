@@ -78,6 +78,14 @@ describe('PRODUCTS catalog data integrity', () => {
       }
     }
   })
+
+  it('every product in the catalog should have a defined manufacturer', () => {
+    for (const p of PRODUCTS) {
+      expect(p.manufacturer).toBeDefined()
+      expect(typeof p.manufacturer).toBe('string')
+      expect(p.manufacturer!.trim().length).toBeGreaterThan(0)
+    }
+  })
 })
 
 describe('CATEGORIES data integrity', () => {

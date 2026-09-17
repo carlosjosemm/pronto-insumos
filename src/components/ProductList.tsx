@@ -42,13 +42,18 @@ export default function ProductList({ products, loading, onAddToCart, onQuickVie
 
   return (
     <div className="products-grid">
-      {products.map((product) => (
-        <ProductCard
+      {products.map((product, index) => (
+        <div
           key={product.id}
-          product={product}
-          onAddToCart={onAddToCart}
-          onQuickView={onQuickView}
-        />
+          className="product-card-entrance"
+          style={{ animationDelay: `${(index % 4) * 60}ms` }}
+        >
+          <ProductCard
+            product={product}
+            onAddToCart={onAddToCart}
+            onQuickView={onQuickView}
+          />
+        </div>
       ))}
     </div>
   )
