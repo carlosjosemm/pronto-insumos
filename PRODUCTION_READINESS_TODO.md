@@ -128,11 +128,28 @@ These items carry immediate risks of financial loss, critical security vulnerabi
       - 4 integration tests in `src/tests/components/AppPaymentReturn.test.tsx` verifying mount detection, cart clearing, and URL sanitation.
       - Total repository test suite: 201 tests passing (100% test reliability).
 
-- [ ] **2.2. Shopping Cart Persistence (`localStorage`)**
-  - **Current Issue:** Cart state lives strictly in React memory (`useState`). If a customer reloads the page or switches tabs to inspect dental equipment, the cart is wiped clean.
-  - **Required Action:**
-    - Sync cart state with `localStorage` (`pronto_cart_items`).
-    - Validate that stored items still exist in catalog and have available inventory upon session recovery.
+- [x] **2.2. Shopping Cart Persistence (`localStorage`)**
+  - **Context:** Cart state previously lived strictly in ephemeral React memory (`useState`). Reloading the page or switching tabs wiped clinic supply orders clean.
+  - **Fulfilled & Verified:**
+    - **Dedicated Storage Adapter (`src/services/cartStorage.ts`):**
+      - Versioned storage contract using key `pronto_cart_v1` with schema versioning (`version: 1`).
+      - Enforces 7-day maximum retention TTL (`savedAt` timestamp validation), discarding expired entries.
+      - Defensive error handling safeguarding against `QuotaExceededError`, private browsing storage blocks, corrupted JSON, and SSR environments.
+      - Consolidates and deduplicates product line items upon load.
+    - **Catalog Stock & Spec Revalidation:**
+      - `revalidateCartAgainstCatalog()` runs upon initial unfiltered catalog fetch.
+      - Discontinued or out-of-stock items are automatically removed.
+      - Quantities exceeding live physical inventory are clamped down to `stockCount`.
+      - Product prices, names, and specs are refreshed against current live catalog data.
+      - Displays clinical toast alert informing the user if supplies were adjusted.
+    - **State Lifecycle & Order Integration (`src/App.tsx`):**
+      - Lazy initializers hydrate `cart` and `appliedPromo` instantly on mount without flash or layout shifts.
+      - `useEffect` automatically synchronizes cart changes and promo codes to `localStorage`.
+      - `clearCartFromStorage()` purges storage record upon successful order confirmation or approved payment return.
+    - **Automated Test Coverage:**
+      - 17 comprehensive unit tests in `src/tests/services/cartStorage.test.ts`.
+      - 3 integration tests in `src/tests/components/AppCartPersistence.test.tsx`.
+      - Total repository test suite: 233 tests passing (100% test reliability).
 
 - [ ] **2.3. Pre-Checkout Inventory Validation & Max-Stock Cues**
   - **Context & Current State:** Front-end quantity steppers in `App.tsx` and `ProductQuickView.tsx` already clamp item additions to `product.stockCount`. However, if stock depletes while a customer is browsing or if an item in the cart reaches max stock, additional safeguards are needed.

@@ -19,3 +19,48 @@ Object.assign(import.meta.env, {
   VITE_MERCADOPAGO_PUBLIC_KEY: 'TEST-key-placeholder',
   ...import.meta.env
 })
+
+// Clean in-memory Storage implementation for test environment (fixes Node 22 jsdom limitation)
+class LocalStorageMock implements Storage {
+  private store: Record<string, string> = {}
+
+  get length() {
+    return Object.keys(this.store).length
+  }
+
+  clear() {
+    this.store = {}
+  }
+
+  getItem(key: string): string | null {
+    return this.store[key] ?? null
+  }
+
+  setItem(key: string, value: string) {
+    this.store[key] = String(value)
+  }
+
+  removeItem(key: string) {
+    delete this.store[key]
+  }
+
+  key(index: number): string | null {
+    return Object.keys(this.store)[index] ?? null
+  }
+}
+
+const mockStorage = new LocalStorageMock()
+
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'localStorage', {
+    value: mockStorage,
+    writable: true,
+    configurable: true
+  })
+}
+
+Object.defineProperty(globalThis, 'localStorage', {
+  value: mockStorage,
+  writable: true,
+  configurable: true
+})
