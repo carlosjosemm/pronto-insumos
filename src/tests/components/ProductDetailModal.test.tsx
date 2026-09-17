@@ -9,6 +9,7 @@ const mockProduct: Product = {
   id: 'odon-101',
   name: 'Turbina Odontológica LED MasterTorque',
   category: 'Instruments',
+  manufacturer: 'NSK',
   price: 189990,
   originalPrice: 229990,
   rating: 4.9,
@@ -195,6 +196,13 @@ describe('Product Detail Modal (ProductQuickView)', () => {
     )
 
     expect(screen.queryByText(/reseñas clínicas verificadas/i)).toBeNull()
+  })
+
+  it('renders manufacturer line when manufacturer is provided', () => {
+    render(
+      <ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
+    )
+    expect(screen.getByText('Instruments · NSK')).toBeInTheDocument()
   })
 })
 

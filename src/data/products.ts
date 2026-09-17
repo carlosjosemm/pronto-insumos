@@ -13,6 +13,7 @@ export const PRODUCTS: Product[] = [
     id: 'odon-101',
     name: 'Turbina Odontológica LED MasterTorque',
     category: 'Instruments',
+    manufacturer: 'NSK',
     price: 189990,
     originalPrice: 229990,
     rating: 4.9,
@@ -30,11 +31,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-teal',
     mediaBadge: 'Fibra Óptica LED',
-    images: [
-      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=800&q=80'
-    ],
+    images: [],
     packageContents: [
       '1x Turbina de alta velocidad LED MasterTorque (Midwest 4 vías)',
       '1x Llave extractora y calibradora para cambio de rotor',
@@ -46,6 +43,7 @@ export const PRODUCTS: Product[] = [
     id: 'odon-102',
     name: 'Lámpara de Fotocurado Inalámbrica CuringPro 3000',
     category: 'Diagnostics',
+    manufacturer: 'Woodpecker',
     price: 129500,
     originalPrice: 159000,
     rating: 4.8,
@@ -63,10 +61,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-blue',
     mediaBadge: '3000 mW/cm²',
-    images: [
-      'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80'
-    ],
+    images: [],
     packageContents: [
       '1x Lámpara de fotocurado inalámbrica CuringPro 3000',
       '1x Base de carga con conector de alimentación',
@@ -78,6 +73,7 @@ export const PRODUCTS: Product[] = [
     id: 'odon-103',
     name: 'Escariador Ultrasónico Dental OdonClean Pro',
     category: 'Instruments',
+    manufacturer: 'DTE / Satelec',
     price: 245000,
     originalPrice: 295000,
     rating: 4.9,
@@ -95,10 +91,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-cyan',
     mediaBadge: 'Piezoeléctrico 32kHz',
-    images: [
-      'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80'
-    ],
+    images: [],
     packageContents: [
       '1x Unidad principal de detartraje OdonClean Pro',
       '1x Pieza de mano ultrasónica desmontable',
@@ -111,6 +104,7 @@ export const PRODUCTS: Product[] = [
     id: 'odon-104',
     name: 'Kit de Resinas Compuestas Nano-Híbridas DentFill',
     category: 'Materials',
+    manufacturer: 'DentFill',
     price: 79990,
     originalPrice: 99000,
     rating: 4.7,
@@ -128,10 +122,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-emerald',
     mediaBadge: 'Nano-Híbrido',
-    images: [
-      'https://images.unsplash.com/photo-1629909615184-74f495363b67?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80'
-    ],
+    images: [],
     packageContents: [
       '8x Jeringas de resina compuesta de 4g (A1, A2, A3, A3.5, B2, C2, Incisal, Denti)',
       '1x Frasco de adhesivo universal 5ml',
@@ -144,6 +135,7 @@ export const PRODUCTS: Product[] = [
     id: 'odon-201',
     name: 'Autoclave Odontológico Clase B 18L SterilMax',
     category: 'Sterilization',
+    manufacturer: 'SterilMax',
     price: 899000,
     originalPrice: 1100000,
     rating: 5.0,
@@ -161,10 +153,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-indigo',
     mediaBadge: 'Clase B Vacío',
-    images: [
-      'https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80'
-    ],
+    images: [],
     packageContents: [
       '1x Autoclave Clase B 18L SterilMax',
       '3x Bandejas de acero inoxidable para instrumental',
@@ -177,6 +166,7 @@ export const PRODUCTS: Product[] = [
     id: 'odon-202',
     name: 'Alginato Cromático de Alta Precisión ImpressDent (500g)',
     category: 'Materials',
+    manufacturer: 'ImpressDent',
     price: 18500,
     originalPrice: 24000,
     rating: 4.8,
@@ -194,9 +184,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-slate',
     mediaBadge: 'Guía Cromática',
-    images: [
-      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80'
-    ],
+    images: [],
     packageContents: [
       '1x Bolsa sellada al vacío de 500g de alginato cromático',
       '1x Cuchara dosificadora de polvo milimetrada',
@@ -207,6 +195,7 @@ export const PRODUCTS: Product[] = [
     id: 'odon-301',
     name: 'Localizador de Ápice Digital ApexPro V',
     category: 'Diagnostics',
+    manufacturer: 'Woodpecker',
     price: 165000,
     originalPrice: 199000,
     rating: 4.9,
@@ -224,10 +213,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-emerald',
     mediaBadge: 'Precisión 98.4%',
-    images: [
-      'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=800&q=80'
-    ],
+    images: [],
     packageContents: [
       '1x Localizador de ápice digital ApexPro V',
       '1x Cable de prueba y conexión',
@@ -240,6 +226,7 @@ export const PRODUCTS: Product[] = [
     id: 'odon-302',
     name: 'Set de Instrumental de Exploración Odontológica (10 pzas)',
     category: 'Instruments',
+    manufacturer: 'Hu-Friedy',
     price: 42000,
     originalPrice: 55000,
     rating: 4.7,
@@ -257,10 +244,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-blue',
     mediaBadge: 'Acero Alemán 316L',
-    images: [
-      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=800&q=80'
-    ],
+    images: [],
     packageContents: [
       '2x Espejos bucales planos nº 5 con mango ergonómico',
       '2x Exploradores dentales dobles nº 23/17',
@@ -273,6 +257,7 @@ export const PRODUCTS: Product[] = [
     id: 'odon-401',
     name: 'Campos Quirúrgicos Desechables Impermeables (Caja 100 un)',
     category: 'Sterilization',
+    manufacturer: 'SteriTex',
     price: 32990,
     originalPrice: 42000,
     rating: 0,
@@ -290,9 +275,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-red',
     mediaBadge: 'Doble Capa Barredor',
-    images: [
-      'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80'
-    ],
+    images: [],
     packageContents: [
       '1x Caja dispensadora con 100 campos impermeables 33x45cm'
     ]
@@ -301,6 +284,7 @@ export const PRODUCTS: Product[] = [
     id: 'odon-402',
     name: 'Motor de Implante Odontológico ImplaDrive Pro',
     category: 'Instruments',
+    manufacturer: 'W&H',
     price: 1250000,
     originalPrice: 1450000,
     rating: 5.0,
@@ -318,10 +302,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-amber',
     mediaBadge: 'Torque 80 Ncm',
-    images: [
-      'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80'
-    ],
+    images: [],
     packageContents: [
       '1x Consola principal quirúrgica ImplaDrive Pro con pantalla táctil',
       '1x Micromotor quirúrgico esterilizable en autoclave',

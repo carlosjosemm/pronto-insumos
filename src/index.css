@@ -1,8 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
   /* Typography */
-  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-body: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Mono', monospace;
 
   /* Primary Clinical Palette (Authentic Dental Depot) */
   --navy-950: #07101d;   /* Top utility bar, dark contrast anchors */
@@ -45,10 +48,14 @@
   --slate-50:  #f8fafc;
   --bg-main:   #f8fafb;
 
-  /* Status Accents */
+  /* Status & Commercial Accents */
   --success: #059669;  /* Stock available */
   --warning: #d97706;  /* Low stock notice */
   --danger:  #dc2626;  /* Prescription required / Error */
+  --accent-warm: #b45309;        /* Warm amber for pricing emphasis, promo tags, urgency */
+  --accent-warm-bg: #fffbeb;     /* Warm highlight background */
+  --accent-warm-border: #fde68a; /* Warm highlight border */
+  --accent-info: #3b82f6;        /* Informational links, secondary badges */
 
   /* Borders & Dividers */
   --border-subtle: #e2e8f0;
@@ -231,9 +238,10 @@ input, select, textarea {
 }
 
 .brand-name {
-  font-weight: 800;
-  font-size: 1.35rem;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
   color: var(--navy-900);
   line-height: 1.1;
 }
@@ -348,6 +356,7 @@ input, select, textarea {
 .cart-count-badge {
   background: var(--teal-600);
   color: #ffffff;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 800;
   min-width: 22px;
@@ -357,6 +366,17 @@ input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.15s ease-out;
+}
+
+.cart-count-badge--pulse {
+  animation: badgePulse 300ms ease-out;
+}
+
+@keyframes badgePulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
 }
 
 /* ==========================================================================
@@ -364,7 +384,7 @@ input, select, textarea {
    ========================================================================== */
 .hero-section {
   position: relative;
-  background: #ffffff;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f5ff 50%, #e8f0fe 100%);
   color: var(--text-primary);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
@@ -491,6 +511,7 @@ input, select, textarea {
 .hero-card-preview {
   background: var(--surface-bg);
   border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--teal-600);
   border-radius: var(--radius-md);
   padding: 1.75rem;
   display: flex;
@@ -575,9 +596,12 @@ input, select, textarea {
 .category-pills {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   overflow-x: auto;
-  padding-bottom: 0.4rem;
+  padding: 0.35rem;
+  background: var(--surface-muted);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -589,13 +613,13 @@ input, select, textarea {
 .category-pill-btn {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.55rem 1rem;
+  gap: 0.45rem;
+  padding: 0.5rem 0.95rem;
   border-radius: var(--radius-sm);
   font-weight: 600;
   font-size: 0.85rem;
-  background: #ffffff;
-  border: 1px solid var(--border-subtle);
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--text-secondary);
   white-space: nowrap;
   min-height: 38px;
@@ -603,16 +627,33 @@ input, select, textarea {
 }
 
 .category-pill-btn:hover {
-  border-color: var(--border-strong);
   color: var(--navy-900);
-  background: var(--surface-muted);
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .category-pill-btn.active {
-  background: var(--navy-900);
-  color: #ffffff;
-  border-color: var(--navy-900);
-  box-shadow: var(--shadow-xs);
+  background: #ffffff;
+  color: var(--navy-900);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+  font-weight: 700;
+}
+
+.category-pill-count {
+  background: rgba(11, 25, 44, 0.06);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.725rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-xs);
+  margin-left: 0.2rem;
+  transition: var(--transition-fast);
+}
+
+.category-pill-btn.active .category-pill-count {
+  background: var(--teal-50);
+  color: var(--teal-700);
 }
 
 .filter-controls-row {
@@ -686,6 +727,8 @@ input, select, textarea {
 }
 
 .product-card {
+  height: 100%;
+  width: 100%;
   background: #ffffff;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
@@ -709,6 +752,11 @@ input, select, textarea {
   outline-offset: 2px;
 }
 
+/* Featured product card warm top accent strip */
+.product-card--featured {
+  border-top: 3px solid var(--accent-warm);
+}
+
 /* Technical Card Header */
 .product-card-tech-header {
   display: flex;
@@ -721,7 +769,7 @@ input, select, textarea {
 }
 
 .product-ref-badge {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-weight: 700;
   color: var(--navy-800);
   background: #e2e8f0;
@@ -733,18 +781,35 @@ input, select, textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-weight: 600;
-  color: #059669;
+  font-size: 0.725rem;
+  font-weight: 700;
+  color: var(--success);
+}
+
+.product-stock-status.stock-warning {
+  color: var(--accent-warm);
+}
+
+.product-stock-status.stock-warning .product-stock-dot {
+  background: var(--accent-warm);
+}
+
+.product-stock-status.stock-danger {
+  color: var(--danger);
+}
+
+.product-stock-status.stock-danger .product-stock-dot {
+  background: var(--danger);
 }
 
 .product-stock-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #059669;
+  background: var(--success);
 }
 
-/* Media Placeholder Box (Clean, Sterile Presentation) */
+/* Media Placeholder Box (Clean, Sterile Frame with Dot-Grid Texture) */
 .media-placeholder-box {
   width: 100%;
   height: 180px;
@@ -754,7 +819,10 @@ input, select, textarea {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: #f1f5f9;
+  background:
+    radial-gradient(circle, #cbd5e1 1.2px, transparent 1.2px),
+    #f8fafc;
+  background-size: 16px 16px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -766,7 +834,48 @@ input, select, textarea {
 .media-placeholder-box.gradient-slate,
 .media-placeholder-box.gradient-red,
 .media-placeholder-box.gradient-amber {
-  background: #f8fafc;
+  background:
+    radial-gradient(circle, #cbd5e1 1.2px, transparent 1.2px),
+    #f8fafc;
+  background-size: 16px 16px;
+}
+
+.media-placeholder-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  text-align: center;
+  width: 100%;
+}
+
+.placeholder-icon-frame {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+  box-shadow: var(--shadow-xs);
+}
+
+.placeholder-icon-frame svg {
+  color: var(--teal-600);
+}
+
+.placeholder-product-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  max-width: 85%;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card-clickable-media {
@@ -834,6 +943,25 @@ input, select, textarea {
   border-radius: var(--radius-xs);
 }
 
+.discount-badge {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  background: var(--accent-warm-bg);
+  color: var(--accent-warm);
+  border: 1px solid var(--accent-warm-border);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-xs);
+  z-index: 2;
+}
+
+.discount-badge + .rx-badge {
+  top: 2.25rem;
+}
+
 .placeholder-icon-symbol {
   color: var(--teal-600);
   margin-bottom: 0.4rem;
@@ -870,6 +998,15 @@ input, select, textarea {
   color: var(--text-secondary);
 }
 
+.product-manufacturer-line {
+  font-size: 0.725rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
 .product-title {
   font-size: 1rem;
   font-weight: 700;
@@ -890,6 +1027,18 @@ input, select, textarea {
   font-size: 0.8rem;
   color: var(--text-muted);
   margin-bottom: 0.65rem;
+  min-height: 1.35rem;
+}
+
+.product-rating--empty {
+  color: var(--text-muted);
+}
+
+.no-reviews-label {
+  font-size: 0.725rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
 }
 
 .star-filled {
@@ -898,14 +1047,15 @@ input, select, textarea {
 }
 
 .product-description-preview {
-  font-size: 0.825rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
-  line-height: 1.45;
+  line-height: 1.5;
   margin-bottom: 1rem;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  min-height: 2.625rem;
 }
 
 .product-card-pricing-row {
@@ -935,13 +1085,15 @@ input, select, textarea {
 }
 
 .current-price {
-  font-size: 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
   font-weight: 800;
   color: var(--navy-900);
 }
 
 .original-price {
-  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
   color: var(--text-muted);
   text-decoration: line-through;
 }
@@ -1671,6 +1823,35 @@ input, select, textarea {
   font-weight: 600;
   animation: slideUp 0.25s ease-out;
   border-left: 4px solid var(--teal-600);
+  position: relative;
+  overflow: hidden;
+}
+
+.toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--teal-600);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  animation: toastDrain 3s linear forwards;
+}
+
+@keyframes toastDrain {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.cart-checkout-trust {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  font-size: 0.775rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-top: 0.75rem;
+  text-align: center;
 }
 
 /* ==========================================================================
@@ -1725,8 +1906,8 @@ input, select, textarea {
 }
 
 .footer-prop-icon {
-  background: rgba(8, 131, 149, 0.15);
-  color: #38bdf8;
+  background: var(--teal-600);
+  color: #ffffff;
   padding: 0.75rem;
   border-radius: var(--radius-sm);
   display: flex;
@@ -1797,6 +1978,38 @@ input, select, textarea {
 @keyframes slideLeft {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
+}
+
+/* Card Entrance Stagger Animation */
+.product-card-entrance {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  animation: cardEntrance 300ms ease-out both;
+}
+
+@keyframes cardEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 993px) {
+  .footer-grid-4col > div:not(:last-child) {
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    padding-right: 2rem;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 992px) {
+  .products-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 992px) {
@@ -1897,5 +2110,21 @@ input, select, textarea {
   .btn-whatsapp-inquiry {
     width: 100%;
     justify-content: center;
+  }
+}
+
+@media (max-width: 768px) {
+  .category-pills {
+    padding-right: 1.5rem;
+    -webkit-mask-image: linear-gradient(to right, black 88%, transparent 100%);
+    mask-image: linear-gradient(to right, black 88%, transparent 100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-card-entrance,
+  .cart-count-badge--pulse,
+  .toast-progress {
+    animation: none !important;
   }
 }

@@ -87,6 +87,11 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
   const isCurrentImgFailed = failedImages[activeImgIndex]
   const currentPhotoUrl = photos[activeImgIndex]
 
+  const discountPercent = (product.originalPrice && product.originalPrice > product.price)
+    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+    : 0
+  const showDiscount = discountPercent >= 5
+
   const handlePrevPhoto = (e: React.MouseEvent) => {
     e.stopPropagation()
     setActiveImgIndex((prev) => (prev > 0 ? prev - 1 : photos.length - 1))
@@ -130,7 +135,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
                 />
               ) : (
                 <div className="gallery-placeholder-fallback">
-                  <CategoryIcon size={56} strokeWidth={1.5} />
+                  <div className="placeholder-icon-frame">
+                    <CategoryIcon size={44} strokeWidth={1.75} />
+                  </div>
                   <span className="gallery-placeholder-text">{product.name}</span>
                 </div>
               )}
@@ -140,6 +147,10 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
                 <ShieldCheck size={12} />
                 <span>{product.mediaBadge}</span>
               </div>
+
+              {showDiscount && (
+                <div className="discount-badge">-{discountPercent}%</div>
+              )}
 
               {product.prescriptionRequired && (
                 <div className="rx-badge">Uso Profesional</div>
@@ -221,6 +232,13 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               <span className="product-ref-badge">REF: {skuRef}</span>
               <span className="product-tag-chip">{product.tag}</span>
             </div>
+
+            {/* Brand / Manufacturer Attribution Line */}
+            {product.manufacturer && (
+              <div className="product-manufacturer-line">
+                {product.category} · {product.manufacturer}
+              </div>
+            )}
 
             {/* Product Title */}
             <h2 id="modal-product-title" className="detail-product-title">

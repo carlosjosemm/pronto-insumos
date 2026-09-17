@@ -8,6 +8,7 @@ const mockProduct: Product = {
   id: 'odon-test-001',
   name: 'Autoclave Clase B 18L SterilMax',
   category: 'Sterilization',
+  manufacturer: 'SterilMax',
   price: 899000,
   originalPrice: 1100000,
   rating: 5.0,
@@ -143,7 +144,7 @@ describe('ProductCard component', () => {
     expect(screen.getByText('Clase B Vacío')).toBeInTheDocument()
   })
 
-  it('should omit rating section when product has zero reviews', () => {
+  it('should render empty rating placeholder when product has zero reviews', () => {
     const productZeroReviews = {
       ...mockProduct,
       reviewsCount: 0,
@@ -157,5 +158,85 @@ describe('ProductCard component', () => {
       />
     )
     expect(screen.queryByText('(0)')).toBeNull()
+    expect(screen.getByText('Sin reseñas aún')).toBeInTheDocument()
+  })
+
+  it('should render discount badge when originalPrice exists and is greater than price', () => {
+    render(
+      <ProductCard
+        product={mockProduct}
+        onAddToCart={() => {}}
+        onQuickView={() => {}}
+      />
+    )
+    expect(screen.getByText('-18%')).toBeInTheDocument()
+  })
+
+  it('should NOT render discount badge when no originalPrice', () => {
+    const productNoDiscount = {
+      ...mockProduct,
+      originalPrice: undefined
+    }
+    render(
+      <ProductCard
+        product={productNoDiscount}
+        onAddToCart={() => {}}
+        onQuickView={() => {}}
+      />
+    )
+    expect(screen.queryByText(/-\d+%/)).toBeNull()
+  })
+
+  it('should NOT render discount badge when originalPrice <= price', () => {
+    const productSurgePrice = {
+      ...mockProduct,
+      originalPrice: 800000,
+      price: 899000
+    }
+    render(
+      <ProductCard
+        product={productSurgePrice}
+        onAddToCart={() => {}}
+        onQuickView={() => {}}
+      />
+    )
+    expect(screen.queryByText(/-\d+%/)).toBeNull()
+  })
+
+  it('should render manufacturer line when manufacturer is provided', () => {
+    render(
+      <ProductCard
+        product={mockProduct}
+        onAddToCart={() => {}}
+        onQuickView={() => {}}
+      />
+    )
+    expect(screen.getByText('Sterilization · SterilMax')).toBeInTheDocument()
+  })
+
+  it('should omit manufacturer line when manufacturer is undefined', () => {
+    const productNoMfr = {
+      ...mockProduct,
+      manufacturer: undefined
+    }
+    render(
+      <ProductCard
+        product={productNoMfr}
+        onAddToCart={() => {}}
+        onQuickView={() => {}}
+      />
+    )
+    expect(screen.queryByText(/Sterilization ·/)).toBeNull()
+  })
+
+  it('should render low-stock warning when stockCount <= 5', () => {
+    render(
+      <ProductCard
+        product={mockProduct}
+        onAddToCart={() => {}}
+        onQuickView={() => {}}
+      />
+    )
+    expect(screen.getByText('Últimas 4 unid.')).toBeInTheDocument()
   })
 })

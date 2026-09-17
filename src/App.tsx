@@ -203,6 +203,7 @@ export default function App() {
           <div key={toast.id} className="toast-item">
             <CheckCircle2 size={18} style={{ color: 'var(--teal-600)' }} />
             <span>{toast.message}</span>
+            <div className="toast-progress" />
           </div>
         ))}
       </div>

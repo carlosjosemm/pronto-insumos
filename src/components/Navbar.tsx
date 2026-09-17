@@ -9,6 +9,18 @@ export interface NavbarProps {
 }
 
 export default function Navbar({ search, setSearch, cartCount, onOpenCart }: NavbarProps) {
+  const [isPulsing, setIsPulsing] = React.useState(false)
+  const prevCount = React.useRef(cartCount)
+
+  React.useEffect(() => {
+    if (cartCount > prevCount.current) {
+      setIsPulsing(true)
+      const timer = setTimeout(() => setIsPulsing(false), 300)
+      prevCount.current = cartCount
+      return () => clearTimeout(timer)
+    }
+    prevCount.current = cartCount
+  }, [cartCount])
   return (
     <>
       {/* Top Commercial Utility Bar */}
@@ -74,7 +86,11 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart }: Nav
             >
               <ShoppingBag size={18} />
               <span className="cart-btn-label">Carro</span>
-              {cartCount > 0 && <span className="cart-count-badge">{cartCount}</span>}
+              {cartCount > 0 && (
+                <span className={`cart-count-badge ${isPulsing ? 'cart-count-badge--pulse' : ''}`}>
+                  {cartCount}
+                </span>
+              )}
             </button>
           </div>
         </div>

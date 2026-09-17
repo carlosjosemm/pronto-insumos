@@ -31,6 +31,7 @@ const mockProduct: Product = {
   id: 'odon-101',
   name: 'Turbina Odontológica LED MasterTorque',
   category: 'Instruments',
+  manufacturer: 'NSK',
   price: 189990,
   rating: 4.9,
   reviewsCount: 86,

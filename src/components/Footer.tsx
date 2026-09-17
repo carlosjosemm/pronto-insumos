@@ -65,6 +65,7 @@ export default function Footer() {
             <div style={{ fontSize: '0.8rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <div><strong>RUT Empresa:</strong> 77.892.410-K</div>
               <div><strong>Bodega & Despacho:</strong> Av. Ortúzar 750, Melipilla, Chile</div>
+              <div><strong>Distribución local:</strong> Melipilla, Talagante, Peñaflor y RM</div>
               <div><strong>Horario de Atención:</strong> Lunes a Viernes 08:30 – 18:30 hrs</div>
             </div>
           </div>
