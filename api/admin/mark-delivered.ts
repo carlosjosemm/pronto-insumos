@@ -37,12 +37,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ success: false, error: 'Pedido no encontrado' })
     }
 
+    const currentStatus = doc.data()?.status || null
     const nowIso = new Date().toISOString()
-    await orderRef.update({
+    const historyRef = db.collection('order_status_history').doc()
+
+    const batch = db.batch()
+    batch.update(orderRef, {
       status: 'ENTREGADO',
       deliveredAt: nowIso,
       updatedAt: nowIso
     })
+
+    batch.set(historyRef, {
+      id: historyRef.id,
+      orderId: orderId.trim(),
+      previousStatus: currentStatus,
+      newStatus: 'ENTREGADO',
+      changedBy: authResult.uid || 'admin',
+      changedByEmail: authResult.email || null,
+      actorRole: 'ADMIN',
+      timestamp: nowIso,
+      reason: 'Confirmación final de entrega y recepción conforme',
+      metadata: {
+        confirmedBy: authResult.email || authResult.uid || 'admin'
+      }
+    })
+
+    await batch.commit()
 
     return res.status(200).json({
       success: true,

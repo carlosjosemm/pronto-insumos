@@ -117,9 +117,31 @@ When staff click **"Aprobar Transferencia y Rebajar Stock"**:
 5. Updates order status to `'TRANSFERENCIA_APROBADA'`, recording `approvedBy` (admin email) and `approvedAt` (ISO timestamp).
 6. Ensures Melipilla warehouse physical inventory matches database counts in real-time.
 
+### 4.4 Lifecycle Traceability & Audit Trail Timeline
+In `OrderDetailPanel.tsx`, staff can review the **Historial de Estados y Auditoría** timeline for any order.
+- Fetches chronological transitions from `api/admin/order-history?orderId=...`.
+- Displays who executed the state change (staff email, customer, or Mercado Pago webhook), the exact timestamp, the reason, and delivery/payment telemetry.
+
 ---
 
-## 📂 5. Directory Map
+## 🛠️ 5. Database Schema & Migration CLI Tooling
+
+PRONTO provides an administrative CLI utility ([`scripts/manage-firestore-schema.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/manage-firestore-schema.ts)) to enforce data quality and manage database lifecycles:
+
+```powershell
+# 1. Inspect live Firestore documents against the frozen schema (Read-Only)
+pnpm run schema:validate
+
+# 2. Seed canonical products and initial sample order with audit logs
+pnpm run schema:seed
+
+# 3. Purge legacy test documents and re-initialize with frozen schema
+pnpm run schema:purge-and-seed --force
+```
+
+---
+
+## 📂 6. Directory Map
 
 | File | Purpose |
 | :--- | :--- |
@@ -134,7 +156,7 @@ When staff click **"Aprobar Transferencia y Rebajar Stock"**:
 | [`src/admin/components/AdminDashboard.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminDashboard.tsx) | 4 KPI cards, split orders table (65%), and low-stock alerts (35%). |
 | [`src/admin/components/AdminOrders.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminOrders.tsx) | Order management view with search, filter chips, and table. |
 | [`src/admin/components/OrderTable.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/OrderTable.tsx) | Sortable, paginated order list with quick inspect actions. |
-| [`src/admin/components/OrderDetailPanel.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/OrderDetailPanel.tsx) | 420px slide-over inspector for invoicing, receipts, and fulfillment actions. |
+| [`src/admin/components/OrderDetailPanel.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/OrderDetailPanel.tsx) | 420px slide-over inspector for invoicing, receipts, fulfillment actions, and audit timeline. |
 | [`src/admin/components/AdminInventory.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminInventory.tsx) | Product inventory view with stock counters and quick actions. |
 | [`src/admin/components/InventoryTable.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/InventoryTable.tsx) | Real-time product table with instant visibility switch. |
 | [`src/admin/components/StockAdjustModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/StockAdjustModal.tsx) | 420px modal for stock adjustments with audit reason codes. |

@@ -39,6 +39,23 @@ pnpm run setup:admin tu-email@prontoinsumos.cl TuPasswordSegura123!
 
 ---
 
+## 📦 Firestore Schema Validation & Seeding
+
+PRONTO enforces frozen schemas for `products` and `orders`, along with append-only audit trail collections (`order_status_history` and `inventory_audit_logs`).
+
+```bash
+# 1. Inspect live Firestore documents against the frozen schema (Read-Only report)
+pnpm run schema:validate
+
+# 2. Seed canonical products and initial sample order with audit logs
+pnpm run schema:seed
+
+# 3. Purge legacy test collections and re-initialize with frozen schema
+pnpm run schema:purge-and-seed --force
+```
+
+---
+
 ## 🧪 Testing & Validation
 
 ```bash

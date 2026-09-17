@@ -20,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ success: false, error: authResult.error })
   }
 
-  const { productId, newStock, reason } = req.body || {}
+  const { productId, newStock, reason, notes } = req.body || {}
   if (!productId || typeof productId !== 'string') {
     return res.status(400).json({ success: false, error: 'El parámetro "productId" es obligatorio' })
   }
@@ -40,22 +40,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ success: false, error: 'Producto no encontrado' })
     }
 
-    const previousStock = doc.data()?.stockCount || 0
+    const productData = doc.data() || {}
+    const previousStock = typeof productData.stockCount === 'number' ? productData.stockCount : 0
     const nowIso = new Date().toISOString()
     const validStock = Math.round(newStock)
+    const delta = validStock - previousStock
+    const adminActor = authResult.email || authResult.uid || 'admin'
 
-    await productRef.update({
+    const batch = db.batch()
+    batch.update(productRef, {
       stockCount: validStock,
       inStock: validStock > 0,
       lastStockAdjustment: {
         previousStock,
         newStock: validStock,
         reason: reason || 'correccion',
+        notes: notes || '',
         adjustedAt: nowIso,
-        adjustedBy: authResult.uid || 'admin'
+        adjustedBy: adminActor
       },
       updatedAt: nowIso
     })
+
+    const auditRef = db.collection('inventory_audit_logs').doc()
+    batch.set(auditRef, {
+      id: auditRef.id,
+      productId: productId.trim(),
+      productSku: productData.sku || '',
+      productName: productData.name || productId.trim(),
+      changeType: 'STOCK_ADJUSTMENT',
+      previousStock,
+      newStock: validStock,
+      delta,
+      reasonCode: reason || 'correccion',
+      operatorNotes: notes || '',
+      changedBy: authResult.uid || 'admin',
+      changedByEmail: authResult.email || null,
+      actorRole: 'ADMIN',
+      timestamp: nowIso
+    })
+
+    await batch.commit()
 
     return res.status(200).json({
       success: true,

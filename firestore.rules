@@ -46,6 +46,22 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
+    // Order Lifecycle & Audit History:
+    // Append-only tamper-proof log.
+    // Read-only for authenticated administrators; client-side writes forbidden.
+    match /order_status_history/{historyId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Inventory Audit Logs:
+    // Append-only stock adjustment and catalog changes log.
+    // Read-only for authenticated administrators; client-side writes forbidden.
+    match /inventory_audit_logs/{auditId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // Default deny for all other collections
     match /{document=**} {
       allow read, write: if false;

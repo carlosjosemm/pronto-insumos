@@ -135,6 +135,19 @@ The internal administrative portal communicates with dedicated serverless endpoi
 | [`/api/admin/update-stock`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/update-stock.ts) | `POST` | Adjusts product inventory count. Supports audit logging with reason codes (`reposicion`, `merma`, `correccion`, `venta_manual`) and operator notes. Automatically sets `inStock: false` if count reaches 0. |
 | [`/api/admin/update-product`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/update-product.ts) | `POST` | Updates product metadata: name, description, category, integer CLP price, manufacturer, package contents, and specs. |
 | [`/api/admin/toggle-visibility`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/toggle-visibility.ts) | `POST` | Instant catalog visibility switch: toggles `inStock` without modifying the physical stock count. |
+| [`/api/admin/order-history`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/order-history.ts) | `GET` | Retrieves chronological status transition timeline from `order_status_history` for an order. |
+
+### 5.3 Relational Traceability & Audit Trail Architecture
+To achieve tamper-proof traceability without an external SQL database, the serverless layer enforces an **append-only audit pattern** across two dedicated root collections:
+
+1. **`order_status_history` (`orderId` Foreign Key):**
+   - Whenever an order transitions between statuses (via Mercado Pago webhook, voucher upload, admin approval, dispatch, or delivery), the serverless function atomically inserts an audit event inside the same transaction/batch.
+   - Fields: `orderId`, `previousStatus`, `newStatus`, `changedBy`, `changedByEmail`, `actorRole` (`ADMIN` | `CUSTOMER` | `SYSTEM_WEBHOOK`), `timestamp`, `reason`, and contextual `metadata`.
+2. **`inventory_audit_logs` (`productId` Foreign Key):**
+   - Every physical stock change or product metadata update records an immutable log entry.
+   - Fields: `productId`, `productSku`, `productName`, `changeType`, `previousStock`, `newStock`, `delta`, `reasonCode` (`reposicion`, `merma`, `correccion`, `venta_manual`, `orden_compra`), `operatorNotes`, `changedBy`, and `timestamp`.
+3. **Security Guardrail:**
+   - Under `firestore.rules`, both collections are read-only for authenticated admins (`allow read: if isAdmin();`) and completely write-blocked for all client browser SDKs (`allow write: if false;`).
 
 ---
 

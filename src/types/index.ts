@@ -8,15 +8,19 @@ export interface Category {
 
 export interface Product {
   id: string
+  sku?: string
   name: string
+  brand?: string
   category: string
   price: number
+  priceNeto?: number
   originalPrice?: number
   rating: number
   reviewsCount: number
   inStock: boolean
   stockCount: number
   prescriptionRequired: boolean
+  ispRegistrationNumber?: string
   tag: string
   description: string
   specs: string[]
@@ -25,6 +29,8 @@ export interface Product {
   images?: string[]
   packageContents?: string[]
   manufacturer?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface CartItem {
@@ -190,3 +196,44 @@ export interface UploadVoucherResult {
   message?: string
   error?: string
 }
+
+export type AuditActorRole = 'ADMIN' | 'CUSTOMER' | 'SYSTEM_WEBHOOK' | 'SYSTEM_SEED' | 'SYSTEM_CRON'
+
+export interface OrderStatusHistory {
+  id: string
+  orderId: string
+  previousStatus: OrderStatus | null
+  newStatus: OrderStatus
+  changedBy: string
+  changedByEmail?: string | null
+  actorRole: AuditActorRole
+  timestamp: string
+  reason: string
+  metadata?: Record<string, any>
+}
+
+export type InventoryChangeType =
+  | 'STOCK_ADJUSTMENT'
+  | 'ORDER_FULFILLMENT_DEDUCTION'
+  | 'METADATA_UPDATE'
+  | 'VISIBILITY_TOGGLE'
+  | 'CATALOG_SEED'
+
+export interface InventoryAuditLog {
+  id: string
+  productId: string
+  productSku?: string
+  productName?: string
+  changeType: InventoryChangeType
+  previousStock?: number | null
+  newStock?: number | null
+  delta?: number | null
+  reasonCode?: string
+  operatorNotes?: string
+  changedBy: string
+  changedByEmail?: string | null
+  actorRole: AuditActorRole
+  timestamp: string
+  metadata?: Record<string, any>
+}
+

@@ -67,6 +67,23 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     expect(content).toContain("!('paidAt' in data)")
   })
 
+  it('should enforce read-only for admins and write-deny on audit log collections', () => {
+    const content = fs.readFileSync(rulesPath, 'utf8')
+
+    // order_status_history rules
+    expect(content).toMatch(/match\s+\/order_status_history\/\{historyId\}\s*\{/)
+    expect(content).toMatch(/match\s+\/inventory_audit_logs\/\{auditId\}\s*\{/)
+
+    // Ensure client-side writes are forbidden
+    const historyBlock = content.split('match /order_status_history/{historyId}')[1].split('}')[0]
+    expect(historyBlock).toContain('allow read: if isAdmin();')
+    expect(historyBlock).toContain('allow write: if false;')
+
+    const inventoryAuditBlock = content.split('match /inventory_audit_logs/{auditId}')[1].split('}')[0]
+    expect(inventoryAuditBlock).toContain('allow read: if isAdmin();')
+    expect(inventoryAuditBlock).toContain('allow write: if false;')
+  })
+
   it('should enforce a default-deny rule on all unspecified collections', () => {
     const content = fs.readFileSync(rulesPath, 'utf8')
     expect(content).toMatch(/match\s+\/\{document=\*\*\}\s*\{\s*allow\s+read,\s*write:\s*if\s+false;\s*\}/)

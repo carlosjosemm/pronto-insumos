@@ -40,21 +40,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ success: false, error: 'Pedido no encontrado' })
     }
 
+    const currentStatus = doc.data()?.status || null
     const nowIso = new Date().toISOString()
     const dispatchData = {
       carrier: carrier.trim(),
       trackingCode: trackingCode ? String(trackingCode).trim() : undefined,
       dispatchedAt: nowIso,
-      dispatchedBy: authResult.uid || 'admin'
+      dispatchedBy: authResult.email || authResult.uid || 'admin'
     }
 
-    await orderRef.update({
+    const batch = db.batch()
+    batch.update(orderRef, {
       status: 'DESPACHADO',
       dispatch: dispatchData,
       courier: carrier.trim(),
       trackingNumber: trackingCode ? String(trackingCode).trim() : undefined,
       updatedAt: nowIso
     })
+
+    const historyRef = db.collection('order_status_history').doc()
+    batch.set(historyRef, {
+      id: historyRef.id,
+      orderId: orderId.trim(),
+      previousStatus: currentStatus,
+      newStatus: 'DESPACHADO',
+      changedBy: authResult.uid || 'admin',
+      changedByEmail: authResult.email || null,
+      actorRole: 'ADMIN',
+      timestamp: nowIso,
+      reason: `Despachado vía ${carrier.trim()}${trackingCode ? ` (N° Seguimiento: ${trackingCode})` : ''}`,
+      metadata: {
+        carrier: carrier.trim(),
+        trackingNumber: trackingCode ? String(trackingCode).trim() : null
+      }
+    })
+
+    await batch.commit()
 
     return res.status(200).json({
       success: true,

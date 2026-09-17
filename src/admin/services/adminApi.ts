@@ -229,3 +229,19 @@ export async function toggleProductVisibility(productId: string, visible: boolea
     return { success: false, error: err.message || 'Error de conexión' }
   }
 }
+
+export async function fetchOrderHistory(orderId: string): Promise<import('../../types').OrderStatusHistory[]> {
+  const headers = await getAuthHeaders()
+  try {
+    const res = await fetch(`/api/admin/order-history?orderId=${encodeURIComponent(orderId)}`, { headers })
+    if (!res.ok) {
+      return []
+    }
+    const data = await res.json()
+    return Array.isArray(data.history) ? data.history : []
+  } catch (err) {
+    console.warn('[Admin API] Fallback order history:', err)
+    return []
+  }
+}
+

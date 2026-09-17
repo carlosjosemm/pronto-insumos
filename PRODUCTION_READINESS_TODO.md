@@ -260,6 +260,27 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
     - Analytics integration placeholders: Google Tag Manager (GTM) and Google Analytics 4 (GA4).
   - **Automated Test Coverage:** 16 dedicated admin test suites (both UI and serverless endpoints) ensuring 100% test pass rate across 296 tests.
 
+- [x] **4.1. Firestore Schema Freezing, Lifecycle Audit Trails & Migration Tooling**
+  - **Context & Objective:** Prevent data corruption, ensure Chilean legal/tax compliance (SII Factura Electrónica and ISP regulations), and establish complete auditability and traceability for all order and inventory state transitions in Google Firebase Firestore.
+  - **Relational Simulation Pattern:**
+    - Established append-only audit collections linked to primary entities via indexed foreign keys (`orderId`, `productId`).
+    - Multi-document transactions (`adminDb.runTransaction`) and atomic batches (`adminDb.batch`) ensure that no order status or inventory stock can be modified without writing an audit record in the exact same transaction.
+  - **Schema Freezing:**
+    - `products`: Complete frozen schema with integer CLP pricing, SKU references, clinical specifications, packaging inventories, and ISP sanitary registration codes.
+    - `orders`: Complete frozen schema with customer tax details (RUT Modulo 11, Razón Social, Giro Comercial, Dirección Fiscal), sanitary verification, item price snapshots, and fulfillment telemetry.
+    - `order_status_history`: Tracks `previousStatus`, `newStatus`, `changedBy`, `changedByEmail`, `actorRole`, `timestamp`, `reason`, and metadata (tracking numbers, payment IDs).
+    - `inventory_audit_logs`: Tracks `changeType` (`STOCK_ADJUSTMENT`, `ORDER_FULFILLMENT_DEDUCTION`, `METADATA_UPDATE`, `VISIBILITY_TOGGLE`, `CATALOG_SEED`), `previousStock`, `newStock`, `delta`, `reasonCode`, operator notes, and timestamps.
+  - **Serverless Atomic Audit Integration:**
+    - Updated `approve-transfer`, `dispatch-order`, `mark-delivered`, `update-stock`, `update-product`, `toggle-visibility`, `upload-voucher`, and `webhooks/mercadopago` to record audit logs inside their atomic transactions.
+    - Created new `/api/admin/order-history` endpoint.
+  - **CLI Migration & Audit Tooling:**
+    - Created `scripts/manage-firestore-schema.ts` with `--validate` (read-only audit report), `--seed` (canonical catalog & sample order seeding), and `--purge-and-seed --force` (database clean reinitialization).
+    - Added npm scripts: `schema:validate`, `schema:seed`, and `schema:purge-and-seed`.
+  - **Admin UI & Security:**
+    - Embedded an interactive "Historial de Estados y Auditoría" timeline in `OrderDetailPanel.tsx`.
+    - Updated `firestore.rules` making audit collections read-only for admins and strictly write-blocked for all client SDKs.
+    - Added comprehensive Vitest tests bringing total test coverage to **305 passing tests across 46 test files**.
+
 ---
 
 ## Phase 5: Transactional Communications (Email & WhatsApp)

@@ -71,25 +71,71 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           productDocsToUpdate.push({
             ref: productRef,
-            newStock
+            productId,
+            name: productData.name || item.name || productId,
+            sku: productData.sku || '',
+            previousStock: currentStock,
+            newStock,
+            delta: -qty
           })
         }
       }
 
-      // Execute all writes
+      const nowIso = new Date().toISOString()
+      const adminActor = authResult.email || authResult.uid || 'admin'
+
+      // Execute all inventory writes and audit logs
       for (const update of productDocsToUpdate) {
         transaction.update(update.ref, {
           stockCount: update.newStock,
-          inStock: update.newStock > 0
+          inStock: update.newStock > 0,
+          updatedAt: nowIso
+        })
+
+        const auditRef = db.collection('inventory_audit_logs').doc()
+        transaction.set(auditRef, {
+          id: auditRef.id,
+          productId: update.productId,
+          productSku: update.sku,
+          productName: update.name,
+          changeType: 'ORDER_FULFILLMENT_DEDUCTION',
+          previousStock: update.previousStock,
+          newStock: update.newStock,
+          delta: update.delta,
+          reasonCode: 'venta_manual',
+          operatorNotes: `Rebaja automática por aprobación de transferencia de orden ${orderId}`,
+          changedBy: authResult.uid || 'admin',
+          changedByEmail: authResult.email || null,
+          actorRole: 'ADMIN',
+          timestamp: nowIso,
+          metadata: { orderId }
         })
       }
 
-      const nowIso = new Date().toISOString()
+      // Update order status
       transaction.update(orderRef, {
         status: 'TRANSFERENCIA_APROBADA',
         approvedAt: nowIso,
-        approvedBy: authResult.uid || 'admin',
+        approvedBy: adminActor,
         updatedAt: nowIso
+      })
+
+      // Record order status history
+      const historyRef = db.collection('order_status_history').doc()
+      transaction.set(historyRef, {
+        id: historyRef.id,
+        orderId,
+        previousStatus: currentStatus,
+        newStatus: 'TRANSFERENCIA_APROBADA',
+        changedBy: authResult.uid || 'admin',
+        changedByEmail: authResult.email || null,
+        actorRole: 'ADMIN',
+        timestamp: nowIso,
+        reason: 'Aprobación de transferencia bancaria y rebaja de stock en bodega Melipilla',
+        metadata: {
+          approvedBy: adminActor,
+          itemsCount: items.length
+        }
       })
 
       return { duplicate: false, approvedAt: nowIso }

@@ -73,6 +73,9 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
     const mockOrderRef = {}
     const mockProductRef = {}
 
+    const mockAuditRef = { id: 'audit-123' }
+    const mockHistoryRef = { id: 'osh-123' }
+
     const mockDb = {
       collection: vi.fn((name: string) => {
         if (name === 'orders') {
@@ -81,7 +84,13 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
         if (name === 'products') {
           return { doc: vi.fn(() => mockProductRef) }
         }
-        return {}
+        if (name === 'order_status_history') {
+          return { doc: vi.fn(() => mockHistoryRef) }
+        }
+        if (name === 'inventory_audit_logs') {
+          return { doc: vi.fn(() => mockAuditRef) }
+        }
+        return { doc: vi.fn(() => ({})) }
       }),
       runTransaction: vi.fn(async (callback) => {
         const mockTransaction = {
@@ -94,7 +103,8 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
             }
             return { exists: false }
           }),
-          update: vi.fn()
+          update: vi.fn(),
+          set: vi.fn()
         }
         return await callback(mockTransaction)
       })

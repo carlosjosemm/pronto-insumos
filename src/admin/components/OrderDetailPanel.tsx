@@ -1,11 +1,11 @@
-import React, { useState } from 'react'
-import { X, CheckCircle2, Truck, Package, FileText, Building2, Phone, Mail, User, ShieldAlert, ExternalLink } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { X, CheckCircle2, Truck, Package, FileText, Building2, Phone, Mail, User, ShieldAlert, ExternalLink, History, Clock } from 'lucide-react'
 import { StatusBadge } from './StatusBadge'
 import { formatCLP } from '../../utils/currency'
 import { formatRut } from '../../utils/rut'
-import { approveBankTransfer, dispatchAdminOrder, markOrderDelivered } from '../services/adminApi'
+import { approveBankTransfer, dispatchAdminOrder, markOrderDelivered, fetchOrderHistory } from '../services/adminApi'
 import { CARRIER_LABELS, type CarrierType } from '../types'
-import type { Order } from '../../types'
+import type { Order, OrderStatusHistory } from '../../types'
 
 interface OrderDetailPanelProps {
   order: Order | null
@@ -23,6 +23,23 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState('')
   const [actionSuccess, setActionSuccess] = useState('')
+  const [history, setHistory] = useState<OrderStatusHistory[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  useEffect(() => {
+    if (!order?.orderId) return
+    let isMounted = true
+    setHistoryLoading(true)
+    fetchOrderHistory(order.orderId).then(events => {
+      if (isMounted) {
+        setHistory(events)
+        setHistoryLoading(false)
+      }
+    })
+    return () => {
+      isMounted = false
+    }
+  }, [order?.orderId])
 
   if (!order) return null
 
@@ -242,6 +259,39 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
               </a>
             </div>
           )}
+
+          {/* Status & Lifecycle Audit Trail */}
+          <div style={{ background: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0.85rem' }}>
+            <div style={{ fontWeight: '800', fontSize: '0.825rem', color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+              <History size={16} style={{ color: 'var(--primary)' }} />
+              <span>Historial de Estados y Auditoría</span>
+            </div>
+
+            {historyLoading ? (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Cargando eventos de auditoría...</div>
+            ) : history.length === 0 ? (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                Registro inicial creado junto con el pedido.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {history.map(ev => (
+                  <div key={ev.id} style={{ borderLeft: '2px solid var(--primary)', paddingLeft: '0.6rem', fontSize: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.15rem' }}>
+                      <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{ev.newStatus}</span>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>
+                        {new Date(ev.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })} ({new Date(ev.timestamp).toLocaleDateString('es-CL')})
+                      </span>
+                    </div>
+                    <div style={{ color: 'var(--text-secondary)', marginBottom: '0.1rem' }}>{ev.reason}</div>
+                    <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                      Por: <strong>{ev.changedByEmail || ev.changedBy}</strong> ({ev.actorRole})
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Operational Action Controls */}
           <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

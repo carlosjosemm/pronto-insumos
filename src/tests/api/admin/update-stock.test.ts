@@ -52,14 +52,18 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
   it('updates stockCount and records audit reason note', async () => {
     vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
 
-    const mockUpdate = vi.fn().mockResolvedValue({})
+    const mockBatch = {
+      update: vi.fn(),
+      set: vi.fn(),
+      commit: vi.fn().mockResolvedValue([])
+    }
     const mockDoc = {
-      get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ stockCount: 5 }) }),
-      update: mockUpdate
+      get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ stockCount: 5 }) })
     }
 
     const mockDb = {
-      collection: vi.fn(() => ({ doc: vi.fn(() => mockDoc) }))
+      collection: vi.fn(() => ({ doc: vi.fn(() => mockDoc) })),
+      batch: vi.fn(() => mockBatch)
     }
 
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
@@ -78,10 +82,14 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.stockCount).toBe(12)
-    expect(jsonOutput.inStock).toBe(true)
-    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockBatch.update).toHaveBeenCalledWith(mockDoc, expect.objectContaining({
       stockCount: 12,
       inStock: true
     }))
+    expect(mockBatch.set).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      changeType: 'STOCK_ADJUSTMENT',
+      reasonCode: 'reposicion'
+    }))
+    expect(jsonOutput.inStock).toBe(true)
   })
 })

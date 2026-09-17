@@ -40,13 +40,19 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
     vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
 
     const mockUpdate = vi.fn().mockResolvedValue({})
+    const mockBatch = {
+      update: vi.fn(),
+      set: vi.fn(),
+      commit: vi.fn().mockResolvedValue([])
+    }
     const mockDoc = {
       get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ status: 'PAGADO_MERCADOPAGO' }) }),
       update: mockUpdate
     }
 
     const mockDb = {
-      collection: vi.fn(() => ({ doc: vi.fn(() => mockDoc) }))
+      collection: vi.fn(() => ({ doc: vi.fn(() => mockDoc) })),
+      batch: vi.fn(() => mockBatch)
     }
 
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
@@ -65,10 +71,14 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.status).toBe('DESPACHADO')
-    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockBatch.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       status: 'DESPACHADO',
       courier: 'starken',
       trackingNumber: 'STK-998877'
+    }))
+    expect(mockBatch.set).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      newStatus: 'DESPACHADO',
+      actorRole: 'ADMIN'
     }))
   })
 })

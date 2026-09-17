@@ -31,14 +31,18 @@ for (const envFile of ['.env.local', '.env']) {
  *   npx tsx scripts/setup-admin.ts [optional-email] [optional-password]
  */
 async function setupAdmin() {
-  const projectId = process.env.FIREBASE_PROJECT_ID
+  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim()
   const rawKey = process.env.FIREBASE_PRIVATE_KEY?.trim()
   const privateKey = rawKey ? rawKey.replace(/^["']|["']$/g, '').replace(/\\n/g, '\n') : undefined
 
   if (!projectId || !clientEmail || !privateKey) {
-    console.error('❌ Error: Variables de entorno requeridas no encontradas.')
-    console.error('Asegúrate de definir FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL y FIREBASE_PRIVATE_KEY.')
+    console.error('\n❌ Error: Faltan credenciales de Firebase Admin (Service Account).')
+    console.error('Para conectar scripts administrativos a Firestore, define en tu .env.local:')
+    console.error('  - FIREBASE_PROJECT_ID=' + (projectId || 'pronto-insumos'))
+    console.error('  - FIREBASE_CLIENT_EMAIL=firebase-adminsdk-...@pronto-insumos.iam.gserviceaccount.com')
+    console.error('  - FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n..."\n')
+    console.error('💡 Puedes obtenerlas en: Firebase Console > Configuración del Proyecto > Cuentas de servicio > Generar nueva clave privada.\n')
     process.exit(1)
   }
 

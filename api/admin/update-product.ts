@@ -37,8 +37,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ success: false, error: 'Producto no encontrado' })
     }
 
+    const productData = doc.data() || {}
+    const nowIso = new Date().toISOString()
     const updates: Record<string, any> = {
-      updatedAt: new Date().toISOString()
+      updatedAt: nowIso
     }
 
     if (name && typeof name === 'string') updates.name = name.trim()
@@ -48,7 +50,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (typeof prescriptionRequired === 'boolean') updates.prescriptionRequired = prescriptionRequired
     if (tag !== undefined) updates.tag = String(tag).trim()
 
-    await productRef.update(updates)
+    const batch = db.batch()
+    batch.update(productRef, updates)
+
+    const auditRef = db.collection('inventory_audit_logs').doc()
+    batch.set(auditRef, {
+      id: auditRef.id,
+      productId: productId.trim(),
+      productSku: productData.sku || '',
+      productName: updates.name || productData.name || productId.trim(),
+      changeType: 'METADATA_UPDATE',
+      previousStock: productData.stockCount ?? null,
+      newStock: productData.stockCount ?? null,
+      delta: 0,
+      reasonCode: 'correccion',
+      operatorNotes: `Actualización de metadatos: ${Object.keys(updates).filter(k => k !== 'updatedAt').join(', ')}`,
+      changedBy: authResult.uid || 'admin',
+      changedByEmail: authResult.email || null,
+      actorRole: 'ADMIN',
+      timestamp: nowIso,
+      metadata: { modifiedFields: Object.keys(updates).filter(k => k !== 'updatedAt') }
+    })
+
+    await batch.commit()
 
     return res.status(200).json({
       success: true,

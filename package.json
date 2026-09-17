@@ -11,7 +11,10 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "deploy:rules": "firebase deploy --only firestore:rules",
-    "setup:admin": "pnpm dlx tsx scripts/setup-admin.ts"
+    "setup:admin": "pnpm dlx tsx scripts/setup-admin.ts",
+    "schema:validate": "pnpm dlx tsx scripts/manage-firestore-schema.ts --validate",
+    "schema:seed": "pnpm dlx tsx scripts/manage-firestore-schema.ts --seed",
+    "schema:purge-and-seed": "pnpm dlx tsx scripts/manage-firestore-schema.ts --purge-and-seed"
   },
   "dependencies": {
     "firebase": "^12.16.0",

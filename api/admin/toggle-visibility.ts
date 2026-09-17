@@ -40,11 +40,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ success: false, error: 'Producto no encontrado' })
     }
 
+    const productData = doc.data() || {}
     const nowIso = new Date().toISOString()
-    await productRef.update({
+
+    const batch = db.batch()
+    batch.update(productRef, {
       inStock: visible,
       updatedAt: nowIso
     })
+
+    const auditRef = db.collection('inventory_audit_logs').doc()
+    batch.set(auditRef, {
+      id: auditRef.id,
+      productId: productId.trim(),
+      productSku: productData.sku || '',
+      productName: productData.name || productId.trim(),
+      changeType: 'VISIBILITY_TOGGLE',
+      previousStock: productData.stockCount ?? null,
+      newStock: productData.stockCount ?? null,
+      delta: 0,
+      reasonCode: visible ? 'activacion_catalogo' : 'pausa_catalogo',
+      operatorNotes: `Visibilidad cambiada a ${visible ? 'VISIBLE' : 'PAUSADO'}`,
+      changedBy: authResult.uid || 'admin',
+      changedByEmail: authResult.email || null,
+      actorRole: 'ADMIN',
+      timestamp: nowIso
+    })
+
+    await batch.commit()
 
     return res.status(200).json({
       success: true,
