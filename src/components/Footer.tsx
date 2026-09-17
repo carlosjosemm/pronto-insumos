@@ -117,11 +117,11 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
             </p>
             <div style={{ fontSize: '0.825rem', color: '#cbd5e1', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Phone size={14} style={{ color: 'var(--teal-600)' }} />
+                <Phone size={14} style={{ color: 'var(--brand-accent-green)' }} />
                 <span>Mesa Clínica: +56 9 1234 5678</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <CreditCard size={14} style={{ color: 'var(--teal-600)' }} />
+                <CreditCard size={14} style={{ color: 'var(--brand-accent-green)' }} />
                 <span>Webpay Plus, Redcompra y Banco de Chile</span>
               </div>
             </div>
@@ -134,6 +134,26 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
             >
               <span>Consultar por WhatsApp</span>
             </a>
+          </div>
+        </div>
+
+        {/* Visual Trust Badge Certification Bar */}
+        <div className="footer-trust-badges" aria-label="Certificaciones y sellos de confianza">
+          <div className="footer-trust-badge">
+            <ShieldCheck size={18} />
+            <span>Mercado Pago Chile · Pago 100% Seguro</span>
+          </div>
+          <div className="footer-trust-badge">
+            <Building2 size={18} />
+            <span>Facturación Electrónica SII · 19% IVA</span>
+          </div>
+          <div className="footer-trust-badge">
+            <Truck size={18} />
+            <span>Despacho Express RM · Melipilla y Alrededores</span>
+          </div>
+          <div className="footer-trust-badge">
+            <Activity size={18} />
+            <span>Dispositivos Médicos · Registro ISP Chile</span>
           </div>
         </div>
 

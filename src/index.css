@@ -851,6 +851,13 @@ input, select, textarea {
   color: var(--text-secondary);
 }
 
+.results-slogan-tagline {
+  color: var(--brand-cayenne);
+  font-style: italic;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .filter-options {
   display: flex;
   align-items: center;
@@ -2212,6 +2219,44 @@ input, select, textarea {
 
 .footer-links-list a:hover {
   color: #38bdf8;
+}
+
+/* Footer Trust Badge Certification Row */
+.footer-trust-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 1.75rem 0;
+  margin-top: 2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.footer-trust-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.775rem;
+  color: #cbd5e1;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+  transition: var(--transition-fast);
+}
+
+.footer-trust-badge:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.footer-trust-badge svg {
+  color: var(--brand-accent-green);
+  flex-shrink: 0;
 }
 
 .footer-bottom-bar {
