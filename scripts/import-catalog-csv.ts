@@ -183,10 +183,12 @@ async function importCatalog() {
   for (let idx = 0; idx < parsedItems.length; idx++) {
     const item = parsedItems[idx]
     const productId = `pronto-${String(idx + 1).padStart(3, '0')}`
+    const sku = `REF-${item.brand.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase()}-${String(idx + 1).padStart(3, '0')}`
     const priceNeto = Math.round(item.price / 1.19)
 
     const productDoc: Product = {
       id: productId,
+      sku,
       name: item.name,
       category: item.category,
       brand: item.brand,
@@ -228,7 +230,7 @@ async function importCatalog() {
     const auditRecord: InventoryAuditLog = {
       id: auditRef.id,
       productId,
-      productSku: `REF-${item.brand.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase()}-${String(idx + 1).padStart(3, '0')}`,
+      productSku: sku,
       productName: item.name,
       previousStock: null,
       newStock: 10,

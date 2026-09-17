@@ -37,13 +37,16 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     const data = await res.json()
     return data.stats
   } catch (err: any) {
-    console.warn('[Admin API] Fallback to simulated dashboard stats:', err.message)
-    return {
-      salesToday: 428900,
-      pendingOrders: 3,
-      lowStockProducts: 2,
-      ordersThisMonth: 18
+    if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
+      console.warn('[Admin API] Fallback to simulated dashboard stats:', err.message)
+      return {
+        salesToday: 428900,
+        pendingOrders: 3,
+        lowStockProducts: 2,
+        ordersThisMonth: 18
+      }
     }
+    throw err
   }
 }
 
@@ -63,34 +66,37 @@ export async function fetchAdminOrders(params: OrderListParams = {}): Promise<Or
     }
     return await res.json()
   } catch (err: any) {
-    console.warn('[Admin API] Fallback to simulated orders:', err.message)
-    return {
-      orders: [
-        {
-          orderId: 'PRONTO-102941',
-          status: 'PENDIENTE_TRANSFERENCIA',
-          totalAmount: 189990,
-          paymentMethod: 'transferencia',
-          createdAt: new Date().toISOString(),
-          customer: {
-            fullName: 'Dra. Camila Fuentes',
-            email: 'contacto@fuentesdental.cl',
-            phone: '+56 9 8765 4321',
-            rut: '12.345.678-5',
-            documentType: 'factura',
-            razonSocial: 'Sociedad Odontológica Fuentes SpA',
-            giroComercial: 'Servicios Odontológicos',
-            address: 'Av. Ortúzar 750, Of. 302',
-            city: 'Melipilla',
-            zip: '9500000'
-          },
-          items: [
-            { productId: 'odon-101', name: 'Turbina LED Push Button', quantity: 1, price: 189990 }
-          ]
-        }
-      ],
-      total: 1
+    if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
+      console.warn('[Admin API] Fallback to simulated orders:', err.message)
+      return {
+        orders: [
+          {
+            orderId: 'PRONTO-102941',
+            status: 'PENDIENTE_TRANSFERENCIA',
+            totalAmount: 189990,
+            paymentMethod: 'transferencia',
+            createdAt: new Date().toISOString(),
+            customer: {
+              fullName: 'Dra. Camila Fuentes',
+              email: 'contacto@fuentesdental.cl',
+              phone: '+56 9 8765 4321',
+              rut: '12.345.678-5',
+              documentType: 'factura',
+              razonSocial: 'Sociedad Odontológica Fuentes SpA',
+              giroComercial: 'Servicios Odontológicos',
+              address: 'Av. Ortúzar 750, Of. 302',
+              city: 'Melipilla',
+              zip: '9500000'
+            },
+            items: [
+              { productId: 'odon-101', name: 'Turbina LED Push Button', quantity: 1, price: 189990 }
+            ]
+          }
+        ],
+        total: 1
+      }
     }
+    throw err
   }
 }
 
@@ -170,9 +176,12 @@ export async function fetchAdminProducts(category?: string): Promise<Product[]> 
     const data = await res.json()
     return data.products || []
   } catch (err: any) {
-    console.warn('[Admin API] Fallback to local products fixture:', err.message)
-    const { PRODUCTS } = await import('../../data/products')
-    return PRODUCTS
+    if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
+      console.warn('[Admin API] Fallback to local products fixture:', err.message)
+      const { PRODUCTS } = await import('../../data/products')
+      return PRODUCTS
+    }
+    throw err
   }
 }
 

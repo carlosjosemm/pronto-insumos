@@ -42,11 +42,19 @@ export const AdminInventory: React.FC = () => {
   const handleToggleVisibility = async (productId: string, currentVisible: boolean) => {
     const next = !currentVisible
     // Optimistic UI update
-    setProducts(prev => prev.map(p => p.id === productId ? { ...p, inStock: next } : p))
+    setProducts(prev => prev.map(p => p.id === productId ? {
+      ...p,
+      isActive: next,
+      inStock: (typeof p.stockCount === 'number' ? p.stockCount : 0) > 0 && next
+    } : p))
     const res = await toggleProductVisibility(productId, next)
     if (!res.success) {
       // Revert if failed
-      setProducts(prev => prev.map(p => p.id === productId ? { ...p, inStock: currentVisible } : p))
+      setProducts(prev => prev.map(p => p.id === productId ? {
+        ...p,
+        isActive: currentVisible,
+        inStock: (typeof p.stockCount === 'number' ? p.stockCount : 0) > 0 && currentVisible
+      } : p))
     }
   }
 

@@ -73,10 +73,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await batch.commit()
 
+    const computedInStock = currentStock > 0 && isNowActive
+
     return res.status(200).json({
       success: true,
       productId,
-      inStock: visible
+      isActive: isNowActive,
+      inStock: computedInStock
     })
   } catch (err: any) {
     console.error('[Admin API Toggle Visibility] Error:', err)

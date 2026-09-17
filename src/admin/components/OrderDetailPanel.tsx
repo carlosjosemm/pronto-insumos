@@ -25,6 +25,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   const [actionSuccess, setActionSuccess] = useState('')
   const [history, setHistory] = useState<OrderStatusHistory[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
 
   useEffect(() => {
     if (!order?.orderId) return
@@ -39,7 +40,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
     return () => {
       isMounted = false
     }
-  }, [order?.orderId])
+  }, [order?.orderId, order?.status, order?.updatedAt, historyRefreshKey])
 
   if (!order) return null
 
@@ -51,6 +52,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
     setActionLoading(false)
     if (res.success) {
       setActionSuccess('¡Transferencia bancaria aprobada exitosamente y stock rebajado en bodega!')
+      setHistoryRefreshKey(k => k + 1)
       onOrderUpdated()
     } else {
       setActionError(res.error || 'Error al aprobar la transferencia')
@@ -70,6 +72,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
     setActionLoading(false)
     if (res.success) {
       setActionSuccess('¡Pedido marcado como despachado con courier asignado!')
+      setHistoryRefreshKey(k => k + 1)
       onOrderUpdated()
     } else {
       setActionError(res.error || 'Error al despachar el pedido')
@@ -84,6 +87,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
     setActionLoading(false)
     if (res.success) {
       setActionSuccess('¡Pedido marcado como entregado en la clínica dental!')
+      setHistoryRefreshKey(k => k + 1)
       onOrderUpdated()
     } else {
       setActionError(res.error || 'Error al marcar como entregado')

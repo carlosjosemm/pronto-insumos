@@ -56,9 +56,18 @@ async function setupAdmin() {
         })
       })
 
-  const auth = getAuth(app)
-  const targetEmail = process.argv[2] || process.env.ADMIN_EMAIL || 'admin@prontoinsumos.cl'
-  const targetPassword = process.argv[3] || process.env.ADMIN_INITIAL_PASSWORD || 'changeme123!'
+  const targetEmail = process.argv[2] || process.env.ADMIN_EMAIL
+  const targetPassword = process.argv[3] || process.env.ADMIN_INITIAL_PASSWORD
+
+  if (!targetEmail || !targetPassword) {
+    console.error('\n❌ Error: Debes especificar el correo y contraseña del administrador.')
+    console.error('Uso:')
+    console.error('  pnpm run setup:admin <email> <password>')
+    console.error('O definir en .env.local:')
+    console.error('  ADMIN_EMAIL=tu-email@prontoinsumos.cl')
+    console.error('  ADMIN_INITIAL_PASSWORD=TuPasswordSegura123!\n')
+    process.exit(1)
+  }
 
   console.log(`\n🩺 PRONTO Admin Setup Script`)
   console.log(`Configurando administrador: ${targetEmail}`)
