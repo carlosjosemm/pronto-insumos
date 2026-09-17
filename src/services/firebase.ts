@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getFirestore, collection, doc, setDoc, getDocs, serverTimestamp } from 'firebase/firestore'
+import { getAuth } from 'firebase/auth'
 import { PRODUCTS } from '../data/products'
 
 // Firebase Configuration via Vite environment variables
@@ -16,6 +17,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig)
 export const db = getFirestore(app)
+export const auth = getAuth(app)
 
 export interface SeedResult {
   success: boolean

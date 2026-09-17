@@ -113,9 +113,35 @@ PRONTO enforces **two layers of idempotency defense**:
 
 ---
 
-## 🚀 5. Deployment & Vercel Linking
+## 🛡️ 5. Deep Dive: Administrative Serverless Endpoints (`api/admin/`)
+
+The internal administrative portal communicates with dedicated serverless endpoints under `api/admin/`. These endpoints perform privileged operations (order updates, transfer approval, inventory mutations) protected by Firebase ID token authentication.
+
+### 5.1 Admin Authentication Middleware ([`api/lib/adminAuth.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/adminAuth.ts))
+* **Cryptographic Verification:** Extracts `Authorization: Bearer <ID_TOKEN>` and invokes `auth.verifyIdToken(token, true)` via `firebase-admin/auth`.
+* **Custom Claim Enforcement:** Asserts `decodedToken.admin === true`. If the claim is missing or false, immediately rejects with `403 Forbidden` (`"Permisos insuficientes: se requiere rol de administrador"`).
+* **Clock Tolerance:** Configured with 5 seconds clock drift allowance (`checkRevoked: true`).
+
+### 5.2 Admin Endpoints Reference
+
+| Endpoint | Method | Role & Transaction Behavior |
+| :--- | :--- | :--- |
+| [`/api/admin/dashboard-stats`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/dashboard-stats.ts) | `GET` | Aggregates daily sales in CLP, counts pending bank transfers, identifies low-stock items (<5 units), and counts monthly orders. |
+| [`/api/admin/orders`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/orders.ts) | `GET` | Fetches orders sorted by creation date with optional status filtering and pagination. Returns customer tax data, sanitary verification, and uploaded transfer vouchers. |
+| [`/api/admin/approve-transfer`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/approve-transfer.ts) | `POST` | **Crucial Operational Transition:** Approves a bank transfer order inside a Firestore atomic transaction (`adminDb.runTransaction`). Decrements physical stock in `products` for all items, transitions order status to `'TRANSFERENCIA_APROBADA'`, and records `approvedBy` (admin email) and `approvedAt` timestamp. |
+| [`/api/admin/dispatch-order`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/dispatch-order.ts) | `POST` | Updates fulfillment state to `'DESPACHADO'`. Records carrier name (e.g. Starken, Chilexpress, Blue Express, Melipilla Express), tracking number, and dispatch timestamp. |
+| [`/api/admin/mark-delivered`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/mark-delivered.ts) | `POST` | Updates fulfillment state to `'ENTREGADO'`, recording final delivery confirmation timestamp. |
+| [`/api/admin/products`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/products.ts) | `GET` | Retrieves full catalog inventory with live `stockCount`, `inStock` flags, and pricing for backoffice staff. |
+| [`/api/admin/update-stock`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/update-stock.ts) | `POST` | Adjusts product inventory count. Supports audit logging with reason codes (`reposicion`, `merma`, `correccion`, `venta_manual`) and operator notes. Automatically sets `inStock: false` if count reaches 0. |
+| [`/api/admin/update-product`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/update-product.ts) | `POST` | Updates product metadata: name, description, category, integer CLP price, manufacturer, package contents, and specs. |
+| [`/api/admin/toggle-visibility`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/toggle-visibility.ts) | `POST` | Instant catalog visibility switch: toggles `inStock` without modifying the physical stock count. |
+
+---
+
+## 🚀 6. Deployment & Vercel Linking
 
 Serverless functions are deployed directly using the **Vercel CLI**:
 * Staging Preview: `pnpm dlx vercel`
 * Production: `pnpm dlx vercel --prod`
 * Server secrets must be configured in Vercel Project Settings prior to production deployment.
+

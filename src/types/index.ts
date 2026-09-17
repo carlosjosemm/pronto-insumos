@@ -80,6 +80,7 @@ export type OrderStatus =
   | 'PAGADO_MERCADOPAGO'
   | 'PENDIENTE_TRANSFERENCIA'
   | 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
+  | 'TRANSFERENCIA_APROBADA'
   | 'PAGADO_TRANSFERENCIA'
   | 'EN_PREPARACION'
   | 'DESPACHADO'
@@ -108,6 +109,17 @@ export interface Order {
   voucherUploadedAt?: string
   courier?: string
   trackingNumber?: string
+  mercadopagoPaymentId?: string
+  paidAt?: string
+  approvedAt?: string
+  approvedBy?: string
+  dispatch?: {
+    carrier: 'starken' | 'chilexpress' | 'blue_express' | 'despacho_local_melipilla' | string
+    trackingCode?: string
+    dispatchedAt: string
+    dispatchedBy: string
+  }
+  deliveredAt?: string
 }
 
 export interface PromoCode {
