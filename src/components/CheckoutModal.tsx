@@ -101,7 +101,24 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
 
   const handleNextStep = (e: React.FormEvent) => {
     e.preventDefault()
+    setSubmitError('')
     if (step === 1) {
+      // Pre-flight stock check
+      const stockIssueItem = cartItems.find(item => {
+        const stock = typeof item.product.stockCount === 'number' ? item.product.stockCount : 0
+        return !item.product.inStock || stock <= 0 || item.quantity > stock
+      })
+
+      if (stockIssueItem) {
+        const stock = typeof stockIssueItem.product.stockCount === 'number' ? stockIssueItem.product.stockCount : 0
+        if (!stockIssueItem.product.inStock || stock <= 0) {
+          setSubmitError(`El producto "${stockIssueItem.product.name}" no cuenta con stock disponible. Por favor modifica tu carro para continuar.`)
+        } else {
+          setSubmitError(`El producto "${stockIssueItem.product.name}" supera el stock disponible (${stockIssueItem.quantity} solicitados, ${stock} disponibles). Por favor ajusta la cantidad en el carro.`)
+        }
+        return
+      }
+
       if (formData.documentType === 'factura') {
         const validation = validateFacturaFields({
           rut: formData.rut,
@@ -144,6 +161,23 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
 
   const handleCompleteOrder = async () => {
     setSubmitError('')
+
+    // Pre-flight stock re-check
+    const stockIssueItem = cartItems.find(item => {
+      const stock = typeof item.product.stockCount === 'number' ? item.product.stockCount : 0
+      return !item.product.inStock || stock <= 0 || item.quantity > stock
+    })
+
+    if (stockIssueItem) {
+      const stock = typeof stockIssueItem.product.stockCount === 'number' ? stockIssueItem.product.stockCount : 0
+      if (!stockIssueItem.product.inStock || stock <= 0) {
+        setSubmitError(`El producto "${stockIssueItem.product.name}" no cuenta con stock disponible. Por favor modifica tu carro para continuar.`)
+      } else {
+        setSubmitError(`El producto "${stockIssueItem.product.name}" supera el stock disponible (${stockIssueItem.quantity} solicitados, ${stock} disponibles). Por favor ajusta la cantidad en el carro.`)
+      }
+      return
+    }
+
     setIsSubmitting(true)
 
     // Canonical order identifier PRONTO-XXXXXX
@@ -610,6 +644,12 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                   <div style={{ fontSize: '0.7rem', color: '#92400e', fontStyle: 'italic' }}>
                     * PRONTO verifica el N° SIS ante el Registro Nacional de Prestadores Individuales de Salud antes del despacho.
                   </div>
+                </div>
+              )}
+
+              {submitError && (
+                <div style={{ color: '#dc2626', background: '#fef2f2', border: '1px solid #fecdd3', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '600' }}>
+                  {submitError}
                 </div>
               )}
 

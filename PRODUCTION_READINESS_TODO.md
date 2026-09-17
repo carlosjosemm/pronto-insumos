@@ -151,12 +151,18 @@ These items carry immediate risks of financial loss, critical security vulnerabi
       - 3 integration tests in `src/tests/components/AppCartPersistence.test.tsx`.
       - Total repository test suite: 233 tests passing (100% test reliability).
 
-- [ ] **2.3. Pre-Checkout Inventory Validation & Max-Stock Cues**
+- [x] **2.3. Pre-Checkout Inventory Validation & Max-Stock Cues**
   - **Context & Current State:** Front-end quantity steppers in `App.tsx` and `ProductQuickView.tsx` already clamp item additions to `product.stockCount`. However, if stock depletes while a customer is browsing or if an item in the cart reaches max stock, additional safeguards are needed.
   - **Required Action:**
     - In `Cart.tsx`: disable the `+` button when `item.quantity >= item.product.stockCount`, displaying a clear `"Máximo disponible"` or `"Sin stock"` status indicator.
     - In `Cart.tsx` and `CheckoutModal.tsx`: if an item becomes unavailable or exceeds stock, block checkout progression and alert the user.
     - In serverless `/api/create-preference.ts`: validate requested quantities against current Firestore inventory before generating Mercado Pago preference.
+  - **Verification & As-Built Implementation:**
+    - `src/components/Cart.tsx`: Added dynamic stock cues (`"Sin stock disponible"`, `"Máximo disponible (X unid.)"`, `"Excede stock (X unid. disp.)"`), capped `+` stepper button with informative tooltip, rendered sticky stock warning alert banner, and disabled the checkout CTA with label `"Insumos sin Stock Suficiente"`.
+    - `src/components/CheckoutModal.tsx`: Enforced pre-flight inventory guards in both `handleNextStep()` (blocking Step 1 -> Step 2 transition) and `handleCompleteOrder()`, alerting the customer with localized Chilean dental depot notifications. Rendered alert in Step 1.
+    - `api/create-preference.ts`: Integrated Firestore Admin inventory validation loop querying `products` collection before generating Mercado Pago preference payload or sandbox simulation, rejecting with HTTP 400 Bad Request if requested quantities exceed stock.
+    - Unit tests: Added new test suites in `src/tests/components/Cart.test.tsx`, `src/tests/components/CheckoutModal.test.tsx`, and `src/tests/api/create-preference.test.ts`.
+    - All 22 test files and all 242 tests passing with 100% reliability. Production build compiled cleanly.
 
 - [ ] **2.4. End-to-End Bank Transfer Workflow (Transferencia Bancaria)**
   - **Current Issue:** Selecting bank transfer displays static account details, leaving the order in an unverified limbo with no verification mechanism.

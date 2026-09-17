@@ -8,7 +8,7 @@ This directory contains the **Vercel Serverless Functions** for PRONTO. It serve
 
 * **Runtime:** Node.js (Vercel Serverless Function environment).
 * **Current Functions & Libraries:**
-  * [`create-preference.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/create-preference.ts): Generates Mercado Pago Checkout Pro preferences using the server-side access token.
+  * [`create-preference.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/create-preference.ts): Generates Mercado Pago Checkout Pro preferences using the server-side access token after strictly validating item availability and physical stock against Firestore Admin `products` collection (rejecting with HTTP 400 if stock is depleted or exceeded).
   * [`webhooks/mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/webhooks/mercadopago.ts): Receives asynchronous payment status notifications from Mercado Pago, validates cryptographic signatures, updates order records, and atomically decrements stock.
   * [`lib/firebaseAdmin.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firebaseAdmin.ts): Admin SDK singleton managing Firestore transactions and authentication.
   * [`lib/mercadopagoSignature.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/mercadopagoSignature.ts): Native Node HMAC-SHA256 signature verification over `x-signature` and `x-request-id` headers with constant-time equality checks.

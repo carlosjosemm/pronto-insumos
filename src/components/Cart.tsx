@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { CartItem, PromoCode } from '../types'
-import { X, ShoppingBag, Plus, Minus, Trash2, Tag, Lock, ArrowRight, ShieldCheck, Activity, Heart, Home, ShieldAlert, LucideIcon } from 'lucide-react'
+import { X, ShoppingBag, Plus, Minus, Trash2, Tag, Lock, ArrowRight, ShieldCheck, Activity, Heart, Home, ShieldAlert, AlertTriangle, LucideIcon } from 'lucide-react'
 import { validatePromo } from '../services/api'
 import { formatCLP, calculateIVA } from '../utils/currency'
 
@@ -40,7 +40,9 @@ export default function Cart({
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -57,6 +59,11 @@ export default function Cart({
   const progressPercent = Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100)
   const remainingForFreeShipping = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal)
   const hasRegulatedItems = items.some(item => item.product.prescriptionRequired)
+  const hasStockIssues = items.some((item) => {
+    const isOutOfStock = !item.product.inStock || (typeof item.product.stockCount === 'number' && item.product.stockCount <= 0)
+    const maxStock = (typeof item.product.stockCount === 'number' && item.product.stockCount > 0) ? item.product.stockCount : 99
+    return isOutOfStock || item.quantity > maxStock
+  })
 
   const handleApplyPromoCode = async () => {
     if (!promoInput.trim()) return
@@ -138,9 +145,16 @@ export default function Cart({
           ) : (
             items.map((item) => {
               const ItemCategoryIcon = ICON_BY_CATEGORY[item.product.category] || ShoppingBag
+              const isOutOfStock = !item.product.inStock || (typeof item.product.stockCount === 'number' && item.product.stockCount <= 0)
+              const maxStock = (typeof item.product.stockCount === 'number' && item.product.stockCount > 0) ? item.product.stockCount : 99
+              const isMaxStock = !isOutOfStock && item.quantity >= maxStock
+              const isOverStock = !isOutOfStock && item.quantity > maxStock
 
               return (
-                <div key={item.product.id} className="cart-item-row">
+                <div
+                  key={item.product.id}
+                  className={`cart-item-row ${isOutOfStock || isOverStock ? 'cart-item-row--stock-error' : ''}`}
+                >
                   <div className="cart-item-thumb">
                     <ItemCategoryIcon size={20} style={{ color: 'var(--teal-600)' }} />
                   </div>
@@ -152,6 +166,19 @@ export default function Cart({
                         ⚕️ Requiere SIS (ISP)
                       </span>
                     )}
+                    {isOutOfStock ? (
+                      <span className="cart-stock-cue cart-stock-cue--danger">
+                        Sin stock disponible
+                      </span>
+                    ) : isOverStock ? (
+                      <span className="cart-stock-cue cart-stock-cue--danger">
+                        Excede stock ({maxStock} unid. disp.)
+                      </span>
+                    ) : isMaxStock ? (
+                      <span className="cart-stock-cue cart-stock-cue--warning">
+                        Máximo disponible ({maxStock} unid.)
+                      </span>
+                    ) : null}
                     <div className="cart-item-price">{formatCLP(item.product.price * item.quantity)}</div>
                   </div>
 
@@ -168,8 +195,15 @@ export default function Cart({
                   <button
                     className="qty-btn"
                     onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
-                    disabled={item.quantity >= (item.product.stockCount || 99)}
+                    disabled={item.quantity >= maxStock || isOutOfStock}
                     aria-label={`Aumentar cantidad de ${item.product.name}`}
+                    title={
+                      isOutOfStock
+                        ? 'Sin stock disponible'
+                        : item.quantity >= maxStock
+                        ? 'Has alcanzado el stock máximo disponible de este producto'
+                        : `Aumentar cantidad de ${item.product.name}`
+                    }
                   >
                     <Plus size={12} />
                   </button>
@@ -263,9 +297,21 @@ export default function Cart({
               <span>{formatCLP(total)}</span>
             </div>
 
-            <button className="btn-checkout" onClick={onCheckout}>
+            {hasStockIssues && (
+              <div className="cart-stock-warning-banner" role="alert">
+                <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                <span>Atención: Uno o más productos superan el stock disponible o están agotados. Ajusta las cantidades para continuar con el pago.</span>
+              </div>
+            )}
+
+            <button
+              className={`btn-checkout ${hasStockIssues ? 'btn-checkout--disabled' : ''}`}
+              onClick={hasStockIssues ? undefined : onCheckout}
+              disabled={hasStockIssues}
+              aria-disabled={hasStockIssues}
+            >
               <Lock size={17} />
-              <span>Proceder al Pago</span>
+              <span>{hasStockIssues ? 'Insumos sin Stock Suficiente' : 'Proceder al Pago'}</span>
               <ArrowRight size={17} />
             </button>
 

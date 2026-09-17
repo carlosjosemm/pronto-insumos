@@ -163,4 +163,66 @@ describe('Cart component', () => {
     expect(screen.queryByText(/Insumos Regulados ISP/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Requiere SIS \(ISP\)/i)).not.toBeInTheDocument()
   })
+
+  describe('Inventory cues & stock limits', () => {
+    it('should display "Máximo disponible" cue and disable the increment button when quantity reaches stockCount', () => {
+      const limitedProduct: Product = {
+        ...mockProduct1,
+        id: 'odon-limited',
+        stockCount: 3,
+        inStock: true
+      }
+      const cartItemsAtMax: CartItem[] = [{ product: limitedProduct, quantity: 3 }]
+
+      render(<Cart {...defaultProps} items={cartItemsAtMax} />)
+
+      expect(screen.getByText('Máximo disponible (3 unid.)')).toBeInTheDocument()
+
+      const plusButton = screen.getByTitle('Has alcanzado el stock máximo disponible de este producto')
+      expect(plusButton).toBeDisabled()
+
+      // Checkout button should remain enabled because quantity is <= stockCount
+      const checkoutBtn = screen.getByRole('button', { name: /Proceder al Pago/i })
+      expect(checkoutBtn).not.toBeDisabled()
+    })
+
+    it('should display "Excede stock" cue, render warning banner, and disable checkout button when quantity exceeds stockCount', () => {
+      const overProduct: Product = {
+        ...mockProduct1,
+        id: 'odon-over',
+        stockCount: 2,
+        inStock: true
+      }
+      const cartItemsOver: CartItem[] = [{ product: overProduct, quantity: 5 }]
+
+      render(<Cart {...defaultProps} items={cartItemsOver} />)
+
+      expect(screen.getByText('Excede stock (2 unid. disp.)')).toBeInTheDocument()
+      expect(screen.getByText(/Atención: Uno o más productos superan el stock disponible o están agotados/i)).toBeInTheDocument()
+
+      const checkoutBtn = screen.getByRole('button', { name: /Insumos sin Stock Suficiente/i })
+      expect(checkoutBtn).toBeDisabled()
+    })
+
+    it('should display "Sin stock disponible" cue, disable increment button, and disable checkout button when item is out of stock', () => {
+      const outOfStockProduct: Product = {
+        ...mockProduct1,
+        id: 'odon-oos',
+        stockCount: 0,
+        inStock: false
+      }
+      const cartItemsOos: CartItem[] = [{ product: outOfStockProduct, quantity: 1 }]
+
+      render(<Cart {...defaultProps} items={cartItemsOos} />)
+
+      expect(screen.getByText('Sin stock disponible')).toBeInTheDocument()
+      expect(screen.getByText(/Atención: Uno o más productos superan el stock disponible o están agotados/i)).toBeInTheDocument()
+
+      const plusButton = screen.getByTitle('Sin stock disponible')
+      expect(plusButton).toBeDisabled()
+
+      const checkoutBtn = screen.getByRole('button', { name: /Insumos sin Stock Suficiente/i })
+      expect(checkoutBtn).toBeDisabled()
+    })
+  })
 })

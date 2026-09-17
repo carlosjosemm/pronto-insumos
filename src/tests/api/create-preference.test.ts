@@ -1,6 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+
+// Mock firebaseAdmin before importing preference handler
+vi.mock('../../../api/lib/firebaseAdmin', () => ({
+  getAdminFirestore: vi.fn(() => null)
+}))
+
 import handler from '../../../api/create-preference'
+import { getAdminFirestore } from '../../../api/lib/firebaseAdmin'
 
 function createMockRes() {
   const res: Partial<VercelResponse> = {
@@ -13,9 +20,20 @@ function createMockRes() {
 }
 
 describe('Create Preference Serverless Endpoint (/api/create-preference)', () => {
+  const initialEnv = process.env.MERCADOPAGO_ACCESS_TOKEN
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.restoreAllMocks()
+    delete process.env.MERCADOPAGO_ACCESS_TOKEN
+  })
+
+  afterAll(() => {
+    if (initialEnv) {
+      process.env.MERCADOPAGO_ACCESS_TOKEN = initialEnv
+    } else {
+      delete process.env.MERCADOPAGO_ACCESS_TOKEN
+    }
   })
 
   it('should handle OPTIONS preflight request with status 200', async () => {
@@ -169,6 +187,170 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     expect(sentPayload.external_reference).toBe('PRONTO-LOWERCASE-123')
 
     process.env.MERCADOPAGO_ACCESS_TOKEN = originalToken
+  })
+
+  describe('Pre-flight inventory validation (Firestore Admin)', () => {
+    it('should return 400 Bad Request when requested item quantity exceeds available stock', async () => {
+      const mockDoc = {
+        exists: true,
+        data: () => ({
+          name: 'Turbina Odontológica LED MasterTorque',
+          stockCount: 3,
+          inStock: true
+        })
+      }
+      const mockAdminDb = {
+        collection: vi.fn().mockReturnValue({
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue(mockDoc)
+          })
+        })
+      }
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'localhost:5173' },
+        body: {
+          orderId: 'PRONTO-112233',
+          items: [{ product: { id: 'odon-101', name: 'Turbina Odontológica LED MasterTorque', price: 189990 }, quantity: 5 }],
+          customer: { fullName: 'Dr. Test' }
+        }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Stock insuficiente para el producto'),
+          productId: 'odon-101',
+          availableStock: 3,
+          requestedQuantity: 5
+        })
+      )
+    })
+
+    it('should return 400 Bad Request when requested item is marked inStock: false', async () => {
+      const mockDoc = {
+        exists: true,
+        data: () => ({
+          name: 'Lidocaína 2%',
+          stockCount: 0,
+          inStock: false
+        })
+      }
+      const mockAdminDb = {
+        collection: vi.fn().mockReturnValue({
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue(mockDoc)
+          })
+        })
+      }
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'localhost:5173' },
+        body: {
+          orderId: 'PRONTO-112234',
+          items: [{ product: { id: 'odon-501', name: 'Lidocaína 2%', price: 38500 }, quantity: 1 }],
+          customer: { fullName: 'Dr. Test' }
+        }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Stock insuficiente para el producto'),
+          productId: 'odon-501',
+          availableStock: 0,
+          requestedQuantity: 1
+        })
+      )
+    })
+
+    it('should return 400 Bad Request when requested item does not exist in Firestore', async () => {
+      const mockDoc = {
+        exists: false,
+        data: () => null
+      }
+      const mockAdminDb = {
+        collection: vi.fn().mockReturnValue({
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue(mockDoc)
+          })
+        })
+      }
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'localhost:5173' },
+        body: {
+          orderId: 'PRONTO-112235',
+          items: [{ product: { id: 'odon-ghost', name: 'Insumo Fantasma', price: 10000 }, quantity: 1 }],
+          customer: { fullName: 'Dr. Test' }
+        }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('no fue encontrado en el catálogo de inventario'),
+          productId: 'odon-ghost',
+          availableStock: 0,
+          requestedQuantity: 1
+        })
+      )
+    })
+
+    it('should proceed successfully when stock is available in Firestore Admin', async () => {
+      const mockDoc = {
+        exists: true,
+        data: () => ({
+          name: 'Turbina Odontológica LED MasterTorque',
+          stockCount: 15,
+          inStock: true
+        })
+      }
+      const mockAdminDb = {
+        collection: vi.fn().mockReturnValue({
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue(mockDoc)
+          })
+        })
+      }
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'localhost:5173' },
+        body: {
+          orderId: 'PRONTO-112236',
+          items: [{ product: { id: 'odon-101', name: 'Turbina Odontológica LED MasterTorque', price: 189990 }, quantity: 2 }],
+          customer: { fullName: 'Dr. Test' }
+        }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          isSimulated: true
+        })
+      )
+    })
   })
 })
 
