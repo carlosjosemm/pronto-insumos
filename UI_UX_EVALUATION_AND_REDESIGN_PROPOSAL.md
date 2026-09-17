@@ -245,6 +245,8 @@ Replace the guarantee card with a **split layout**: a brand lifestyle image on t
 Ultra-realistic commercial product photography of an organized dental instrument layout, elevated 35-degree oblique flatlay. A high-speed titanium dental turbine handpiece with diamond bur and subtle fiber-optic light, alongside a front-surface rhodium mouth mirror, stainless steel dental explorer, and precision College tweezers arranged neatly on a dark intense blue medical-grade fabric surface (#102748). Shot on Hasselblad H6D-100c, 90mm f/3.2 macro lens, shallow depth of field with razor-sharp focus on the turbine head and smooth bokeh falloff. Studio lighting: large diffused overhead octabox creating soft linear reflections on metallic cylindrical surfaces, subtle cool rim lighting on chrome edges. Clean editorial clinical aesthetic, immaculate textures, brushed surgical steel AISI 420, Chilean dental distributor style, no humans, no teeth, no blood, 8k resolution, hyper-detailed, photorealistic --ar 4:3 --v 6.1 --style raw
 ```
 
+**Delivered Staged Asset:** `assets/5.1-hero-section-brand-lifestyle-right-column.jpg` (ready for `public/assets/` deployment).
+
 **Layout Change in `Hero.tsx`:**
 - The right column (`.hero-card-preview`) becomes a contained image panel with `border-radius: var(--radius-md)`, subtle shadow, and `overflow: hidden`
 - The 4 guarantee items move to a compact inline trust strip beneath the CTA buttons in the left column, rendered as small icon + short text pairs
@@ -306,6 +308,7 @@ Ultra-realistic commercial product photography of an organized dental instrument
     ```text
     Panoramic abstract luxury medical background texture, ultra-wide 21:9 ratio. Deep intense navy blue (#102748) and midnight blue (#0B1A33) gradient with subtle, elegant volumetric optical fiber light waves and faint geometric micro-mesh. Whisper-soft glowing accents in subtle chartreuse green (#CAE400) and soft cyan, smooth horizontal light streaks, out-of-focus crystalline particles with deep creamy bokeh. Premium commercial technology texture, clean minimalist clinical design, high-end sterile dental equipment ambiance, no text, no logos, no objects, seamless dark backdrop for UI text overlay, 8k --ar 21:9 --v 6.1 --style raw
     ```
+  - **Delivered Staged Asset:** `assets/5.2-banner-promocional-entre-hero-y-categorias.jpg` (ready for `public/assets/` deployment).
 
 **Layout:** A new `<div className="promo-strip">` inserted in `App.tsx` between `<Hero>` and `<CategoryFilter>`, or alternatively as the last child inside the Hero section.
 
@@ -356,10 +359,20 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
 
 **Proposed Change:** When showing "Todos los Insumos" (category = 'all') or when browsing category hubs, insert lightweight category section headers with contextual, high-end photography assets. These visual assets provide instant recognition and tactile credibility.
 
-**Category Asset Photographic Dossiers & Turnkey Generative Prompts:**
+> **Chilean Category Taxonomy Alignment (reconciled with PR #6):**  
+> The catalog uses standardized Chilean distributor categories (`src/types/index.ts`):
+> 1. `INSTRUMENTAL Y ACCESORIOS` (Scissors)
+> 2. `DESECHABLES, ESTERILIZACION Y DESINFECCION` (ShieldCheck)
+> 3. `OPERATORIA` (Wrench)
+> 4. `ENDODONCIA` (Activity)
+> 5. `HIGIENE BUCAL` (Sparkles)
+> 6. `IMPRESION` (Layers)
 
-#### 5.4.1 Categoría 1: Instrumental Quirúrgico y Rotatorio (`category-instrumental.webp`)
+**Category Asset Photographic Dossiers & Delivered Staged Assets:**
+
+#### 5.4.1 Categoría: Instrumental y Accesorios (`INSTRUMENTAL Y ACCESORIOS`)
 - **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors turbine, micromotor, contra-angle, forceps, and scalpel product listings.
+- **Delivered Staged Asset:** `assets/5.4.1-Categoría-1-Instrumental-Quirurgico-Rotatorio.jpg`
 - **Composition & Camera:** 20° low-angle dynamic hero macro perspective. The titanium handpiece rests diagonally across a warm Almond Cream (`#F5EDE4`) architectural plinth.
 - **Subject & Mechanical Details:** High-speed air-turbine handpiece in satin-matte titanium and surgical stainless steel, quadruple water-spray ports at the head clamping a micro-fluted diamond fissure bur. Precision push-button chuck mechanism with crisp machined chamfers. Beside it, a double-ended stainless steel Bein root elevator with knurled ergonomic handle.
 - **Optics & Lighting:** 90mm f/4 Macro lens, focus-stacked for pin-sharp edge-to-edge metallic knurling. Automotive studio strip lighting (dual 1x4 ft diffused softboxes) creating crisp, continuous white highlight ribbons along the titanium body. Dark Intense Blue (`#102748`) shadow falloff.
@@ -368,8 +381,9 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
   High-end commercial macro product photograph of a titanium dental high-speed turbine handpiece and surgical stainless steel elevator. Low-angle 20-degree hero perspective, resting on a matte off-white architectural pedestal. Intricate knurled metal handle texture, precision tungsten carbide dental bur clamped in the push-button turbine head, satin brushed finish. Shot on Sony A7R V with 90mm f/4 Macro G Master lens. Studio rim lighting with long softbox reflection strips, dark intense blue shadows, sterile warm clinical palette (#102748 and #FDF8F3). Industrial design catalog aesthetic, hyper-detailed, clean reflection, no fingerprints, no dust, 8k resolution --ar 16:9 --v 6.1 --style raw
   ```
 
-#### 5.4.2 Categoría 2: Diagnóstico y Exploración Clínica (`category-diagnostico.webp`)
-- **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors intraoral mirrors, probes, tweezers, and diagnostic kits.
+#### 5.4.2 Categoría: Endodoncia y Diagnóstico Clínico (`ENDODONCIA`)
+- **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors apex locators, endodontic files, intraoral mirrors, probes, and diagnostics.
+- **Delivered Staged Asset:** `assets/5.4.2-categoria-2-diagnostico-exploracion-clinica.jpg`
 - **Composition & Camera:** 45° clinical tabletop oblique perspective. Golden ratio composition centering on a front-surface rhodium mouth mirror reflecting an operating lamp beam.
 - **Subject & Mechanical Details:** Rhodium front-surface mirror (#5) showing true reflection with zero ghosting. The circular mirror face reflects an overhead ring of surgical LED daylight. Adjacent: Shepherd's hook dental explorer (#23) and a periodontal Williams probe with crisp, laser-etched black millimeter depth markings (1-2-3-5-7-8-9-10mm).
 - **Optics & Lighting:** 85mm f/2.8 Prime, shallow depth of field focusing sharply on the mirror edge and probe markings. High-key clinical lighting: 90cm overhead beauty dish producing a clean circular catchlight, filled with a cool white reflector for an immaculate, sterile ambiance.
@@ -378,8 +392,9 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
   Editorial product photograph of diagnostic dental examination instruments on a frosted tempered glass clinical surface. Center focus on a circular front-surface rhodium dental mouth mirror reflecting a clean ring of LED surgical light, paired with a stainless steel shepherd hook explorer and a graduated periodontal probe with laser-etched black millimeter markings. 45-degree angle, Canon EOS R5, 85mm f/2.8 lens, delicate depth of field, high-key clinical studio lighting, crisp specular reflections, warm almond and sterile white palette with intense blue undertones (#102748), immaculate cleanliness, Swiss watchmaker precision, 8k, photorealistic --ar 16:9 --v 6.1 --style raw
   ```
 
-#### 5.4.3 Categoría 3: Materiales Restauradores y Estética (`category-materiales.webp`)
-- **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors composites, adhesives, etching gels, and glass ionomers.
+#### 5.4.3 Categoría: Operatoria y Materiales Restauradores (`OPERATORIA`)
+- **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors composites, adhesives, etching gels, curing lights, and glass ionomers.
+- **Delivered Staged Asset:** `assets/5.4.3-categoria-3-materiales-restauradores-estetica.jpg`
 - **Composition & Camera:** 30° close-up beauty macro shot. Diagonal flow showing the precision dispensing of aesthetic restorative nano-hybrid composite.
 - **Subject & Mechanical Details:** Matte charcoal-black light-shielded composite syringe with screw dial. A tiny, immaculate bead of translucent tooth-colored aesthetic resin (shade A2) is extruded from the curved metal dispensing cannula, demonstrating natural optical opalescence. Beside it: 3 ceramic tooth tabs from a VITA classical shade guide (A1, A2, B1) mounted on a chrome holder, and an amber glass bonding bottle with a micro-applicator brush.
 - **Optics & Lighting:** 105mm Macro f/3.5, 1:1 reproduction. Backlit transillumination through the resin droplet highlighting true enamel translucency. Warm Almond Cream (`#FDF8F3`) background with Cayenne Red (`#C84B31`) label accents.
@@ -388,8 +403,9 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
   Cinematic macro product photograph of aesthetic dental restorative materials. An ergonomic black composite syringe dispenses a tiny translucent droplet of A2 enamel-shade resin on a glass slab, illuminated with backlighting that reveals natural tooth-like opalescence and translucency. Nearby are ceramic dental shade guide tabs (A1, A2, B1) on a chrome holder and a miniature amber bonding bottle with a micro-applicator brush. 105mm f/3.5 macro lens, Nikon Z9, extreme micro-detail, clinical editorial lighting with warm almond cream (#FDF8F3) and subtle cayenne red accents, high-end restorative dentistry aesthetic, pristine, no dust, photorealistic 8k --ar 16:9 --v 6.1 --style raw
   ```
 
-#### 5.4.4 Categoría 4: Esterilización, Bioseguridad y Pabellón (`category-esterilizacion.webp`)
-- **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors autoclave pouches, sterilization indicators, barrier films, and PPE.
+#### 5.4.4 Categoría: Desechables, Esterilización y Desinfección (`DESECHABLES, ESTERILIZACION Y DESINFECCION`)
+- **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors autoclave pouches, chemical indicators, cassettes, barrier films, and clinical PPE.
+- **Delivered Staged Asset:** `assets/5.4.4-categoria-4-esterilizacion-bioseguridad-pabellon.jpg`
 - **Composition & Camera:** 40° overhead clinical flatlay. Emphasizes sealed hygiene, ISO compliance, and medical security.
 - **Subject & Mechanical Details:** Transparent medical-grade self-seal autoclave pouch (Tyvek paper and multi-layer clinical film) with chevron heat-seal, enclosing sterilized surgical steel instruments. Clearly visible multi-parameter chemical process indicator strip displaying successful sterilization change (pink to brown). A pair of textured cobalt-blue nitrile examination gloves folded alongside a perforated stainless steel DIN sterilization cassette with medical silicone instrument racks.
 - **Optics & Lighting:** 50mm f/4 on full frame for deep focus. 5600K diffuse daylight softbox with polarizing screen to eliminate glare on the plastic pouch film, preserving crystal-clear visibility of the tools inside.
@@ -398,7 +414,7 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
   High-end commercial flatlay photograph of dental sterilization and infection control supplies. A transparent medical-grade autoclave sterilization pouch sealed with chevron edge containing surgical steel instruments, showing a color-changing chemical indicator strip. Adjacent to a perforated stainless steel sterilization cassette with medical silicone racks, and a pair of textured medical nitrile gloves in rich cobalt blue. Shot on Hasselblad, 50mm f/4 lens, overhead 40-degree angle, balanced diffuse daylight clinical illumination, zero glare on transparent film, immaculate hygienic atmosphere, pure colors (#102748, #F0F4F8), high-resolution commercial medical catalog --ar 16:9 --v 6.1 --style raw
   ```
 
-> **NOTE:** In the storefront layout, these visual assets can be integrated into the product grid category headers, category pill hover previews, or the category showcase cards.
+> **NOTE:** In the storefront layout, these visual assets can be integrated into the product grid category headers, category pill hover previews, or the category showcase cards. Additional categories (`HIGIENE BUCAL` and `IMPRESION`) share the same clinical visual design tokens and background gradient cards.
 
 ---
 
@@ -481,12 +497,14 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
 
 **Proposed Change:** Apply category-specific subtle color tints to the placeholder backgrounds:
 
-| Category | Current Bg | New Bg Tint | Description |
-| :--- | :--- | :--- | :--- |
-| Instruments | Gray dot-grid | Light Intense Blue tint: `#E8EDF5` | Cool, clinical, precision |
-| Diagnostics | Gray dot-grid | Light Limonade tint: `#F5F7E8` | Warm, analytical |
-| Materials | Gray dot-grid | Light Almond Cream: `#F9F3EC` | Warm, restorative |
-| Sterilization | Gray dot-grid | Light Frozen Water: `#EDF1F5` | Clean, sterile |
+| Reconciled Category (PR #6 Taxonomy) | Lucide Icon | Current Bg | New Brand Bg Tint | Clinical Mood |
+| :--- | :--- | :--- | :--- | :--- |
+| `INSTRUMENTAL Y ACCESORIOS` | `Scissors` | Gray dot-grid | Light Intense Blue tint: `#E8EDF5` | Cool, surgical precision |
+| `OPERATORIA` | `Wrench` | Gray dot-grid | Light Almond Cream: `#F9F3EC` | Warm, restorative aesthetics |
+| `DESECHABLES, ESTERILIZACION Y DESINFECCION` | `ShieldCheck` | Gray dot-grid | Light Frozen Water: `#EDF1F5` | Sterile, clinical hygiene |
+| `ENDODONCIA` | `Activity` | Gray dot-grid | Light Limonade tint: `#F5F7E8` | Analytical, specialized care |
+| `HIGIENE BUCAL` | `Sparkles` | Gray dot-grid | Light Fresh Mint: `#E6F4F1` | Fresh, prophylactic care |
+| `IMPRESION` | `Layers` | Gray dot-grid | Light Warm Sand: `#FAF0E6` | Molds, models and prosthetics |
 
 **CSS Implementation:** Update the `.media-placeholder-box.gradient-*` selectors to use brand-aligned tints:
 
@@ -513,7 +531,9 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
 }
 ```
 
-**Placeholder icon frame:**
+**Placeholder Icon & Taxonomy Reconciliation in `ProductCard.tsx`:**
+The legacy `ICON_BY_CATEGORY` dictionary in `src/components/ProductCard.tsx` mapped only the legacy English categories (`Diagnostics`, `Instruments`, `Materials`, `Sterilization`). In Phase 1/2, reconcile this dictionary to support the official Chilean categories (`Scissors`, `ShieldCheck`, `Wrench`, `Activity`, `Sparkles`, `Layers`) matching `CategoryFilter.tsx`, preventing card icons from falling back to generic `Activity`.
+
 ```css
 .placeholder-icon-frame {
   background: var(--brand-frozen);
@@ -563,10 +583,14 @@ For real product imagery or AI-generated storefront packshots, all product cards
 | :--- | :--- | :--- |
 | `index.html` | Google Fonts import (Baloo Da 2 + Syne). Update theme-color to `#102748`. | P1 |
 | `src/index.css` | New color tokens. Font family overrides. All component color updates. New CSS classes for promo strip, hero image panel, footer trust badges, placeholder tints. | P1-P3 |
+| `src/components/ProductCard.tsx` | Reconcile `ICON_BY_CATEGORY` to support the 6 Chilean dental categories from PR #6; update typography and badge colors. | P1-P2 |
 | `src/components/Hero.tsx` | Restructure to image panel layout. Move guarantee items to trust strip. | P2 |
 | `src/components/Navbar.tsx` | Brand slogan line (optional). Icon color update (handled via CSS). | P1 |
 | `src/components/Footer.tsx` | Add trust badge row. Update footer link hover color reference. | P3 |
 | `src/App.tsx` | Insert promo strip component between Hero and CategoryFilter. | P2 |
+
+> **Multi-Page CSS Isolation Guardrail (reconciled with PR #6):**  
+> Storefront CSS changes in `src/index.css` apply exclusively to `index.html`. The admin portal introduced in PR #6 lives on `/admin` (`admin.html`) with its own scoped styles in `src/admin/admin.css`. Storefront styling changes must never bleed into or alter `src/admin/admin.css`.
 
 ### 6.2 New Component: PromoStrip
 
@@ -655,8 +679,8 @@ The brand manual says "Cayenne Red / Orange" but does not provide an exact hex. 
 
 ### Automated Tests
 ```bash
-pnpm test          # All existing tests must pass without regressions
-pnpm build         # TypeScript compilation and production bundle success
+pnpm test          # All 330 unit and integration tests must pass without regressions
+pnpm build         # Multi-page bundle build validation (dist/index.html & dist/admin.html)
 ```
 
 ### Visual Verification Checklist
