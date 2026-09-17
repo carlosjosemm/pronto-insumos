@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { getAdminFirestore } from './lib/firebaseAdmin'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || ''
@@ -19,6 +20,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const cleanOrderId = String(orderId).trim().toUpperCase()
+
+    // Pre-flight Server-side Inventory Validation against Firestore Admin
+    const adminDb = getAdminFirestore()
+    if (adminDb) {
+      for (const item of items) {
+        const productId = item.product?.id || item.productId || item.id
+        const quantity = Math.max(1, Number(item.quantity) || 1)
+
+        if (productId) {
+          const productRef = adminDb.collection('products').doc(productId)
+          const productSnap = await productRef.get()
+
+          if (!productSnap.exists) {
+            return res.status(400).json({
+              error: `El producto "${item.product?.name || productId}" no fue encontrado en el catálogo de inventario.`,
+              productId,
+              availableStock: 0,
+              requestedQuantity: quantity
+            })
+          }
+
+          const productData = productSnap.data()
+          const availableStock = typeof productData?.stockCount === 'number' ? productData.stockCount : 0
+          const inStock = productData?.inStock !== false && availableStock > 0
+
+          if (!inStock || availableStock < quantity) {
+            return res.status(400).json({
+              error: `Stock insuficiente para el producto "${productData?.name || productId}". Stock disponible: ${availableStock}, solicitado: ${quantity}.`,
+              productId,
+              availableStock,
+              requestedQuantity: quantity
+            })
+          }
+        }
+      }
+    }
 
     const host = req.headers.host || 'pronto-insumos.vercel.app'
     const protocol = host.includes('localhost') ? 'http' : 'https'

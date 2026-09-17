@@ -519,4 +519,72 @@ describe('CheckoutModal Component', () => {
     fireEvent.click(screen.getByText(/Ver Comprobante de Compra/i))
     expect(screen.getByText(/148925 \(Acreditación ISP\)/i)).toBeInTheDocument()
   })
+
+  describe('Inventory validation guards', () => {
+    it('should block advancing to Step 2 and display error when cart item exceeds available stock', () => {
+      const overStockProduct: Product = {
+        ...mockProduct,
+        id: 'odon-over',
+        stockCount: 2,
+        inStock: true
+      }
+      render(
+        <CheckoutModal
+          {...defaultProps}
+          cartItems={[{ product: overStockProduct, quantity: 5 }]}
+          totalAmount={overStockProduct.price * 5}
+        />
+      )
+
+      // Fill in valid customer fields
+      fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: 'Dra. Andrea Morales' } })
+      fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
+      fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'andrea@moralesdental.cl' } })
+      fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 5555 4444' } })
+      fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 100' } })
+      fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: 'Melipilla' } })
+      fireEvent.change(screen.getByPlaceholderText('Ej: 9500000'), { target: { value: '9500000' } })
+
+      // Attempt to advance to Step 2
+      fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+
+      // Should remain in Step 1 and display error
+      expect(screen.getByText(/supera el stock disponible \(5 solicitados, 2 disponibles\)/i)).toBeInTheDocument()
+      expect(screen.queryByText(/Selecciona la Opción Preferida para tu Clínica/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/Seleccionar Método de Pago \/ Cotización/i)).toBeInTheDocument()
+    })
+
+    it('should block advancing to Step 2 and display error when cart item is out of stock', () => {
+      const outOfStockProduct: Product = {
+        ...mockProduct,
+        id: 'odon-oos',
+        stockCount: 0,
+        inStock: false
+      }
+      render(
+        <CheckoutModal
+          {...defaultProps}
+          cartItems={[{ product: outOfStockProduct, quantity: 1 }]}
+          totalAmount={outOfStockProduct.price}
+        />
+      )
+
+      // Fill in valid customer fields
+      fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: 'Dra. Andrea Morales' } })
+      fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
+      fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'andrea@moralesdental.cl' } })
+      fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 5555 4444' } })
+      fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 100' } })
+      fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: 'Melipilla' } })
+      fireEvent.change(screen.getByPlaceholderText('Ej: 9500000'), { target: { value: '9500000' } })
+
+      // Attempt to advance to Step 2
+      fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+
+      // Should remain in Step 1 and display error
+      expect(screen.getByText(/no cuenta con stock disponible/i)).toBeInTheDocument()
+      expect(screen.queryByText(/Selecciona la Opción Preferida para tu Clínica/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/Seleccionar Método de Pago \/ Cotización/i)).toBeInTheDocument()
+    })
+  })
 })
