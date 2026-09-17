@@ -42,10 +42,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const productData = doc.data() || {}
     const nowIso = new Date().toISOString()
+    const currentStock = typeof productData.stockCount === 'number' ? productData.stockCount : 0
+    const isNowActive = visible
 
     const batch = db.batch()
     batch.update(productRef, {
-      inStock: visible,
+      isActive: isNowActive,
+      inStock: currentStock > 0 && isNowActive,
       updatedAt: nowIso
     })
 

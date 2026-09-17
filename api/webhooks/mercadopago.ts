@@ -143,27 +143,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               inStock: boolean
             }> = []
 
+            // Consolidate duplicate line items by productId to prevent transactional overwrite
+            const consolidatedItems = new Map<string, { qty: number; name?: string }>()
             for (const item of items) {
-              if (item.productId) {
-                const productRef = adminDb.collection('products').doc(item.productId)
-                const productSnap = await transaction.get(productRef)
+              const pid = item.productId || item.id
+              if (!pid) continue
+              const existing = consolidatedItems.get(pid) || { qty: 0, name: item.name }
+              existing.qty += Math.max(1, Number(item.quantity) || 1)
+              if (item.name) existing.name = item.name
+              consolidatedItems.set(pid, existing)
+            }
 
-                if (productSnap.exists) {
-                  const pData = productSnap.data() || {}
-                  const currentStock = Number(pData.stockCount) || 0
-                  const quantity = Math.max(1, Number(item.quantity) || 1)
-                  const newStock = Math.max(0, currentStock - quantity)
-                  productUpdates.push({
-                    ref: productRef,
-                    productId: item.productId,
-                    name: pData.name || item.name || item.productId,
-                    sku: pData.sku || '',
-                    previousStock: currentStock,
-                    newStock,
-                    quantity,
-                    inStock: newStock > 0
-                  })
-                }
+            for (const [productId, info] of consolidatedItems.entries()) {
+              const productRef = adminDb.collection('products').doc(productId)
+              const productSnap = await transaction.get(productRef)
+
+              if (productSnap.exists) {
+                const pData = productSnap.data() || {}
+                const currentStock = Number(pData.stockCount) || 0
+                const newStock = Math.max(0, currentStock - info.qty)
+                const isActive = pData.isActive !== false
+                productUpdates.push({
+                  ref: productRef,
+                  productId,
+                  name: pData.name || info.name || productId,
+                  sku: pData.sku || '',
+                  previousStock: currentStock,
+                  newStock,
+                  quantity: info.qty,
+                  inStock: newStock > 0 && isActive
+                })
               }
             }
 

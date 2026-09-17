@@ -265,11 +265,18 @@ async function runPurgeAndSeed() {
 
   for (const colName of collectionsToPurge) {
     const snap = await db.collection(colName).get()
-    const batch = db.batch()
-    snap.forEach(doc => {
-      batch.delete(doc.ref)
-    })
-    await batch.commit()
+    if (!snap.empty) {
+      const BATCH_LIMIT = 450
+      const docs = snap.docs
+      for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+        const chunk = docs.slice(i, i + BATCH_LIMIT)
+        const batch = db.batch()
+        chunk.forEach(doc => {
+          batch.delete(doc.ref)
+        })
+        await batch.commit()
+      }
+    }
     console.log(`🗑️ Colección "${colName}": ${snap.size} documentos eliminados.`)
   }
 

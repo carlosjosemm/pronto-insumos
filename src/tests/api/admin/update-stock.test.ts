@@ -92,4 +92,44 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
     }))
     expect(jsonOutput.inStock).toBe(true)
   })
+
+  it('keeps inStock: false if a paused product (isActive: false) is restocked', async () => {
+    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
+
+    const mockBatch = {
+      update: vi.fn(),
+      set: vi.fn(),
+      commit: vi.fn().mockResolvedValue([])
+    }
+    const mockDoc = {
+      get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ stockCount: 0, isActive: false }) })
+    }
+
+    const mockDb = {
+      collection: vi.fn(() => ({ doc: vi.fn(() => mockDoc) })),
+      batch: vi.fn(() => mockBatch)
+    }
+
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+
+    const req = {
+      method: 'POST',
+      body: {
+        productId: 'odon-paused',
+        newStock: 25,
+        reason: 'reposicion'
+      }
+    } as VercelRequest
+
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.success).toBe(true)
+    expect(jsonOutput.stockCount).toBe(25)
+    expect(jsonOutput.inStock).toBe(false)
+    expect(mockBatch.update).toHaveBeenCalledWith(mockDoc, expect.objectContaining({
+      stockCount: 25,
+      inStock: false
+    }))
+  })
 })

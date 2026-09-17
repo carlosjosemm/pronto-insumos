@@ -44,7 +44,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (name && typeof name === 'string') updates.name = name.trim()
-    if (typeof price === 'number' && price > 0) updates.price = Math.round(price)
+    if (typeof price === 'number' && price > 0) {
+      updates.price = Math.round(price)
+      updates.priceNeto = Math.round(updates.price / 1.19)
+    }
     if (description !== undefined) updates.description = String(description).trim()
     if (category && typeof category === 'string') updates.category = category.trim()
     if (typeof prescriptionRequired === 'boolean') updates.prescriptionRequired = prescriptionRequired

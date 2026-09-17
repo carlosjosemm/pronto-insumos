@@ -31,7 +31,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const orderRef = db.collection('orders').doc(orderId.trim())
+    let orderRef = db.collection('orders').doc(orderId.trim())
+    const initialCheck = await orderRef.get()
+    if (!initialCheck.exists) {
+      const querySnap = await db.collection('orders').where('orderId', '==', orderId.trim()).limit(1).get()
+      if (querySnap.empty) {
+        return res.status(404).json({ success: false, error: `Pedido "${orderId}" no encontrado en Firestore` })
+      }
+      orderRef = querySnap.docs[0].ref
+    }
 
     const result = await db.runTransaction(async (transaction) => {
       const orderDoc = await transaction.get(orderRef)
@@ -53,30 +61,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const items: any[] = Array.isArray(orderData.items) ? orderData.items : []
 
-      // Read all products referenced in order items
-      const productDocsToUpdate: { ref: FirebaseFirestore.DocumentReference; newStock: number }[] = []
-
+      // Consolidate line item quantities by productId to prevent duplicate snapshot overwrite
+      const consolidatedQty = new Map<string, { qty: number; name?: string }>()
       for (const item of items) {
         const productId = item.productId || item.id
         if (!productId) continue
+        const existing = consolidatedQty.get(productId) || { qty: 0, name: item.name }
+        existing.qty += typeof item.quantity === 'number' ? Math.max(1, item.quantity) : 1
+        if (item.name) existing.name = item.name
+        consolidatedQty.set(productId, existing)
+      }
 
+      // Read all products referenced in order items
+      const productDocsToUpdate: {
+        ref: FirebaseFirestore.DocumentReference
+        productId: string
+        name: string
+        sku: string
+        previousStock: number
+        newStock: number
+        delta: number
+        isActive: boolean
+      }[] = []
+
+      for (const [productId, itemInfo] of consolidatedQty.entries()) {
         const productRef = db.collection('products').doc(productId)
         const productDoc = await transaction.get(productRef)
 
         if (productDoc.exists) {
           const productData = productDoc.data() || {}
           const currentStock = typeof productData.stockCount === 'number' ? productData.stockCount : 0
-          const qty = typeof item.quantity === 'number' ? item.quantity : 1
-          const newStock = Math.max(0, currentStock - qty)
+          const newStock = Math.max(0, currentStock - itemInfo.qty)
+          const isActive = productData.isActive !== false
 
           productDocsToUpdate.push({
             ref: productRef,
             productId,
-            name: productData.name || item.name || productId,
+            name: productData.name || itemInfo.name || productId,
             sku: productData.sku || '',
             previousStock: currentStock,
             newStock,
-            delta: -qty
+            delta: -itemInfo.qty,
+            isActive
           })
         }
       }
@@ -88,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const update of productDocsToUpdate) {
         transaction.update(update.ref, {
           stockCount: update.newStock,
-          inStock: update.newStock > 0,
+          inStock: update.newStock > 0 && update.isActive,
           updatedAt: nowIso
         })
 

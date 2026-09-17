@@ -47,10 +47,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const delta = validStock - previousStock
     const adminActor = authResult.email || authResult.uid || 'admin'
 
+    const isProductActive = productData.isActive !== false
+    const computedInStock = validStock > 0 && isProductActive
     const batch = db.batch()
     batch.update(productRef, {
       stockCount: validStock,
-      inStock: validStock > 0,
+      inStock: computedInStock,
       lastStockAdjustment: {
         previousStock,
         newStock: validStock,
@@ -65,9 +67,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const auditRef = db.collection('inventory_audit_logs').doc()
     batch.set(auditRef, {
       id: auditRef.id,
-      productId: productId.trim(),
+      productId,
       productSku: productData.sku || '',
-      productName: productData.name || productId.trim(),
+      productName: productData.name || productId,
       changeType: 'STOCK_ADJUSTMENT',
       previousStock,
       newStock: validStock,
@@ -86,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       productId,
       stockCount: validStock,
-      inStock: validStock > 0
+      inStock: computedInStock
     })
   } catch (err: any) {
     console.error('[Admin API Update Stock] Error:', err)

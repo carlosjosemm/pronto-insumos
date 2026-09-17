@@ -19,6 +19,7 @@ export interface Product {
   reviewsCount: number
   inStock: boolean
   stockCount: number
+  isActive?: boolean
   prescriptionRequired: boolean
   ispRegistrationNumber?: string
   tag: string

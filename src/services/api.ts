@@ -1,6 +1,6 @@
 import { PRODUCTS, MOCK_PROMOS } from '../data/products'
 import { db } from './firebase'
-import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { BillingInfo, CartItem, CustomerInfo, Order, OrderStatus, PaymentMethod, Product, PromoCode, SanitaryVerification } from '../types'
 import { calculateTaxBreakdown } from '../utils/tax'
 
@@ -164,8 +164,8 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
   }
 
   try {
-    const ordersRef = collection(db, 'orders')
-    await addDoc(ordersRef, payload)
+    const orderDocRef = doc(db, 'orders', orderId)
+    await setDoc(orderDocRef, payload)
   } catch (err: any) {
     console.warn('Firestore order submit notice:', err.message)
   }

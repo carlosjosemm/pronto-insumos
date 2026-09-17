@@ -34,10 +34,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const orderRef = db.collection('orders').doc(orderId.trim())
-    const doc = await orderRef.get()
+    let orderRef = db.collection('orders').doc(orderId.trim())
+    let doc = await orderRef.get()
     if (!doc.exists) {
-      return res.status(404).json({ success: false, error: 'Pedido no encontrado' })
+      const querySnap = await db.collection('orders').where('orderId', '==', orderId.trim()).limit(1).get()
+      if (querySnap.empty) {
+        return res.status(404).json({ success: false, error: 'Pedido no encontrado' })
+      }
+      doc = querySnap.docs[0]
+      orderRef = doc.ref
     }
 
     const currentStatus = doc.data()?.status || null

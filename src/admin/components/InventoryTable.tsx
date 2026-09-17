@@ -100,7 +100,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
             ) : (
               filteredProducts.map(p => {
                 const stock = typeof p.stockCount === 'number' ? p.stockCount : 0
-                const isVisible = p.inStock !== false
+                const isVisible = p.isActive !== false
                 const netPrice = Math.round(p.price / 1.19)
 
                 return (
@@ -131,7 +131,7 @@ export const InventoryTable: React.FC<InventoryTableProps> = ({
                     </td>
                     <td>
                       <span className={`admin-stock-badge ${getStockBadgeClass(stock, isVisible)}`}>
-                        {stock <= 0 ? 'Sin Stock' : `${stock} unid.`}
+                        {!isVisible ? 'Pausado' : stock <= 0 ? 'Sin Stock' : `${stock} unid.`}
                       </span>
                     </td>
                     <td>

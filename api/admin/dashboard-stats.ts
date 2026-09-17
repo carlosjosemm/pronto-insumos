@@ -2,6 +2,25 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from '../lib/firebaseAdmin'
 import { verifyAdminToken } from '../lib/adminAuth'
 
+function getChileDate(dateInput?: any): string {
+  if (!dateInput) return ''
+  let d: Date
+  if (typeof dateInput?.toDate === 'function') {
+    d = dateInput.toDate()
+  } else if (dateInput instanceof Date) {
+    d = dateInput
+  } else {
+    d = new Date(dateInput)
+  }
+  if (isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(d)
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
@@ -28,9 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const ordersSnap = await db.collection('orders').get()
     const productsSnap = await db.collection('products').get()
-
-    const todayStr = new Date().toISOString().slice(0, 10)
-    const currentMonthStr = new Date().toISOString().slice(0, 7)
+    const todayStr = getChileDate(new Date())
+    const currentMonthStr = todayStr.slice(0, 7)
 
     let salesToday = 0
     let pendingOrders = 0
@@ -40,16 +58,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const data = doc.data()
       const status = data.status || ''
       const total = typeof data.totalAmount === 'number' ? data.totalAmount : 0
-      const createdAt = data.createdAt ? (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate().toISOString() : String(data.createdAt)) : ''
-      const paidAt = data.paidAt || (status === 'PAGADO_MERCADOPAGO' || status === 'TRANSFERENCIA_APROBADA' ? createdAt : '')
+      const createdAtChile = getChileDate(data.createdAt)
+      const paidAtRaw = data.paidAt || (status === 'PAGADO_MERCADOPAGO' || status === 'TRANSFERENCIA_APROBADA' || status === 'PAGADO_TRANSFERENCIA' ? data.createdAt : null)
+      const paidAtChile = getChileDate(paidAtRaw)
 
       // Count orders this month
-      if (createdAt.startsWith(currentMonthStr)) {
+      if (createdAtChile.startsWith(currentMonthStr)) {
         ordersThisMonth++
       }
 
       // Check sales today
-      if ((status === 'PAGADO_MERCADOPAGO' || status === 'TRANSFERENCIA_APROBADA' || status === 'PAGADO_TRANSFERENCIA') && paidAt.startsWith(todayStr)) {
+      if ((status === 'PAGADO_MERCADOPAGO' || status === 'TRANSFERENCIA_APROBADA' || status === 'PAGADO_TRANSFERENCIA') && paidAtChile === todayStr) {
         salesToday += total
       }
 
@@ -63,8 +82,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     productsSnap.forEach(doc => {
       const data = doc.data()
       const stock = typeof data.stockCount === 'number' ? data.stockCount : 0
-      const inStock = data.inStock !== false
-      if (inStock && stock <= 5) {
+      const isPublished = data.inStock !== false && data.isActive !== false
+      if (isPublished && stock <= 5) {
         lowStockProducts++
       }
     })

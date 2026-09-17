@@ -57,6 +57,10 @@ export function validateProductSchema(doc: any): ValidationResult {
     errors.push('Campo "inStock" debe ser booleano')
   }
 
+  if (doc.isActive !== undefined && typeof doc.isActive !== 'boolean') {
+    errors.push('Campo "isActive" debe ser booleano si está presente')
+  }
+
   if (typeof doc.prescriptionRequired !== 'boolean') {
     errors.push('Campo "prescriptionRequired" debe ser booleano')
   }

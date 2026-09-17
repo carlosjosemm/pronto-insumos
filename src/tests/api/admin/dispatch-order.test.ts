@@ -81,4 +81,49 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
       actorRole: 'ADMIN'
     }))
   })
+
+  it('falls back to query by orderId if direct doc lookup is not found', async () => {
+    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
+
+    const mockBatch = {
+      update: vi.fn(),
+      set: vi.fn(),
+      commit: vi.fn().mockResolvedValue([])
+    }
+    const directDoc = {
+      get: vi.fn().mockResolvedValue({ exists: false })
+    }
+    const queriedDoc = {
+      ref: { id: 'auto-gen-id' },
+      data: () => ({ status: 'TRANSFERENCIA_APROBADA' })
+    }
+
+    const mockDb = {
+      collection: vi.fn((name: string) => ({
+        doc: vi.fn(() => directDoc),
+        where: vi.fn(() => ({
+          limit: vi.fn(() => ({
+            get: vi.fn().mockResolvedValue({ empty: false, docs: [queriedDoc] })
+          }))
+        }))
+      })),
+      batch: vi.fn(() => mockBatch)
+    }
+
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+
+    const req = {
+      method: 'POST',
+      body: {
+        orderId: 'PRONTO-FALLBACK-DISPATCH',
+        carrier: 'chilexpress'
+      }
+    } as VercelRequest
+
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.success).toBe(true)
+    expect(jsonOutput.status).toBe('DESPACHADO')
+  })
 })
