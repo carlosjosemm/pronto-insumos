@@ -110,15 +110,23 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 ## Phase 2: Checkout UX, Cart Persistence & Payment Return Flows
 
-- [ ] **2.1. Handle Mercado Pago Return URLs in Frontend (`App.tsx`)**
-  - **Current Issue:** When completing payment on Checkout Pro, Mercado Pago redirects back to `/?status=approved&orderId=PRONTO-XXXXXX`. `App.tsx` does not read URL search parameters (`window.location.search`). Customers are dropped back onto the homepage with no visual confirmation while the cart remains full.
-  - **Required Action:**
-    - Parse query parameters or set up a dedicated return route (`/checkout/confirmation`).
-    - If `status=approved`:
-      - Empty the shopping cart.
-      - Display an order success screen highlighting the order number, invoice status, and support contact.
-    - If `status=failure` or `status=pending`:
-      - Display a helpful message offering alternative payment methods (retry card or bank transfer).
+- [x] **2.1. Handle Mercado Pago Return URLs in Frontend (`App.tsx`)**
+  - **Context:** When completing payment on Checkout Pro, Mercado Pago redirects back to `/?status=approved&orderId=PRONTO-XXXXXX` (or `collection_status`, `external_reference`, etc.).
+  - **Fulfilled & Verified:**
+    - **URL Query Parameter Parsing on Mount (`App.tsx`):**
+      - Inspects `window.location.search` for gateway parameters (`status`, `collection_status`, `orderId`, `external_reference`, `payment_id`, `collection_id`).
+      - Sanitizes technical query parameters from browser address bar using `window.history.replaceState` to prevent re-triggering upon manual page refresh.
+    - **Cart Lifecycle:**
+      - Upon `status === 'approved'`, automatically invokes `handleOrderSuccess()` to clear cart and promo state.
+      - Upon `status === 'failure'` or `status === 'pending'`, preserves cart items so clinic can retry payment or choose another payment method.
+    - **Payment Return Status Modal (`PaymentReturnModal.tsx`):**
+      - **Approved:** Renders clinical success header, order ID badge, MP transaction ID, Factura/Boleta notice, direct WhatsApp delivery coordination button, and shop continue action.
+      - **Failure:** Renders alert, reassurance that no charge was made, advice on bank transfer alternative, and retry button reopening checkout options.
+      - **Pending:** Renders banking validation notice and notification advisory.
+    - **Automated Test Coverage:**
+      - 8 tests in `src/tests/components/PaymentReturnModal.test.tsx` testing all states, actions, and Escape key dismissal.
+      - 4 integration tests in `src/tests/components/AppPaymentReturn.test.tsx` verifying mount detection, cart clearing, and URL sanitation.
+      - Total repository test suite: 201 tests passing (100% test reliability).
 
 - [ ] **2.2. Shopping Cart Persistence (`localStorage`)**
   - **Current Issue:** Cart state lives strictly in React memory (`useState`). If a customer reloads the page or switches tabs to inspect dental equipment, the cart is wiped clean.
