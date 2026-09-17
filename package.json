@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "deploy:rules": "firebase deploy --only firestore:rules"
+    "deploy:rules": "firebase deploy --only firestore:rules",
+    "setup:admin": "pnpm dlx tsx scripts/setup-admin.ts"
   },
   "dependencies": {
     "firebase": "^12.16.0",
