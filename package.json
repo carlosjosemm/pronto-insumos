@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "deploy:rules": "firebase deploy --only firestore:rules",
+    "deploy:rules": "pnpm dlx firebase-tools deploy --only firestore:rules --project pronto-insumos",
     "setup:admin": "pnpm dlx tsx scripts/setup-admin.ts",
     "schema:validate": "pnpm dlx tsx scripts/manage-firestore-schema.ts --validate --env=prod",
     "schema:validate:dev": "pnpm dlx tsx scripts/manage-firestore-schema.ts --validate --env=dev",
