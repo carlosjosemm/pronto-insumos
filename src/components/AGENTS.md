@@ -1,85 +1,238 @@
 # PRONTO UI Components Guide (`src/components/`)
 
-This directory contains the user interface layer of PRONTO, built with **React 18** and styled using our custom, high-performance **Vanilla CSS Clinical Design System** located at [src/index.css](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css).
+This document is the **authoritative domain and technical reference** for the user interface layer of PRONTO Insumos Odontológicos. It captures the business context of dental distribution in Chile, architectural decisions, complete component specifications, and an exhaustive field-by-field breakdown of clinical checkout, tax invoicing (SII), and payment workflows.
 
 ---
 
-## 🎯 1. Directory Scope & Component Architecture
+## 🏥 1. Business Context & Clinical Domain Architecture
 
-* **Role:** Presentation and user interaction. Components receive props, maintain localized UI state, dispatch user actions, and emit events.
-* **Design Philosophy:** "Clinical Precision & Local Trust". Authentic Chilean dental depot aesthetic combining **Deep Navy (`#0b192c`)**, **Surgical Teal (`#088395`)**, crisp slate neutrals (`#334155`), and technical 6px–8px radii. Zero radioactive neon glowing halos or fake SaaS telemetry.
-* **Key Components:**
-  * [`Navbar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Navbar.tsx): Top commercial utility bar (Melipilla express delivery, Av. Ortúzar pickup, Factura Electrónica 19% IVA, WhatsApp clinical hotline), brand logo `PRONTO ODONTOLOGÍA`, technical search input, and dynamic cart badge.
-  * [`Hero.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Hero.tsx): Authentic clinical depot value proposition paired with the **Commercial Guarantee Card** (Factura Electrónica SII, Melipilla warehouse dispatch, ISP sanitary compliance, and technical WhatsApp line).
-  * [`CategoryFilter.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryFilter.tsx): Segmented category control tabs with accessible roles, instant stock toggle, and sort controls.
-  * [`ProductCard.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductCard.tsx): Clinical catalog item card featuring technical header with REF SKU code (e.g. `REF: OD-101`), discreet out-of-stock indicators (`Sin Stock` / `Agotado`), sterile media presentation with primary photo display, interactive media/title triggers opening the detail modal, simple `IVA incluido` pricing, and dedicated add-to-cart action. Internal warehouse stock counts are strictly confidential and omitted from customer views.
-  * [`ProductList.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductList.tsx): Responsive grid container with clinical empty and loading states.
-  * [`ProductQuickView.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductQuickView.tsx): Vertical (1-column) Product Detail Modal featuring multi-photo gallery (with thumbnail strip, next/prev navigation, and keyboard arrow controls), ISP compliance notices, itemized pricing (`IVA incluido`), technical specs checklist, package contents ("Contenido del Empaque") checklist, and stock-capped quantity stepper.
-  * [`Cart.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Cart.tsx): Slide-over cart drawer with line item editing, Chilean free shipping threshold tracker ($150.000 / Melipilla), promo code support, itemized tax calculation, real-time visual stock cues (`Sin stock disponible`, `Máximo disponible (X unid.)`, `Excede stock (X unid. disp.)`), quantity stepper capped at physical warehouse stock with informative tooltip, warning alert banner for depleted or over-limit items, and disabled checkout action (`Insumos sin Stock Suficiente`).
-  * [`CheckoutModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CheckoutModal.tsx): Multi-step checkout (Despacho, Chilean Delivery Zone, Boleta/Factura Electrónica with Chilean Modulo 11 RUT validation, Payment method selector). Enforces pre-flight inventory validation guards blocking Step 1 -> Step 2 progression and order submission if items in the cart exceed physical warehouse stock or are depleted. Zero raw credit card inputs stored in state (PCI-DSS compliant).
-  * [`PaymentReturnModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/PaymentReturnModal.tsx): Post-payment return modal managing Mercado Pago return states (`approved`, `failure`, `pending`), displaying order identifiers, clearing cart on approved payments, offering direct WhatsApp dispatch coordination, and providing recovery actions.
-  * [`OrderTrackingModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/OrderTrackingModal.tsx): Public order tracking modal secured by canonical Order ID (`PRONTO-XXXXXX`) and Chilean Modulo 11 customer RUT. Displays a 5-step visual timeline (*Registrado*, *Comprobante/Pago*, *Preparación en Melipilla*, *En Ruta*, *Entregado*), bank transfer voucher upload form for pending orders, delivery details, itemized summary, and direct WhatsApp customer support.
-  * [`Footer.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Footer.tsx): Grounded 4-column B2B distributor layout (Av. Ortúzar 750 warehouse address, tracking action, regional routes, ISP compliance, and payment channels). Zero prototype seed buttons.
-  * [`ErrorBoundary.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ErrorBoundary.tsx): Fallback wrapper to catch and gracefully report runtime UI errors with direct WhatsApp escalation.
+### 1.1 The Chilean Dental Supplies Market & PRONTO's Role
+PRONTO Insumos Odontológicos operates as a specialized **depósito dental** (dental supply distributor) physically based in **Melipilla, Chile** (warehouse and local pickup point at **Av. Ortúzar 750**). 
 
----
+The customer base is primarily **B2B (Business-to-Business)**:
+1. **Private Dental Clinics (Sociedades Odontológicas):** SpA, EIRL, or Sociedades de Profesionales that purchase consumables, impression materials, and handpieces as operational expenses.
+2. **Independent Dentists (Odontólogos Generales y Especialistas):** Orthodontists, endodontists, periodontists, implantologists, and pediatric dentists operating private consultation rooms.
+3. **Dental Laboratories (Laboratorios Dentales):** Mechanics and technicians fabricating prosthetics, crowns, and aligners requiring specific silicones, stones, and burs.
+4. **Public Health Services & Municipal Clinics (CESFAM / Salud Primaria):** Requiring formal tax quotes, registered clinical invoicing, and batch dispatch.
 
-## 🚫 2. Anti-Overshooting & Styling Guardrails
+### 1.2 Chilean Tax Invoicing (SII — Servicio de Impuestos Internos)
+In Chile, all commercial sales are strictly governed by the **Servicio de Impuestos Internos (SII)** and subject to a **19% Impuesto al Valor Agregado (IVA)**. Commercial transactions fall into two distinct legal categories:
 
-1. **NO External UI Libraries or Tailwind:**
-   * Do **NOT** install Tailwind CSS, Bootstrap, MUI, Chakra, Radix, or Shadcn.
-   * Style components using semantic classes and CSS custom variables defined in [src/index.css](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css) (e.g., `btn-primary`, `btn-secondary`, `product-card`, `modal-overlay`, `var(--navy-900)`, `var(--teal-600)`).
-2. **Icons:**
-   * Use [`lucide-react`](https://lucide.dev) for UI icons (already installed).
-   * Always import icons by name (e.g., `import { ShoppingBag, ShieldCheck, MapPin } from 'lucide-react'`).
-3. **Keep Components Manageable:**
-   * Avoid giant monolith files. Keep component responsibilities focused on presentation and state dispatch.
-4. **No Heavy State Managers:**
-   * Manage local UI state with standard React hooks (`useState`, `useEffect`, `useCallback`, `useMemo`). Do not inject global store providers.
+* **Boleta Electrónica (B2C / Personal):**
+  - Issued to individual consumers or dentists purchasing under their personal tax identity (**RUN/RUT personal**).
+  - IVA is charged and remitted to the fiscal treasury, but **does not grant fiscal tax credit** to a business.
+* **Factura Electrónica (B2B / Crédito Fiscal):**
+  - Legally mandatory for dental companies, corporate clinics, and incorporated dental practices that wish to claim the 19% IVA as **Crédito Fiscal** (deductible against their monthly sales VAT in **Formulario 29 / F29**) and deduct material expenses from their annual corporate income tax (**Formulario 22 / F22**).
+  - The SII strictly mandates specific corporate tax attributes for every Factura:
+    1. **RUT de la Empresa:** Corporate tax ID with Modulo 11 check digit verification.
+    2. **Razón Social:** Exact registered legal company name.
+    3. **Giro Comercial:** Official economic activity classification approved by the SII (e.g., *"Actividades de atención odontológica"*, *"Servicios médicos dentales"*).
+    4. **Dirección Tributaria y Comuna:** Official registered fiscal domicile.
+    5. **Email de Intercambio DTE (Email para SII):** The registered electronic invoicing inbox where the XML and PDF copies of the electronic tax document (**DTE — Documento Tributario Electrónico**) must be transmitted for automatic fiscal reconciliation.
 
----
-
-## 🔒 3. Payment & Security Rules in UI Components
-
-> [!CAUTION]
-> **CRITICAL PAYMENT INTEGRITY:**  
-> The browser is an untrusted environment. NEVER execute financial approvals or inventory deductions here.
-
-1. **No Client-Side Inventory Decrement:**
-   * ❌ **FORBIDDEN:** Calling `deductOrderStock()` or altering Firestore `stockCount` directly from `CheckoutModal.tsx`.
-   * ✅ Physical stock is deducted exclusively by the verified serverless backend webhook at `/api/webhooks/mercadopago`.
-2. **Initial Order Status is Always Pending:**
-   * When creating an order in checkout, it must be assigned `'PENDIENTE_PAGO_MERCADOPAGO'` or `'PENDIENTE_TRANSFERENCIA'`.
-   * Never store an order as `'PAGADO_MERCADOPAGO'` from the client.
-3. **Zero Card Input Handling (PCI-DSS Compliance):**
-   * Never render raw credit card number, expiration, or CVC input fields, and never store mock card values in component state.
-   * Mercado Pago payments must redirect to the official Checkout Pro URL generated by `/api/create-preference` or open the official secure Mercado Pago modal.
-4. **No Database Admin Buttons in Public UI:**
-   * The public `Footer.tsx` must never contain database wipe, seed, or debug buttons.
-5. **Clean Form State & Zero Hardcoded Mock Data:**
-   * `CheckoutModal.tsx` must always initialize customer fields to empty strings with illustrative placeholder text (no hardcoded test names like "Camila Fuentes").
-   * Component state and order submission payloads must never contain payment card fields (`cardNumber`, `expDate`, `cvc`), maintaining zero PCI-DSS liability.
-   * Text inputs are automatically trimmed of whitespace before submission to Firestore or payment services.
+### 1.3 Sanitary Regulations (ISP Chile & Superintendencia de Salud)
+Under Chilean law (**Código Sanitario DFL 725** and **Decreto Supremo 466 del Ministerio de Salud**), medical and dental devices are classified by risk:
+* Class I & II: Standard consumables (examination mirrors, bibs, cotton rolls, mixing bowls, micro-applicators). Available for open professional supply.
+* Regulated / Prescription Products: Dental local anesthetics (Lidocaína, Mepivacaína, Articaína con epinefrina), pharmaceuticals, surgical scalpels, and specialized etching agents.
+* **Legal Obligation:** Depósitos dentales cannot dispense regulated pharmaceuticals or controlled surgical products without recording the professional clinician's registration in the **Registro Nacional de Prestadores Individuales de Salud (RNPI)** managed by the **Superintendencia de Salud (SIS)**. PRONTO enforces this compliance guard directly in checkout.
 
 ---
 
-## 🇨🇱 4. Chilean Localization in Components
+## 🎨 2. Design Philosophy: "Clinical Precision & Local Trust"
 
-1. **Currency Display:**
-   * Formatted as Chilean Pesos with clear indication that prices include tax (`IVA incluido`).
-2. **RUT Inputs & Validation:**
-   * Any input capturing a Chilean RUT (personal or company) must format with thousands dots and dash (`12.345.678-K`) and validate using `validateRut()` from [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts).
-3. **B2B Factura Fields:**
-   * When the customer toggles **Factura Electrónica**, the UI collects:
-     * Company Name (*Razón Social*)
-     * Company RUT (*RUT Empresa*)
-     * Commercial Activity (*Giro Comercial*)
-     * Tax Address (*Dirección de Entrega / Consulta*)
-4. **Sanitary Compliance (ISP Chile & SIS):**
-   * When the cart contains controlled/prescription dental products (`prescriptionRequired: true`), the UI displays:
-     * `⚕️ Requiere SIS` badge on product cards and in quick-view modal.
-     * Amber alert banner in cart drawer notifying customer of controlled supply status.
-     * Mandatory **Validación Sanitaria ISP / SIS** section in `CheckoutModal.tsx` requiring the dentist's Superintendencia de Salud (SIS) registration number (minimum 4 digits) and optional credential/prescription file attachment before progressing to payment.
-     * Confirmation summary and pro-forma purchase voucher display the verified SIS registration number.
-5. **Testing Contracts:**
-   * Interactive buttons, inputs, and badges maintain accessible labels and text attributes matching the test suites in [src/tests/components/](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components). Zero test regressions.
+The storefront UI conveys the clean, sterile, and highly dependable nature of a dental operating depot:
+* **Palette:**
+  - **Deep Navy (`#0b192c`, `var(--navy-900)`):** Grounded corporate stability, clinical authority, and reliability.
+  - **Surgical Teal (`#088395`, `var(--teal-600)`):** The signature sterile hygiene color of modern dental operatories, used for primary actions, active tabs, and verified badges.
+  - **Clean Surfaces (`#f8fafc`, `var(--surface-muted)`):** High legibility backgrounds evoking autoclaved surgical trays.
+  - **Slate Neutral (`#334155`, `var(--text-secondary)`):** Balanced readability for technical specifications.
+* **Typography:** Modern clean sans-serif (`Inter`, `system-ui`) with clear hierarchical font weights (600/700 for technical parameters, 800 for currency).
+* **Strict Aesthetic Guardrails:**
+  - Zero fluorescent neon halos or glowing futuristic borders.
+  - Zero fake SaaS dashboard widgets.
+  - Authentic Chilean currency formatting (`$189.990 CLP`) with zero decimal cents.
+  - Transparent Chilean consumer pricing: All customer prices explicitly state `IVA incluido` per **SERNAC** consumer protection rules.
+
+---
+
+## 🛒 3. Deep Dive: Checkout Modal (`CheckoutModal.tsx`)
+
+The [`CheckoutModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CheckoutModal.tsx) component is the commercial nucleus of PRONTO. It executes a **3-step linear state machine** guiding the dental practitioner through identity verification, tax document selection, pre-flight inventory confirmation, payment gateway delegation, and voucher collection.
+
+```mermaid
+graph TD
+    A[Cart: Click Finalizar Compra] --> B[Step 1: Despacho y Datos Clínicos]
+    B --> C{Pre-flight Stock Check}
+    C -- Stock Depleted or Exceeded --> B1[Display Stock Alert Banner & Block Progression]
+    C -- Stock Valid --> D{Document Type Selected?}
+    D -- Boleta Electrónica --> E1[Validate Personal RUN Modulo 11]
+    D -- Factura Electrónica --> E2[Validate Corporate RUT, Razón Social, Giro, Dirección]
+    E1 & E2 --> F{Regulated Supplies in Cart?}
+    F -- Yes: prescriptionRequired --> G[Validate SIS Registry Number >= 4 digits]
+    F -- No --> H[Step 2: Selección de Método de Pago]
+    G --> H
+    H --> I{Payment Option Chosen}
+    I -- Mercado Pago --> J[Delegate to /api/create-preference & Redirect to Checkout Pro]
+    I -- Transferencia Bancaria --> K[Step 3: Transfer Instructions & Voucher Upload]
+    I -- Cotización WhatsApp --> L[Open Pre-Formatted WhatsApp B2B Chat]
+```
+
+### 3.1 Field-by-Field Reference & Business Rationale
+
+| Form Field Name | State Property | UI Label | Purpose & Clinical Business Context | Validation Rule |
+| :--- | :--- | :--- | :--- | :--- |
+| **Tipo de Documento** | `formData.documentType` | `📄 Boleta Electrónica` / `🏢 Factura Electrónica` | Determines the fiscal document issued through the Chilean SII. Clinics must select Factura to claim the 19% IVA tax credit in their monthly F29 declaration. | Required toggle (`'boleta'` \| `'factura'`). Defaults to `'boleta'`. |
+| **Nombre del Profesional** | `formData.fullName` | *Nombre del Profesional o Representante Legal* | Identifies the ordering dentist or the clinic's legal representative. Used for package labeling, reception desk delivery signing, and customer care. | Required string. Trimmed of whitespace. |
+| **RUT del Comprador** | `formData.rut` | *RUT Personal (RUN)* (Boleta) / *RUT Empresa / Sociedad* (Factura) | Chilean national identity tax number. For Boleta, represents the individual practitioner. For Factura, represents the incorporated dental practice (Sociedad Odontológica). | Must satisfy official Chilean **Modulo 11 check digit** via `validateRut()` in [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts). Formats dynamically as `12.345.678-K`. |
+| **Email para Documento SII** | `formData.email` | *Email para Documento SII* | **Critical Chilean Fiscal Field:** Electronic tax documents (DTEs) issued through electronic invoicing providers connected to the SII must be dispatched to a formal electronic mailbox. In dental clinics, this email is often monitored by the clinic's accountant or administrator (`facturacion@clinica.cl`), ensuring tax documents are not lost in personal dentist inboxes. For Boleta, receives the purchase confirmation and Boleta PDF. | Required standard email format (`type="email"`). |
+| **Razón Social** | `formData.razonSocial` | *Razón Social (según SII) \** | **Factura Only:** The official registered legal entity name of the clinic or dental society (e.g., *"Centro Odontológico Melipilla SpA"*). The SII rejects invoices where the Razón Social does not match the company RUT in the tax registry. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
+| **Giro Comercial** | `formData.giroComercial` | *Giro Comercial Registrado \** | **Factura Only:** The registered economic activity code and description recognized by the SII (e.g., *"Servicios odontológicos"*, *"Atención médica y dental"*). Invoices lacking a valid economic activity are legally rejected for tax credit. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
+| **Teléfono Móvil** | `formData.phone` | *Teléfono Móvil* | Direct telephone and WhatsApp contact for courier logistics. Crucial for Melipilla urban delivery and regional couriers to confirm clinic reception hours before dispatching packages. | Required string. |
+| **Dirección de Entrega / Fiscal** | `formData.address` | *Dirección de Entrega / Fiscal \** | Dual-purpose field: Specifies the street, building, office number (e.g., *"Av. Ortúzar 750, Of. 302"*), and acts as the fiscal address registered on the electronic tax invoice. | Mandatory. Validated via `validateFacturaFields` when Factura is selected. |
+| **Ciudad / Comuna Fiscal** | `formData.city` | *Ciudad / Comuna Fiscal \** | Commune designation (e.g., *"Melipilla"*, *"Talagante"*, *"Providencia"*). Determines the logistics zone, freight calculation, and complies with SII DTE address requirements. | Mandatory. |
+| **Código Postal / Región** | `formData.zip` | *Código Postal / Región* | Chilean postal district code (e.g., *"9500000"* for Melipilla) or regional identifier for courier sorting hubs (Chilexpress/Starken). | Required string. |
+| **N° Registro SIS** | `sisRegistryNumber` | *N° Registro SIS (Superintendencia) \** | **Sanitary Verification Field:** Mandatory only when cart contains regulated clinical supplies (`prescriptionRequired === true`). Represents the practitioner's official registration in the Superintendencia de Salud's RNPI. | Required if `hasRegulatedItems`. Minimum 4 numeric/alphanumeric characters. |
+| **Credencial / Receta** | `credentialFileName` | *Credencial Profesional o Receta (Opcional)* | Allows uploading an image or PDF of the professional credential or prescription authorizing controlled supply acquisition. | Optional file attachment (`.pdf`, `.jpg`, `.png`). |
+
+### 3.2 Pre-Flight Stock Validation in Step 1
+Before allowing the customer to proceed from Step 1 to Step 2, `handleNextStep()` iterates through every cart line item against current inventory:
+```typescript
+const stockIssueItem = cartItems.find(item => {
+  const stock = typeof item.product.stockCount === 'number' ? item.product.stockCount : 0
+  return !item.product.inStock || stock <= 0 || item.quantity > stock
+})
+```
+If an item has depleted or the requested quantity exceeds physical stock, the transition is halted and an amber alert banner displays:
+> *"El producto '[Nombre]' supera el stock disponible (X solicitados, Y disponibles). Por favor ajusta la cantidad en el carro."*
+
+### 3.3 Step 2: Payment Pathways
+Presents 3 distinct payment pathways tailored to Chilean healthcare purchasing habits:
+1. **Transferencia Bancaria Directa (Banco de Chile):**
+   - The preferred B2B method for dental clinics managing monthly account balances.
+   - Bank details are externalized in [`src/config/bankDetails.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/bankDetails.ts) (**Banco de Chile, Cuenta Corriente 849-01284-01, RUT 77.892.410-2, pagos@prontoinsumos.cl**).
+   - Advances to Step 3 where the customer receives transfer instructions and can upload their bank receipt directly.
+2. **Pago Inmediato Mercado Pago Chile (Webpay Plus / Redcompra):**
+   - Instant digital settlement via credit/debit card.
+   - **PCI-DSS Compliance:** Zero card fields exist in state or DOM. Processing delegates to `/api/create-preference` which generates an official Checkout Pro URL.
+3. **Cotización Formal por WhatsApp:**
+   - Designed for municipal procurement, university clinics, or custom high-volume orders.
+   - Formats a comprehensive Markdown quote with itemized SKUs and tax breakdowns, opening `https://wa.me/...`.
+
+### 3.4 Step 3: Order Confirmation & Transfer Voucher Intake
+When Transferencia Bancaria is confirmed:
+* Generates a canonical Order ID (`PRONTO-XXXXXX`).
+* Displays the complete Banco de Chile transfer specifications.
+* Renders an **embedded voucher upload widget** allowing immediate attachment of receipts (`.pdf`, `.png`, `.jpg` <= 5MB).
+* Submitting the voucher invokes `/api/upload-voucher`, advancing the order status to `'TRANSFERENCIA_COMPROBANTE_SUBIDO'`.
+* Provides direct navigation to [`OrderTrackingModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/OrderTrackingModal.tsx) for live fulfillment tracking.
+
+---
+
+## 🔍 4. Deep Dive: Customer Order Tracking Modal (`OrderTrackingModal.tsx`)
+
+The [`OrderTrackingModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/OrderTrackingModal.tsx) component provides dental practitioners with transparent visibility into their order fulfillment.
+
+### 4.1 Security Architecture
+Under [`firestore.rules`](file:///c:/Users/ecmv2/Documents/PRONTO/firestore.rules), client-side queries against `/orders` are blocked (`allow read, update, delete: if false;`) to protect clinical order privacy.
+* **Authentication Contract:** Lookups require two canonical factors:
+  1. **Canonical Order ID:** `PRONTO-XXXXXX`
+  2. **Customer / Clinic Tax ID:** Validated Chilean RUT (Modulo 11) matching the order.
+* **Serverless Proxy:** The modal queries [`/api/track-order`](file:///c:/Users/ecmv2/Documents/PRONTO/api/track-order.ts), which uses `firebase-admin` to fetch the order and returns a sanitized `OrderTrackingInfo` model without exposing internal tokens, server secrets, or database timestamps.
+
+### 4.2 The 5-Stage Fulfillment Timeline
+
+```mermaid
+stateDiagram-v2
+    [*] --> Registrado: Pedido Ingresado
+    Registrado --> ComprobantePago: Pago Confirmado / Comprobante Subido
+    ComprobantePago --> PreparacionBodega: Factura Emitida & Empaque en Bodega Melipilla
+    PreparacionBodega --> EnRuta: Despachado (Ruta Urbana / Starken / Chilexpress)
+    EnRuta --> Entregado: Entregado en Clínica Dental
+    Entregado --> [*]
+```
+
+1. **Pedido Registrado:** Initial order entry in system (`PENDIENTE_PAGO_MERCADOPAGO` or `PENDIENTE_TRANSFERENCIA`).
+2. **Comprobante / Pago Verificado:** Payment confirmed via Mercado Pago webhook or transfer voucher uploaded (`TRANSFERENCIA_COMPROBANTE_SUBIDO` / `PAGADO_*`).
+3. **Preparación en Bodega Melipilla:** Order being verified, checked against ISP regulations, packed, and accompanied by Factura Electrónica (`EN_PREPARACION`).
+4. **En Ruta de Entrega:** Handed over to local Melipilla courier fleet or regional logistics carrier with tracking number (`DESPACHADO`).
+5. **Entregado:** Successfully delivered and signed at clinic reception (`ENTREGADO`).
+
+### 4.3 In-Modal Bank Transfer Voucher Upload
+If a customer consults an order that is pending bank transfer (`status === 'PENDIENTE_TRANSFERENCIA'`), the modal dynamically embeds a voucher upload form directly below the timeline, eliminating the need to contact support via email.
+
+---
+
+## 🛍️ 5. Deep Dive: Slide-Over Cart Drawer (`Cart.tsx`)
+
+[`Cart.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Cart.tsx) manages the clinician's shopping bag with real-time stock cues, shipping incentives, and tax breakdowns:
+
+### 5.1 Real-Time Stock Cues
+To avoid customer frustration during checkout, the cart actively monitors inventory:
+* **"Sin stock disponible"** (Red badge): Displayed if `stockCount <= 0` or `inStock === false`.
+* **"Máximo disponible (X unid.)"** (Amber badge): Displayed when the item quantity equals warehouse physical stock.
+* **"Excede stock (X unid. disp.)"** (Red badge): Displayed if inventory depleted while items were in the cart.
+* **Capped Stepper Action:** The increment (`+`) button is disabled when quantity reaches stock count, displaying an informative tooltip.
+* **Sticky Alert Banner & Locked CTA:** When any item exceeds stock, a persistent alert banner appears in the cart footer and the checkout button is disabled with the label `"Insumos sin Stock Suficiente"`.
+
+### 5.2 Chilean Shipping Progress Tracker
+* Free shipping threshold is standardized at **$150.000 CLP** (or free for local Melipilla pickup).
+* Renders a live progress bar showing the remaining amount to reach free shipping (`"¡Te faltan $X para despacho gratis en Melipilla y RM!"`).
+
+### 5.3 Tax & Discount Breakdown
+* Calculates itemized subtotal, promotional discount, and isolates the 19% IVA using Chilean rounding rules (`calculateTaxBreakdown` in [src/utils/tax.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/tax.ts)).
+* Ensures every total sent to checkout is a whole Chilean Peso integer without decimal cents.
+
+---
+
+## 📦 6. Catalog Components Reference
+
+### 6.1 `ProductCard.tsx`
+* **Confidential Stock Defense:** Warehouse inventory counts (`stockCount`) are **never rendered** to public users to prevent competitors from scraping inventory levels. Displays clean status cues (`En Stock`, `Pocas unidades`, `Sin Stock`).
+* **Technical REF SKU Header:** Features canonical REF codes (e.g. `REF: OD-101`) familiar to dental procurement staff.
+* **Sanitary Badging:** Displays `⚕️ Uso Profesional` or `⚕️ Requiere SIS` when `prescriptionRequired === true`.
+* **Pricing Standard:** Renders whole Chilean Peso amounts with `IVA incluido` tag.
+
+### 6.2 `ProductQuickView.tsx`
+Vertical 1-column Product Detail Modal:
+* **Multi-Photo Gallery:** Thumbnail strip, next/prev navigation buttons, and keyboard arrow controls.
+* **Clinical Checklists:** Technical specifications checklist (`specs`) and itemized packaging contents (`packageContents` e.g., *"1x Turbina LED, 1x Llave de desarme, 1x Manual técnico"*).
+* **Sanitary Notice:** Detailed citation of ISP compliance and autoclave sterilization parameters (134°C).
+
+### 6.3 `CategoryFilter.tsx`
+Clinical category tabs (Instrumental, Materiales Restauradores, Equipamiento, Desechables, Endodoncia, Ortodoncia, Periodoncia) with accessible ARIA roles, instant stock toggle (`Solo productos en stock`), and price/rating sort dropdown.
+
+---
+
+## 🌐 7. Navigation, Layout & Utility Components
+
+### 7.1 `Navbar.tsx`
+* **Top Commercial Utility Bar:** Displays Melipilla express delivery notices, warehouse pickup address (Av. Ortúzar 750), Factura Electrónica SII compliance, and the direct "Seguimiento de Pedido" action button.
+* **Technical Search:** Debounced keyword search matching product names, clinical descriptions, categories, and SKU REF codes.
+* **Dynamic Cart Badge:** Visual item counter with micro-animation upon addition.
+
+### 7.2 `Footer.tsx`
+* Grounded 4-column B2B distributor layout:
+  1. *Identidad Corporativa:* Corporate details, Av. Ortúzar 750 warehouse location, Melipilla, Chile.
+  2. *Catálogo Clínico:* Quick links to primary dental categories.
+  3. *Logística y Seguimiento:* Tracking modal trigger, shipping routes (Melipilla, RM, Regiones vía Starken/Chilexpress), and withdrawal policies.
+  4. *Contacto y Certificaciones:* Factura Electrónica SII notice, ISP sanitary compliance statement, and technical WhatsApp hotline.
+* **Zero Prototype Buttons:** Administrative wipe/seed buttons are strictly eliminated from public view.
+
+### 7.3 `PaymentReturnModal.tsx`
+Handles Mercado Pago return redirects (`/?status=approved&collection_id=...`):
+* `approved`: Displays success header, order ID, payment ID, clears cart and storage, and provides WhatsApp delivery coordination.
+* `failure`: Explains payment decline, reassures no funds were charged, and offers retry or bank transfer alternatives.
+* `pending`: Informs the customer that the payment is awaiting banking clearance.
+
+### 7.4 `ErrorBoundary.tsx`
+Top-level React error boundary preventing white-screen crashes. Catches unhandled exceptions and displays a clinical error card with a direct WhatsApp technical support button pre-filled with error diagnostic details.
+
+---
+
+## 🔒 8. Security & State Guardrails Summary
+
+1. **NO Heavy State Libraries:** Standard React 18 hooks (`useState`, `useEffect`, `useCallback`, `useMemo`) and lightweight `localStorage` persistence.
+2. **NO External UI / CSS Frameworks:** Pure Vanilla CSS clinical design system in [src/index.css](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css).
+3. **NO Client-Side Inventory Decrements:** Browser components never deduct stock or assign `'PAGADO_MERCADOPAGO'`. Only `/api/webhooks/mercadopago` or authorized admin functions mutate inventory.
+4. **Zero Card Handling (PCI-DSS):** Component state never captures or stores credit card numbers, expiration dates, or CVC codes.
+5. **Chilean Modulo 11 Compliance:** Every RUT input is sanitized, formatted (`XX.XXX.XXX-Y`), and validated against the official algorithm.

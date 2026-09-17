@@ -1,101 +1,64 @@
 # PRONTO Domain Models & TypeScript Contracts (`src/types/`)
 
-This directory houses the **centralized TypeScript interfaces, types, and domain contracts** for PRONTO.
+This document is the **authoritative reference for data structures, domain contracts, and type invariants** across PRONTO Insumos Odontológicos. It defines the central schema shared by React UI components, client integration adapters, serverless functions, and automated test suites.
 
 ---
 
-## 🎯 1. Directory Scope & Purpose
+## 🎯 1. Directory Scope & Design Rules
 
-* **Role:** The **single source of truth** for all data structures across the application (products, cart items, order lifecycles, customer data, and tax billing entities).
-* **Key File:**
-  * [`index.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/index.ts): Master type definitions.
-
----
-
-## 🚫 2. Anti-Overshooting & Typing Guardrails
-
-1. **Pure Types Only (Zero Runtime Overhead):**
-   * This directory must contain **only** TypeScript interfaces, type aliases, and string literal unions.
-   * Do **NOT** add executable functions, classes, or runtime side effects.
-2. **Single Source of Truth:**
-   * Never define duplicate or ad-hoc interfaces inside React component files (e.g., declaring `interface LocalItem` inside a component).
-   * Always export shared contracts from [src/types/index.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/index.ts) and import them cleanly.
-3. **No Heavy Schema Validation Bloat:**
-   * Avoid introducing heavy runtime validation libraries (like Zod, Yup, or Joi) unless strictly needed for external API boundary parsing. Keep domain definitions clean and idiomatic TypeScript.
+* **Role:** The **single source of truth** for all business models in the application.
+* **Pure Typing (Zero Runtime Overhead):** Contains strictly TypeScript interfaces, type aliases, and string literal unions. No executable JavaScript code, classes, or runtime side effects.
+* **Single Location:** Components must never define ad-hoc interfaces (e.g. `interface OrderItem` inside a component file); all domain interfaces must be declared in [`src/types/index.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/index.ts).
 
 ---
 
-## 🇨🇱 3. Domain Model Specifications
+## 🏛️ 2. Core Domain Contracts & Chilean Healthcare Models
 
-Any modifications to types must observe these requirements:
+### 2.1 Order Lifecycle Union (`OrderStatus`)
+Reflects the authentic operational lifecycle of a Chilean dental supplies distributor:
 
-### 1. Order Status Union (`OrderStatus`)
-Must reflect the authentic e-commerce and logistics lifecycle:
 ```typescript
 export type OrderStatus =
-  | 'PENDIENTE_PAGO_MERCADOPAGO' // Order initialized, awaiting gateway confirmation
-  | 'PAGADO_MERCADOPAGO'         // Payment approved by verified webhook
-  | 'PENDIENTE_TRANSFERENCIA'    // Bank transfer selected, awaiting voucher verification
-  | 'PAGO_VERIFICADO_MANUAL'     // Bank transfer approved by warehouse staff
-  | 'EN_PREPARACION'             // Order packing in Melipilla warehouse
-  | 'DESPACHADO'                 // Dispatched with tracking code (Starken/Chilexpress/Direct)
-  | 'ENTREGADO'                  // Received by dental clinic
-  | 'CANCELADO'                  // Order cancelled / expired
-  | 'REEMBOLSADO';               // Payment refunded
+  | 'PENDIENTE_PAGO_MERCADOPAGO'       // Order placed via online gateway, awaiting Mercado Pago webhook
+  | 'PAGADO_MERCADOPAGO'               // Payment approved cryptographically by serverless webhook
+  | 'PENDIENTE_TRANSFERENCIA'          // Bank transfer selected, awaiting customer voucher upload
+  | 'TRANSFERENCIA_COMPROBANTE_SUBIDO' // Customer uploaded bank voucher (PDF/PNG/JPG), awaiting warehouse review
+  | 'PAGO_VERIFICADO_MANUAL'           // Bank transfer reconciled against Banco de Chile by Melipilla staff
+  | 'PAGADO_TRANSFERENCIA'             // Bank transfer approved and reconciled
+  | 'EN_PREPARACION'                   // Order packing in Melipilla warehouse, Factura/Boleta DTE being generated
+  | 'DESPACHADO'                       // Handed to courier (Local Melipilla route or Starken/Chilexpress)
+  | 'ENTREGADO'                        // Signed and received at dental clinic reception desk
+  | 'CANCELADO'                        // Order cancelled due to stock exhaustion, customer request, or non-payment
+  | 'REEMBOLSADO';                     // Payment refunded via gateway or manual bank reversal
 ```
 
-### 2. Chilean Tax Invoicing (`BillingInfo`)
+### 2.2 Customer & Tax Identity (`CustomerInfo` & `BillingInfo`)
+Captures contact, physical shipping destination, and Chilean SII electronic invoicing attributes:
+
 ```typescript
-export interface BillingInfo {
-  documentType: 'BOLETA' | 'FACTURA';
-  rut: string;               // Validated Chilean RUT (Modulo 11)
-  razonSocial?: string;      // Required for Factura (Clinic/Company legal name)
-  giro?: string;             // Required for Factura (e.g., "Servicios Odontológicos")
-  direccionTributaria?: string; // Fiscal registered address
-  comuna?: string;           // Commune (e.g., "Melipilla", "Providencia")
+export interface CustomerInfo {
+  fullName: string;              // Name of the clinician or clinic legal representative
+  email: string;                 // Contact email and SII DTE reception mailbox
+  phone: string;                 // Mobile / WhatsApp for delivery coordination
+  rut: string;                   // Validated Chilean Modulo 11 tax ID (Personal RUN or Corporate RUT)
+  documentType: 'boleta' | 'factura'; // Fiscal document choice
+  razonSocial?: string;          // Required for Factura: Legal entity name in SII registry
+  giroComercial?: string;        // Required for Factura: Economic activity description (e.g., "Servicios Odontológicos")
+  address: string;               // Physical delivery street and number / Fiscal address
+  city: string;                  // Commune (e.g., "Melipilla", "Talagante", "Providencia")
+  zip: string;                   // Postal code / Region identifier
+  deliveryInstructions?: string; // Operatory hours, office/floor number, clinic reception instructions
+  sanitaryVerification?: SanitaryVerification; // ISP / SIS registration for controlled items
 }
 ```
 
-### 3. Chilean Logistics & Delivery Options
-```typescript
-export type ShippingMethod =
-  | 'RETIRO_MELIPILLA'    // Free pickup at Av. Ortúzar warehouse
-  | 'DESPACHO_MELIPILLA'   // Express local urban delivery
-  | 'DESPACHO_RM'          // Región Metropolitana courier
-  | 'ENVIO_REGION';        // Starken / Chilexpress freight-collect
-```
+#### Why "email" is crucial for Chilean SII Compliance
+In Chilean corporate tax accounting, every electronic invoice (**Factura Electrónica DTE**) must be submitted to the recipient company's official electronic tax exchange mailbox (**Casilla Electrónica DTE**). 
+Clinics provide this email in `CustomerInfo.email` so the resulting XML and PDF invoices reach their accounting department without delaying their monthly **Formulario 29 (F29)** tax filing.
 
-### 4. Monetary Values in Chilean Pesos (CLP)
-All financial fields (`price`, `subtotal`, `tax`, `shippingCost`, `total`) represent whole Chilean Peso integers without decimals.
+### 2.3 Sanitary Regulation Model (`SanitaryVerification`)
+Enforces compliance with **Código Sanitario DFL 725** and **Decreto Supremo 466** for prescription dental supplies and local anesthetics:
 
-### 5. Product Catalog & Firestore Schema (`Product`)
-The `Product` contract supports multi-photo galleries and clinical delivery details:
-```typescript
-export interface Product {
-  id: string;                    // Canonical SKU (e.g. 'odon-101' -> display 'REF: OD-101')
-  name: string;
-  category: string;
-  price: number;
-  originalPrice?: number;
-  rating: number;
-  reviewsCount: number;
-  inStock: boolean;
-  stockCount: number;            // Confidential internal count (never rendered to customers)
-  prescriptionRequired: boolean; // Triggers 'Uso Profesional' badge & clinical notice
-  tag: string;
-  description: string;
-  specs: string[];               // Technical specifications checklist
-  placeholderTheme: string;      // Fallback CSS theme class
-  mediaBadge: string;
-  images?: string[];             // URLs of product photos in Firebase Storage/CDN
-  packageContents?: string[];    // Itemized checklist of box contents for clinic
-}
-```
-
-### 6. Customer Privacy & PCI-DSS Scope (`CustomerInfo`)
-`CustomerInfo` contains only contact, Chilean tax identity (`RUT`, `documentType`, `razonSocial`, `giroComercial`), shipping destination attributes, and optional `sanitaryVerification`. It must **never** contain payment card attributes (`cardNumber`, `expDate`, `cvc`). Card data collection is delegated entirely to Mercado Pago Checkout Pro.
-
-### 7. Sanitary Regulations Interface (`SanitaryVerification`)
 ```typescript
 export interface SanitaryVerification {
   sisRegistryNumber: string;    // Chilean SIS registration (Superintendencia de Salud RNPI)
@@ -104,4 +67,69 @@ export interface SanitaryVerification {
   regulatoryNote: string;       // Legal compliance citation (Art. 101 DFL 725 / DTO 466)
 }
 ```
-Attached to `CustomerInfo` and `Order` when cart contains items with `prescriptionRequired: true`.
+
+### 2.4 Customer Order Tracking Model (`OrderTrackingInfo`)
+Sanitized public tracking representation returned by `/api/track-order`:
+
+```typescript
+export interface OrderTrackingInfo {
+  orderId: string;
+  status: OrderStatus;
+  statusLabel: string;
+  customerName: string;
+  itemsCount: number;
+  total: number;
+  shippingAddress: string;
+  shippingCity: string;
+  deliveryMethod?: string;
+  trackingNumber?: string;
+  carrier?: string;
+  estimatedDelivery?: string;
+  createdAt: string;
+  updatedAt: string;
+  timeline: {
+    step: number;
+    title: string;
+    description: string;
+    completed: boolean;
+    current: boolean;
+    timestamp?: string;
+  }[];
+  voucherUrl?: string;
+  voucherUploadedAt?: string;
+}
+```
+
+### 2.5 Catalog Product Contract (`Product`)
+```typescript
+export interface Product {
+  id: string;                    // Canonical SKU identifier (e.g. 'odon-101' -> display 'REF: OD-101')
+  name: string;                  // Clinical product title
+  category: string;              // Dental specialty category
+  price: number;                 // Integer Chilean Pesos (IVA incluido)
+  originalPrice?: number;        // Strikethrough price for promotions
+  rating: number;                // Customer evaluation (1 to 5)
+  reviewsCount: number;          // Total clinician reviews
+  inStock: boolean;              // Public stock flag
+  stockCount: number;            // Confidential warehouse count (never exposed to public client DOM)
+  prescriptionRequired: boolean; // Triggers 'Uso Profesional' badge & SIS check in checkout
+  tag: string;                   // Visual badge (e.g., 'MÁS VENDIDO', 'OFERTA CLÍNICA')
+  description: string;           // Detailed technical overview
+  specs: string[];               // Technical specifications checklist
+  placeholderTheme: string;      // Fallback CSS theme class
+  mediaBadge: string;            // Secondary visual badge
+  images?: string[];             // URLs of product photos in Firebase Storage / CDN
+  packageContents?: string[];    // Itemized checklist of box contents for clinic
+}
+```
+
+---
+
+## 💰 3. Chilean Monetary Conventions & Invariants
+
+1. **CLP Integer Pricing (NO CENTS):**
+   * The currency is **Chilean Peso (CLP)**.
+   * Fractional values (`189.99`) are strictly forbidden. All monetary fields (`price`, `subtotal`, `tax`, `shippingCost`, `total`) must be integers.
+2. **IVA Included in Display Prices:**
+   * Per Chilean consumer law (**SERNAC**), public consumer-facing prices always include 19% IVA (`IVA incluido`).
+   * When invoicing, the net amount is extracted using `Math.round(total / 1.19)` and IVA is `Math.round(total - net)`.

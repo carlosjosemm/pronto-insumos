@@ -1,46 +1,90 @@
 # PRONTO Client Services & Integration Guide (`src/services/`)
 
-This directory contains the **client-side integration adapters** for PRONTO. It abstracts external APIs, database queries, payment gateway preferences, and messaging services away from the UI components.
+This document is the **authoritative domain and technical reference** for the client-side integration services of PRONTO Insumos Odontológicos. It abstracts external APIs, database queries, payment preferences, browser persistence, and communications away from UI presentation components.
 
 ---
 
-## 🎯 1. Directory Scope & Service Adapters
+## 🎯 1. Directory Scope & Service Architecture
 
-* **Role:** Data fetching, client-side database reads/writes, external payment preference calls, and communication helpers.
-* **Key Files:**
-  * [`api.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/api.ts): Storefront data operations (`fetchProducts`, `fetchProductById`, `submitOrder`).
-  * [`cartStorage.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/cartStorage.ts): Browser `localStorage` shopping cart persistence adapter (`saveCartToStorage`, `loadCartFromStorage`, `clearCartFromStorage`, `revalidateCartAgainstCatalog`) supporting schema versioning (`pronto_cart_v1`), 7-day TTL retention, quota error defense, and catalog stock revalidation.
-  * [`firebase.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/firebase.ts): Initializes the Google Firebase Web Client SDK (`initializeApp`, `getFirestore`, `getAuth`) using Vite public variables.
-  * [`mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/mercadopago.ts): Client payment adapter invoking the `/api/create-preference` serverless endpoint to retrieve Mercado Pago Checkout Pro URLs.
-  * [`whatsapp.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/whatsapp.ts): URL builder for WhatsApp Business order inquiries and instant support (`https://wa.me/...`).
+* **Role:** Acts as the data and integration adapter layer. UI components never call `fetch()` or query Firestore directly; they invoke dedicated, typed service functions in this directory.
+* **Philosophy:** Zero heavy client state or query libraries (no Axios, no TanStack Query, no Apollo). Pure TypeScript, native `fetch()`, and resilient defensive error handling with local fallback fixtures.
 
----
+### 1.1 Summary of Client Service Adapters
 
-## 🚫 2. Anti-Overshooting & Networking Guardrails
-
-1. **NO Heavy Data Libraries:**
-   * Do **NOT** install Axios, React Query / TanStack Query, SWR, Apollo Client, or GraphQL.
-   * Standard browser `fetch()` combined with async/await and typed TypeScript models is completely sufficient.
-2. **Keep Business Logic Out of Components:**
-   * UI components should never call `fetch()` or query Firestore collections directly. All network and database operations must be wrapped in clean, reusable functions in this directory.
-3. **No Redundant Mock Servers:**
-   * Do not introduce MSW (Mock Service Worker) or complex mock servers. Local fallback behavior is handled cleanly inside the service functions using fixtures from [src/data/products.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/data/products.ts).
+| Service Module | Purpose & Domain Responsibility | External Integrations |
+| :--- | :--- | :--- |
+| [`api.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/api.ts) | Storefront product catalog queries, category filters, canonical Order ID generation (`PRONTO-XXXXXX`), and order registration in Firestore. | Firebase Web SDK Firestore & local catalog fixtures |
+| [`cartStorage.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/cartStorage.ts) | Persistent shopping cart storage in browser `localStorage`. Enforces schema versioning (`pronto_cart_v1`), 7-day TTL retention, quota defense, and catalog stock revalidation upon hydration. | Browser `localStorage` API |
+| [`firebase.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/firebase.ts) | Initializes Google Firebase Web Client SDK (`initializeApp`, `getFirestore`, `getAuth`) using Vite public environment variables (`VITE_FIREBASE_*`). | Google Firebase Client SDK |
+| [`mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/mercadopago.ts) | Dispatches payment preference creation requests to `/api/create-preference`, obtaining the secure Mercado Pago Checkout Pro redirect URL. | Serverless `/api/create-preference` |
+| [`orderTracking.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/orderTracking.ts) | Client proxy querying `/api/track-order` to retrieve fulfillment progress using Order ID and customer RUT. | Serverless `/api/track-order` |
+| [`transferVoucher.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/transferVoucher.ts) | File validation (PDF, PNG, JPG <= 5MB), Base64 data URL conversion, and dispatch to `/api/upload-voucher`. | Serverless `/api/upload-voucher` |
+| [`whatsapp.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/whatsapp.ts) | Generates pre-formatted WhatsApp clinical quote URLs (`https://wa.me/569...`) with itemized SKU lists and tax breakdowns. | WhatsApp Click-to-Chat API |
 
 ---
 
-## 🔒 3. Security, Payment & Runtime Rules
+## 📦 2. Deep Dive: Catalog Data Operations (`api.ts`)
 
-1. **Client Environment Variables Only (`import.meta.env`):**
-   * This code executes in the browser. Only public environment variables prefixed with `VITE_` can be accessed (e.g., `import.meta.env.VITE_FIREBASE_API_KEY`, `import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY`).
-   * ❌ **NEVER** reference private tokens or service account credentials here.
-2. **Inventory Stock Safety:**
-   * ❌ **FORBIDDEN:** Client service functions must **never** execute inventory deductions (`deductOrderStock`) or assign `'PAGADO_MERCADOPAGO'` to new orders.
-   * When `submitOrder()` creates an order document in Firestore, it must set the status to `'PENDIENTE_PAGO_MERCADOPAGO'` or `'PENDIENTE_TRANSFERENCIA'`.
-   * *As built in Task 0.1:* `deductOrderStock()` has been completely removed from client-side `api.ts`. All orders initialized via Mercado Pago are strictly stored with status `'PENDIENTE_PAGO_MERCADOPAGO'`. Physical stock deduction is deferred entirely to the serverless webhook.
-3. **Graceful Fallbacks for Development & Tests:**
-   * If Firebase credentials are not provided or the network is unreachable in test environments, service functions must fall back gracefully to local mock data rather than crashing the application.
-   * Always log informative console warnings when operating in fallback mode.
-4. **Canonical Order ID Generation:**
-   * Ensure `submitOrder()` and `processMercadoPagoPayment()` share the exact same `orderId` (e.g., `PRONTO-XXXXXX`) so Mercado Pago's `external_reference` matches the Firestore order document ID.
-   * *As built in Task 0.3:* [`generateOrderId()`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/api.ts) creates canonical order identifiers (`PRONTO-XXXXXX`). [`CheckoutModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CheckoutModal.tsx) generates this canonical ID upfront and passes it directly to `processMercadoPagoPayment`, `submitOrder`, and WhatsApp quotes.
+### 2.1 Canonical Order ID Generation
+Every order placed in PRONTO is assigned a human-readable, canonical Order ID generated by `generateOrderId()`:
+```typescript
+export function generateOrderId(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // Omit confusing I, O, 0, 1
+  let result = 'PRONTO-'
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+```
+* **Business Rationale:** Alphanumeric codes like `PRONTO-8N4K2P` avoid visually ambiguous characters (`0` vs `O`, `1` vs `I`). They are easy for dentists to quote over the phone or WhatsApp when asking for fulfillment updates.
+* **Shared Reference:** The exact same `orderId` is used across the Firestore document key, Mercado Pago `external_reference`, bank transfer voucher filenames, and WhatsApp message text.
 
+### 2.2 Resilient Catalog Fetching with Offline Fallbacks
+When `fetchProducts()` is called:
+1. Queries the Google Firestore `products` collection.
+2. If Firebase credentials are missing (local development without `.env.local`) or network connectivity fails, it **automatically falls back to `INITIAL_PRODUCTS`** from [src/data/products.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/data/products.ts) while logging an informative console warning.
+3. This architecture guarantees that the development server, automated tests, and offline demos never crash due to network or credential unavailability.
+
+---
+
+## 💾 3. Deep Dive: Cart Persistence & Revalidation (`cartStorage.ts`)
+
+### 3.1 The Clinical Procurement Reality
+In a dental clinic, the procurement manager or dental assistant frequently adds items to the cart throughout the week (e.g. running low on alginate, needing extra composite shade A2, checking autoclave pouches). 
+If the cart lived only in ephemeral React component memory, closing the browser tab or refreshing would destroy their order preparation.
+
+### 3.2 Storage Architecture & Rules
+* **Storage Key & Versioning:** Stored under `pronto_cart_v1` with a wrapper structure:
+  ```typescript
+  interface StoredCartData {
+    version: number;
+    savedAt: string; // ISO timestamp
+    items: CartItem[];
+    appliedPromo?: PromoCode | null;
+  }
+  ```
+* **7-Day TTL Retention:** Dental supplies prices and distributor inventory fluctuate. Stored carts older than 7 days are considered stale and discarded on load.
+* **Defensive Storage Guardrails:** Safeguards against `QuotaExceededError` (common in mobile Safari private browsing), corrupted JSON strings, and SSR environments where `window` is undefined.
+
+### 3.3 Catalog Stock & Price Revalidation
+When the customer returns to the site, `revalidateCartAgainstCatalog(storedItems, liveCatalog)` runs automatically:
+1. **Discontinued Products:** Items no longer present in the live catalog or marked `inStock === false` are removed.
+2. **Stock Clamping:** If a clinic saved 10 units of an item but only 4 remain in the warehouse, the quantity is automatically clamped to 4.
+3. **Price Synchronization:** Live prices and promotional tags are refreshed against current catalog definitions.
+4. **Clinical Notification:** Returns an adjustment flag so the UI can display a friendly toast informing the user that inventory was refreshed.
+
+---
+
+## 🔒 4. Security & Inventory Protection Rules
+
+1. **Browser Isolation (Vite Public Variables Only):**
+   * Services in `src/services/` execute inside the browser.
+   * Only environment variables prefixed with `VITE_` are accessed (e.g. `import.meta.env.VITE_WHATSAPP_NUMBER`, `import.meta.env.VITE_FIREBASE_API_KEY`).
+   * ❌ **FORBIDDEN:** Referencing server secrets (`MERCADOPAGO_ACCESS_TOKEN`, `FIREBASE_PRIVATE_KEY`) here.
+2. **Zero Client-Side Stock Decrement:**
+   * ❌ `submitOrder()` in `api.ts` **NEVER** calls inventory decrements.
+   * Initial order documents are always saved with pending statuses (`'PENDIENTE_PAGO_MERCADOPAGO'` or `'PENDIENTE_TRANSFERENCIA'`).
+   * Stock decrement authority is strictly restricted to serverless webhooks and authenticated admin transactions.
+3. **Zero Card Input Handling (PCI-DSS):**
+   * `processMercadoPagoPayment()` in `mercadopago.ts` never accepts or transmits card numbers. It requests a preference URL from `/api/create-preference` and returns the checkout link.
