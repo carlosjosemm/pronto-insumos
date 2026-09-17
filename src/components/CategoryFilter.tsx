@@ -1,14 +1,34 @@
 import React from 'react'
 import { CATEGORIES, PRODUCTS } from '../data/products'
-import { ProductCategory } from '../types'
-import { Activity, Home, Heart, ShieldAlert, Grid, Filter, LucideIcon } from 'lucide-react'
-
-const ICON_MAP: Record<string, LucideIcon> = {
-  Grid,
+import { ProductCategory, Product } from '../types'
+import {
   Activity,
   Home,
   Heart,
-  ShieldAlert
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Layers,
+  Wrench,
+  Scissors,
+  LayoutGrid,
+  Grid,
+  Filter,
+  LucideIcon
+} from 'lucide-react'
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  Grid,
+  LayoutGrid,
+  Activity,
+  Home,
+  Heart,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Layers,
+  Wrench,
+  Scissors
 }
 
 export interface CategoryFilterProps {

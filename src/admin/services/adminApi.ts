@@ -212,6 +212,36 @@ export async function updateProductDetails(payload: ProductUpdatePayload): Promi
   }
 }
 
+export interface CreateProductPayload {
+  name: string
+  category: string
+  price: number
+  stockCount?: number
+  brand?: string
+  manufacturer?: string
+  description?: string
+  prescriptionRequired?: boolean
+  tag?: string
+}
+
+export async function createProductDetails(payload: CreateProductPayload): Promise<{ success: boolean; product?: Product; error?: string }> {
+  const headers = await getAuthHeaders()
+  try {
+    const res = await fetch('/api/admin/create-product', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || `HTTP ${res.status}` }
+    }
+    return { success: true, product: data.product }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error de conexión' }
+  }
+}
+
 export async function toggleProductVisibility(productId: string, visible: boolean): Promise<{ success: boolean; error?: string }> {
   const headers = await getAuthHeaders()
   try {

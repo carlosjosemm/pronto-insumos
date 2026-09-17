@@ -24,19 +24,19 @@ describe('fetchProducts - filtering', () => {
     expect(result.length).toBe(PRODUCTS.length)
   })
 
-  it('should filter by category "Instruments"', async () => {
-    const result = await fetchProducts({ category: 'Instruments' })
+  it('should filter by category "INSTRUMENTAL Y ACCESORIOS"', async () => {
+    const result = await fetchProducts({ category: 'INSTRUMENTAL Y ACCESORIOS' })
     expect(result.length).toBeGreaterThan(0)
     for (const p of result) {
-      expect(p.category.toLowerCase()).toBe('instruments')
+      expect(p.category.toLowerCase()).toBe('instrumental y accesorios')
     }
   })
 
-  it('should filter by category "Materials"', async () => {
-    const result = await fetchProducts({ category: 'Materials' })
+  it('should filter by category "OPERATORIA"', async () => {
+    const result = await fetchProducts({ category: 'OPERATORIA' })
     expect(result.length).toBeGreaterThan(0)
     for (const p of result) {
-      expect(p.category.toLowerCase()).toBe('materials')
+      expect(p.category.toLowerCase()).toBe('operatoria')
     }
   })
 
@@ -74,10 +74,10 @@ describe('fetchProducts - filtering', () => {
   })
 
   it('should combine category and search filters', async () => {
-    const result = await fetchProducts({ category: 'Instruments', search: 'turbina' })
+    const result = await fetchProducts({ category: 'INSTRUMENTAL Y ACCESORIOS', search: 'turbina' })
     expect(result.length).toBeGreaterThan(0)
     for (const p of result) {
-      expect(p.category.toLowerCase()).toBe('instruments')
+      expect(p.category.toLowerCase()).toBe('instrumental y accesorios')
       expect(p.name.toLowerCase()).toContain('turbina')
     }
   })

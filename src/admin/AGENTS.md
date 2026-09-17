@@ -134,11 +134,17 @@ In `OrderDetailPanel.tsx`, staff can review the **Historial de Estados y Auditor
 - Fetches chronological transitions from `api/admin/order-history?orderId=...` (supporting direct ID and fallback query).
 - Displays who executed the state change (staff email, customer, or Mercado Pago webhook), the exact timestamp, the reason, and delivery/payment telemetry.
 
+### 4.7 Dual-Mode Product Modal & Dynamic Category Management
+In `AdminInventory.tsx` and `ProductEditModal.tsx`:
+- **Dual-Mode Operation:** The modal serves both as an editor for existing inventory items and as a creator for new clinical supplies (`+ Nuevo Insumo`).
+- **Dynamic Category Selector:** Staff can choose from any existing category present in the active inventory OR select `+ Crear Nueva Categoría...` to register a brand-new specialty (e.g. `ORTODONCIA`, `PERIODONCIA`). The system automatically converts the input to uppercase and persists it to the catalog.
+- **Immediate Audit Logging:** Creating a new product generates an initial audit event in `inventory_audit_logs` with `changeType: 'STOCK_ADJUSTMENT'` and `reasonCode: 'creacion_manual'`.
+
 ---
 
 ## 🛠️ 5. Database Schema, Migration & Multi-Environment CLI Tooling
 
-PRONTO provides an administrative CLI utility ([`scripts/manage-firestore-schema.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/manage-firestore-schema.ts)) to enforce data quality and manage database lifecycles across production and isolated development environments:
+PRONTO provides administrative CLI utilities ([`scripts/manage-firestore-schema.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/manage-firestore-schema.ts) and [`scripts/import-catalog-csv.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/import-catalog-csv.ts)) to enforce data quality and manage database lifecycles across production and isolated development environments:
 
 ### 5.1 Environment Isolation Commands
 To prevent developmental work or testing from touching live clinic orders and warehouse inventory, all operations support an isolated `dev_*` mode:
@@ -148,25 +154,31 @@ To prevent developmental work or testing from touching live clinic orders and wa
 # 1. Validate isolated development collections against the frozen schema
 pnpm run schema:validate:dev
 
-# 2. Seed canonical catalog and sample orders into development collections
+# 2. Ingest real clinical dental price list from CSV into development collections (defaults to 10 units each)
+pnpm run catalog:import:dev
+
+# 3. Seed canonical catalog and sample orders into development collections
 pnpm run schema:seed:dev
 
-# 3. Purge all development documents safely without touching production
+# 4. Purge all development documents safely without touching production
 pnpm run schema:purge:dev
 
 # --- PRODUCTION ENVIRONMENT (Strict Safeguards) ---
 # 1. Inspect live production documents against the frozen schema (Read-Only)
 pnpm run schema:validate
 
-# 2. Seed canonical products into production collections
+# 2. Ingest real clinical dental price list from CSV into production collections (Requires confirmation)
+pnpm run catalog:import --confirm-production-import
+
+# 3. Seed canonical products into production collections
 pnpm run schema:seed
 
-# 3. Purge legacy production collections (Requires explicit --force flag)
+# 4. Purge legacy production collections (Requires explicit --force flag)
 pnpm run schema:purge-and-seed --force
 ```
 
 ### 5.2 Batch Operation Chunking Guardrail
-Firestore enforces a strict hard limit of 500 operations per `batch.commit()`. The CLI migration tool automatically divides bulk operations into safe chunks of 450 documents, preventing `INVALID_ARGUMENT: maximum 500 writes allowed per batch` failures during catalog resets.
+Firestore enforces a strict hard limit of 500 operations per `batch.commit()`. The CLI migration and CSV import tools automatically divide bulk operations into safe chunks of 450 documents, preventing `INVALID_ARGUMENT: maximum 500 writes allowed per batch` failures during catalog resets.
 
 ### 5.3 UI Environment Indicator Badge
 The admin topbar ([`src/admin/components/AdminTopbar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminTopbar.tsx)) renders an environment badge:
@@ -191,10 +203,10 @@ The admin topbar ([`src/admin/components/AdminTopbar.tsx`](file:///c:/Users/ecmv
 | [`src/admin/components/AdminOrders.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminOrders.tsx) | Order management view with search, filter chips, and table. |
 | [`src/admin/components/OrderTable.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/OrderTable.tsx) | Sortable, paginated order list with quick inspect actions. |
 | [`src/admin/components/OrderDetailPanel.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/OrderDetailPanel.tsx) | 420px slide-over inspector for invoicing, receipts, fulfillment actions, and audit timeline. |
-| [`src/admin/components/AdminInventory.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminInventory.tsx) | Product inventory view with stock counters and quick actions. |
+| [`src/admin/components/AdminInventory.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminInventory.tsx) | Product inventory view with stock counters, dynamic categories, and "+ Nuevo Insumo" trigger. |
 | [`src/admin/components/InventoryTable.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/InventoryTable.tsx) | Real-time product table with decoupled `isActive` and `inStock` states. |
 | [`src/admin/components/StockAdjustModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/StockAdjustModal.tsx) | 420px modal for stock adjustments with audit reason codes. |
-| [`src/admin/components/ProductEditModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/ProductEditModal.tsx) | 560px modal for editing clinical product metadata, integer CLP prices, and synchronized `priceNeto`. |
+| [`src/admin/components/ProductEditModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/ProductEditModal.tsx) | 560px dual-mode modal for creating new supplies and editing clinical product metadata, integer CLP prices, dynamic categories, and synchronized `priceNeto`. |
 | [`src/admin/components/AdminSettings.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminSettings.tsx) | Warehouse location, fulfillment cut-offs, and service integrations. |
 | [`src/admin/components/MetricCard.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/MetricCard.tsx) | Reusable KPI metric card with trend indicators. |
 | [`src/admin/components/StatusBadge.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/StatusBadge.tsx) | Standardized badge with Chilean order status coloring. |

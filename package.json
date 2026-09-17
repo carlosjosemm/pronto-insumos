@@ -17,7 +17,9 @@
     "schema:seed": "pnpm dlx tsx scripts/manage-firestore-schema.ts --seed --env=prod",
     "schema:seed:dev": "pnpm dlx tsx scripts/manage-firestore-schema.ts --seed --env=dev",
     "schema:purge-and-seed": "pnpm dlx tsx scripts/manage-firestore-schema.ts --purge-and-seed --env=prod",
-    "schema:purge:dev": "pnpm dlx tsx scripts/manage-firestore-schema.ts --purge-and-seed --force --env=dev"
+    "schema:purge:dev": "pnpm dlx tsx scripts/manage-firestore-schema.ts --purge-and-seed --force --env=dev",
+    "catalog:import": "pnpm dlx tsx scripts/import-catalog-csv.ts --env=prod",
+    "catalog:import:dev": "pnpm dlx tsx scripts/import-catalog-csv.ts --env=dev"
   },
   "dependencies": {
     "firebase": "^12.16.0",

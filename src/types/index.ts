@@ -1,4 +1,15 @@
-export type ProductCategory = 'Diagnostics' | 'Instruments' | 'Materials' | 'Sterilization' | 'all'
+export type ChileanDentalCategory =
+  | 'DESECHABLES, ESTERILIZACION Y DESINFECCION'
+  | 'ENDODONCIA'
+  | 'HIGIENE BUCAL'
+  | 'IMPRESION'
+  | 'INSTRUMENTAL Y ACCESORIOS'
+  | 'OPERATORIA'
+
+export type ProductCategory =
+  | 'all'
+  | ChileanDentalCategory
+  | (string & {})
 
 export interface Category {
   id: ProductCategory

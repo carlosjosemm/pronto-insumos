@@ -1,15 +1,16 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { InventoryTable } from './InventoryTable'
 import { StockAdjustModal } from './StockAdjustModal'
 import { ProductEditModal } from './ProductEditModal'
 import { fetchAdminProducts, toggleProductVisibility } from '../services/adminApi'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Plus } from 'lucide-react'
 import type { Product } from '../../types'
 
 export const AdminInventory: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([])
   const [selectedForStock, setSelectedForStock] = useState<Product | null>(null)
   const [selectedForEdit, setSelectedForEdit] = useState<Product | null>(null)
+  const [isCreatingProduct, setIsCreatingProduct] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const loadProducts = async () => {
@@ -28,6 +29,16 @@ export const AdminInventory: React.FC = () => {
     loadProducts()
   }, [])
 
+  const existingCategories = useMemo(() => {
+    const set = new Set<string>()
+    products.forEach(p => {
+      if (p.category && p.category.trim()) {
+        set.add(p.category.trim())
+      }
+    })
+    return Array.from(set)
+  }, [products])
+
   const handleToggleVisibility = async (productId: string, currentVisible: boolean) => {
     const next = !currentVisible
     // Optimistic UI update
@@ -41,22 +52,33 @@ export const AdminInventory: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
             Control de existencias físicas en bodega Melipilla, precios en CLP con IVA y catálogo activo.
           </div>
         </div>
-        <button
-          type="button"
-          onClick={loadProducts}
-          className="admin-btn admin-btn-secondary"
-          disabled={loading}
-          style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem' }}
-        >
-          <RefreshCw size={14} className={loading ? 'spin' : ''} />
-          <span>Actualizar Catálogo</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <button
+            type="button"
+            onClick={() => setIsCreatingProduct(true)}
+            className="admin-btn admin-btn-primary"
+            style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem', gap: '0.4rem' }}
+          >
+            <Plus size={15} />
+            <span>Nuevo Insumo</span>
+          </button>
+          <button
+            type="button"
+            onClick={loadProducts}
+            className="admin-btn admin-btn-secondary"
+            disabled={loading}
+            style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem' }}
+          >
+            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+            <span>Actualizar</span>
+          </button>
+        </div>
       </div>
 
       <InventoryTable
@@ -72,11 +94,26 @@ export const AdminInventory: React.FC = () => {
         onSuccess={() => loadProducts()}
       />
 
-      <ProductEditModal
-        product={selectedForEdit}
-        onClose={() => setSelectedForEdit(null)}
-        onSuccess={() => loadProducts()}
-      />
+      {/* Edit Existing Product */}
+      {selectedForEdit && (
+        <ProductEditModal
+          product={selectedForEdit}
+          existingCategories={existingCategories}
+          onClose={() => setSelectedForEdit(null)}
+          onSuccess={() => loadProducts()}
+        />
+      )}
+
+      {/* Register Brand New Product */}
+      {isCreatingProduct && (
+        <ProductEditModal
+          product={null}
+          isOpen={true}
+          existingCategories={existingCategories}
+          onClose={() => setIsCreatingProduct(false)}
+          onSuccess={() => loadProducts()}
+        />
+      )}
     </div>
   )
 }
