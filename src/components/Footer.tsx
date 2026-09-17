@@ -1,7 +1,11 @@
 import React from 'react'
 import { Activity, ShieldCheck, Headphones, RefreshCw, MapPin, Building2, Phone, CreditCard, Truck } from 'lucide-react'
 
-export default function Footer() {
+export interface FooterProps {
+  onOpenTracking?: () => void
+}
+
+export default function Footer({ onOpenTracking }: FooterProps = {}) {
   return (
     <footer className="footer-container">
       <div className="footer-inner">
@@ -79,6 +83,17 @@ export default function Footer() {
               <li>• Ruta Pomaire, Talagante y Peñaflor</li>
               <li>• Envíos Región Metropolitana (Starken / Chilexpress)</li>
               <li>• Despacho Gratuito sobre $100.000</li>
+              {onOpenTracking && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={onOpenTracking}
+                    style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', padding: 0, font: 'inherit', textAlign: 'left', fontWeight: '700' }}
+                  >
+                    • Seguimiento de Pedido en Línea
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
 

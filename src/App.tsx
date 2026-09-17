@@ -7,6 +7,7 @@ import ProductQuickView from './components/ProductQuickView'
 import Cart from './components/Cart'
 import CheckoutModal from './components/CheckoutModal'
 import PaymentReturnModal from './components/PaymentReturnModal'
+import OrderTrackingModal from './components/OrderTrackingModal'
 import Footer from './components/Footer'
 import { fetchProducts } from './services/api'
 import {
@@ -52,6 +53,9 @@ export default function App() {
     orderId: '',
     paymentId: ''
   })
+  const [isTrackingOpen, setIsTrackingOpen] = useState<boolean>(false)
+  const [trackingInitialOrderId, setTrackingInitialOrderId] = useState<string>('')
+  const [trackingInitialRut, setTrackingInitialRut] = useState<string>('')
 
   // Load products when filters/search change
   useEffect(() => {
@@ -149,7 +153,23 @@ export default function App() {
         // Fallback for non-browser or test environments
       }
     }
+
+    // Check for order tracking query parameter on mount
+    const trackParam = params.get('track') || params.get('tracking')
+    if (trackParam && !rawStatus) {
+      const targetId = typeof trackParam === 'string' && trackParam !== 'true' ? trackParam.trim().toUpperCase() : (orderIdParam || '').trim().toUpperCase()
+      const rutParam = params.get('rut') || ''
+      setTrackingInitialOrderId(targetId)
+      setTrackingInitialRut(rutParam)
+      setIsTrackingOpen(true)
+    }
   }, [])
+
+  const handleOpenTracking = (initialId = '', initialRut = '') => {
+    setTrackingInitialOrderId(initialId)
+    setTrackingInitialRut(initialRut)
+    setIsTrackingOpen(true)
+  }
 
   // Toast Notification Helper
   const addToast = (message: string) => {
@@ -226,6 +246,7 @@ export default function App() {
         setSearch={setSearch}
         cartCount={totalCartCount}
         onOpenCart={() => setIsCartOpen(true)}
+        onOpenTracking={() => handleOpenTracking()}
       />
 
       {/* Main Container */}
@@ -254,7 +275,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <Footer />
+      <Footer onOpenTracking={() => handleOpenTracking()} />
 
       {/* Quick View Modal */}
       {quickViewProduct && (
@@ -284,6 +305,7 @@ export default function App() {
         cartItems={cart}
         totalAmount={cartTotal}
         onOrderSuccess={handleOrderSuccess}
+        onOpenTracking={(orderId, rut) => handleOpenTracking(orderId, rut)}
       />
 
       {/* Mercado Pago Return Status Modal */}
@@ -297,6 +319,14 @@ export default function App() {
           setPaymentReturn(prev => ({ ...prev, isOpen: false }))
           setIsCheckoutOpen(true)
         }}
+      />
+
+      {/* Customer Order Tracking Modal */}
+      <OrderTrackingModal
+        isOpen={isTrackingOpen}
+        onClose={() => setIsTrackingOpen(false)}
+        initialOrderId={trackingInitialOrderId}
+        initialRut={trackingInitialRut}
       />
 
       {/* Toast Alerts */}

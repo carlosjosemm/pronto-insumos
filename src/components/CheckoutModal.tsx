@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import { CartItem, CustomerInfo, PaymentMethod, SubmitOrderResult, BillingInfo, SanitaryVerification } from '../types'
-import { X, CheckCircle, ShieldCheck, Lock, CreditCard, MessageSquare, Building2, ArrowRight, Printer, FileText, ShieldAlert } from 'lucide-react'
+import { X, CheckCircle, ShieldCheck, Lock, CreditCard, MessageSquare, Building2, ArrowRight, Printer, FileText, ShieldAlert, Upload, Truck, AlertCircle } from 'lucide-react'
 import { submitOrder, generateOrderId } from '../services/api'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
 import { processMercadoPagoPayment } from '../services/mercadopago'
 import { validateRut, formatRut } from '../utils/rut'
 import { formatCLP } from '../utils/currency'
 import { calculateTaxBreakdown, validateFacturaFields } from '../utils/tax'
+import { BANK_DETAILS } from '../config/bankDetails'
+import { uploadTransferVoucher, validateVoucherFile } from '../services/transferVoucher'
 
 export interface CheckoutModalProps {
   isOpen: boolean
@@ -14,9 +16,10 @@ export interface CheckoutModalProps {
   cartItems: CartItem[]
   totalAmount: number
   onOrderSuccess: () => void
+  onOpenTracking?: (orderId: string, rut: string) => void
 }
 
-export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount, onOrderSuccess }: CheckoutModalProps) {
+export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount, onOrderSuccess, onOpenTracking }: CheckoutModalProps) {
   const [step, setStep] = useState<number>(1) // 1: Shipping, 2: Payment/Quote Method, 3: Confirmation
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transferencia')
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
@@ -29,6 +32,12 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
   const [sisError, setSisError] = useState<string>('')
   const [submitError, setSubmitError] = useState<string>('')
   const [showVoucher, setShowVoucher] = useState<boolean>(false)
+
+  // Bank transfer voucher upload state
+  const [voucherFile, setVoucherFile] = useState<File | null>(null)
+  const [voucherUploading, setVoucherUploading] = useState<boolean>(false)
+  const [voucherUploaded, setVoucherUploaded] = useState<boolean>(false)
+  const [voucherError, setVoucherError] = useState<string>('')
 
   const hasRegulatedItems = cartItems.some(i => i.product.prescriptionRequired)
 
@@ -66,7 +75,12 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
     setSisRegistryNumber('')
     setCredentialFileName('')
     setSisError('')
+    setSubmitError('')
     setShowVoucher(false)
+    setVoucherFile(null)
+    setVoucherUploading(false)
+    setVoucherUploaded(false)
+    setVoucherError('')
     setFormData({
       fullName: '',
       email: '',
@@ -259,6 +273,29 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
 
     setStep(3)
     onOrderSuccess()
+  }
+
+  const handleUploadVoucher = async () => {
+    if (!voucherFile || !orderDetails) return
+    const validation = validateVoucherFile(voucherFile)
+    if (!validation.isValid) {
+      setVoucherError(validation.error || 'Archivo no válido.')
+      return
+    }
+
+    setVoucherUploading(true)
+    setVoucherError('')
+    const res = await uploadTransferVoucher({
+      orderId: orderDetails.orderId,
+      customerRut: formData.rut,
+      file: voucherFile
+    })
+    setVoucherUploading(false)
+    if (res.success) {
+      setVoucherUploaded(true)
+    } else {
+      setVoucherError(res.error || 'No fue posible subir el comprobante.')
+    }
   }
 
   return (
@@ -758,11 +795,11 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
               {paymentMethod === 'transferencia' && (
                 <div style={{ background: 'var(--surface-muted)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', fontSize: '0.825rem' }}>
                   <div style={{ fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.5rem' }}>Datos Bancarios Oficiales:</div>
-                  <div>• <strong>Banco:</strong> Banco de Chile</div>
-                  <div>• <strong>Tipo de Cuenta:</strong> Cuenta Corriente N° 849-01284-01</div>
-                  <div>• <strong>RUT:</strong> 77.892.410-K</div>
-                  <div>• <strong>Razón Social:</strong> PRONTO INSUMOS ODONTOLÓGICOS SPA</div>
-                  <div>• <strong>Email para Comprobante:</strong> pagos@prontoinsumos.cl</div>
+                  <div>• <strong>Banco:</strong> {BANK_DETAILS.bankName}</div>
+                  <div>• <strong>Tipo de Cuenta:</strong> {BANK_DETAILS.accountType} N° {BANK_DETAILS.accountNumber}</div>
+                  <div>• <strong>RUT:</strong> {BANK_DETAILS.rut}</div>
+                  <div>• <strong>Razón Social:</strong> {BANK_DETAILS.companyName}</div>
+                  <div>• <strong>Email para Comprobante:</strong> {BANK_DETAILS.email}</div>
                 </div>
               )}
 
@@ -947,6 +984,108 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                   </div>
                 )}
               </div>
+
+              {/* Bank Transfer Instructions & Voucher Upload in Step 3 */}
+              {paymentMethod === 'transferencia' && (
+                <div style={{
+                  background: '#fffbeb',
+                  border: '1.5px solid #fde68a',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '1.15rem',
+                  textAlign: 'left',
+                  marginBottom: '1.25rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: '#92400e', fontWeight: '800', fontSize: '0.875rem' }}>
+                    <Building2 size={18} style={{ color: '#d97706' }} />
+                    <span>Instrucciones de Transferencia Bancaria Directa</span>
+                  </div>
+
+                  <div style={{ fontSize: '0.8rem', color: '#78350f', marginBottom: '0.85rem', lineHeight: '1.4' }}>
+                    <div>• <strong>Banco:</strong> {BANK_DETAILS.bankName}</div>
+                    <div>• <strong>Tipo de Cuenta:</strong> {BANK_DETAILS.accountType} N° {BANK_DETAILS.accountNumber}</div>
+                    <div>• <strong>RUT Empresa:</strong> {BANK_DETAILS.rut}</div>
+                    <div>• <strong>Razón Social:</strong> {BANK_DETAILS.companyName}</div>
+                    <div>• <strong>Monto Exacto:</strong> {formatCLP(totalAmount)}</div>
+                    <div>• <strong>Email Comprobante:</strong> {BANK_DETAILS.email}</div>
+                  </div>
+
+                  {/* Voucher Upload Box */}
+                  <div style={{ borderTop: '1px dashed #fcd34d', paddingTop: '0.85rem' }}>
+                    <label htmlFor="checkout-voucher-file" style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#78350f', marginBottom: '0.35rem' }}>
+                      Adjuntar Comprobante de Transferencia (PDF, PNG, JPG - máx 5MB)
+                    </label>
+
+                    {voucherUploaded ? (
+                      <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-xs)', fontSize: '0.8rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <CheckCircle size={16} />
+                        <span>Comprobante recibido con éxito. Tu pedido está en proceso de validación contable.</span>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <input
+                          id="checkout-voucher-file"
+                          type="file"
+                          accept=".pdf,.png,.jpg,.jpeg"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setVoucherFile(e.target.files[0])
+                              setVoucherError('')
+                            }
+                          }}
+                          style={{
+                            padding: '0.45rem',
+                            fontSize: '0.75rem',
+                            border: '1px dashed #d97706',
+                            borderRadius: 'var(--radius-xs)',
+                            background: '#ffffff',
+                            cursor: 'pointer'
+                          }}
+                        />
+
+                        {voucherFile && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#78350f', fontWeight: '600' }}>
+                              Seleccionado: {voucherFile.name}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              onClick={handleUploadVoucher}
+                              disabled={voucherUploading}
+                              style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', background: '#d97706' }}
+                            >
+                              <Upload size={14} />
+                              <span>{voucherUploading ? 'Subiendo...' : 'Enviar Comprobante'}</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {voucherError && (
+                          <span style={{ fontSize: '0.725rem', color: '#dc2626', fontWeight: '600' }}>
+                            {voucherError}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Order Tracking Button */}
+              {onOpenTracking && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    handleClose()
+                    onOpenTracking(orderDetails.orderId, formData.rut)
+                  }}
+                  style={{ width: '100%', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.75rem', fontWeight: '700' }}
+                >
+                  <Truck size={17} style={{ color: 'var(--teal-600)' }} />
+                  <span>Seguir Estado de mi Pedido en Línea</span>
+                </button>
+              )}
 
               {paymentMethod === 'whatsapp' && whatsappUrl && (
                 <a

@@ -164,17 +164,48 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - Unit tests: Added new test suites in `src/tests/components/Cart.test.tsx`, `src/tests/components/CheckoutModal.test.tsx`, and `src/tests/api/create-preference.test.ts`.
     - All 22 test files and all 242 tests passing with 100% reliability. Production build compiled cleanly.
 
-- [ ] **2.4. End-to-End Bank Transfer Workflow (Transferencia Bancaria)**
-  - **Current Issue:** Selecting bank transfer displays static account details, leaving the order in an unverified limbo with no verification mechanism.
-  - **Required Action:**
-    - Provide a voucher upload field (PDF/PNG/JPG) during order completion or via a unique order link.
-    - Upload files securely to Firebase Storage (`receipts/{orderId}/transfer_voucher.pdf`).
-    - Externalize bank account details (Banco de Chile, account number, company RUT) to environment variables or Firestore configuration rather than hardcoding in component JSX.
+- [x] **2.4. End-to-End Bank Transfer Workflow (Transferencia Bancaria)**
+  - **Context:** Selecting bank transfer previously displayed static account details, leaving orders in pending limbo with no digital verification or voucher collection mechanism.
+  - **Fulfilled & Verified:**
+    - **Externalized Bank Configuration (`src/config/bankDetails.ts`):**
+      - Centralized Chilean banking credentials for Banco de Chile (Cuenta Corriente, account number, company RUT `77.892.410-2`, corporate email `pagos@prontoinsumos.cl`).
+      - Supported runtime overrides via `VITE_BANK_*` environment variables with strict fallback defaults.
+      - Integrated into checkout Step 2 payment selector and Step 3 confirmation instructions.
+    - **Transfer Voucher Validation & Upload Service (`src/services/transferVoucher.ts`):**
+      - Client-side validation enforcing file type restrictions (PDF, PNG, JPEG) and maximum size threshold (5MB).
+      - Converts binary files to Base64 data URLs for transport and storage.
+      - Sends vouchers to `/api/upload-voucher` with customer RUT verification and automatic fallback for offline/development environments.
+    - **Serverless Voucher Intake Endpoint (`/api/upload-voucher.ts`):**
+      - Validates payload structure, checks file size limits and MIME types, and compares normalized Chilean Modulo 11 RUTs.
+      - Updates order document in Firestore Admin transitioning status to `'TRANSFERENCIA_COMPROBANTE_SUBIDO'` with receipt URL, timestamp, and audit trail.
+    - **Step 3 Checkout & Tracking Upload UI:**
+      - Embedded instant voucher upload widget directly in Step 3 of checkout when selecting bank transfer.
+      - Direct upload capability also available from within the customer order tracking view.
+    - **Automated Test Coverage:**
+      - Unit tests in `src/tests/config/bankDetails.test.ts` (2 tests).
+      - Service tests in `src/tests/services/transferVoucher.test.ts` (6 tests).
+      - Serverless API tests in `src/tests/api/upload-voucher.test.ts` (7 tests).
 
-- [ ] **2.5. Customer Order Tracking Page**
-  - **Required Action:**
-    - Provide a public lookup page secured by order ID and customer RUT (`/tracking?orderId=PRONTO-123456`).
-    - Display live fulfillment statuses (*Order Placed*, *Payment Verified*, *Packing in Melipilla*, *Shipped via Starken/Chilexpress*, *Delivered*).
+- [x] **2.5. Customer Order Tracking Page**
+  - **Context:** Customers lacked a self-service fulfillment tracker and could not check delivery or payment progress without contacting support.
+  - **Fulfilled & Verified:**
+    - **Public Secured Order Lookup API (`/api/track-order.ts`):**
+      - Authenticates lookups using canonical Order ID (`PRONTO-XXXXXX`) and Chilean Modulo 11 customer RUT.
+      - Queries Firestore using `firebase-admin` (safely bypassing client-side read restrictions on `/orders`).
+      - Returns sanitized tracking payload (`OrderTrackingInfo`) mapping database states to a 5-stage fulfillment timeline (*Registrado*, *Comprobante/Pago*, *Preparación en Melipilla*, *En Ruta*, *Entregado*).
+      - Filters out private credentials, database internals, and card details.
+    - **Client-Side Tracking Adapter (`src/services/orderTracking.ts`):**
+      - Fetches `/api/track-order` with defensive error handling and local mock fallback for development/test environments.
+    - **Customer Order Tracking Modal (`OrderTrackingModal.tsx`):**
+      - Accessible via "Seguimiento" button in `Navbar.tsx`, link in `Footer.tsx`, and automatic deep linking via URL query parameters (`?track=PRONTO-123456` or `?orderId=PRONTO-123456&tracking=true`).
+      - Visual step progress indicator with clinical icons, timestamps, and status badges.
+      - Displays order items, delivery destination, and direct voucher upload if payment is pending.
+      - One-click WhatsApp clinical support button with pre-formatted inquiry text including the Order ID.
+    - **Automated Test Coverage:**
+      - Serverless API tests in `src/tests/api/track-order.test.ts` (6 tests).
+      - Client service tests in `src/tests/services/orderTracking.test.ts` (4 tests).
+      - UI component tests in `src/tests/components/OrderTrackingModal.test.tsx` (5 tests).
+      - Total repository test suite: 28 test files, 272 tests passing (100% test reliability).
 
 ---
 

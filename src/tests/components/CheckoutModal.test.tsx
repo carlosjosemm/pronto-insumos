@@ -587,4 +587,53 @@ describe('CheckoutModal Component', () => {
       expect(screen.getByText(/Seleccionar Método de Pago \/ Cotización/i)).toBeInTheDocument()
     })
   })
+
+  describe('Bank transfer workflow & order tracking integration (Task 2.4 & 2.5)', () => {
+    it('should display bank transfer instructions, voucher upload, and order tracking button in Step 3', async () => {
+      const onOpenTrackingMock = vi.fn()
+      render(
+        <CheckoutModal
+          {...defaultProps}
+          onOpenTracking={onOpenTrackingMock}
+        />
+      )
+
+      // Step 1: Fill customer info
+      fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: 'Dra. Andrea Morales' } })
+      fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
+      fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'andrea@moralesdental.cl' } })
+      fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 5555 4444' } })
+      fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 100' } })
+      fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: 'Melipilla' } })
+      fireEvent.change(screen.getByPlaceholderText('Ej: 9500000'), { target: { value: '9500000' } })
+
+      // Advance to Step 2
+      fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+
+      // In Step 2, bank details should be visible when 'transferencia' is active
+      expect(screen.getByText(/Datos Bancarios Oficiales/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/Banco de Chile/i).length).toBeGreaterThanOrEqual(1)
+
+      // Confirm Order in Step 2
+      fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+      await waitFor(() => {
+        expect(submitOrder).toHaveBeenCalledTimes(1)
+      })
+
+      // Step 3 UI
+      expect(screen.getByText(/Instrucciones de Transferencia Bancaria Directa/i)).toBeInTheDocument()
+      expect(screen.getByText(/Adjuntar Comprobante de Transferencia/i)).toBeInTheDocument()
+
+      // Click tracking button
+      const trackBtn = screen.getByText('Seguir Estado de mi Pedido en Línea')
+      expect(trackBtn).toBeInTheDocument()
+      fireEvent.click(trackBtn)
+
+      expect(onOpenTrackingMock).toHaveBeenCalledWith(
+        expect.stringMatching(/^PRONTO-/),
+        '12.345.678-5'
+      )
+    })
+  })
 })
