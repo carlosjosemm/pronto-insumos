@@ -17,6 +17,7 @@ This directory contains the user interface layer of PRONTO, built with **React 1
   * [`ProductQuickView.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductQuickView.tsx): Vertical (1-column) Product Detail Modal featuring multi-photo gallery (with thumbnail strip, next/prev navigation, and keyboard arrow controls), ISP compliance notices, itemized pricing (`IVA incluido`), technical specs checklist, package contents ("Contenido del Empaque") checklist, and stock-capped quantity stepper.
   * [`Cart.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Cart.tsx): Slide-over cart drawer with line item editing, Chilean free shipping threshold tracker ($150.000 / Melipilla), promo code support, and itemized tax calculation.
   * [`CheckoutModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CheckoutModal.tsx): Multi-step checkout (Despacho, Chilean Delivery Zone, Boleta/Factura Electrónica with Chilean Modulo 11 RUT validation, Payment method selector). Zero raw credit card inputs stored in state (PCI-DSS compliant).
+  * [`PaymentReturnModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/PaymentReturnModal.tsx): Post-payment return modal managing Mercado Pago return states (`approved`, `failure`, `pending`), displaying order identifiers, clearing cart on approved payments, offering direct WhatsApp dispatch coordination, and providing recovery actions.
   * [`Footer.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Footer.tsx): Grounded 4-column B2B distributor layout (RUT Empresa 77.892.410-K, Av. Ortúzar 750 warehouse address, regional routes, ISP compliance, and payment channels). Zero prototype seed buttons.
   * [`ErrorBoundary.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ErrorBoundary.tsx): Fallback wrapper to catch and gracefully report runtime UI errors with direct WhatsApp escalation.
 
@@ -73,5 +74,11 @@ This directory contains the user interface layer of PRONTO, built with **React 1
      * Company RUT (*RUT Empresa*)
      * Commercial Activity (*Giro Comercial*)
      * Tax Address (*Dirección de Entrega / Consulta*)
-4. **Testing Contracts:**
+4. **Sanitary Compliance (ISP Chile & SIS):**
+   * When the cart contains controlled/prescription dental products (`prescriptionRequired: true`), the UI displays:
+     * `⚕️ Requiere SIS` badge on product cards and in quick-view modal.
+     * Amber alert banner in cart drawer notifying customer of controlled supply status.
+     * Mandatory **Validación Sanitaria ISP / SIS** section in `CheckoutModal.tsx` requiring the dentist's Superintendencia de Salud (SIS) registration number (minimum 4 digits) and optional credential/prescription file attachment before progressing to payment.
+     * Confirmation summary and pro-forma purchase voucher display the verified SIS registration number.
+5. **Testing Contracts:**
    * Interactive buttons, inputs, and badges maintain accessible labels and text attributes matching the test suites in [src/tests/components/](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components). Zero test regressions.

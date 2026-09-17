@@ -6,6 +6,7 @@ import ProductList from './components/ProductList'
 import ProductQuickView from './components/ProductQuickView'
 import Cart from './components/Cart'
 import CheckoutModal from './components/CheckoutModal'
+import PaymentReturnModal from './components/PaymentReturnModal'
 import Footer from './components/Footer'
 import { fetchProducts } from './services/api'
 import { CartItem, Product, ProductCategory, PromoCode, Toast } from './types'
@@ -27,6 +28,17 @@ export default function App() {
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null)
   const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [paymentReturn, setPaymentReturn] = useState<{
+    isOpen: boolean
+    status: 'approved' | 'failure' | 'pending' | null
+    orderId: string
+    paymentId: string
+  }>({
+    isOpen: false,
+    status: null,
+    orderId: '',
+    paymentId: ''
+  })
 
   // Load products when filters/search change
   useEffect(() => {
@@ -56,6 +68,53 @@ export default function App() {
       isMounted = false
     }
   }, [selectedCategory, search, sortBy, inStockOnly])
+
+  const handleOrderSuccess = () => {
+    setCart([])
+    setAppliedPromo(null)
+  }
+
+  // Check for Mercado Pago return query parameters on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const rawStatus = (params.get('status') || params.get('collection_status') || '').toLowerCase().trim()
+    const orderIdParam = params.get('orderId') || params.get('external_reference')
+    const paymentIdParam = params.get('payment_id') || params.get('collection_id')
+
+    let normalizedStatus: 'approved' | 'failure' | 'pending' | null = null
+    if (rawStatus === 'approved') {
+      normalizedStatus = 'approved'
+    } else if (rawStatus === 'failure' || rawStatus === 'rejected' || rawStatus === 'cancelled') {
+      normalizedStatus = 'failure'
+    } else if (rawStatus === 'pending' || rawStatus === 'in_process') {
+      normalizedStatus = 'pending'
+    }
+
+    if (normalizedStatus) {
+      const cleanOrderId = orderIdParam ? orderIdParam.trim().toUpperCase() : ''
+      const cleanPaymentId = paymentIdParam ? paymentIdParam.trim() : ''
+
+      setPaymentReturn({
+        isOpen: true,
+        status: normalizedStatus,
+        orderId: cleanOrderId,
+        paymentId: cleanPaymentId
+      })
+
+      if (normalizedStatus === 'approved') {
+        handleOrderSuccess()
+      }
+
+      // Clean technical query parameters from browser address bar
+      try {
+        const cleanUrl = window.location.pathname + window.location.hash
+        window.history.replaceState({}, document.title, cleanUrl)
+      } catch {
+        // Fallback for non-browser or test environments
+      }
+    }
+  }, [])
 
   // Toast Notification Helper
   const addToast = (message: string) => {
@@ -115,11 +174,6 @@ export default function App() {
   const handleOpenCheckout = () => {
     setIsCartOpen(false)
     setIsCheckoutOpen(true)
-  }
-
-  const handleOrderSuccess = () => {
-    setCart([])
-    setAppliedPromo(null)
   }
 
   const scrollToCatalog = () => {
@@ -195,6 +249,19 @@ export default function App() {
         cartItems={cart}
         totalAmount={cartTotal}
         onOrderSuccess={handleOrderSuccess}
+      />
+
+      {/* Mercado Pago Return Status Modal */}
+      <PaymentReturnModal
+        isOpen={paymentReturn.isOpen}
+        status={paymentReturn.status}
+        orderId={paymentReturn.orderId}
+        paymentId={paymentReturn.paymentId}
+        onClose={() => setPaymentReturn(prev => ({ ...prev, isOpen: false }))}
+        onRetryPayment={() => {
+          setPaymentReturn(prev => ({ ...prev, isOpen: false }))
+          setIsCheckoutOpen(true)
+        }}
       />
 
       {/* Toast Alerts */}

@@ -156,4 +156,25 @@ describe('generateWhatsAppQuoteUrl', () => {
     const decoded = decodeURIComponent(url)
     expect(decoded).toContain('Melipilla')
   })
+
+  it('should include SIS sanitary registration number in the WhatsApp message when present', () => {
+    const regulatedCustomer: CustomerInfo = {
+      ...mockCustomer,
+      sanitaryVerification: {
+        sisRegistryNumber: '148925',
+        verified: true,
+        regulatoryNote: 'ISP Chile'
+      }
+    }
+
+    const url = generateWhatsAppQuoteUrl({
+      orderId: 'PRONTO-REG123',
+      customer: regulatedCustomer,
+      items: mockCartItems,
+      total: 459970
+    })
+
+    const decoded = decodeURIComponent(url)
+    expect(decoded).toContain('*Registro Sanitario SIS:* 148925')
+  })
 })

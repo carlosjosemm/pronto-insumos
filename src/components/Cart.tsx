@@ -56,6 +56,7 @@ export default function Cart({
 
   const progressPercent = Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100)
   const remainingForFreeShipping = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal)
+  const hasRegulatedItems = items.some(item => item.product.prescriptionRequired)
 
   const handleApplyPromoCode = async () => {
     if (!promoInput.trim()) return
@@ -99,6 +100,29 @@ export default function Cart({
           </div>
         </div>
 
+        {/* ISP Sanitary Notice when cart contains prescriptionRequired items */}
+        {hasRegulatedItems && (
+          <div
+            className="cart-regulated-alert"
+            style={{
+              background: '#fffbeb',
+              borderBottom: '1px solid #fde68a',
+              padding: '0.65rem 1.25rem',
+              fontSize: '0.775rem',
+              color: '#92400e',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              lineHeight: '1.3'
+            }}
+          >
+            <ShieldAlert size={18} style={{ color: '#d97706', flexShrink: 0 }} />
+            <span>
+              <strong>Insumos Regulados ISP:</strong> Tu carro incluye productos de venta controlada. Se solicitará tu N° de Registro SIS en el checkout.
+            </span>
+          </div>
+        )}
+
         {/* Scrollable Items List */}
         <div className="cart-items-scroll">
           {items.length === 0 ? (
@@ -123,6 +147,11 @@ export default function Cart({
 
                   <div className="cart-item-info">
                     <div className="cart-item-title">{item.product.name}</div>
+                    {item.product.prescriptionRequired && (
+                      <span style={{ fontSize: '0.65rem', color: '#b45309', background: '#fef3c7', padding: '0.1rem 0.35rem', borderRadius: 'var(--radius-xs)', display: 'inline-block', marginBottom: '0.2rem', fontWeight: '700' }}>
+                        ⚕️ Requiere SIS (ISP)
+                      </span>
+                    )}
                     <div className="cart-item-price">{formatCLP(item.product.price * item.quantity)}</div>
                   </div>
 

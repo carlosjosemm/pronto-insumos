@@ -291,7 +291,7 @@ export const PRODUCTS: Product[] = [
     reviewsCount: 25,
     inStock: true,
     stockCount: 3,
-    prescriptionRequired: false,
+    prescriptionRequired: true,
     tag: 'Cirugía e Implantes',
     description: 'Consola quirúrgica para implantología y cirugía oral con pedal multifunción, contra-ángulo reductor 20:1 e irrigación salina.',
     specs: [
@@ -310,6 +310,34 @@ export const PRODUCTS: Product[] = [
       '1x Pedal multifuncional ergonómico',
       '1x Varilla soporte para suero fisiológico',
       '4x Tubos de irrigación descartables'
+    ]
+  },
+  {
+    id: 'odon-501',
+    name: 'Anestésico Dental Lidocaína 2% con Epinefrina 1:100.000 (50 carpules)',
+    category: 'Materials',
+    manufacturer: 'Septodont',
+    price: 38500,
+    originalPrice: 46000,
+    rating: 4.9,
+    reviewsCount: 88,
+    inStock: true,
+    stockCount: 40,
+    prescriptionRequired: true,
+    tag: 'Venta Regulada ISP',
+    description: 'Solución inyectable dental de anestesia local para procedimientos quirúrgicos y restauradores. Venta exclusiva bajo acreditación SIS o receta médica retenida.',
+    specs: [
+      'Registro Sanitario ISP Chile N° F-14220',
+      '50 Cartuchos de vidrio de 1.8ml en blíster sellado',
+      'Lidocaína Clorhidrato 2% + Epinefrina 1:100.000',
+      'Embalaje clínico con control de trazabilidad y lote'
+    ],
+    placeholderTheme: 'gradient-teal',
+    mediaBadge: 'Regulado ISP / SIS',
+    images: [],
+    packageContents: [
+      '1x Caja dispensadora con 50 cartuchos de vidrio de 1.8ml',
+      '1x Inserto técnico y posología clínica aprobada por ISP Chile'
     ]
   }
 ]

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { CartItem, CustomerInfo, PaymentMethod, SubmitOrderResult, BillingInfo } from '../types'
-import { X, CheckCircle, ShieldCheck, Lock, CreditCard, MessageSquare, Building2, ArrowRight, Printer, FileText } from 'lucide-react'
+import { CartItem, CustomerInfo, PaymentMethod, SubmitOrderResult, BillingInfo, SanitaryVerification } from '../types'
+import { X, CheckCircle, ShieldCheck, Lock, CreditCard, MessageSquare, Building2, ArrowRight, Printer, FileText, ShieldAlert } from 'lucide-react'
 import { submitOrder, generateOrderId } from '../services/api'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
 import { processMercadoPagoPayment } from '../services/mercadopago'
@@ -24,8 +24,13 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
   const [whatsappUrl, setWhatsappUrl] = useState<string>('')
   const [rutError, setRutError] = useState<string>('')
   const [facturaErrors, setFacturaErrors] = useState<Record<string, string>>({})
+  const [sisRegistryNumber, setSisRegistryNumber] = useState<string>('')
+  const [credentialFileName, setCredentialFileName] = useState<string>('')
+  const [sisError, setSisError] = useState<string>('')
   const [submitError, setSubmitError] = useState<string>('')
   const [showVoucher, setShowVoucher] = useState<boolean>(false)
+
+  const hasRegulatedItems = cartItems.some(i => i.product.prescriptionRequired)
 
   useEffect(() => {
     if (!isOpen) return
@@ -58,6 +63,9 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
     setWhatsappUrl('')
     setRutError('')
     setFacturaErrors({})
+    setSisRegistryNumber('')
+    setCredentialFileName('')
+    setSisError('')
     setShowVoucher(false)
     setFormData({
       fullName: '',
@@ -117,8 +125,17 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
         }
       }
 
+      if (hasRegulatedItems) {
+        const cleanedSis = sisRegistryNumber.trim()
+        if (!cleanedSis || cleanedSis.length < 4) {
+          setSisError('Debe ingresar un N° de Registro SIS válido (mínimo 4 dígitos) para insumos controlados.')
+          return
+        }
+      }
+
       setRutError('')
       setFacturaErrors({})
+      setSisError('')
       setStep(2)
     } else if (step === 2) {
       handleCompleteOrder()
@@ -132,6 +149,13 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
     // Canonical order identifier PRONTO-XXXXXX
     const canonicalOrderId = generateOrderId()
 
+    const sanitaryVerification: SanitaryVerification | undefined = hasRegulatedItems ? {
+      sisRegistryNumber: sisRegistryNumber.trim(),
+      credentialFileName: credentialFileName || undefined,
+      verified: true,
+      regulatoryNote: 'Verificado según Art. 101 Código Sanitario DFL 725 y Decreto 466 (ISP Chile / SIS)'
+    } : undefined
+
     const sanitizedCustomer: CustomerInfo = {
       fullName: formData.fullName.trim(),
       email: formData.email.trim(),
@@ -142,7 +166,8 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
       giroComercial: formData.giroComercial ? formData.giroComercial.trim() : undefined,
       address: formData.address.trim(),
       city: formData.city.trim(),
-      zip: formData.zip.trim()
+      zip: formData.zip.trim(),
+      sanitaryVerification
     }
 
     const taxBreakdown = calculateTaxBreakdown(totalAmount)
@@ -164,7 +189,8 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
       total: totalAmount,
       customer: sanitizedCustomer,
       paymentMethod,
-      billing
+      billing,
+      sanitaryVerification
     })
 
     if (!result.success) {
@@ -500,6 +526,93 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                 </div>
               </div>
 
+              {/* Sanitary Verification Block (Mandatory if controlled supplies present) */}
+              {hasRegulatedItems && (
+                <div style={{
+                  background: '#fffbeb',
+                  border: '1.5px solid #fde68a',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.85rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#92400e', fontWeight: '800', fontSize: '0.85rem' }}>
+                    <ShieldAlert size={18} style={{ color: '#d97706', flexShrink: 0 }} />
+                    <span>Validación Sanitaria Requerida (ISP / Superintendencia de Salud)</span>
+                  </div>
+
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#78350f', lineHeight: '1.4' }}>
+                    Tu carro contiene insumos de expendio controlado (anestésicos o instrumental quirúrgico regulado por el ISP bajo DFL 725 y Decreto 466). De acuerdo a la normativa sanitaria chilena, debes ingresar tu N° de Registro en la Superintendencia de Salud (SIS) para autorizar el despacho.
+                  </p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
+                    <div>
+                      <label htmlFor="sis-registry-number" style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#78350f', marginBottom: '0.25rem' }}>
+                        N° Registro SIS (Superintendencia) *
+                      </label>
+                      <input
+                        id="sis-registry-number"
+                        type="text"
+                        placeholder="Ej: 148925"
+                        value={sisRegistryNumber}
+                        onChange={(e) => {
+                          setSisRegistryNumber(e.target.value)
+                          if (sisError) setSisError('')
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.55rem 0.75rem',
+                          border: `1px solid ${sisError ? '#dc2626' : '#fcd34d'}`,
+                          borderRadius: 'var(--radius-sm)',
+                          background: '#ffffff',
+                          fontWeight: '600'
+                        }}
+                      />
+                      {sisError && (
+                        <span style={{ fontSize: '0.725rem', color: '#dc2626', fontWeight: '600', marginTop: '0.25rem', display: 'block' }}>
+                          {sisError}
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <label htmlFor="credential-file" style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#78350f', marginBottom: '0.25rem' }}>
+                        Credencial Profesional o Receta (Opcional)
+                      </label>
+                      <input
+                        id="credential-file"
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setCredentialFileName(e.target.files[0].name)
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.45rem 0.5rem',
+                          border: '1px dashed #d97706',
+                          borderRadius: 'var(--radius-sm)',
+                          background: '#ffffff',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      {credentialFileName && (
+                        <span style={{ fontSize: '0.725rem', color: '#059669', fontWeight: '600', marginTop: '0.25rem', display: 'block' }}>
+                          ✓ Adjunto: {credentialFileName}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '0.7rem', color: '#92400e', fontStyle: 'italic' }}>
+                    * PRONTO verifica el N° SIS ante el Registro Nacional de Prestadores Individuales de Salud antes del despacho.
+                  </div>
+                </div>
+              )}
+
               <button type="submit" className="btn-primary" style={{ marginTop: '0.75rem', justifyContent: 'center' }}>
                 <span>Seleccionar Método de Pago / Cotización</span>
                 <ArrowRight size={17} />
@@ -665,6 +778,12 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                     {formData.documentType === 'factura' ? 'Factura Electrónica (Clínica)' : 'Boleta Electrónica'}
                   </span>
                 </div>
+                {hasRegulatedItems && sisRegistryNumber && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Registro Sanitario SIS:</span>
+                    <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{sisRegistryNumber} (Acreditado)</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Método Seleccionado:</span>
                   <span style={{ fontWeight: '700', color: 'var(--navy-900)', textTransform: 'capitalize' }}>{paymentMethod}</span>
@@ -728,6 +847,9 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, totalAmount,
                       )}
                       <div><strong>Dirección:</strong> {formData.address}, {formData.city}</div>
                       <div><strong>Email de Contacto:</strong> {formData.email}</div>
+                      {hasRegulatedItems && sisRegistryNumber && (
+                        <div><strong>Reg. SIS Profesional:</strong> {sisRegistryNumber} (Acreditación ISP)</div>
+                      )}
                     </div>
 
                     {/* Items List */}

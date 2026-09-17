@@ -231,6 +231,24 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               <span className="product-category-tag">{product.category}</span>
               <span className="product-ref-badge">REF: {skuRef}</span>
               <span className="product-tag-chip">{product.tag}</span>
+              {product.prescriptionRequired && (
+                <span
+                  style={{
+                    fontSize: '0.7rem',
+                    fontWeight: '800',
+                    color: '#b45309',
+                    background: '#fef3c7',
+                    border: '1px solid #fde68a',
+                    borderRadius: 'var(--radius-xs)',
+                    padding: '0.15rem 0.5rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem'
+                  }}
+                >
+                  ⚕️ Venta Regulada ISP (Requiere N° SIS)
+                </span>
+              )}
             </div>
 
             {/* Brand / Manufacturer Attribution Line */}
@@ -289,6 +307,23 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
                 </span>
               </div>
             </div>
+
+            {product.prescriptionRequired && (
+              <div
+                style={{
+                  background: '#fffbeb',
+                  border: '1px solid #fef3c7',
+                  borderLeft: '3px solid #f59e0b',
+                  borderRadius: 'var(--radius-xs)',
+                  padding: '0.65rem 0.85rem',
+                  fontSize: '0.775rem',
+                  color: '#92400e',
+                  lineHeight: '1.4'
+                }}
+              >
+                <strong>⚠️ Dispositivo / Fármaco Regulado por ISP Chile:</strong> Para la adquisición y despacho de este insumo se solicitará acreditación profesional (N° de Registro SIS - Superintendencia de Salud) durante el checkout.
+              </div>
+            )}
 
             {/* Product Clinical Description */}
             <p className="detail-description-text">{product.description}</p>

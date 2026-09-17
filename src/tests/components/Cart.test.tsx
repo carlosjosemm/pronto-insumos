@@ -128,4 +128,39 @@ describe('Cart component', () => {
     const discountElements = screen.getAllByText(/20%/)
     expect(discountElements.length).toBeGreaterThanOrEqual(1)
   })
+
+  it('should display ISP regulatory alert and Requiere SIS badge when cart has prescription-required items', () => {
+    const mockRegulatedItem: CartItem = {
+      product: {
+        id: 'odon-501',
+        name: 'Anestésico Dental Lidocaína 2% con Epinefrina',
+        category: 'Materials',
+        price: 38500,
+        rating: 4.9,
+        reviewsCount: 34,
+        inStock: true,
+        stockCount: 45,
+        prescriptionRequired: true,
+        tag: 'Controlado ISP',
+        description: 'Anestésico local inyectable',
+        specs: ['Registro ISP F-14220'],
+        placeholderTheme: 'gradient-blue',
+        mediaBadge: 'ISP F-14220'
+      },
+      quantity: 1
+    }
+
+    render(<Cart {...defaultProps} items={[mockRegulatedItem]} />)
+
+    expect(screen.getByText(/Insumos Regulados ISP:/i)).toBeInTheDocument()
+    expect(screen.getByText(/Tu carro incluye productos de venta controlada/i)).toBeInTheDocument()
+    expect(screen.getByText(/Requiere SIS \(ISP\)/i)).toBeInTheDocument()
+  })
+
+  it('should not display ISP regulatory alert when cart has only non-regulated items', () => {
+    render(<Cart {...defaultProps} items={mockCartItems} />)
+
+    expect(screen.queryByText(/Insumos Regulados ISP/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Requiere SIS \(ISP\)/i)).not.toBeInTheDocument()
+  })
 })

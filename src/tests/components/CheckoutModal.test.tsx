@@ -410,4 +410,113 @@ describe('CheckoutModal Component', () => {
     expect(screen.getByText('$30.335')).toBeInTheDocument()  // IVA
     expect(screen.getByText('Imprimir / Guardar en PDF')).toBeInTheDocument()
   })
+
+  it('should require N° de Registro SIS when cart contains controlled/prescription products and block step 2 if missing', async () => {
+    const mockRegulatedProduct: Product = {
+      id: 'odon-501',
+      name: 'Anestésico Dental Lidocaína 2% con Epinefrina 1:100.000',
+      category: 'Materials',
+      price: 38500,
+      rating: 4.9,
+      reviewsCount: 34,
+      inStock: true,
+      stockCount: 45,
+      prescriptionRequired: true,
+      tag: 'Controlado ISP',
+      description: 'Anestésico local inyectable odontológico',
+      specs: ['Registro ISP F-14220'],
+      placeholderTheme: 'gradient-blue',
+      mediaBadge: 'ISP F-14220'
+    }
+
+    render(
+      <CheckoutModal
+        {...defaultProps}
+        cartItems={[{ product: mockRegulatedProduct, quantity: 1 }]}
+        totalAmount={38500}
+      />
+    )
+
+    // Verify sanitary warning is visible
+    expect(screen.getByText(/Validación Sanitaria Requerida/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/N° Registro SIS/i)).toBeInTheDocument()
+
+    // Fill valid base customer fields
+    fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: 'Dr. Rodrigo Soto' } })
+    fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
+    fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'rodrigo@clinica.cl' } })
+    fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 8765 4321' } })
+    fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 500' } })
+    fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: 'Melipilla' } })
+    fireEvent.change(screen.getByPlaceholderText('Ej: 9500000'), { target: { value: '9500000' } })
+
+    // Try to advance without SIS
+    fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+
+    // Should block with error
+    expect(screen.getByText(/Debe ingresar un N° de Registro SIS válido/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Transferencia Bancaria Directa/i)).not.toBeInTheDocument()
+  })
+
+  it('should advance to Step 2 and submit sanitaryVerification when valid SIS number is entered', async () => {
+    const mockRegulatedProduct: Product = {
+      id: 'odon-501',
+      name: 'Anestésico Dental Lidocaína 2% con Epinefrina 1:100.000',
+      category: 'Materials',
+      price: 38500,
+      rating: 4.9,
+      reviewsCount: 34,
+      inStock: true,
+      stockCount: 45,
+      prescriptionRequired: true,
+      tag: 'Controlado ISP',
+      description: 'Anestésico local inyectable odontológico',
+      specs: ['Registro ISP F-14220'],
+      placeholderTheme: 'gradient-blue',
+      mediaBadge: 'ISP F-14220'
+    }
+
+    render(
+      <CheckoutModal
+        {...defaultProps}
+        cartItems={[{ product: mockRegulatedProduct, quantity: 1 }]}
+        totalAmount={38500}
+      />
+    )
+
+    // Fill customer fields
+    fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: 'Dr. Rodrigo Soto' } })
+    fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
+    fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'rodrigo@clinica.cl' } })
+    fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 8765 4321' } })
+    fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 500' } })
+    fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: 'Melipilla' } })
+    fireEvent.change(screen.getByPlaceholderText('Ej: 9500000'), { target: { value: '9500000' } })
+
+    // Provide valid SIS number
+    fireEvent.change(screen.getByLabelText(/N° Registro SIS/i), { target: { value: '148925' } })
+
+    // Advance to Step 2
+    fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+    expect(screen.getByText(/Transferencia Bancaria Directa/i)).toBeInTheDocument()
+
+    // Confirm Order
+    fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+    await waitFor(() => {
+      expect(submitOrder).toHaveBeenCalledTimes(1)
+    })
+
+    const submitCall = vi.mocked(submitOrder).mock.calls[0][0]
+    expect(submitCall.sanitaryVerification).toBeDefined()
+    expect(submitCall.sanitaryVerification?.sisRegistryNumber).toBe('148925')
+    expect(submitCall.sanitaryVerification?.verified).toBe(true)
+
+    // Step 3 UI should display SIS number
+    expect(screen.getByText(/148925 \(Acreditado\)/i)).toBeInTheDocument()
+
+    // Open voucher and verify SIS mention
+    fireEvent.click(screen.getByText(/Ver Comprobante de Compra/i))
+    expect(screen.getByText(/148925 \(Acreditación ISP\)/i)).toBeInTheDocument()
+  })
 })
