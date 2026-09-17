@@ -79,6 +79,12 @@ export type OrderStatus =
   | 'PENDIENTE_PAGO_MERCADOPAGO'
   | 'PAGADO_MERCADOPAGO'
   | 'PENDIENTE_TRANSFERENCIA'
+  | 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
+  | 'PAGADO_TRANSFERENCIA'
+  | 'EN_PREPARACION'
+  | 'DESPACHADO'
+  | 'ENTREGADO'
+  | 'CANCELADO'
   | 'COTIZACION_SOLICITADA_WHATSAPP'
   | 'PENDIENTE_PAGO'
 
@@ -97,6 +103,11 @@ export interface Order {
     quantity: number
     price: number
   }[]
+  voucherUrl?: string
+  voucherFileName?: string
+  voucherUploadedAt?: string
+  courier?: string
+  trackingNumber?: string
 }
 
 export interface PromoCode {
@@ -116,4 +127,54 @@ export interface SubmitOrderResult {
   timestamp: string
   total: number
   itemsCount: number
+}
+
+export interface OrderTrackingInfo {
+  orderId: string
+  createdAt: string
+  status: OrderStatus
+  paymentMethod: PaymentMethod
+  totalAmount: number
+  items: {
+    productId: string
+    name: string
+    quantity: number
+    price: number
+  }[]
+  customer: {
+    fullName: string
+    email: string
+    rut: string
+    address: string
+    city: string
+    documentType: DocumentType
+    razonSocial?: string
+  }
+  billing?: {
+    documentType: DocumentType
+    status: string
+    taxBreakdown?: TaxBreakdown
+  }
+  voucher?: {
+    uploaded: boolean
+    url?: string
+    fileName?: string
+    uploadedAt?: string
+  }
+  fulfillment: {
+    currentStep: 1 | 2 | 3 | 4 | 5
+    statusTitle: string
+    statusDescription: string
+    courier?: string
+    trackingNumber?: string
+  }
+}
+
+export interface UploadVoucherResult {
+  success: boolean
+  orderId: string
+  voucherUrl?: string
+  status: OrderStatus
+  message?: string
+  error?: string
 }

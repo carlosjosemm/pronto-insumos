@@ -1,14 +1,15 @@
 import React from 'react'
-import { Activity, Search, ShoppingBag, MapPin, FileCheck, Phone } from 'lucide-react'
+import { Activity, Search, ShoppingBag, MapPin, FileCheck, Phone, Truck } from 'lucide-react'
 
 export interface NavbarProps {
   search: string
   setSearch: (value: string) => void
   cartCount: number
   onOpenCart: () => void
+  onOpenTracking?: () => void
 }
 
-export default function Navbar({ search, setSearch, cartCount, onOpenCart }: NavbarProps) {
+export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpenTracking }: NavbarProps) {
   const [isPulsing, setIsPulsing] = React.useState(false)
   const prevCount = React.useRef(cartCount)
 
@@ -33,6 +34,21 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart }: Nav
             </span>
           </div>
           <div className="top-utility-right">
+            {onOpenTracking && (
+              <>
+                <button
+                  type="button"
+                  onClick={onOpenTracking}
+                  className="top-utility-link"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', padding: 0, display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                  aria-label="Abrir Seguimiento de Pedido"
+                >
+                  <Truck size={13} style={{ color: '#38bdf8' }} />
+                  <span>Seguimiento de Pedido</span>
+                </button>
+                <span className="top-utility-divider">|</span>
+              </>
+            )}
             <span className="top-utility-link">
               <FileCheck size={13} style={{ color: '#34d399' }} />
               <span>Factura Electrónica Inmediata (19% IVA)</span>
