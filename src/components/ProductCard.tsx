@@ -15,6 +15,7 @@ import {
   LucideIcon
 } from 'lucide-react'
 import { formatCLP } from '../utils/currency'
+import { formatCategoryDisplayName } from '../utils/categoryAlias'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   'INSTRUMENTAL Y ACCESORIOS': Scissors,
@@ -139,7 +140,9 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
       <div className="product-card-body">
         {/* Category and Badges Header */}
         <div className="product-meta-row">
-          <span className="product-category-tag">{product.category}</span>
+          <span className="product-category-tag">
+            {formatCategoryDisplayName(product.category)}
+          </span>
 
           {/* Badges Group: render authentic marketing tag and regulatory chips */}
           <div className="product-badges-group">
@@ -160,7 +163,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
         {/* Brand / Manufacturer Attribution Line */}
         {product.manufacturer && (
           <div className="product-manufacturer-line">
-            {product.category} · {product.manufacturer}
+            {formatCategoryDisplayName(product.category)} · {product.manufacturer}
           </div>
         )}
 

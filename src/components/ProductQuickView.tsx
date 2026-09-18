@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Product } from '../types'
 import { formatCLP } from '../utils/currency'
+import { formatCategoryDisplayName } from '../utils/categoryAlias'
 import {
   X,
   Star,
@@ -254,7 +255,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             {/* Brand / Manufacturer Attribution Line */}
             {product.manufacturer && (
               <div className="product-manufacturer-line">
-                {product.category} · {product.manufacturer}
+                {formatCategoryDisplayName(product.category)} · {product.manufacturer}
               </div>
             )}
 

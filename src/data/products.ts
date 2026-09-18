@@ -2,7 +2,7 @@ import { Category, Product, PromoCode } from '../types'
 
 export const CATEGORIES: Category[] = [
   { id: 'all', name: 'Todos los Insumos', icon: 'LayoutGrid' },
-  { id: 'DESECHABLES, ESTERILIZACION Y DESINFECCION', name: 'Desechables, Esterilización y Desinfección', icon: 'ShieldCheck' },
+  { id: 'DESECHABLES, ESTERILIZACION Y DESINFECCION', name: 'Desechables y Esterilización', icon: 'ShieldCheck' },
   { id: 'ENDODONCIA', name: 'Endodoncia', icon: 'Activity' },
   { id: 'HIGIENE BUCAL', name: 'Higiene Bucal', icon: 'Sparkles' },
   { id: 'IMPRESION', name: 'Impresión', icon: 'Layers' },
