@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import React from 'react'
 import CategoryShowcase, { CATEGORY_BANNERS } from '../../components/CategoryShowcase'
 
@@ -15,9 +16,29 @@ describe('CategoryShowcase Component (Section 5.4 Category Assets)', () => {
     expect(screen.getByText('Endodoncia y Diagnóstico Clínico')).toBeInTheDocument()
 
     // Clicking a category card should invoke onSelectCategory
-    const instrumentalCard = screen.getByTitle(/Filtrar por Instrumental Quirúrgico y Rotatorio/i)
+    const instrumentalCard = screen.getByRole('button', { name: /Instrumental Quirúrgico y Rotatorio/i })
     fireEvent.click(instrumentalCard)
     expect(onSelect).toHaveBeenCalledWith('INSTRUMENTAL Y ACCESORIOS')
+  })
+
+  it('should select a category when the showcase card is activated from the keyboard', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    render(<CategoryShowcase selectedCategory="all" onSelectCategory={onSelect} />)
+
+    const operatoriaCard = screen.getByRole('button', { name: /Operatoria y Materiales Restauradores/i })
+    operatoriaCard.focus()
+    expect(operatoriaCard).toHaveFocus()
+
+    await user.keyboard('{Enter}')
+    expect(onSelect).toHaveBeenCalledWith('OPERATORIA')
+  })
+
+  it('should render nothing when the active category has no showcase banner', () => {
+    const { container } = render(
+      <CategoryShowcase selectedCategory="HIGIENE BUCAL" onSelectCategory={vi.fn()} />
+    )
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('should render the contextual category banner when a specific category is active', () => {
