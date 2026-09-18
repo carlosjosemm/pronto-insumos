@@ -59,7 +59,9 @@ export async function fetchProducts({
         const productsRef = collection(db, getCollectionName('products'))
         const snapshot = await getDocs(productsRef)
         if (!snapshot.empty) {
-          return snapshot.docs.map(d => ({ id: d.id, ...d.data() }) as Product)
+          return snapshot.docs
+            .map(d => ({ id: d.id, ...d.data() }) as Product)
+            .filter(p => p.isActive !== false)
         }
         return [...PRODUCTS]
       })()

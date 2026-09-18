@@ -153,12 +153,8 @@ async function importCatalog() {
   for (const doc of existingSnap.docs) {
     const data = doc.data()
     // If it's a prototype item or any item not part of the new pronto- catalog
-    if (doc.id.startsWith('odon-') && (data.isActive !== false || data.inStock !== false)) {
-      batch.update(doc.ref, {
-        isActive: false,
-        inStock: false,
-        updatedAt: nowIso
-      })
+    if (doc.id.startsWith('odon-')) {
+      batch.delete(doc.ref)
       inactivatedCount++
       opCount++
 
@@ -171,9 +167,9 @@ async function importCatalog() {
   }
 
   if (inactivatedCount > 0) {
-    console.log(`💤 ${inactivatedCount} insumos anteriores (prototipo odon-*) marcados como inactivos.`)
+    console.log(`🧹 ${inactivatedCount} insumos anteriores de prototipo (odon-*) eliminados de la base de datos.`)
   } else {
-    console.log(`ℹ️ No se detectaron productos antiguos activos para inactivar.`)
+    console.log(`ℹ️ No se detectaron productos antiguos de prototipo para eliminar.`)
   }
 
   // 3. Upsert products from CSV
@@ -185,6 +181,8 @@ async function importCatalog() {
     const productId = `pronto-${String(idx + 1).padStart(3, '0')}`
     const sku = `REF-${item.brand.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase()}-${String(idx + 1).padStart(3, '0')}`
     const priceNeto = Math.round(item.price / 1.19)
+
+    const cleanMediaBadge = item.brand && item.brand !== 'Genérico' ? item.brand : 'Clínico Certificado'
 
     const productDoc: Product = {
       id: productId,
@@ -208,7 +206,7 @@ async function importCatalog() {
         'Distribución oficial Pronto Insumos Melipilla'
       ],
       placeholderTheme: 'gradient-teal',
-      mediaBadge: 'Stock Inicial (10 un)',
+      mediaBadge: cleanMediaBadge,
       images: [],
       packageContents: [`1x ${item.name}`],
       createdAt: nowIso,
