@@ -138,11 +138,18 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
       {/* Product Content Body */}
       <div className="product-card-body">
-        {/* Category and Badges Header */}
+        {/* Category, Brand, and Badges Header (Single Combined Line) */}
         <div className="product-meta-row">
-          <span className="product-category-tag">
-            {formatCategoryDisplayName(product.category)}
-          </span>
+          <div className="product-taxonomy-header">
+            <span className="product-category-tag">
+              {formatCategoryDisplayName(product.category)}
+            </span>
+            {product.manufacturer && (
+              <span className="product-brand-tag">
+                · {product.manufacturer}
+              </span>
+            )}
+          </div>
 
           {/* Badges Group: render authentic marketing tag and regulatory chips */}
           <div className="product-badges-group">
@@ -159,13 +166,6 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
             )}
           </div>
         </div>
-
-        {/* Brand / Manufacturer Attribution Line */}
-        {product.manufacturer && (
-          <div className="product-manufacturer-line">
-            {formatCategoryDisplayName(product.category)} · {product.manufacturer}
-          </div>
-        )}
 
         <h3 className="product-title" id={`product-title-${product.id}`}>
           {product.name}
