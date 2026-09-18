@@ -201,14 +201,14 @@ async function importCatalog() {
       stockCount: 10,
       isActive: true,
       prescriptionRequired: false,
-      tag: 'Catálogo Oficial',
+      tag: '',
       description: item.name,
       specs: [
         'Insumo clínico odontológico certificado',
         'Distribución oficial Pronto Insumos Melipilla'
       ],
       placeholderTheme: 'gradient-teal',
-      mediaBadge: 'Stock Inicial (10 un)',
+      mediaBadge: '',
       images: [],
       packageContents: [`1x ${item.name}`],
       createdAt: nowIso,

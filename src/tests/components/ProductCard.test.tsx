@@ -176,21 +176,6 @@ describe('ProductCard component', () => {
     expect(container.querySelector('.placeholder-badge')).toBeNull()
   })
 
-  it('should NOT render tag chip when tag is "Catálogo Oficial" placeholder', () => {
-    const productCatalogTag = {
-      ...mockProduct,
-      tag: 'Catálogo Oficial'
-    }
-    render(
-      <ProductCard
-        product={productCatalogTag}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
-    expect(screen.queryByText('Catálogo Oficial')).toBeNull()
-  })
-
   it('should render discount badge when originalPrice exists and is greater than price', () => {
     render(
       <ProductCard

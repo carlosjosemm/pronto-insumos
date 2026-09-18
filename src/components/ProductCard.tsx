@@ -141,9 +141,9 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
         <div className="product-meta-row">
           <span className="product-category-tag">{product.category}</span>
 
-          {/* Badges Group: only render authentic tags (excluding generic default placeholders) and regulatory chips */}
+          {/* Badges Group: render authentic marketing tag and regulatory chips */}
           <div className="product-badges-group">
-            {product.tag && product.tag.trim() && !/^cat[aá]logo\s+oficial$/i.test(product.tag.trim()) && (
+            {product.tag && product.tag.trim() && (
               <span className="product-tag-chip">{product.tag}</span>
             )}
             {product.prescriptionRequired && (
