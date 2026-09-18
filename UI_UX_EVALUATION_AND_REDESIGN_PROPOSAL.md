@@ -4,7 +4,8 @@
 
 **Date:** September 2026  
 **Scope:** Customer-facing storefront only (Admin site excluded)  
-**Branch:** `main`
+**Branch:** `feat/ui-ux-storefront-overhaul`  
+**Status:** Implemented — palette, typography, hero lifestyle panel, promo strip, category showcase hub, and footer trust bar are live in the branch. Delivered photography is deployed under `public/assets/` (optimized for web delivery); this document is the design rationale of record.
 
 ---
 
@@ -95,9 +96,9 @@ The following replaces the current Navy/Teal tokens with the brand manual palett
   --navy-900: var(--brand-blue);
   --navy-800: var(--brand-blue-light);
   --navy-700: var(--brand-blue-muted);
-  --teal-600: var(--brand-cayenne);
-  --teal-700: var(--brand-cayenne-dark);
-  --teal-800: var(--brand-cayenne-dark);
+  --teal-600: var(--brand-blue);
+  --teal-700: var(--brand-blue-light);
+  --teal-800: var(--brand-blue-dark);
   --teal-50:  var(--brand-limonade);
   --teal-100: #DDE1A0;
 
@@ -118,7 +119,7 @@ The following replaces the current Navy/Teal tokens with the brand manual palett
   /* Border overrides */
   --border-subtle: #E5DDD4;
   --border-strong: #D4C9BB;
-  --border-focus:  var(--brand-accent-green);
+  --border-focus:  var(--brand-blue); /* WCAG 1.4.11 compliant focus contrast */
 }
 ```
 
@@ -142,7 +143,7 @@ The following replaces the current Navy/Teal tokens with the brand manual palett
 | **Guarantee icons** | `--teal-600` | `--brand-blue: #102748` | Brand-aligned icon colors |
 | **Footer value-prop icons** | `--teal-600` bg | `--brand-blue: #102748` bg | Intense Blue foundation |
 | **Footer link hover** | `#38bdf8` (sky blue) | `--brand-accent-green: #CAE400` | On-brand accent hover |
-| **Focus rings** | `--teal-600` | `--brand-accent-green: #CAE400` | Vibrant, brand-aligned focus |
+| **Focus rings** | `--teal-600` | `--brand-blue: #102748` | Keeps ≥3:1 non-text contrast on light surfaces (WCAG 1.4.11); accent-green is reserved for fills |
 | **Toast left border** | `--teal-600` | `--brand-accent-green: #CAE400` | Brand consistency |
 | **Page background-color** | `#f8fafb` (cool gray) | `--brand-cream: #FDF8F3` (warm off-white) | Almond Cream per manual |
 | **Card borders** | `#e2e8f0` (cool slate) | `#E5DDD4` (warm almond) | Warmer, brand-aligned |
@@ -245,7 +246,7 @@ Replace the guarantee card with a **split layout**: a brand lifestyle image on t
 Ultra-realistic commercial product photography of an organized dental instrument layout, elevated 35-degree oblique flatlay. A high-speed titanium dental turbine handpiece with diamond bur and subtle fiber-optic light, alongside a front-surface rhodium mouth mirror, stainless steel dental explorer, and precision College tweezers arranged neatly on a dark intense blue medical-grade fabric surface (#102748). Shot on Hasselblad H6D-100c, 90mm f/3.2 macro lens, shallow depth of field with razor-sharp focus on the turbine head and smooth bokeh falloff. Studio lighting: large diffused overhead octabox creating soft linear reflections on metallic cylindrical surfaces, subtle cool rim lighting on chrome edges. Clean editorial clinical aesthetic, immaculate textures, brushed surgical steel AISI 420, Chilean dental distributor style, no humans, no teeth, no blood, 8k resolution, hyper-detailed, photorealistic --ar 4:3 --v 6.1 --style raw
 ```
 
-**Delivered Staged Asset:** `assets/5.1-hero-section-brand-lifestyle-right-column.jpg` (ready for `public/assets/` deployment).
+**Deployed Asset:** `public/assets/hero-dental-instruments.jpg` (1200×896, optimized for web delivery).
 
 **Layout Change in `Hero.tsx`:**
 - The right column (`.hero-card-preview`) becomes a contained image panel with `border-radius: var(--radius-md)`, subtle shadow, and `overflow: hidden`
@@ -308,7 +309,7 @@ Ultra-realistic commercial product photography of an organized dental instrument
     ```text
     Panoramic abstract luxury medical background texture, ultra-wide 21:9 ratio. Deep intense navy blue (#102748) and midnight blue (#0B1A33) gradient with subtle, elegant volumetric optical fiber light waves and faint geometric micro-mesh. Whisper-soft glowing accents in subtle chartreuse green (#CAE400) and soft cyan, smooth horizontal light streaks, out-of-focus crystalline particles with deep creamy bokeh. Premium commercial technology texture, clean minimalist clinical design, high-end sterile dental equipment ambiance, no text, no logos, no objects, seamless dark backdrop for UI text overlay, 8k --ar 21:9 --v 6.1 --style raw
     ```
-  - **Delivered Staged Asset:** `assets/5.2-banner-promocional-entre-hero-y-categorias.jpg` (ready for `public/assets/` deployment).
+  - **Deployed Asset:** `public/assets/promo-strip-bg.jpg` (1000×558, optimized for web delivery).
 
 **Layout:** A new `<div className="promo-strip">` inserted in `App.tsx` between `<Hero>` and `<CategoryFilter>`, or alternatively as the last child inside the Hero section.
 
@@ -372,7 +373,7 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
 
 #### 5.4.1 Categoría: Instrumental y Accesorios (`INSTRUMENTAL Y ACCESORIOS`)
 - **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors turbine, micromotor, contra-angle, forceps, and scalpel product listings.
-- **Delivered Staged Asset:** `assets/5.4.1-Categoría-1-Instrumental-Quirurgico-Rotatorio.jpg`
+- **Deployed Asset:** `public/assets/cat-instrumental.jpg` (800×447, optimized for web delivery)
 - **Composition & Camera:** 20° low-angle dynamic hero macro perspective. The titanium handpiece rests diagonally across a warm Almond Cream (`#F5EDE4`) architectural plinth.
 - **Subject & Mechanical Details:** High-speed air-turbine handpiece in satin-matte titanium and surgical stainless steel, quadruple water-spray ports at the head clamping a micro-fluted diamond fissure bur. Precision push-button chuck mechanism with crisp machined chamfers. Beside it, a double-ended stainless steel Bein root elevator with knurled ergonomic handle.
 - **Optics & Lighting:** 90mm f/4 Macro lens, focus-stacked for pin-sharp edge-to-edge metallic knurling. Automotive studio strip lighting (dual 1x4 ft diffused softboxes) creating crisp, continuous white highlight ribbons along the titanium body. Dark Intense Blue (`#102748`) shadow falloff.
@@ -383,7 +384,7 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
 
 #### 5.4.2 Categoría: Endodoncia y Diagnóstico Clínico (`ENDODONCIA`)
 - **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors apex locators, endodontic files, intraoral mirrors, probes, and diagnostics.
-- **Delivered Staged Asset:** `assets/5.4.2-categoria-2-diagnostico-exploracion-clinica.jpg`
+- **Deployed Asset:** `public/assets/cat-diagnostico-endodoncia.jpg` (800×447, optimized for web delivery)
 - **Composition & Camera:** 45° clinical tabletop oblique perspective. Golden ratio composition centering on a front-surface rhodium mouth mirror reflecting an operating lamp beam.
 - **Subject & Mechanical Details:** Rhodium front-surface mirror (#5) showing true reflection with zero ghosting. The circular mirror face reflects an overhead ring of surgical LED daylight. Adjacent: Shepherd's hook dental explorer (#23) and a periodontal Williams probe with crisp, laser-etched black millimeter depth markings (1-2-3-5-7-8-9-10mm).
 - **Optics & Lighting:** 85mm f/2.8 Prime, shallow depth of field focusing sharply on the mirror edge and probe markings. High-key clinical lighting: 90cm overhead beauty dish producing a clean circular catchlight, filled with a cool white reflector for an immaculate, sterile ambiance.
@@ -394,7 +395,7 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
 
 #### 5.4.3 Categoría: Operatoria y Materiales Restauradores (`OPERATORIA`)
 - **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors composites, adhesives, etching gels, curing lights, and glass ionomers.
-- **Delivered Staged Asset:** `assets/5.4.3-categoria-3-materiales-restauradores-estetica.jpg`
+- **Deployed Asset:** `public/assets/cat-operatoria-estetica.jpg` (800×447, optimized for web delivery)
 - **Composition & Camera:** 30° close-up beauty macro shot. Diagonal flow showing the precision dispensing of aesthetic restorative nano-hybrid composite.
 - **Subject & Mechanical Details:** Matte charcoal-black light-shielded composite syringe with screw dial. A tiny, immaculate bead of translucent tooth-colored aesthetic resin (shade A2) is extruded from the curved metal dispensing cannula, demonstrating natural optical opalescence. Beside it: 3 ceramic tooth tabs from a VITA classical shade guide (A1, A2, B1) mounted on a chrome holder, and an amber glass bonding bottle with a micro-applicator brush.
 - **Optics & Lighting:** 105mm Macro f/3.5, 1:1 reproduction. Backlit transillumination through the resin droplet highlighting true enamel translucency. Warm Almond Cream (`#FDF8F3`) background with Cayenne Red (`#C84B31`) label accents.
@@ -405,7 +406,7 @@ Alternatively, if the promo strip (5.2) already conveys this, skip this insertio
 
 #### 5.4.4 Categoría: Desechables, Esterilización y Desinfección (`DESECHABLES, ESTERILIZACION Y DESINFECCION`)
 - **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors autoclave pouches, chemical indicators, cassettes, barrier films, and clinical PPE.
-- **Delivered Staged Asset:** `assets/5.4.4-categoria-4-esterilizacion-bioseguridad-pabellon.jpg`
+- **Deployed Asset:** `public/assets/cat-esterilizacion-bioseguridad.jpg` (800×447, optimized for web delivery)
 - **Composition & Camera:** 40° overhead clinical flatlay. Emphasizes sealed hygiene, ISO compliance, and medical security.
 - **Subject & Mechanical Details:** Transparent medical-grade self-seal autoclave pouch (Tyvek paper and multi-layer clinical film) with chevron heat-seal, enclosing sterilized surgical steel instruments. Clearly visible multi-parameter chemical process indicator strip displaying successful sterilization change (pink to brown). A pair of textured cobalt-blue nitrile examination gloves folded alongside a perforated stainless steel DIN sterilization cassette with medical silicone instrument racks.
 - **Optics & Lighting:** 50mm f/4 on full frame for deep focus. 5600K diffuse daylight softbox with polarizing screen to eliminate glare on the plastic pouch film, preserving crystal-clear visibility of the tools inside.

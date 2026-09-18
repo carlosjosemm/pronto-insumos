@@ -48,8 +48,9 @@ export function generateOrderId(): string {
 ### 2.2 Resilient Catalog Fetching with Offline Fallbacks
 When `fetchProducts()` is called:
 1. Queries the Google Firestore `products` (or `dev_products`) collection.
-2. If Firebase credentials are missing (local development without `.env.local`) or network connectivity fails, it **automatically falls back to `INITIAL_PRODUCTS`** from [src/data/products.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/data/products.ts) while logging an informative console warning.
-3. This architecture guarantees that the development server, automated tests, and offline demos never crash due to network or credential unavailability.
+2. If Firebase credentials are missing (local development without `.env.local`) or network connectivity fails, it **automatically falls back to `PRODUCTS`** from [src/data/products.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/data/products.ts) while logging an informative console warning.
+3. In-stock products are always partitioned ahead of out-of-stock products (stable order), so depleted supplies sink to the bottom of any sort criterion without disturbing the requested ordering within each partition.
+4. This architecture guarantees that the development server, automated tests, and offline demos never crash due to network or credential unavailability.
 
 ### 2.3 Dynamic Collection Namespacing (`firestoreEnv.ts`)
 Client services never hardcode collection names:

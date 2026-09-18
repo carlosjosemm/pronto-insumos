@@ -41,17 +41,31 @@ Under Chilean law (**Código Sanitario DFL 725** and **Decreto Supremo 466 del M
 ## 🎨 2. Design Philosophy: "Clinical Precision & Local Trust"
 
 The storefront UI conveys the clean, sterile, and highly dependable nature of a dental operating depot:
-* **Palette:**
-  - **Deep Navy (`#0b192c`, `var(--navy-900)`):** Grounded corporate stability, clinical authority, and reliability.
-  - **Surgical Teal (`#088395`, `var(--teal-600)`):** The signature sterile hygiene color of modern dental operatories, used for primary actions, active tabs, and verified badges.
-  - **Clean Surfaces (`#f8fafc`, `var(--surface-muted)`):** High legibility backgrounds evoking autoclaved surgical trays.
+* **Palette (Brand Manual, Section 3 of the redesign proposal):**
+  - **Intense Blue (`#102748`, `var(--brand-blue)`):** Primary brand foundation for structure, headers, add-to-cart actions, and trust anchors. Legacy `--navy-*` / `--teal-*` tokens alias onto this family.
+  - **Cayenne Red-Orange (`#C84B31`, `var(--brand-cayenne)`):** Energetic warm accent for hero title span, cart count badge, product tag chips, and promotional urgency.
+  - **Limonade Cream / Accent Green (`#ECEFBE` / `#CAE400`, `var(--brand-limonade)` / `var(--brand-accent-green)`):** CTA fills and pill highlights; always paired with dark green text (`--brand-accent-green-text: #3D4A00`).
+  - **Almond Cream / Frozen Water (`#FDF8F3` / `#F0F4F8`, `var(--brand-cream)` / `var(--brand-frozen)`):** Warm page background and cool card/input surfaces.
   - **Slate Neutral (`#334155`, `var(--text-secondary)`):** Balanced readability for technical specifications.
-* **Typography:** Modern clean sans-serif (`Inter`, `system-ui`) with clear hierarchical font weights (600/700 for technical parameters, 800 for currency).
+  - **Focus indicators (`--border-focus`):** Always `var(--brand-blue)` — accent green fails WCAG 1.4.11 (≥3:1) on light surfaces, so it is reserved for fills only.
+* **Typography:** Brand manual dual-face system — `Baloo Da 2` (`--font-display`) for the wordmark and headings, `Syne` (`--font-sans` / `--font-body`) for body and CTA copy, `JetBrains Mono` for REF codes and prices.
 * **Strict Aesthetic Guardrails:**
   - Zero fluorescent neon halos or glowing futuristic borders.
   - Zero fake SaaS dashboard widgets.
   - Authentic Chilean currency formatting (`$189.990 CLP`) with zero decimal cents.
   - Transparent Chilean consumer pricing: All customer prices explicitly state `IVA incluido` per **SERNAC** consumer protection rules.
+
+### 2.1 Storefront Landing Composition (`App.tsx`)
+
+The landing page composes the brand experience in a fixed narrative order:
+
+1. [`Hero.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Hero.tsx): editorial headline + CTA, compact inline B2B trust strip, and the right-column lifestyle photography panel (with `imgError` state fallback).
+2. [`PromoStrip.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/PromoStrip.tsx): slim value-proposition band (slogan, express delivery, SII invoicing).
+3. [`CategoryFilter.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryFilter.tsx): category pills, result count, stock toggle, and sort selector (`#catalog-section` scroll anchor).
+4. [`CategoryShowcase.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryShowcase.tsx): 4-card specialty hub when viewing `all`, or a contextual banner for the active category. Cards are native `<button>` elements (keyboard accessible); categories without a banner render nothing.
+5. [`ProductList.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductList.tsx): catalog grid.
+
+> **Category display labels:** Internal Firestore keys (e.g. `DESECHABLES, ESTERILIZACION Y DESINFECCION`) are never shown raw. Always render through `formatCategoryDisplayName()` from [src/utils/categoryAlias.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/categoryAlias.ts), which is the single source of truth for storefront naming (also consumed by `CATEGORIES` in `src/data/products.ts`).
 
 ---
 

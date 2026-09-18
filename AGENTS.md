@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** Melipilla (warehouse & express local delivery) + Región Metropolitana (courier delivery).
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, legal tax invoices (**Factura Electrónica** with 19% IVA), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (84 tests), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (343 tests across 54 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -100,7 +100,7 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 50 suites / 325 tests)
+# Run all automated tests (Vitest, 54 suites / 343 tests)
 pnpm test
 
 # Run tests with live file watcher
@@ -144,7 +144,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 325+ tests pass
+pnpm test          # Ensure all 343+ tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Deploy a Staging / Preview Release (Generates a unique preview URL)
