@@ -101,18 +101,11 @@ export default function CategoryShowcase({
 
       <div className="category-showcase-grid">
         {bannerList.map((banner) => (
-          <article
+          <button
             key={banner.categoryId}
+            type="button"
             className="category-showcase-card"
             onClick={() => onSelectCategory(banner.categoryId)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onSelectCategory(banner.categoryId)
-              }
-            }}
             title={`Filtrar por ${banner.title}`}
           >
             <div className="category-card-media-wrap">
@@ -125,14 +118,14 @@ export default function CategoryShowcase({
               <span className="category-card-tag-pill">{banner.tag}</span>
             </div>
             <div className="category-card-info">
-              <h3 className="category-card-title">{banner.title}</h3>
+              <span className="category-card-title">{banner.title}</span>
               <p className="category-card-snippet">{banner.subtitle}</p>
               <div className="category-card-action">
                 <span>Explorar insumos</span>
                 <ArrowRight size={14} />
               </div>
             </div>
-          </article>
+          </button>
         ))}
       </div>
     </section>

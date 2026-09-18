@@ -1,6 +1,6 @@
 /**
  * Canonical Chilean Dental Category Display Alias Map
- * 
+ *
  * Maps internal, frozen database category keys to clean, user-friendly storefront display labels.
  * This decouples backend data schemas and Firestore storage from client-facing UI presentation,
  * preventing data migration risks while providing a concise, polished UX.

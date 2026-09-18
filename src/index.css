@@ -88,7 +88,7 @@
   /* Borders & Dividers */
   --border-subtle: #E5DDD4;
   --border-strong: #D4C9BB;
-  --border-focus:  var(--brand-accent-green);
+  --border-focus:  var(--brand-blue); /* WCAG 1.4.11: >=3:1 contrast on light surfaces (accent-green fails at ~1.4:1) */
 
   /* Geometry & Radii */
   --radius-xs: 4px;
@@ -310,7 +310,7 @@ input, select, textarea {
   outline: none;
   background: #ffffff;
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(202, 228, 0, 0.25);
+  box-shadow: 0 0 0 3px rgba(16, 39, 72, 0.16);
 }
 
 .nav-search-icon {
@@ -343,7 +343,7 @@ input, select, textarea {
   outline: none;
   border-color: var(--border-focus);
   background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(202, 228, 0, 0.25);
+  box-shadow: 0 0 0 3px rgba(16, 39, 72, 0.16);
 }
 
 .nav-actions {
@@ -961,6 +961,10 @@ input, select, textarea {
   display: flex;
   flex-direction: column;
   cursor: pointer;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  text-align: left;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
 
@@ -1159,7 +1163,16 @@ input, select, textarea {
 
 @media (max-width: 640px) {
   .category-showcase-grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    gap: 0.85rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.5rem;
+  }
+  .category-showcase-card {
+    flex: 0 0 78%;
+    scroll-snap-align: start;
   }
 }
 
@@ -1526,17 +1539,6 @@ input, select, textarea {
   color: var(--text-muted);
   margin-bottom: 0.65rem;
   min-height: 1.35rem;
-}
-
-.product-rating--empty {
-  color: var(--text-muted);
-}
-
-.no-reviews-label {
-  font-size: 0.725rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: 0.01em;
 }
 
 .star-filled {
@@ -2748,5 +2750,12 @@ input, select, textarea {
   .cart-count-badge--pulse,
   .toast-progress {
     animation: none !important;
+  }
+  .hero-image-panel:hover .hero-lifestyle-img,
+  .category-showcase-card:hover .category-card-img {
+    transform: none;
+  }
+  .category-showcase-card:hover {
+    transform: none;
   }
 }

@@ -37,7 +37,7 @@ export interface Product {
   description: string
   specs: string[]
   placeholderTheme: string
-  mediaBadge: string
+  mediaBadge?: string
   images?: string[]
   packageContents?: string[]
   manufacturer?: string
@@ -110,6 +110,7 @@ export type OrderStatus =
 export interface Order {
   orderId: string
   createdAt?: any
+  updatedAt?: string
   paymentMethod: PaymentMethod
   status: OrderStatus
   totalAmount: number

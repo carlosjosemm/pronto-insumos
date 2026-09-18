@@ -93,7 +93,7 @@ export default function Hero({ onExploreClick }: HeroProps) {
         </div>
 
         {/* Right Lifestyle Photography Panel */}
-        <div className="hero-image-panel" role="img" aria-label="Instrumental Odontológico Quirúrgico y de Diagnóstico">
+        <div className="hero-image-panel">
           {!imgError ? (
             <img
               src="/assets/hero-dental-instruments.jpg"

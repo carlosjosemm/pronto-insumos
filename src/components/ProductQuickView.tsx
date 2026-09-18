@@ -229,9 +229,11 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
           <div className="product-detail-info-section">
             {/* Category Chip & SKU Code */}
             <div className="detail-meta-header">
-              <span className="product-category-tag">{product.category}</span>
+              <span className="product-category-tag">{formatCategoryDisplayName(product.category)}</span>
               <span className="product-ref-badge">REF: {skuRef}</span>
-              <span className="product-tag-chip">{product.tag}</span>
+              {product.tag && product.tag.trim() && (
+                <span className="product-tag-chip">{product.tag}</span>
+              )}
               {product.prescriptionRequired && (
                 <span
                   style={{
