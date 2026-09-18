@@ -138,21 +138,9 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
       {/* Product Content Body */}
       <div className="product-card-body">
-        {/* Category, Brand, and Badges Header (Single Combined Line) */}
-        <div className="product-meta-row">
-          <div className="product-taxonomy-header">
-            <span className="product-category-tag">
-              {formatCategoryDisplayName(product.category)}
-            </span>
-            {product.manufacturer && (
-              <span className="product-brand-tag">
-                · {product.manufacturer}
-              </span>
-            )}
-          </div>
-
-          {/* Badges Group: render authentic marketing tag and regulatory chips */}
-          <div className="product-badges-group">
+        {/* Badges Row (Dedicated top row for marketing & regulatory pills) */}
+        {Boolean((product.tag && product.tag.trim()) || product.prescriptionRequired) && (
+          <div className="product-badges-row">
             {product.tag && product.tag.trim() && (
               <span className="product-tag-chip">{product.tag}</span>
             )}
@@ -165,6 +153,18 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
               </span>
             )}
           </div>
+        )}
+
+        {/* Category & Brand Attribution Line (Cleanly positioned below badges) */}
+        <div className="product-taxonomy-header">
+          <span className="product-category-tag">
+            {formatCategoryDisplayName(product.category)}
+          </span>
+          {product.manufacturer && (
+            <span className="product-brand-tag">
+              · {product.manufacturer}
+            </span>
+          )}
         </div>
 
         <h3 className="product-title" id={`product-title-${product.id}`}>
