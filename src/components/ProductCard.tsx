@@ -116,11 +116,13 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
           </div>
         )}
 
-        {/* Media Badge */}
-        <div className="placeholder-badge">
-          <ShieldCheck size={12} />
-          <span>{product.mediaBadge}</span>
-        </div>
+        {/* Media Badge (Only render when mediaBadge is provided and non-empty) */}
+        {product.mediaBadge && product.mediaBadge.trim() && (
+          <div className="placeholder-badge">
+            <ShieldCheck size={12} />
+            <span>{product.mediaBadge}</span>
+          </div>
+        )}
 
         {/* Discount Badge */}
         {showDiscount && (
@@ -135,29 +137,24 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
       {/* Product Content Body */}
       <div className="product-card-body">
+        {/* Category and Badges Header */}
         <div className="product-meta-row">
           <span className="product-category-tag">{product.category}</span>
-          <span className="product-tag-chip">{product.tag}</span>
-          {product.prescriptionRequired && (
-            <span
-              className="product-regulated-chip"
-              style={{
-                fontSize: '0.65rem',
-                fontWeight: '800',
-                color: '#b45309',
-                background: '#fef3c7',
-                border: '1px solid #fde68a',
-                borderRadius: 'var(--radius-xs)',
-                padding: '0.15rem 0.4rem',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.2rem'
-              }}
-              title="Venta regulada por ISP - Requiere N° Registro Superintendencia de Salud"
-            >
-              ⚕️ Requiere SIS
-            </span>
-          )}
+
+          {/* Badges Group: only render authentic tags (excluding generic default placeholders) and regulatory chips */}
+          <div className="product-badges-group">
+            {product.tag && product.tag.trim() && !/^cat[aá]logo\s+oficial$/i.test(product.tag.trim()) && (
+              <span className="product-tag-chip">{product.tag}</span>
+            )}
+            {product.prescriptionRequired && (
+              <span
+                className="product-regulated-chip"
+                title="Venta regulada por ISP - Requiere N° Registro Superintendencia de Salud"
+              >
+                ⚕️ Requiere SIS
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Brand / Manufacturer Attribution Line */}
@@ -171,7 +168,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
           {product.name}
         </h3>
 
-        {/* Rating Stars (Shows stars & count when available, or empty state placeholder) */}
+        {/* Rating Stars (Only rendered when verified reviews exist) */}
         {product.reviewsCount !== undefined && product.reviewsCount > 0 ? (
           <div className="product-rating">
             <div style={{ display: 'flex', gap: '2px' }}>
@@ -187,11 +184,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
             <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
             <span>({product.reviewsCount})</span>
           </div>
-        ) : (
-          <div className="product-rating product-rating--empty">
-            <span className="no-reviews-label">Sin reseñas aún</span>
-          </div>
-        )}
+        ) : null}
 
         <p className="product-description-preview">{product.description}</p>
 

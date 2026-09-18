@@ -94,12 +94,15 @@ export async function fetchProducts({
     )
   }
 
+  // Helper to determine physical stock availability
+  const isAvailableStock = (p: Product) => Boolean(p.inStock && (p.stockCount === undefined || p.stockCount > 0))
+
   // Filter by stock
   if (inStockOnly) {
-    result = result.filter(p => p.inStock)
+    result = result.filter(p => isAvailableStock(p))
   }
 
-  // Sort
+  // Sort by requested criterion
   if (sortBy === 'price-low') {
     result.sort((a, b) => a.price - b.price)
   } else if (sortBy === 'price-high') {
@@ -109,6 +112,11 @@ export async function fetchProducts({
   } else if (sortBy === 'reviews') {
     result.sort((a, b) => b.reviewsCount - a.reviewsCount)
   }
+
+  // Always push out-of-stock products to the bottom so clients see available products first
+  const inStockList = result.filter(p => isAvailableStock(p))
+  const outOfStockList = result.filter(p => !isAvailableStock(p))
+  result = [...inStockList, ...outOfStockList]
 
   return result
 }

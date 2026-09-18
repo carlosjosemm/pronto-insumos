@@ -1441,27 +1441,66 @@ input, select, textarea {
 
 .product-meta-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 0.4rem;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.product-taxonomy-header {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  min-width: 0;
+  line-height: 1.3;
 }
 
 .product-category-tag {
-  font-size: 0.725rem;
-  font-weight: 700;
   color: var(--brand-blue-light);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+}
+
+.product-brand-tag {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.product-badges-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .product-tag-chip {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
   padding: 0.15rem 0.45rem;
   border-radius: var(--radius-xs);
   background: var(--brand-cayenne-bg);
   color: var(--brand-cayenne);
   border: 1px solid var(--brand-cayenne-border);
+  white-space: nowrap;
+}
+
+.product-regulated-chip {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-xs);
+  padding: 0.15rem 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  white-space: nowrap;
 }
 
 .product-manufacturer-line {

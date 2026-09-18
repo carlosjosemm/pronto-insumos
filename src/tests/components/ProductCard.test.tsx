@@ -144,7 +144,7 @@ describe('ProductCard component', () => {
     expect(screen.getByText('Clase B Vacío')).toBeInTheDocument()
   })
 
-  it('should render empty rating placeholder when product has zero reviews', () => {
+  it('should NOT render rating or placeholder when product has zero reviews', () => {
     const productZeroReviews = {
       ...mockProduct,
       reviewsCount: 0,
@@ -158,7 +158,37 @@ describe('ProductCard component', () => {
       />
     )
     expect(screen.queryByText('(0)')).toBeNull()
-    expect(screen.getByText('Sin reseñas aún')).toBeInTheDocument()
+    expect(screen.queryByText('Sin reseñas aún')).toBeNull()
+  })
+
+  it('should NOT render media badge when mediaBadge is empty or undefined', () => {
+    const productNoBadge = {
+      ...mockProduct,
+      mediaBadge: undefined
+    }
+    const { container } = render(
+      <ProductCard
+        product={productNoBadge}
+        onAddToCart={() => {}}
+        onQuickView={() => {}}
+      />
+    )
+    expect(container.querySelector('.placeholder-badge')).toBeNull()
+  })
+
+  it('should NOT render tag chip when tag is "Catálogo Oficial" placeholder', () => {
+    const productCatalogTag = {
+      ...mockProduct,
+      tag: 'Catálogo Oficial'
+    }
+    render(
+      <ProductCard
+        product={productCatalogTag}
+        onAddToCart={() => {}}
+        onQuickView={() => {}}
+      />
+    )
+    expect(screen.queryByText('Catálogo Oficial')).toBeNull()
   })
 
   it('should render discount badge when originalPrice exists and is greater than price', () => {

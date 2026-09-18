@@ -111,6 +111,27 @@ describe('fetchProducts - sorting', () => {
       expect(result[i].reviewsCount).toBeLessThanOrEqual(result[i - 1].reviewsCount)
     }
   })
+
+  it('should push out-of-stock products to the bottom of the catalog list', async () => {
+    const originalStock = PRODUCTS[0].inStock
+    const originalCount = PRODUCTS[0].stockCount
+    try {
+      PRODUCTS[0].inStock = true
+      PRODUCTS[0].stockCount = 10
+      const result = await fetchProducts()
+      // First item must be the in-stock product
+      expect(result[0].id).toBe(PRODUCTS[0].id)
+      expect(result[0].inStock).toBe(true)
+      // All subsequent items must be out of stock
+      for (let i = 1; i < result.length; i++) {
+        const isInStock = result[i].inStock && (result[i].stockCount === undefined || result[i].stockCount > 0)
+        expect(isInStock).toBe(false)
+      }
+    } finally {
+      PRODUCTS[0].inStock = originalStock
+      PRODUCTS[0].stockCount = originalCount
+    }
+  })
 })
 
 describe('validatePromo', () => {
