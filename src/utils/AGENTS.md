@@ -107,3 +107,16 @@ To prevent data drift and ensure that all Firestore documents strictly satisfy d
 * Enforces relational foreign key `productId`.
 * Validates `changeType`: Must belong to `'STOCK_ADJUSTMENT' | 'ORDER_FULFILLMENT_DEDUCTION' | 'METADATA_UPDATE' | 'VISIBILITY_TOGGLE' | 'CATALOG_SEED'`.
 * Asserts integer deltas and valid ISO 8601 `timestamp`.
+
+---
+
+### 2.5 Category Display Alias Map (`src/utils/categoryAlias.ts`)
+
+Firestore stores frozen, uppercase Chilean category keys (`DESECHABLES, ESTERILIZACION Y DESINFECCION`). Storefront presentation must never leak those raw keys, so this module is the **single source of truth for customer-facing category naming**:
+
+* **`CATEGORY_DISPLAY_MAP`**: Frozen record mapping internal keys (and their lowercase variants) to clean labels (e.g. `Desechables y Esterilización`).
+* **`formatCategoryDisplayName(category?: string): string`**:
+  - Trims the input, returns the alias when registered, and otherwise falls back safely to the original string (legacy fixtures like `Sterilization` render unchanged).
+  - Returns `''` for `undefined`, empty, or whitespace-only values, so callers can guard rendering without extra checks.
+* **Consumers:** `ProductCard.tsx`, `ProductQuickView.tsx`, and `CATEGORIES` in [src/data/products.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/data/products.ts) (category pills derive their labels from this map to prevent naming drift).
+* **Purity Contract:** No imports from `src/data/`, no side effects — safe to use from any layer.

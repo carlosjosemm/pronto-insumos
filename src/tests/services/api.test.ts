@@ -7,7 +7,8 @@ vi.mock('../../services/firebase', () => ({
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
-  getDocs: vi.fn(),
+  // Empty snapshot keeps the suite on the deterministic local-catalog fallback (no network, no warnings)
+  getDocs: vi.fn(async () => ({ empty: true, docs: [] })),
   addDoc: vi.fn(),
   setDoc: vi.fn(),
   doc: vi.fn((_db, _col, id) => ({ id, path: `orders/${id}` })),
@@ -17,6 +18,7 @@ vi.mock('firebase/firestore', () => ({
 
 import { fetchProducts, validatePromo, submitOrder, generateOrderId } from '../../services/api'
 import { PRODUCTS } from '../../data/products'
+import { Product } from '../../types'
 
 describe('fetchProducts - filtering', () => {
   it('should return all products when no filters applied', async () => {
@@ -109,6 +111,53 @@ describe('fetchProducts - sorting', () => {
     const result = await fetchProducts({ sortBy: 'reviews' })
     for (let i = 1; i < result.length; i++) {
       expect(result[i].reviewsCount).toBeLessThanOrEqual(result[i - 1].reviewsCount)
+    }
+  })
+
+  const isAvailable = (p: Product) => Boolean(p.inStock && (p.stockCount === undefined || p.stockCount > 0))
+
+  it('should push out-of-stock products to the bottom of the catalog list', async () => {
+    const originalStock = PRODUCTS[0].inStock
+    const originalCount = PRODUCTS[0].stockCount
+    try {
+      PRODUCTS[0].inStock = true
+      PRODUCTS[0].stockCount = 10
+      const result = await fetchProducts()
+
+      // The seeded in-stock product must lead the catalog
+      expect(result[0].id).toBe(PRODUCTS[0].id)
+      expect(isAvailable(result[0])).toBe(true)
+
+      // Every in-stock product must precede every out-of-stock product
+      const firstOutOfStockIndex = result.findIndex(p => !isAvailable(p))
+      if (firstOutOfStockIndex !== -1) {
+        expect(result.slice(firstOutOfStockIndex).every(p => !isAvailable(p))).toBe(true)
+      }
+    } finally {
+      PRODUCTS[0].inStock = originalStock
+      PRODUCTS[0].stockCount = originalCount
+    }
+  })
+
+  it('should preserve the requested sort order inside the in-stock partition', async () => {
+    const saved = PRODUCTS.slice(0, 2).map(p => ({ inStock: p.inStock, stockCount: p.stockCount }))
+    try {
+      PRODUCTS.slice(0, 2).forEach(p => {
+        p.inStock = true
+        p.stockCount = 10
+      })
+      const result = await fetchProducts({ sortBy: 'price-low' })
+      const inStock = result.filter(isAvailable)
+
+      expect(inStock.length).toBe(2)
+      expect(inStock[0].price).toBeLessThanOrEqual(inStock[1].price)
+      expect(result[0].id).toBe(inStock[0].id)
+      expect(result[1].id).toBe(inStock[1].id)
+    } finally {
+      PRODUCTS.slice(0, 2).forEach((p, i) => {
+        p.inStock = saved[i].inStock
+        p.stockCount = saved[i].stockCount
+      })
     }
   })
 })

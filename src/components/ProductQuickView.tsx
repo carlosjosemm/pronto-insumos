@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Product } from '../types'
 import { formatCLP } from '../utils/currency'
+import { formatCategoryDisplayName } from '../utils/categoryAlias'
 import {
   X,
   Star,
@@ -228,9 +229,11 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
           <div className="product-detail-info-section">
             {/* Category Chip & SKU Code */}
             <div className="detail-meta-header">
-              <span className="product-category-tag">{product.category}</span>
+              <span className="product-category-tag">{formatCategoryDisplayName(product.category)}</span>
               <span className="product-ref-badge">REF: {skuRef}</span>
-              <span className="product-tag-chip">{product.tag}</span>
+              {product.tag && product.tag.trim() && (
+                <span className="product-tag-chip">{product.tag}</span>
+              )}
               {product.prescriptionRequired && (
                 <span
                   style={{
@@ -254,7 +257,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             {/* Brand / Manufacturer Attribution Line */}
             {product.manufacturer && (
               <div className="product-manufacturer-line">
-                {product.category} · {product.manufacturer}
+                {formatCategoryDisplayName(product.category)} · {product.manufacturer}
               </div>
             )}
 
@@ -332,7 +335,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             {product.specs && product.specs.length > 0 && (
               <div className="detail-section-block">
                 <div className="detail-section-heading">
-                  <FileText size={15} style={{ color: 'var(--teal-600)' }} />
+                  <FileText size={15} style={{ color: 'var(--brand-blue)' }} />
                   <span>Especificaciones Técnicas</span>
                 </div>
                 <ul className="detail-specs-list">
@@ -350,7 +353,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             {product.packageContents && product.packageContents.length > 0 && (
               <div className="detail-section-block">
                 <div className="detail-section-heading">
-                  <Package size={15} style={{ color: 'var(--teal-600)' }} />
+                  <Package size={15} style={{ color: 'var(--brand-blue)' }} />
                   <span>Contenido del Empaque</span>
                 </div>
                 <div className="package-contents-box">

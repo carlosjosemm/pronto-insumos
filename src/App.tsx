@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
+import PromoStrip from './components/PromoStrip'
 import CategoryFilter from './components/CategoryFilter'
+import CategoryShowcase from './components/CategoryShowcase'
 import ProductList from './components/ProductList'
 import ProductQuickView from './components/ProductQuickView'
 import Cart from './components/Cart'
@@ -254,6 +256,9 @@ export default function App() {
         {/* Landing Hero */}
         <Hero onExploreClick={scrollToCatalog} />
 
+        {/* Promotional Value Strip */}
+        <PromoStrip />
+
         {/* Category & Controls Bar */}
         <CategoryFilter
           selectedCategory={selectedCategory}
@@ -263,6 +268,12 @@ export default function App() {
           inStockOnly={inStockOnly}
           onToggleInStock={setInStockOnly}
           totalResults={products.length}
+        />
+
+        {/* Visual Category Showcase Hub / Contextual Category Banner */}
+        <CategoryShowcase
+          selectedCategory={selectedCategory}
+          onSelectCategory={setSelectedCategory}
         />
 
         {/* Product Catalog Grid */}

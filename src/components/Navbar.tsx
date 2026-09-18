@@ -91,7 +91,7 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
           {/* Action Controls */}
           <div className="nav-actions">
             <div className="trust-badge-item desktop-only-trust">
-              <MapPin size={16} style={{ color: 'var(--teal-600)' }} />
+              <MapPin size={16} style={{ color: 'var(--brand-blue)' }} />
               <span>Melipilla & RM</span>
             </div>
 
