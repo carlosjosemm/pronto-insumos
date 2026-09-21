@@ -1,13 +1,21 @@
-import { Category, Product, PromoCode } from '../types'
+import { Category, ChileanDentalCategory, Product, PromoCode } from '../types'
+import { formatCategoryDisplayName } from '../utils/categoryAlias'
+
+// Display labels derive from the canonical alias map so storefront naming never drifts
+const categoryEntry = (id: ChileanDentalCategory, icon: string): Category => ({
+  id,
+  name: formatCategoryDisplayName(id),
+  icon
+})
 
 export const CATEGORIES: Category[] = [
   { id: 'all', name: 'Todos los Insumos', icon: 'LayoutGrid' },
-  { id: 'DESECHABLES, ESTERILIZACION Y DESINFECCION', name: 'Desechables, Esterilización y Desinfección', icon: 'ShieldCheck' },
-  { id: 'ENDODONCIA', name: 'Endodoncia', icon: 'Activity' },
-  { id: 'HIGIENE BUCAL', name: 'Higiene Bucal', icon: 'Sparkles' },
-  { id: 'IMPRESION', name: 'Impresión', icon: 'Layers' },
-  { id: 'INSTRUMENTAL Y ACCESORIOS', name: 'Instrumental y Accesorios', icon: 'Scissors' },
-  { id: 'OPERATORIA', name: 'Operatoria', icon: 'Wrench' }
+  categoryEntry('DESECHABLES, ESTERILIZACION Y DESINFECCION', 'ShieldCheck'),
+  categoryEntry('ENDODONCIA', 'Activity'),
+  categoryEntry('HIGIENE BUCAL', 'Sparkles'),
+  categoryEntry('IMPRESION', 'Layers'),
+  categoryEntry('INSTRUMENTAL Y ACCESORIOS', 'Scissors'),
+  categoryEntry('OPERATORIA', 'Wrench')
 ]
 
 export const PRODUCTS: Product[] = [

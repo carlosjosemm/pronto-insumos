@@ -199,7 +199,7 @@ async function importCatalog() {
       stockCount: 10,
       isActive: true,
       prescriptionRequired: false,
-      tag: 'Catálogo Oficial',
+      tag: '',
       description: item.name,
       specs: [
         'Insumo clínico odontológico certificado',

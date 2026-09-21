@@ -1,9 +1,30 @@
 import React from 'react'
 import { Product } from '../types'
-import { Star, ShoppingBag, ShieldCheck, Activity, Heart, Home, ShieldAlert, LucideIcon } from 'lucide-react'
+import {
+  Star,
+  ShoppingBag,
+  ShieldCheck,
+  Activity,
+  Heart,
+  Home,
+  ShieldAlert,
+  Scissors,
+  Wrench,
+  Sparkles,
+  Layers,
+  LucideIcon
+} from 'lucide-react'
 import { formatCLP } from '../utils/currency'
+import { formatCategoryDisplayName } from '../utils/categoryAlias'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
+  'INSTRUMENTAL Y ACCESORIOS': Scissors,
+  'DESECHABLES, ESTERILIZACION Y DESINFECCION': ShieldCheck,
+  'OPERATORIA': Wrench,
+  'ENDODONCIA': Activity,
+  'HIGIENE BUCAL': Sparkles,
+  'IMPRESION': Layers,
+  // Legacy & fallback category keys
   Diagnostics: Activity,
   Instruments: Home,
   Materials: Heart,
@@ -96,11 +117,13 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
           </div>
         )}
 
-        {/* Media Badge */}
-        <div className="placeholder-badge">
-          <ShieldCheck size={12} />
-          <span>{product.mediaBadge}</span>
-        </div>
+        {/* Media Badge (Only render when mediaBadge is provided and non-empty) */}
+        {product.mediaBadge && product.mediaBadge.trim() && (
+          <div className="placeholder-badge">
+            <ShieldCheck size={12} />
+            <span>{product.mediaBadge}</span>
+          </div>
+        )}
 
         {/* Discount Badge */}
         {showDiscount && (
@@ -115,43 +138,40 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
       {/* Product Content Body */}
       <div className="product-card-body">
-        <div className="product-meta-row">
-          <span className="product-category-tag">{product.category}</span>
-          <span className="product-tag-chip">{product.tag}</span>
-          {product.prescriptionRequired && (
-            <span
-              className="product-regulated-chip"
-              style={{
-                fontSize: '0.65rem',
-                fontWeight: '800',
-                color: '#b45309',
-                background: '#fef3c7',
-                border: '1px solid #fde68a',
-                borderRadius: 'var(--radius-xs)',
-                padding: '0.15rem 0.4rem',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.2rem'
-              }}
-              title="Venta regulada por ISP - Requiere N° Registro Superintendencia de Salud"
-            >
-              ⚕️ Requiere SIS
+        {/* Badges Row (Dedicated top row for marketing & regulatory pills) */}
+        {Boolean((product.tag && product.tag.trim()) || product.prescriptionRequired) && (
+          <div className="product-badges-row">
+            {product.tag && product.tag.trim() && (
+              <span className="product-tag-chip">{product.tag}</span>
+            )}
+            {product.prescriptionRequired && (
+              <span
+                className="product-regulated-chip"
+                title="Venta regulada por ISP - Requiere N° Registro Superintendencia de Salud"
+              >
+                ⚕️ Requiere SIS
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Category & Brand Attribution Line (Cleanly positioned below badges) */}
+        <div className="product-taxonomy-header">
+          <span className="product-category-tag">
+            {formatCategoryDisplayName(product.category)}
+          </span>
+          {product.manufacturer && (
+            <span className="product-brand-tag">
+              · {product.manufacturer}
             </span>
           )}
         </div>
-
-        {/* Brand / Manufacturer Attribution Line */}
-        {product.manufacturer && (
-          <div className="product-manufacturer-line">
-            {product.category} · {product.manufacturer}
-          </div>
-        )}
 
         <h3 className="product-title" id={`product-title-${product.id}`}>
           {product.name}
         </h3>
 
-        {/* Rating Stars (Shows stars & count when available, or empty state placeholder) */}
+        {/* Rating Stars (Only rendered when verified reviews exist) */}
         {product.reviewsCount !== undefined && product.reviewsCount > 0 ? (
           <div className="product-rating">
             <div style={{ display: 'flex', gap: '2px' }}>
@@ -167,11 +187,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
             <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
             <span>({product.reviewsCount})</span>
           </div>
-        ) : (
-          <div className="product-rating product-rating--empty">
-            <span className="no-reviews-label">Sin reseñas aún</span>
-          </div>
-        )}
+        ) : null}
 
         <p className="product-description-preview">{product.description}</p>
 

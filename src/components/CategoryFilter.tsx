@@ -112,6 +112,7 @@ export default function CategoryFilter({
       <div className="filter-controls-row">
         <div className="results-count">
           Mostrando <strong>{totalResults}</strong> insumos y equipos odontológicos
+          <span className="results-slogan-tagline"> · Insumos a un click de distancia</span>
         </div>
 
         <div className="filter-options">

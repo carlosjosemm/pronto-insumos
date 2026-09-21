@@ -144,7 +144,7 @@ describe('ProductCard component', () => {
     expect(screen.getByText('Clase B Vacío')).toBeInTheDocument()
   })
 
-  it('should render empty rating placeholder when product has zero reviews', () => {
+  it('should NOT render rating or placeholder when product has zero reviews', () => {
     const productZeroReviews = {
       ...mockProduct,
       reviewsCount: 0,
@@ -158,7 +158,22 @@ describe('ProductCard component', () => {
       />
     )
     expect(screen.queryByText('(0)')).toBeNull()
-    expect(screen.getByText('Sin reseñas aún')).toBeInTheDocument()
+    expect(screen.queryByText('Sin reseñas aún')).toBeNull()
+  })
+
+  it('should NOT render media badge when mediaBadge is empty or undefined', () => {
+    const productNoBadge = {
+      ...mockProduct,
+      mediaBadge: undefined
+    }
+    const { container } = render(
+      <ProductCard
+        product={productNoBadge}
+        onAddToCart={() => {}}
+        onQuickView={() => {}}
+      />
+    )
+    expect(container.querySelector('.placeholder-badge')).toBeNull()
   })
 
   it('should render discount badge when originalPrice exists and is greater than price', () => {
@@ -203,30 +218,32 @@ describe('ProductCard component', () => {
     expect(screen.queryByText(/-\d+%/)).toBeNull()
   })
 
-  it('should render manufacturer line when manufacturer is provided', () => {
-    render(
+  it('should render manufacturer when manufacturer is provided', () => {
+    const { container } = render(
       <ProductCard
         product={mockProduct}
         onAddToCart={() => {}}
         onQuickView={() => {}}
       />
     )
-    expect(screen.getByText('Sterilization · SterilMax')).toBeInTheDocument()
+    const brandEl = container.querySelector('.product-brand-tag')
+    expect(brandEl).toBeInTheDocument()
+    expect(brandEl).toHaveTextContent('SterilMax')
   })
 
-  it('should omit manufacturer line when manufacturer is undefined', () => {
+  it('should omit manufacturer when manufacturer is undefined', () => {
     const productNoMfr = {
       ...mockProduct,
       manufacturer: undefined
     }
-    render(
+    const { container } = render(
       <ProductCard
         product={productNoMfr}
         onAddToCart={() => {}}
         onQuickView={() => {}}
       />
     )
-    expect(screen.queryByText(/Sterilization ·/)).toBeNull()
+    expect(container.querySelector('.product-brand-tag')).toBeNull()
   })
 
   it('should render low-stock warning when stockCount <= 5', () => {

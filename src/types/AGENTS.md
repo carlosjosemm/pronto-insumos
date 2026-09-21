@@ -122,7 +122,7 @@ export interface Product {
   description: string;           // Detailed technical overview
   specs: string[];               // Technical specifications checklist
   placeholderTheme: string;      // Fallback CSS theme class
-  mediaBadge: string;            // Secondary visual badge
+  mediaBadge?: string;           // Optional secondary visual badge (absent on imported/legacy catalog docs; UI must guard)
   images?: string[];             // URLs of product photos in Firebase Storage / CDN
   packageContents?: string[];    // Itemized checklist of box contents for clinic
   manufacturer?: string;         // Clinical manufacturer
