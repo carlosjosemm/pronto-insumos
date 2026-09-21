@@ -1,726 +1,408 @@
-# UI/UX Brand Manual Overhaul Proposal — Pronto Insumos Storefront
+# UI/UX Evaluation & Redesign Proposal — PRONTO Insumos Storefront
 
-## PRONTO Insumos Odontológicos — Brand Identity Alignment & Visual Enrichment
+## Second-Pass Design Audit: Why the Storefront Still Reads as Amateur
 
-**Date:** September 2026  
-**Scope:** Customer-facing storefront only (Admin site excluded)  
-**Branch:** `feat/ui-ux-storefront-overhaul`  
-**Status:** Implemented — palette, typography, hero lifestyle panel, promo strip, category showcase hub, and footer trust bar are live in the branch. Delivered photography is deployed under `public/assets/` (optimized for web delivery); this document is the design rationale of record.
-
----
-
-## 🎯 1. Objective & Executive Summary
-
-This proposal addresses two distinct but complementary goals:
-
-1. **Brand Manual Compliance:** Migrate the storefront's color palette and typography from the current DM Sans + Navy/Teal system to the official brand identity: **Baloo Da 2 + Syne** typography and the **Intense Blue / Cayenne Red-Orange / Almond Cream / Limonade-Accent Green** color palette.
-
-2. **Visual Enrichment ("De-Soulless-ification"):** Strategically insert brand assets, contextual imagery, and layout enhancements to transform the storefront from a "clean but empty template" into a credible, alive, commercially confident dental supply distributor.
-
-> **IMPORTANT:** All changes respect the project's guardrails: **No external CSS frameworks. Vanilla CSS only. React 18 state. Zero test regressions.** No Tailwind, no Bootstrap, no Shadcn. The existing handcrafted CSS architecture in `src/index.css` is preserved and extended.
+**Date:** September 21, 2026 — **revised** after an independent second audit; all incorporated claims were re-verified against code.
+**Scope:** Customer-facing storefront only (Admin portal excluded — it ships its own `admin.css`).
+**Language rule:** all workflow documents, plans, and agent communication in **English**; storefront UI copy stays **`es-CL`** for the Chilean market.
+**Explicitly out of scope:** _Acquisition_ of product photography — the absence of product images is a known data-quality issue owned by the catalog/inventory track. What remains in scope here is the **UI contract** for media: placeholder design, art-direction rules, and loading behavior for when images land.
+**Branch:** `feat/ui-ux-premium-redesign`
+**Status:** Evaluation of record. Supersedes the previous overhaul proposal — that effort delivered layout scaffolding and section photography (kept), but its palette/typography decisions are the root cause of the "AI-generated, soul-less" look.
+**Guardrails respected:** Vanilla CSS only. No Tailwind/Bootstrap/UI kits. No new runtime dependencies beyond Google Fonts. React 18 state untouched.
 
 ---
 
-## 📊 2. Current State vs. Brand Manual — Gap Analysis
+## 🎯 1. Executive Summary — The Diagnosis
 
-### 2.1 Color Palette Gap
+Two compounding problems make the storefront read as generated rather than designed:
 
-| Role | Current Codebase | Brand Manual Target | Gap Severity |
-| :--- | :--- | :--- | :--- |
-| **Primary Brand Dark** | `--navy-900: #0b192c` / `--navy-950: #07101d` | **Intense Blue `#102748`** | Medium — close hue but different value |
-| **Primary Action CTA** | `--teal-600: #088395` (teal) | **Limonade Cream `#ECEFBE` bg + Accent Green `#CAE400`** for CTAs | High — completely different hue family |
-| **Warm Accent** | `--accent-warm: #b45309` (amber-700) | **Cayenne Red / Orange** (energetic warm accent) | Medium — similar intent, needs hue shift toward red-orange |
-| **Background / Negative Space** | `--surface-bg: #f8fafb` (cool gray) | **Almond Cream / Frozen Water** (warm off-white) | Medium — needs warm shift |
-| **Secondary Accent** | `--teal-50: #f0fdfa` | **Limonade Cream `#ECEFBE`** | Medium — teal tint to warm yellow-green tint |
-| **Utility Bar / Footer Dark** | `--navy-950: #07101d` | **Intense Blue `#102748`** for dark anchors | Medium |
+1. **Hygiene failures** — three competing brand hues, ~13 hue families total, playful/mismatched typefaces, card-in-card monotony, dead CSS, and literal AI-patching residue.
+2. **Credibility & surface gaps** (found in second audit) — no real brand mark or favicon, a broken social-share image, fabricated-looking social proof, a stock-count confidentiality violation, an unaudited mobile experience, and conversion-critical surfaces (cart, checkout, payment) that were never designed, only styled.
 
-### 2.2 Typography Gap
+| #   | Problem                                                                                                                                                                                                                   | Severity    | Effort  |
+| :-- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :---------- | :------ |
+| 1   | **Three competing brand hues** (navy `#102748`, chartreuse `#CAE400`/`#ECEFBE`, terracotta `#C84B31`) at equal weight + muddy olive `#3D4A00` text on lime pills                                                          | 🔴 Critical | Low     |
+| 2   | **Off-palette color sprawl** — ~9 additional hardcoded hues (`#38bdf8`, `#34d399`, `#25d366`, `#f59e0b`, `#be123c`, `#b45309`, `#059669`, `#2563eb`, `#d97706`) + 4 pastel placeholder-theme families                     | 🔴 High     | Low-Med |
+| 3   | **Approved-palette contrast flaw** — proposed `--accent #0E7490` on navy surfaces ≈ **2.8:1** (fails WCAG); needs a dual accent token before any implementation                                                           | 🔴 Critical | Low     |
+| 4   | **Typography register mismatch** — `Baloo Da 2` (toy-like) headings + `Syne` (experimental display face) as body text                                                                                                     | 🔴 High     | Low     |
+| 5   | **No brand identity surface** — generic Lucide logo, no favicon, `og-preview.png` referenced 3× but does not exist                                                                                                        | 🔴 High     | Medium  |
+| 6   | **Card-in-card monotony** — identical chrome on every section; no full-bleed moment, no hierarchy                                                                                                                         | 🟠 High     | Medium  |
+| 7   | **Credibility leaks** — stock count printed raw (violates own confidentiality rule), hardcoded placeholder phone in 5 files, fake-looking ratings/discounts in fallback data, footer shipping copy contradicts cart logic | 🟠 High     | Low     |
+| 8   | **Message & badge inflation** — "Factura Electrónica 19% IVA" ×4; 12+ chip styles                                                                                                                                         | 🟠 Medium   | Low     |
+| 9   | **Mobile never designed** — 1-col grid ≤768px, phone/tracking hidden, pills scroll without affordance, no `inputmode`                                                                                                     | 🟠 High     | Medium  |
+| 10  | **Conversion surfaces un-audited** — payment step is text-only, no Boleta/Factura explainer, no shipping estimate                                                                                                         | 🟠 Medium   | Medium  |
+| 11  | **"AI residue" tells** — dead `.hero-glow`, `-webkit-*: unset` leftovers, `--radius-full: 8px`, `spin` with no keyframes, `⏳` emoji loader, triple token aliases                                                         | 🟠 Medium   | Low     |
+| 12  | **No motion/state system, no spacing scale** — quality lives in these details                                                                                                                                             | 🟡 Medium   | Medium  |
 
-| Role | Current Codebase | Brand Manual Target | Gap Severity |
-| :--- | :--- | :--- | :--- |
-| **Display / Headings** | `DM Sans` 800-900 | **Baloo Da 2** (rounded, bold, friendly geometric) | High — completely different typeface |
-| **Body / Secondary Copy** | `DM Sans` 400-600 | **Syne Regular** (contemporary clean sans-serif) | High — completely different typeface |
-| **Technical / Mono** | `JetBrains Mono` | JetBrains Mono *(keep — no brand guidance on mono)* | OK |
-
-### 2.3 Visual Content Gap
-
-| Area | Current State | Issue |
-| :--- | :--- | :--- |
-| **Hero Section** | Text + icon guarantee card on gradient white | No imagery, no product showcase, no brand personality |
-| **Product Cards** | Dot-grid placeholders with Lucide icons | Sterile and repetitive — no texture differentiation |
-| **Between-sections** | Nothing — hero to categories to grid to footer | No visual breaks, promotional banners, or lifestyle context |
-| **Footer** | Pure text with icon value-props | No trust badges, no payment logos, no brand imagery |
+**Revised impact estimate:** palette + typography surgery closes roughly **half** the perceived quality gap. The other half is brand assets (logo/favicon/OG), placeholder/media design, mobile UX, credibility fixes, and micro-interaction polish.
 
 ---
 
-## 🎨 3. Color Palette Overhaul — New Design Tokens
+## 🔍 2. What Was Audited
 
-### 3.1 New Brand Token Map
+- `src/index.css` (2,761 lines — the entire design system)
+- `index.html` (fonts, meta, OG/JSON-LD)
+- `src/App.tsx` (composition order)
+- All storefront components: `Navbar`, `Hero`, `PromoStrip`, `CategoryFilter`, `CategoryShowcase`, `ProductCard`, `ProductList`, `ProductQuickView`, `Cart`, `CheckoutModal`, `PaymentReturnModal`, `OrderTrackingModal`, `Footer`, `ErrorBoundary`
+- `src/data/products.ts`, `scripts/import-catalog-csv.ts`, `src/services/whatsapp.ts` (data/placeholder pipeline)
+- `public/` (asset inventory)
+- Test constraints (`src/tests/` — 343 tests assert on text/roles, not colors)
+- **Independent second audit** — every claim re-verified; validation table in Appendix A.
 
-The following replaces the current Navy/Teal tokens with the brand manual palette. Backward compatibility aliases are preserved during transition.
+---
+
+## 🎨 3. Finding — The Color System Failure (Root Cause)
+
+### 3.1 The Three Conflicting Font Colors
+
+| Color                      | Where it appears                                                                                | Hue   | Character           |
+| :------------------------- | :---------------------------------------------------------------------------------------------- | :---- | :------------------ |
+| **Intense Blue `#102748`** | Brand name, hero title, card titles, headings, prices                                           | ~216° | Serious, corporate  |
+| **Cayenne `#C84B31`**      | Hero title `<span>`, italic taglines, tag chips, cart badge                                     | ~9°   | Rustic, informal    |
+| **Olive `#3D4A00`**        | Text on every lime pill/CTA (`hero-pill-tag`, `guarantee-badge`, `btn-primary`, `btn-checkout`) | ~68°  | Institutional, drab |
+
+Chartreuse `#CAE400` (~68°) sits dissonant between navy (216°) and cayenne (9°): neon against the former, acidic against the latter — and at maximum saturation against two muted darks it reads "safety signage," not "premium healthcare." The olive `#3D4A00` text paired with it harmonizes with neither parent. Three hues, three saturation registers, no shared relationship — the textbook "three brand decks collided" look.
+
+### 3.2 Off-Palette Sprawl — ~9 More Hardcoded Hues
+
+| Hardcoded color                     | Location                                                       |
+| :---------------------------------- | :------------------------------------------------------------- |
+| `#38bdf8` sky                       | `Navbar` ×3 utility icons, `Footer` link hover + tracking link |
+| `#34d399` emerald                   | `Navbar` FileCheck icon                                        |
+| `#25d366` WhatsApp green            | `.btn-whatsapp-inquiry`, Footer CTA                            |
+| `#f59e0b` amber                     | Star ratings (`ProductCard`, `ProductQuickView`)               |
+| `#b45309`/`#fef3c7`/`#fde68a` amber | `.product-regulated-chip`, tracking banners                    |
+| `#be123c`/`#fecdd3` rose            | `.rx-badge`, `.detail-rx-alert`                                |
+| `#059669` emerald-600               | Stock dots, tracking timeline                                  |
+| `#2563eb`/`#eff6ff` blue-600        | `PaymentReturnModal` pending state                             |
+| `#d97706` amber-600                 | `OrderTrackingModal` warning + button                          |
+
+~60 inline `style={{ color: '#hex' }}` occurrences bypass the token system entirely.
+
+### 3.3 Warm/Cool Surface Clash
+
+Page bg `--brand-cream #FDF8F3` (warm) → card/input surfaces `--brand-frozen #F0F4F8` (cool) → highlights `--brand-almond #F5EDE4` (warm) → tech headers `#f8fafc` (cool) → borders `#E5DDD4` (warm tan). The eye registers alternating temperatures as "dirty."
+
+### 3.4 Placeholder-Theme Sprawl (Inside the Product Grid)
+
+`ProductCard` assigns `placeholderTheme` (`gradient-teal/blue/cyan/emerald/indigo/slate/red/amber`), resolving to **4 more pastel hue families** (`#E8EDF5`, `#F5F7E8`, `#F9F3EC`, `#EDF1F5` — `index.css:1271-1318`). Decorative variety with no meaning. Nuance: the production `pronto-*` catalog imports uniformly as `gradient-teal`, so the variety shows only in the fallback fixture — but the theme system itself should collapse to one neutral treatment.
+
+### 3.5 Where Each Color Should Have Been Used
+
+- **Navy `#102748`** — the strongest asset. Keep as anchor.
+- **Cayenne `#C84B31`** — demote to _semantic_ commercial signal (discount/low-stock) at <3% coverage; fails as heading/tagline font color.
+- **Lime/limonade/olive** — retire entirely.
+
+---
+
+## ✍️ 4. Finding — Typography Register Mismatch
+
+| Token                       | Font               | Problem                                                                                                                                                  |
+| :-------------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--font-display`            | **Baloo Da 2**     | Rounded, inflated, playful — designed for friendly/children's contexts. On a B2B clinical supplier it reads toy-like; the single biggest "amateur" tell. |
+| `--font-sans`/`--font-body` | **Syne**           | Experimental art-gallery display face; eccentric proportions make poor body copy at 0.8–0.95rem. Produces the constant "something is off" feeling.       |
+| `--font-mono`               | **JetBrains Mono** | Fine for REF/SKU. Keep.                                                                                                                                  |
+
+Also: no real display scale (hero only `2.6rem`), dominant sizes cluster at 0.65–0.875rem, uppercase micro-labels overused, decorative italics in functional bars.
+
+**Second-audit amendment (valid):** the originally proposed `Space Grotesk + Inter` is itself the 2024–2026 default "AI landing page" pairing — swapping one generated-looking stack for another. The typeface decision is **re-opened** (see §10.2): a serif/humanist display face would signal "established firm" far better than another geometric grotesque.
+
+---
+
+## 📐 5. Finding — Layout & Visual Hierarchy
+
+- **Card-in-card monotony:** identical chrome (`1px border` + `radius-md` + `shadow-xs`) on utility bar → navbar → hero → promo strip → pills → filter row → showcase hub → product cards. Everything boxed = nothing is a hero.
+- **Four stacked horizontal bands** between hero and catalog (promo strip → pills → filter row → showcase hub).
+- **Message repetition:** "Factura Electrónica 19% IVA" ×4; "Despacho Melipilla & RM" ×5; "ISP certificado" ×4 on one page.
+- **Badge inflation:** 12+ distinct pill/chip variants with unique color pairs.
+- **Micro-geometry:** `--radius-full: 8px` (a "full" radius equal to `md` — nothing is pill-shaped); indistinguishable 4/6/8/12 steps; border + shadow stacked on the same elements.
+
+---
+
+## 🧟 6. Finding — "AI Residue" Tells in Code
+
+| Tell                                                                                       | Location                                                       |
+| :----------------------------------------------------------------------------------------- | :------------------------------------------------------------- |
+| `.hero-glow { display: none }` w/ comment _"Eliminated radioactive neon orb"_              | `index.css:425`                                                |
+| `-webkit-background-clip: unset` / `-webkit-text-fill-color: unset` leftovers              | `.hero-title span`                                             |
+| `animation: spin` with **no `@keyframes spin` defined** — loader never spins               | `ProductList.tsx:17`                                           |
+| `⏳` emoji inside `brand-icon-wrapper` as the loading state                                | `ProductList.tsx:18`                                           |
+| Triple-aliased tokens (`--navy-*`/`--teal-*`/`--slate-*`/`--emerald`/`--cyan`/`--primary`) | `:root`; `OrderTrackingModal` still consumes `var(--teal-600)` |
+| Italic slogan inside results count                                                         | `CategoryFilter.tsx:115`                                       |
+
+---
+
+## 🧾 7. Finding — Credibility & Content Gaps (Second Audit)
+
+### 7.1 Media Pipeline (UI contract only — acquisition is out of scope)
+
+- All 11 prototype products have `images: []`; the CSV importer (`scripts/import-catalog-csv.ts:210`) also writes `images: []` for the real `pronto-*` catalog. **Every product card renders the icon-on-dot-grid placeholder.** The placeholder _is_ the current product visual — its design matters, and it must not look like an empty template state.
+- **Art-direction contract needed now:** when images land, `object-fit: cover` on the fixed 180px box (`index.css:1373`) will arbitrarily crop them. Define: 4:3 media area, `object-fit: contain` on white with uniform padding (catalog-standard for supplies), image fade-in/skeleton while loading, and consistent angle/lighting guidance handed to whoever produces the photos.
+- The repeated product name inside the placeholder duplicates the card title — a placeholder should show _category iconography_, not repeat the label.
+
+### 7.2 Brand Identity Surface — Missing Entirely
+
+- The "logo" is a generic Lucide `Activity` icon in a navy square + lime `ODONTOLOGÍA` sticker (`Navbar.tsx:69-77`) — the most literal template tell available.
+- **No favicon** (nothing in `index.html`, nothing in `public/`).
+- `og:image`, `twitter:image`, JSON-LD `image` all point to `https://pronto-insumos.vercel.app/og-preview.png` — **a file that does not exist.** WhatsApp shares (the store's own sales channel) render a broken preview.
+- Naming drift: `PRONTO` + badge (nav), `PRONTO ODONTOLOGÍA` (footer), `PRONTO INSUMOS ODONTOLÓGICOS SPA` (legal), `PRONTO INSUMOS` (title). One canonical lockup needed.
+
+### 7.3 Social Proof & Placeholder Data
+
+- **Fabricated-looking ratings:** 10 of 11 prototype items show 4.7–5.0★ with 25–190 reviews — on `isActive: false` fixtures. The production `pronto-*` import sets `reviewsCount: 0` (stars correctly don't render), so this affects the dev/fallback experience — but it also means **the ratings UI exists with no real review system behind it.** **Decision (approved):** keep the star UI code — it stays dormant on real products — and clean the fabricated fixture values.
+- **Permanent-discount pattern:** all 11 prototypes carry `originalPrice > price` (17–23% "off" everything). Production items import without `originalPrice`, so live cards show no strikethrough — but the fallback normalizes a discount-store look that should be used _selectively_, not universally.
+- **Placeholder phone hardcoded:** `+56 9 1234 5678`/`56912345678` is hardcoded in `Navbar`, `Hero`, `Footer`, `ProductQuickView`, `ErrorBoundary` — even though `VITE_WHATSAPP_NUMBER` exists and is correctly consumed by `whatsapp.ts` and `PaymentReturnModal`. Partial centralization is worse than none: changing the env var silently leaves 5 stale copies.
+- **Fictional manufacturers** beside real ones (NSK, W&H, Hu-Friedy, Septodont vs. DentFill, SterilMax, ImpressDent, SteriTex). Acceptable in fixtures; the real catalog must carry real brand names — B2B credibility is _recognizable brands_.
+- **Copy/logic contradiction (new finding, missed by both audits):** `Footer.tsx:85` advertises _"Despacho Gratuito sobre $100.000"_ while `Cart.tsx:14` computes against `FREE_SHIPPING_THRESHOLD = 150000` and `components/AGENTS.md` documents $150.000. One number must win.
+
+### 7.4 Stock-Count Confidentiality Violation ⚠️
+
+`ProductCard.tsx:96` renders `Últimas {product.stockCount} unid.` — displaying the **exact raw stock count**, which `src/data/AGENTS.md` §3 defines as _"strictly confidential internal data … must never be displayed as raw numbers to public users."_ The design fix is also the compliance fix: show `Bajo stock` / `Últimas unidades` with no integer.
+
+---
+
+## 📱 8. Finding — UX Surfaces Never Audited (Second Audit)
+
+### 8.1 Mobile (where Chilean dentists actually browse — between patients)
+
+- Product grid collapses to **1 column ≤768px** — one giant card per screen; e-commerce standard is 2-col.
+- `.top-utility-bar` is **hidden ≤768px** — taking the phone number and order-tracking link with it; the two actions a mobile buyer most wants.
+- Category pills scroll with a mask fade but no scroll affordance.
+- No `inputmode`/`type` hints anywhere — RUT (numeric), phone, email, ZIP all open the wrong mobile keyboards.
+- No sticky add-to-cart / cart CTA on product or quick-view.
+
+### 8.2 Checkout, Cart & Payment (conversion-critical, never designed)
+
+- Step-2 payment selection is **text-only option cards** — no Webpay/Redcompra/Mercado Pago marks at the moment of maximum payment anxiety.
+- The **Boleta vs Factura** legal distinction is never explained in customer language — a uniquely Chilean confusion point that deserves a one-line explainer at the toggle.
+- **Delivery cost transparency:** free-shipping threshold lives in the cart bar and a (wrong) footer bullet; no shipping estimate in checkout.
+- Voucher upload, tracking timeline, and stock-error recovery exist but were styled ad hoc with inline hexes (§3.2).
+
+### 8.3 Product Card IA for B2B Buyers
+
+Procurement priority order is **REF → unit of sale → price → stock → regulatory**. Current card: category+manufacturer → title → stars → description → price. There is no `unitOfSale` field — units appear only inside some names (`(Caja 100 un)`, `(50 carpules)`, `(500g)`, `(10 pzas)` — 4 of 11). A dedicated `unitOfSale`/`presentation` field (schema + CSV + card) is a small data-model addition with large procurement value.
+
+### 8.4 Micro-Interactions & Motion — No System
+
+Add-to-cart gives **no "added ✓" button state** (only navbar badge pulse + toast); drawer/modal entrances are one-off animations; no image fade-in; no hover-state consistency pass. Define a small motion spec: 150–250ms, `cubic-bezier(0.4,0,0.2,1)`, what animates (cart add, drawer, modal, image load, hover lift) — and nothing else.
+
+### 8.5 Accessibility — Partial, Not Audited
+
+- ✅ `:focus-visible` rings, `role="dialog" aria-modal`, `role="tab"` — genuinely good.
+- ❌ **No focus trap** in any of the 4 modals — Tab escapes into the page behind the overlay.
+- ❌ `aria-live` exists only on the toast container — cart quantity changes announce nothing.
+- ❌ `prefers-reduced-motion` covers only a subset of animations.
+- ⚠️ Lime-as-focus-indicator (1.4:1) already documented in `AGENTS.md` — resolved automatically by the palette fix.
+
+### 8.6 Owner-Directed Functional Additions (Sep 21)
+
+Five functional changes with UI/copy implications, added to this overhaul's scope by the owner:
+
+1. **Delivery zone = Melipilla + San Antonio only; remove all pickup/retiro wording.**
+   - _Copy sweep:_ `Navbar.tsx:33` utility bar (`Despacho prioritario en Melipilla y rutas RM | Retiro en Av. Ortúzar` → `Despacho a clínicas en Melipilla y San Antonio`), `Hero.tsx:32` description (`Melipilla, Talagante, Peñaflor y la Región Metropolitana` → `Melipilla y San Antonio`), `Hero.tsx:71-72` trust item (drop the "Retiro" claim), `ProductQuickView.tsx:309` (`despacho y retiro` → `despacho`), `Cart.tsx:100-101` free-shipping text, `Footer.tsx` (lines 31, 82, 85, 152 and RM mentions), `PaymentReturnModal.tsx:103`, `index.html` meta descriptions + JSON-LD `areaServed` (Melipilla/Talagante/Peñaflor/RM → Melipilla, San Antonio).
+   - _Distinction:_ keep "Bodega: Av. Ortúzar 750, Melipilla" as corporate/warehouse info — it identifies the physical depot. Remove only _pickup-as-fulfillment-option_ wording ("Retiro Presencial", "retiro express", "y retiro").
+   - _`RM` references_ describing delivery coverage → `San Antonio` (San Antonio is technically Valparaíso region — copy should say "Melipilla y San Antonio", not "RM").
+   - _Supersedes_ pending roadmap task 3.1's zone list (Local Pickup / RM routes) — that task is now defined as: Melipilla + San Antonio, no pickup.
+   - _Guardrails sync required:_ root `AGENTS.md` still mandates the old model — §1 geography ("Melipilla + Región Metropolitana"), §3.3 Factura support, §3.4 "Local Pickup in Melipilla (Av. Ortúzar)". Update AGENTS.md during implementation so future agents don't re-add removed functionality.
+
+2. **Modal scroll-lock (bug).** When `ProductQuickView` (or any overlay) opens, the main page keeps scrolling behind it. Fix: lock `document.body.style.overflow = 'hidden'` on mount, restore on unmount — applied uniformly to `ProductQuickView`, `CheckoutModal`, `OrderTrackingModal`, `PaymentReturnModal`, and the `Cart` drawer. A tiny shared hook (`useScrollLock`) keeps it consistent.
+
+3. **Cart-aware product cards.** A card currently shows a dumb "Agregar" button even when the product is already in the cart. Standard e-commerce behavior: once qty > 0, the card swaps the button for a quantity stepper `[−] n [+]` (reusing `.quantity-controls` styles, clamped to `stockCount`). Implementation: `App` → `ProductList` → `ProductCard` pass a `cartQuantity` per product (also surfaced in `ProductQuickView` footer). `AppCartPersistence`/`ProductCard` tests updated.
+
+4. **Minimum order for delivery outside Melipilla: $60.000** (display `$60.000` — `formatCLP` already emits no "CLP" suffix).
+   - Checkout Step 1 gets a delivery-zone control: `Comuna de despacho` select with `Melipilla` / `San Antonio` (replaces the free-text `Ciudad / Comuna` input — two zones only).
+   - Rule: `zone === 'San Antonio' && subtotal < 60000` → block progression with `La compra mínima para despacho a San Antonio es de $60.000`.
+   - Constant in shared config (`src/config/delivery.ts`: `DELIVERY_ZONES`, `MIN_ORDER_OUTSIDE_MELIPILLA = 60000`) so the `Cart` drawer can surface the same rule proactively.
+
+5. **Factura disabled — Boleta only (future feature).**
+   - `CheckoutModal` Step 1: remove the `🏢 Factura Electrónica` option card; `documentType` stays `'boleta'`; skip `validateFacturaFields`; hide the RUT-empresa/razón-social/giro block. Gate behind a flag (`const FACTURA_ENABLED = false`) so the path re-enables cleanly later — order schema keeps `documentType` + optional factura fields.
+   - _Copy consequence:_ storefront can no longer advertise "Factura Electrónica Inmediata (19% IVA)" — sweep `Navbar:54`, `Footer:104,148`, `PaymentReturnModal`, promo copy → `Boleta Electrónica · IVA 19%`. "Total Facturado" labels → `Total a Pagar`. If clinics still need factura, they route through the WhatsApp cotización path (optional note: `Factura para clínicas — cotízala por WhatsApp`).
+
+---
+
+## ✅ 9. What Works — Do Not Touch
+
+- **The 6 delivered photos** (`hero`, 4 category banners, promo bg) — genuinely good assets. (Correction to first pass: this approval covered _section_ imagery; it does not extend to product media, which has none — see §7.1. Note: `promo-strip-bg` becomes orphaned once PromoStrip is deleted — repurpose or drop it in Phase 4.)
+- **Composition order** hero → categories → showcase → grid → footer — sound narrative.
+- **Category showcase hub + contextual banner**, **segmented pills with counts** — good patterns; keep mechanics.
+- **Focus/keyboard scaffolding** — preserve.
+- **CLP/SII/RUT domain logic** — untouched.
+- **Vanilla CSS architecture** — refine, don't replace.
+
+---
+
+## 🧭 10. Redesign Direction — "Quiet Clinical Confidence"
+
+The restraint of a premium dental-equipment catalog crossed with a modern Chilean B2B storefront: one ink, one accent (with a dark-surface variant), unified neutrals, real typography, generous whitespace, near-zero decorative chrome.
+
+### 10.1 Palette — Approved Option A, **with dual accent tokens (mandatory fix)**
+
+Navy stays the anchor; a single analogous cyan accent replaces lime; cayenne is demoted to semantic commercial signal.
 
 ```css
 :root {
-  /* =====================================================
-     BRAND MANUAL — PRIMARY COLOR PALETTE
-     ===================================================== */
+  /* Anchor (keep) */
+  --ink-900: #0b1a33; /* footer, utility bar, darkest surfaces */
+  --ink-800: #102748; /* brand blue — headings, primary buttons */
+  --ink-700: #1a3a6a; /* hover */
+  --ink-600: #2a4a7f; /* borders on dark */
 
-  /* Intense Blue — Primary brand foundation (structure, trust, reliability) */
-  --brand-blue: #102748;
-  --brand-blue-light: #1a3a6a;     /* Hover/interactive variant */
-  --brand-blue-dark: #0b1a33;      /* Deepest anchor (utility bar, footer bg) */
-  --brand-blue-muted: #1e3f70;     /* Secondary buttons, borders on dark */
+  /* THE single brand accent — TWO surface variants (contrast fix) */
+  --accent: #0e7490; /* light surfaces: links, active states, icons — 5.3:1 on white */
+  --accent-strong: #0c6379; /* accent hover on light */
+  --accent-soft: #e6f4f7; /* accent tint fills (pills, info boxes) */
+  --accent-border: #b7dee6;
+  --accent-on-dark: #67e8f9; /* navy surfaces ONLY: icons, links, hovers — ~8:1 on --ink-800 */
 
-  /* Cayenne Red-Orange — Energetic warm accent (high contrast, urgency, CTAs) */
-  --brand-cayenne: #C84B31;        /* Primary warm accent */
-  --brand-cayenne-light: #E06B50;  /* Hover state */
-  --brand-cayenne-dark: #A33D28;   /* Active/pressed state */
-  --brand-cayenne-bg: #FFF0EC;     /* Light warm background tint */
-  --brand-cayenne-border: #F5C6B8; /* Warm badge border */
+  /* Warm semantic — commercial urgency ONLY (discount, low-stock, cart count) */
+  --signal: #c24a32;
+  --signal-soft: #fbefea;
+  --signal-border: #efc9be;
 
-  /* Almond Cream / Frozen Water — Clean backgrounds and negative space */
-  --brand-cream: #FDF8F3;          /* Page background (warm off-white) */
-  --brand-frozen: #F0F4F8;         /* Card/input backgrounds (cool pale tint) */
-  --brand-almond: #F5EDE4;         /* Slightly warmer card highlights */
+  /* Unified cool-neutral surfaces (kill warm/cool clash) */
+  --surface-bg: #f5f7f9;
+  --surface-card: #ffffff;
+  --surface-muted: #eef2f5;
+  --border-subtle: #e4e9ee;
+  --border-strong: #c9d2db;
 
-  /* Limonade Cream and Accent Green/Yellow — CTA buttons, highlights */
-  --brand-limonade: #ECEFBE;       /* CTA button backgrounds, pill highlights */
-  --brand-accent-green: #CAE400;   /* Primary CTA accent, active indicators */
-  --brand-accent-green-dark: #A8BF00; /* CTA hover state */
-  --brand-accent-green-text: #3D4A00; /* Text on accent-green backgrounds */
+  /* One neutral text ramp */
+  --text-primary: #0f1e33;
+  --text-secondary: #44536a;
+  --text-muted: #6b7a8f;
+  --text-inverse: #ffffff;
 
-  /* =====================================================
-     BACKWARD COMPATIBILITY ALIASES (Transition period)
-     ===================================================== */
-  --navy-950: var(--brand-blue-dark);
-  --navy-900: var(--brand-blue);
-  --navy-800: var(--brand-blue-light);
-  --navy-700: var(--brand-blue-muted);
-  --teal-600: var(--brand-blue);
-  --teal-700: var(--brand-blue-light);
-  --teal-800: var(--brand-blue-dark);
-  --teal-50:  var(--brand-limonade);
-  --teal-100: #DDE1A0;
+  /* Spacing scale — 4px base (new) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
 
-  /* Surface overrides */
-  --surface-bg:    var(--brand-cream);
-  --surface-card:  #ffffff;
-  --surface-muted: var(--brand-frozen);
-
-  /* Status and Accents — preserved */
-  --success: #059669;
-  --warning: #d97706;
-  --danger:  #dc2626;
-  --accent-warm: var(--brand-cayenne);
-  --accent-warm-bg: var(--brand-cayenne-bg);
-  --accent-warm-border: var(--brand-cayenne-border);
-  --accent-info: #3b82f6;
-
-  /* Border overrides */
-  --border-subtle: #E5DDD4;
-  --border-strong: #D4C9BB;
-  --border-focus:  var(--brand-blue); /* WCAG 1.4.11 compliant focus contrast */
+  /* Geometry — fixed */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
 }
 ```
 
-### 3.2 Specific Component Color Changes
+**Rules:** `--accent` never appears on `--ink-*` surfaces (that's what `--accent-on-dark` is for — fixes the 2.8:1 failure _and_ preserves the current passing footer hover). `--signal` never colors headings or taglines. Status colors (`--success/--warning/--danger`) quarantined to functional states.
 
-| Component | Current Color | New Brand Color | Rationale |
-| :--- | :--- | :--- | :--- |
-| **Utility Bar bg** | `--navy-950: #07101d` | `--brand-blue-dark: #0b1a33` | Align to Intense Blue family |
-| **Navbar brand icon bg** | `--navy-900: #0b192c` | `--brand-blue: #102748` | Exact brand-manual primary |
-| **Navbar brand name** | `--navy-900` color | `--brand-blue: #102748` | Exact brand-manual primary |
-| **Hero title accent span** | `--teal-600` (teal) | `--brand-cayenne: #C84B31` | Warm, energetic brand accent |
-| **Hero pill tag bg** | `--teal-50` (light teal) | `--brand-limonade: #ECEFBE` | Limonade cream per manual |
-| **Hero pill tag text** | `--teal-700` | `--brand-accent-green-text: #3D4A00` | Green-text on limonade bg |
-| **`.btn-primary` (CTA buttons)** | `--teal-600` bg | `--brand-accent-green: #CAE400` bg with dark text | Brand manual: Accent Green/Yellow for CTAs |
-| **`.btn-primary:hover`** | `--teal-700` | `--brand-accent-green-dark: #A8BF00` | Darker accent on hover |
-| **`.btn-add-cart`** | `--teal-600` bg | `--brand-blue: #102748` bg | Solid, trustworthy add-to-cart |
-| **Cart count badge** | `--teal-600` | `--brand-cayenne: #C84B31` | Warm urgency for cart count |
-| **Category pill active** | White bg, navy text | White bg, `--brand-blue` text, accent-green indicator | Accent-green active indicator |
-| **Category pill count chip active** | `--teal-50` bg | `--brand-limonade` bg | Limonade highlight |
-| **Product tag chip "Mas Vendido"** | `--surface-muted` bg | `--brand-cayenne-bg` bg, `--brand-cayenne` text | Warm accent for featured tags |
-| **Guarantee icons** | `--teal-600` | `--brand-blue: #102748` | Brand-aligned icon colors |
-| **Footer value-prop icons** | `--teal-600` bg | `--brand-blue: #102748` bg | Intense Blue foundation |
-| **Footer link hover** | `#38bdf8` (sky blue) | `--brand-accent-green: #CAE400` | On-brand accent hover |
-| **Focus rings** | `--teal-600` | `--brand-blue: #102748` | Keeps ≥3:1 non-text contrast on light surfaces (WCAG 1.4.11); accent-green is reserved for fills |
-| **Toast left border** | `--teal-600` | `--brand-accent-green: #CAE400` | Brand consistency |
-| **Page background-color** | `#f8fafb` (cool gray) | `--brand-cream: #FDF8F3` (warm off-white) | Almond Cream per manual |
-| **Card borders** | `#e2e8f0` (cool slate) | `#E5DDD4` (warm almond) | Warmer, brand-aligned |
-| **meta theme-color** | `#088395` | `#102748` | Intense Blue in mobile chrome |
+**Retired:** `--brand-limonade`, `--brand-accent-green`, `--brand-accent-green-text`, and every §3.2 hardcode.
 
-> **NOTE:** The shift from teal CTAs to accent-green CTAs is the most visually dramatic change. The brand manual explicitly specifies Limonade Cream/Accent Green-Yellow for CTA elements. The Cayenne Red-Orange takes over the "energy and urgency" role (discount badges, featured product accents, cart badge, promotional highlights).
+### 10.2 Typography — Approved: T1 Fraunces + Inter
 
----
+| Option                   | Display                              | Body                | Status                                                                                       |
+| :----------------------- | :----------------------------------- | :------------------ | :------------------------------------------------------------------------------------------- |
+| **T1 — Editorial serif** | **Fraunces** (600–700, optical size) | **Inter** (400–600) | ✅ **Approved** — "established firm" gravitas; serif wordmark over navy reads human-designed |
+| T2 — Humanist grotesque  | Manrope (700)                        | Inter               | Declined — safer but less distinctive                                                        |
+| T3                       | Space Grotesk                        | Inter               | Rejected — the default AI-startup stack; keeps the generated look                            |
 
-## 🔤 4. Typography Overhaul — Baloo Da 2 + Syne
+Keep `JetBrains Mono` for REF/SKU. New scale: `--fs-display: clamp(2.5rem, 4vw, 3.5rem)`, `--fs-h2: 1.5rem`, `--fs-h3: 1.125rem`, `--fs-body: 1rem`, `--fs-small: .875rem`, `--fs-micro: .75rem` (uppercase micro-labels capped at ≤3 per section; **no italics anywhere**).
 
-### 4.1 Google Fonts Import
+### 10.3 Brand Identity (new phase — P0)
 
-Replace the current DM Sans + JetBrains Mono import in both `index.html` and `src/index.css`:
+1. **Wordmark lockup:** typographic `PRONTO` in the chosen display face + `INSUMOS ODONTOLÓGICOS` descriptor — no generic Lucide mark, no sticker badge. (Bespoke detail: a single accent ligature/underline on one letter.)
+2. **Favicon** (SVG derived from the wordmark) + **real `og-preview.png`** (1200×630, navy field, wordmark, hero photo).
+3. **Canonical naming rule** applied across nav/footer/title/legal.
 
-```html
-<!-- New Google Fonts: Baloo Da 2 (display), Syne (body), JetBrains Mono (technical) -->
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@400;500;600;700;800&family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-```
+### 10.4 Layout Restructuring
 
-### 4.2 CSS Token Updates
+| Section                  | Change                                                                                                                                                                                                                                                                                                                                     |
+| :----------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Hero**                 | **Full-bleed navy band** (approved): edge-to-edge `--ink-800`, white headline in display face, single accent CTA (white or `--accent-on-dark` treatment), photo right with soft mask. Trust items = quiet inline icon row using `--accent-on-dark` icons — no pill chrome. Absorbs PromoStrip's unique messages (approved: fold & delete). |
+| **PromoStrip**           | **Delete** — fold unique messages into hero trust row; update `PromoStrip.test.tsx` accordingly.                                                                                                                                                                                                                                           |
+| **Category pills**       | Keep mechanics; icons → `--text-muted`; active = navy text + `--accent` underline.                                                                                                                                                                                                                                                         |
+| **Filter row**           | Remove `results-slogan-tagline`.                                                                                                                                                                                                                                                                                                           |
+| **Category showcase**    | Unbox hub (heading + open grid, no border card); drop `category-card-tag-pill` overlay.                                                                                                                                                                                                                                                    |
+| **Product cards**        | Media: single neutral placeholder (collapse the 8 gradient themes), category icon only (drop the repeated name). Badge diet: max 1 on media (priority discount > Rx > mediaBadge). REF as muted mono line in body. **Remove raw `stockCount`** → `Bajo stock`. Featured strip → `--accent` or remove.                                      |
+| **Footer**               | Icons → `--accent-on-dark`/muted-on-dark; link hover → `--accent-on-dark` (preserves ~8:1); fix the $100.000/$150.000 contradiction.                                                                                                                                                                                                       |
+| **Modals/drawer/toasts** | Re-token all §3.2 inline hexes; WhatsApp button → navy (drop `#25d366`); toast edge → `--accent`. Add **focus trap** to all 4 modals.                                                                                                                                                                                                      |
 
-```css
-:root {
-  /* Typography — Brand Manual alignment */
-  --font-display: 'Baloo Da 2', 'DM Sans', system-ui, sans-serif;
-  --font-sans: 'Syne', 'DM Sans', system-ui, -apple-system, sans-serif;
-  --font-body: 'Syne', 'DM Sans', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-}
-```
+### 10.5 The "Soul" Layer — Concrete Tactics (replaces aspirational §8.5)
 
-### 4.3 Font Application Map
+1. ~~**A named human:** "Habla con [Nombre]…" + photo + direct WhatsApp~~ — **declined by owner (Sep 21)**; do not build this slot.
+2. **Local specificity:** Av. Ortúzar counter/warehouse photo, delivery-routes graphic (Melipilla → San Antonio), concrete facts ("pedidos antes de las 16:00 despachan hoy").
+3. **Real hero copy:** a specific, opinionated headline beats "Abastecimiento Odontológico de Precisión" (the most generated-sounding line on the page).
+4. **1–2 bespoke details:** hand-drawn accent underline on the hero keyword, or subtle texture on one surface — enough to break template feel without noise.
+5. **Asymmetry & whitespace:** hero grid 1.4fr/0.8fr; section spacing via `--space-*` scale (48–64px between majors, not uniform 2rem).
 
-| Element | Font Family | Weight | Size | Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| **Brand wordmark "PRONTO"** | `--font-display` (Baloo Da 2) | 800 | 1.6rem | Rounded, bold, friendly geometry per manual |
-| **Brand sub-badge "ODONTOLOGIA"** | `--font-display` (Baloo Da 2) | 700 | 0.65rem | Uppercase, letter-spacing 0.05em |
-| **Hero headline h1** | `--font-display` (Baloo Da 2) | 800 | 2.6rem | Display face for maximum impact |
-| **Hero description** | `--font-body` (Syne) | 400 | 1rem | Clean, legible secondary text |
-| **Section headings** | `--font-display` (Baloo Da 2) | 700 | Various | Category headers, footer headings |
-| **Product card title** | `--font-display` (Baloo Da 2) | 700 | 1.05rem | Product names get display face |
-| **Product description** | `--font-body` (Syne) | 400 | 0.875rem | Body copy for descriptions |
-| **Button text** | `--font-body` (Syne) | 600-700 | 0.925rem | Clean, readable CTA text |
-| **All body text** | `--font-body` (Syne) | 400 | 0.875 to 1rem | Base body font-family |
-| **REF codes, prices** | `--font-mono` (JetBrains Mono) | 700 | Various | Technical precision (unchanged) |
-| **Brand slogan text** (if used) | `--font-body` (Syne) | 400 | 0.9rem | Per manual: Syne for slogan |
+### 10.6 Mobile Pass
 
-> **NOTE:** Baloo Da 2 is a rounded sans-serif with friendly, approachable geometry — very different from the geometric, sharp DM Sans. It gives "PRONTO" and headlines a distinctive, warm, branded character while Syne provides clean readability for body text. This dual-face system is exactly what the brand manual prescribes.
+2-col product grid ≤768px; keep phone/tracking reachable (condensed mobile utility row or navbar action); pill scroll edge-arrow or visible scrollbar; `inputmode` on RUT (numeric), `tel`/`email` types; sticky mobile "Agregar" on quick-view.
+
+### 10.7 Motion & State Spec
+
+150–250ms `cubic-bezier(0.4,0,0.2,1)`; animates: add-to-cart (button → "Agregado ✓" → revert), drawer/modal entrance, image fade-in, card hover lift, badge pulse. Replace `⏳` loader with product-card skeletons (shimmer, `prefers-reduced-motion` aware); define the missing `@keyframes spin` or delete the reference.
 
 ---
 
-## 🖼️ 5. Visual Enrichment — Surgical Asset Insertion Strategy
+## 🗺️ 11. Implementation Phases
 
-This section proposes specific, practical image/asset placements to bring the storefront to life. Each proposal includes the asset description, the insertion point in the layout, and the design rationale.
+| Phase                            | Content                                                                                                                                                                                                              | Files                                                                                                                                                      | Priority                           |
+| :------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------- |
+| **1 — Token & font surgery**     | New `:root` (incl. `--accent-on-dark`, spacing scale, radius fix), font swap, type scale; retire lime/olive                                                                                                          | `index.css`, `index.html`                                                                                                                                  | **P0**                             |
+| **2 — Credibility fixes**        | Remove raw `stockCount`, unify WhatsApp number behind `VITE_WHATSAPP_NUMBER`, fix $100.000/$150.000 contradiction, collapse placeholder themes, clean fabricated ratings/discount fixture values (star UI code kept) | `ProductCard`, `Navbar`, `Hero`, `Footer`, `ProductQuickView`, `ErrorBoundary`, `products.ts`                                                              | **P0**                             |
+| **3 — Brand surface**            | Wordmark lockup, favicon, real `og-preview.png`, canonical naming                                                                                                                                                    | `Navbar`, `Footer`, `index.html`, `public/`                                                                                                                | **P0**                             |
+| **4 — Hero & chrome cleanup**    | Full-bleed navy hero, delete PromoStrip, badge diet, slogan removal, unbox showcase                                                                                                                                  | `Hero`, `PromoStrip`, `CategoryFilter`, `CategoryShowcase`, `index.css`, `App.tsx`                                                                         | **P1**                             |
+| **5 — Functional UX additions**  | `useScrollLock` on all overlays, cart-aware card stepper, delivery-zone select + $60.000 min order, factura disabled (flag), pickup-wording removal + zone copy sweep (Melipilla + San Antonio)                      | `CheckoutModal`, `Cart`, `ProductCard`, `ProductList`, `App.tsx`, `src/config/delivery.ts`, `Navbar`, `Hero`, `Footer`, `PaymentReturnModal`, `index.html` | **P1**                             |
+| **6 — Inline-style migration**   | ~60 hexes → tokens                                                                                                                                                                                                   | `Footer`, `Navbar`, `OrderTrackingModal`, `PaymentReturnModal`, `CheckoutModal`, `ProductQuickView`, `ErrorBoundary`                                       | **P1**                             |
+| **7 — Mobile pass**              | 2-col grid, reachable phone/tracking, pill affordance, `inputmode`                                                                                                                                                   | `index.css`, `Navbar`, `CheckoutModal`, `ProductQuickView`                                                                                                 | **P1**                             |
+| **8 — Motion & a11y**            | Motion spec, add-to-cart state, skeletons, focus traps, `aria-live` cart                                                                                                                                             | `index.css`, `Cart`, `ProductCard`, modal components                                                                                                       | **P2**                             |
+| **9 — Media contract & card IA** | `object-fit: contain` 4:3 white media area, image fade-in, placeholder redesign; **`unitOfSale` field** (schema + types + CSV import + card UI), REF-first card hierarchy                                            | `index.css`, `ProductCard`, `ProductQuickView`, `src/types`, `schemaValidation`, `import-catalog-csv.ts`                                                   | **P2** (ready before photos exist) |
+| **10 — Alias deprecation**       | Migrate `var(--teal-*)`/`var(--navy-*)` consumers → canonical                                                                                                                                                        | `App.tsx`, `OrderTrackingModal`, `index.css`                                                                                                               | **P2**                             |
 
-> **IMPORTANT:** The goal is not to overload the page with imagery. It is to place assets at the approximately 5 key moments where a visitor's attention naturally rests, creating a rhythm of text, visual, text, visual that prevents the "wall of white cards" monotony.
-
-### 5.1 Hero Section — Brand Lifestyle Image (Right Column)
-
-**Current State:** The hero right column shows a text-only "Garantias Comerciales B2B" card.  
-**Problem:** No visual anchor. The hero is pure text + icons. It feels like reading a document, not landing on a commercial site.
-
-**Proposed Change:**
-
-Replace the guarantee card with a **split layout**: a brand lifestyle image on the right half of the hero grid, with the guarantee items collapsed into a compact horizontal trust strip below the CTA buttons (on the left column).
-
-**Asset Role & Placement:** Primary visual anchor of the storefront. Sits in the right column of the hero grid (`.hero-image-panel`, 540x405px on desktop, scaling down responsively on mobile), framed by a 12px border-radius, soft elevation shadow, and a subtle brand vignette.
-
-**Detailed Photographic Specification:**
-- **Layout & Composition:** 35° elevated oblique flatlay (isometric product perspective) with an asymmetric triangular dynamic balance. The dominant visual axis runs from bottom-left (foreground turbine head) to top-right (mouth mirror and instruments). Ample negative space is preserved in the top-right quadrant for visual calm and balance.
-- **Subject Matter & Props:**
-  - **Main Hero Subject:** High-speed dental air-turbine handpiece crafted from satin-brushed titanium and surgical-grade AISI 420 stainless steel. The miniature turbine head holds a precision diamond flame friction-grip bur. A visible optical glass fiber rod in the handpiece head emits a faint, cool white beam (simulating clinical readiness).
-  - **Diagnostic Instruments:** Front-surface rhodium-coated mouth mirror (#5) angled slightly upward, reflecting a clean studio softbox highlight with zero ghosting; double-ended explorer (#23 shepherd's hook); graduated CPITN periodontal probe with laser-etched black millimeter rings (1-2-3-5-7-8-9-11mm); and College cotton pliers with serrated tips holding a sterile micro-cotton pellet.
-  - **Background & Secondary Props:** Instruments arranged on a pristine medical-grade surgical drape in deep Intense Blue (`#102748`), showing delicate micro-woven textile fibers. In the distant, soft-focus background, a frosted dappen dish with translucent blue etching gel and a sterile blister pack with a Cayenne Red-Orange indicator tab.
-- **Camera & Optical Mechanics:**
-  - **Camera Emulation:** Medium-format digital camera (Hasselblad H6D-100c / Phase One IQ4 150MP aesthetic) for extreme resolving power, zero digital artifacts, and natural highlight rolloff.
-  - **Lens:** 90mm f/2.8 Macro prime lens.
-  - **Aperture & Depth of Field:** f/3.5 to f/4.0. Pin-sharp, razor-clean focus on the turbine head, bur facets, and mirror bevel, decaying smoothly into a buttery, creamy optical bokeh across the rear tubing connector and background drape.
-  - **Exposure Settings:** ISO 64 (ultra-clean, noise-free), 1/160s, shutter sync with studio strobes.
-- **Lighting Rig & Photometric Architecture:**
-  - **Key Light:** 120cm overhead parabolic octabox fitted with double-diffusion silk and a 40° honeycomb grid at 45° camera-left, delivering soft, wraparound daylight (5600K) that sculpts the cylindrical curves of the metallic handpiece.
-  - **Kicker / Rim Light:** Narrow 1x4 ft stripbox with 6000K clinical white light positioned low behind the instruments at camera-right, skimming the polished bevels with a hairline-thin, luminous chrome edge highlight.
-  - **Fill Light:** Large matte white foam-core bounce card camera-right, generating a gentle 4:1 fill ratio that keeps metal knurling visible without murky shadows.
-  - **Specular Reflection Control:** Polarized anti-glare filters used to eliminate blinding hotspots on polished chrome, creating long, elegant, unbroken linear highlights.
-- **Color Grading & Brand Manual Alignment:**
-  - **Primary Foundation:** Deep Intense Blue (`#102748`) drape and shadows with dark navy undertones (`#0B1A33`).
-  - **Surface Tones:** Brushed titanium silver, surgical steel chrome, and neutral white daylight highlights (5400K).
-  - **Accents:** Delicate Limonade Cream (`#ECEFBE`) reflected in secondary glass highlights; warm Cayenne Red-Orange (`#C84B31`) micro-accent on an indicator ring.
-  - **Grading Profile:** Clean commercial medical editorial LUT, neutral skin-safe balance, deep true blacks without crushing, zero chromatic aberration or artificial HDR halos.
-- **Negative Constraints (AI Model Guardrails):**
-  - No human faces, no open mouths, no teeth, no gums, no bloody surgical instruments, no medical gore.
-  - No floating or distorted tools, no warped impossible geometry, no 6-fingered glove hands.
-  - No watermarks, no illegible brand typography, no cartoonish rendering, no cheap plastic toy sheen.
-
-**Turnkey Generative AI Model Prompt (Midjourney v6.1 / Flux.1 Pro / Imagen 3):**
-```text
-Ultra-realistic commercial product photography of an organized dental instrument layout, elevated 35-degree oblique flatlay. A high-speed titanium dental turbine handpiece with diamond bur and subtle fiber-optic light, alongside a front-surface rhodium mouth mirror, stainless steel dental explorer, and precision College tweezers arranged neatly on a dark intense blue medical-grade fabric surface (#102748). Shot on Hasselblad H6D-100c, 90mm f/3.2 macro lens, shallow depth of field with razor-sharp focus on the turbine head and smooth bokeh falloff. Studio lighting: large diffused overhead octabox creating soft linear reflections on metallic cylindrical surfaces, subtle cool rim lighting on chrome edges. Clean editorial clinical aesthetic, immaculate textures, brushed surgical steel AISI 420, Chilean dental distributor style, no humans, no teeth, no blood, 8k resolution, hyper-detailed, photorealistic --ar 4:3 --v 6.1 --style raw
-```
-
-**Deployed Asset:** `public/assets/hero-dental-instruments.jpg` (1200×896, optimized for web delivery).
-
-**Layout Change in `Hero.tsx`:**
-- The right column (`.hero-card-preview`) becomes a contained image panel with `border-radius: var(--radius-md)`, subtle shadow, and `overflow: hidden`
-- The 4 guarantee items move to a compact inline trust strip beneath the CTA buttons in the left column, rendered as small icon + short text pairs
-- The image gets a subtle CSS gradient overlay from transparent to `rgba(16, 39, 72, 0.20)` at the bottom, giving it a brand-tinted finish
-
-**CSS Additions:**
-```css
-.hero-image-panel {
-  width: 100%;
-  height: 100%;
-  min-height: 320px;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  position: relative;
-  box-shadow: var(--shadow-md);
-}
-
-.hero-image-panel img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.hero-image-panel::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 40%;
-  background: linear-gradient(to top, rgba(16, 39, 72, 0.20), transparent);
-  pointer-events: none;
-}
-```
+**Verification:** `pnpm test` + `pnpm build` (tests assert text/roles — safe; `PromoStrip.test.tsx`, `CheckoutModal` factura/zone tests, `ProductCard` stepper tests, and copy-dependent suites like `ClinicalStorefront` get updated). Contrast targets: `--accent` on white ≥4.5:1; `--accent-on-dark` on `--ink-800` ≥4.5:1; body text ≥4.5:1; `prefers-reduced-motion` respected.
 
 ---
 
-### 5.2 Promotional Banner Strip — Between Hero and Category Filter
+## 📋 12. Decisions
 
-**Current State:** The hero ends and the category filter begins immediately. No visual break, no promotional messaging.
-
-**Proposed Change:** Insert a horizontal promotional strip between the Hero and the Category Filter. This is a narrow full-width band with the brand slogan and key value propositions.
-
-**Content (3 items displayed horizontally):**
-1. **"Insumos a un click de distancia"** (Official brand slogan per the manual)
-2. **"Despacho Express Melipilla y RM"**
-3. **"Factura Electronica SII - 19% IVA"**
-
-**Visual Treatment & Graphic Asset (`promo-strip-bg.webp`):**
-- **Base Background:** `--brand-blue: #102748` (Intense Blue).
-- **Text & Accents:** High-contrast crisp white typography with `--brand-limonade: #ECEFBE` chips and `--brand-accent-green: #CAE400` Lucide SVG icons.
-- **Typography:** Syne 600, 0.85rem.
-- **Atmospheric Background Asset Specification:**
-  - **Asset Role:** Ultra-wide panoramic graphic texture (`promo-strip-bg.webp`) layered behind the strip with `background-size: cover; background-position: center; mix-blend-mode: overlay; opacity: 0.22`.
-  - **Composition & Layout:** 21:9 panoramic ratio. Deep Intense Blue (`#102748`) to Midnight Obsidian (`#0B1A33`) horizontal gradient, traversed by micro-thin, organic optical fiber light lines and a faint, sterile hexagonal medical lattice.
-  - **Optics & Lighting:** Anamorphic cinematic bokeh (Cooke Anamorphic 35mm simulation), horizontal lens flares in soft chartreuse green (`#CAE400`) and cool cyan, delicate out-of-focus crystalline particles floating in volumetric depth. Zero high-contrast hotspots to preserve WCAG AAA text legibility (>7:1 contrast).
-  - **Turnkey Generative AI Model Prompt:**
-    ```text
-    Panoramic abstract luxury medical background texture, ultra-wide 21:9 ratio. Deep intense navy blue (#102748) and midnight blue (#0B1A33) gradient with subtle, elegant volumetric optical fiber light waves and faint geometric micro-mesh. Whisper-soft glowing accents in subtle chartreuse green (#CAE400) and soft cyan, smooth horizontal light streaks, out-of-focus crystalline particles with deep creamy bokeh. Premium commercial technology texture, clean minimalist clinical design, high-end sterile dental equipment ambiance, no text, no logos, no objects, seamless dark backdrop for UI text overlay, 8k --ar 21:9 --v 6.1 --style raw
-    ```
-  - **Deployed Asset:** `public/assets/promo-strip-bg.jpg` (1000×558, optimized for web delivery).
-
-**Layout:** A new `<div className="promo-strip">` inserted in `App.tsx` between `<Hero>` and `<CategoryFilter>`, or alternatively as the last child inside the Hero section.
-
-**CSS:**
-```css
-.promo-strip {
-  background: var(--brand-blue);
-  color: #ffffff;
-  padding: 0.85rem 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2.5rem;
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  font-weight: 600;
-  border-radius: var(--radius-sm);
-  margin-bottom: 2rem;
-}
-
-.promo-strip-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  white-space: nowrap;
-}
-
-.promo-strip-item svg {
-  color: var(--brand-accent-green);
-}
-```
+| #   | Decision                                                                                                                                 | Status                               |
+| :-- | :--------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------- |
+| 1   | **Palette:** Option A — navy + clinical cyan, **plus mandatory `--accent-on-dark` variant** (fixes the 2.8:1 flaw the first pass missed) | ✅ Approved + amended                |
+| 2   | **Hero:** full-bleed navy band, white headline, photo right                                                                              | ✅ Approved                          |
+| 3   | **PromoStrip:** fold unique messages into hero, delete component                                                                         | ✅ Approved                          |
+| 4   | **Typeface:** T1 — Fraunces display + Inter body (over the originally proposed Space Grotesk)                                            | ✅ Approved                          |
+| 5   | **Ratings policy:** keep the star UI code (production items have `reviewsCount:0` → nothing renders); clean fabricated fixture values    | ✅ Approved                          |
+| 6   | **Named human contact** in hero/footer                                                                                                   | ❌ Declined — do not build this slot |
+| 7   | **`unitOfSale` data field** for card IA (schema + types + card UI + CSV import)                                                          | ✅ Approved                          |
+| 8   | **Product photography acquisition**                                                                                                      | 🚫 Out of scope — data-quality track |
+| 9   | **Delivery zones:** Melipilla + San Antonio only; all pickup/retiro wording removed (supersedes roadmap 3.1's zone list)                 | ✅ Approved (owner)                  |
+| 10  | **Modal scroll-lock:** body scroll frozen behind every overlay (QuickView, Checkout, Tracking, PaymentReturn, Cart drawer)               | ✅ Approved (owner)                  |
+| 11  | **Cart-aware cards:** quantity stepper replaces "Agregar" once product is in cart                                                        | ✅ Approved (owner)                  |
+| 12  | **Min order outside Melipilla:** $60.000 for San Antonio despacho, shown via `formatCLP` (no "CLP")                                      | ✅ Approved (owner)                  |
+| 13  | **Factura disabled:** Boleta only; factura path flag-gated for future; "Factura" marketing copy → Boleta                                 | ✅ Approved (owner)                  |
 
 ---
 
-### 5.3 Category Contextual Accent — Slogan in Filter Area
-
-**Current State:** The category pills sit inside a muted gray container with no visual context.
-
-**Proposed Change:** A lighter touch — display the brand slogan "Insumos a un click de distancia" as a small italicized tagline in `--brand-cayenne` color, positioned to the right of the results count in the filter controls row.
-
-Alternatively, if the promo strip (5.2) already conveys this, skip this insertion to avoid redundancy.
-
----
-
-### 5.4 Product Grid — Category Section Dividers with Contextual Headers
-
-**Current State:** All products render in a flat grid regardless of category. When browsing "Todos los Insumos", there is no visual break between instruments, diagnostics, materials, and sterilization products.
-
-**Proposed Change:** When showing "Todos los Insumos" (category = 'all') or when browsing category hubs, insert lightweight category section headers with contextual, high-end photography assets. These visual assets provide instant recognition and tactile credibility.
-
-> **Chilean Category Taxonomy Alignment (reconciled with PR #6):**  
-> The catalog uses standardized Chilean distributor categories (`src/types/index.ts`):
-> 1. `INSTRUMENTAL Y ACCESORIOS` (Scissors)
-> 2. `DESECHABLES, ESTERILIZACION Y DESINFECCION` (ShieldCheck)
-> 3. `OPERATORIA` (Wrench)
-> 4. `ENDODONCIA` (Activity)
-> 5. `HIGIENE BUCAL` (Sparkles)
-> 6. `IMPRESION` (Layers)
-
-**Category Asset Photographic Dossiers & Delivered Staged Assets:**
-
-#### 5.4.1 Categoría: Instrumental y Accesorios (`INSTRUMENTAL Y ACCESORIOS`)
-- **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors turbine, micromotor, contra-angle, forceps, and scalpel product listings.
-- **Deployed Asset:** `public/assets/cat-instrumental.jpg` (800×447, optimized for web delivery)
-- **Composition & Camera:** 20° low-angle dynamic hero macro perspective. The titanium handpiece rests diagonally across a warm Almond Cream (`#F5EDE4`) architectural plinth.
-- **Subject & Mechanical Details:** High-speed air-turbine handpiece in satin-matte titanium and surgical stainless steel, quadruple water-spray ports at the head clamping a micro-fluted diamond fissure bur. Precision push-button chuck mechanism with crisp machined chamfers. Beside it, a double-ended stainless steel Bein root elevator with knurled ergonomic handle.
-- **Optics & Lighting:** 90mm f/4 Macro lens, focus-stacked for pin-sharp edge-to-edge metallic knurling. Automotive studio strip lighting (dual 1x4 ft diffused softboxes) creating crisp, continuous white highlight ribbons along the titanium body. Dark Intense Blue (`#102748`) shadow falloff.
-- **Turnkey Generative AI Prompt:**
-  ```text
-  High-end commercial macro product photograph of a titanium dental high-speed turbine handpiece and surgical stainless steel elevator. Low-angle 20-degree hero perspective, resting on a matte off-white architectural pedestal. Intricate knurled metal handle texture, precision tungsten carbide dental bur clamped in the push-button turbine head, satin brushed finish. Shot on Sony A7R V with 90mm f/4 Macro G Master lens. Studio rim lighting with long softbox reflection strips, dark intense blue shadows, sterile warm clinical palette (#102748 and #FDF8F3). Industrial design catalog aesthetic, hyper-detailed, clean reflection, no fingerprints, no dust, 8k resolution --ar 16:9 --v 6.1 --style raw
-  ```
-
-#### 5.4.2 Categoría: Endodoncia y Diagnóstico Clínico (`ENDODONCIA`)
-- **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors apex locators, endodontic files, intraoral mirrors, probes, and diagnostics.
-- **Deployed Asset:** `public/assets/cat-diagnostico-endodoncia.jpg` (800×447, optimized for web delivery)
-- **Composition & Camera:** 45° clinical tabletop oblique perspective. Golden ratio composition centering on a front-surface rhodium mouth mirror reflecting an operating lamp beam.
-- **Subject & Mechanical Details:** Rhodium front-surface mirror (#5) showing true reflection with zero ghosting. The circular mirror face reflects an overhead ring of surgical LED daylight. Adjacent: Shepherd's hook dental explorer (#23) and a periodontal Williams probe with crisp, laser-etched black millimeter depth markings (1-2-3-5-7-8-9-10mm).
-- **Optics & Lighting:** 85mm f/2.8 Prime, shallow depth of field focusing sharply on the mirror edge and probe markings. High-key clinical lighting: 90cm overhead beauty dish producing a clean circular catchlight, filled with a cool white reflector for an immaculate, sterile ambiance.
-- **Turnkey Generative AI Prompt:**
-  ```text
-  Editorial product photograph of diagnostic dental examination instruments on a frosted tempered glass clinical surface. Center focus on a circular front-surface rhodium dental mouth mirror reflecting a clean ring of LED surgical light, paired with a stainless steel shepherd hook explorer and a graduated periodontal probe with laser-etched black millimeter markings. 45-degree angle, Canon EOS R5, 85mm f/2.8 lens, delicate depth of field, high-key clinical studio lighting, crisp specular reflections, warm almond and sterile white palette with intense blue undertones (#102748), immaculate cleanliness, Swiss watchmaker precision, 8k, photorealistic --ar 16:9 --v 6.1 --style raw
-  ```
-
-#### 5.4.3 Categoría: Operatoria y Materiales Restauradores (`OPERATORIA`)
-- **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors composites, adhesives, etching gels, curing lights, and glass ionomers.
-- **Deployed Asset:** `public/assets/cat-operatoria-estetica.jpg` (800×447, optimized for web delivery)
-- **Composition & Camera:** 30° close-up beauty macro shot. Diagonal flow showing the precision dispensing of aesthetic restorative nano-hybrid composite.
-- **Subject & Mechanical Details:** Matte charcoal-black light-shielded composite syringe with screw dial. A tiny, immaculate bead of translucent tooth-colored aesthetic resin (shade A2) is extruded from the curved metal dispensing cannula, demonstrating natural optical opalescence. Beside it: 3 ceramic tooth tabs from a VITA classical shade guide (A1, A2, B1) mounted on a chrome holder, and an amber glass bonding bottle with a micro-applicator brush.
-- **Optics & Lighting:** 105mm Macro f/3.5, 1:1 reproduction. Backlit transillumination through the resin droplet highlighting true enamel translucency. Warm Almond Cream (`#FDF8F3`) background with Cayenne Red (`#C84B31`) label accents.
-- **Turnkey Generative AI Prompt:**
-  ```text
-  Cinematic macro product photograph of aesthetic dental restorative materials. An ergonomic black composite syringe dispenses a tiny translucent droplet of A2 enamel-shade resin on a glass slab, illuminated with backlighting that reveals natural tooth-like opalescence and translucency. Nearby are ceramic dental shade guide tabs (A1, A2, B1) on a chrome holder and a miniature amber bonding bottle with a micro-applicator brush. 105mm f/3.5 macro lens, Nikon Z9, extreme micro-detail, clinical editorial lighting with warm almond cream (#FDF8F3) and subtle cayenne red accents, high-end restorative dentistry aesthetic, pristine, no dust, photorealistic 8k --ar 16:9 --v 6.1 --style raw
-  ```
-
-#### 5.4.4 Categoría: Desechables, Esterilización y Desinfección (`DESECHABLES, ESTERILIZACION Y DESINFECCION`)
-- **UI Layout & Role:** 16:9 banner or 120x80px card thumbnail. Anchors autoclave pouches, chemical indicators, cassettes, barrier films, and clinical PPE.
-- **Deployed Asset:** `public/assets/cat-esterilizacion-bioseguridad.jpg` (800×447, optimized for web delivery)
-- **Composition & Camera:** 40° overhead clinical flatlay. Emphasizes sealed hygiene, ISO compliance, and medical security.
-- **Subject & Mechanical Details:** Transparent medical-grade self-seal autoclave pouch (Tyvek paper and multi-layer clinical film) with chevron heat-seal, enclosing sterilized surgical steel instruments. Clearly visible multi-parameter chemical process indicator strip displaying successful sterilization change (pink to brown). A pair of textured cobalt-blue nitrile examination gloves folded alongside a perforated stainless steel DIN sterilization cassette with medical silicone instrument racks.
-- **Optics & Lighting:** 50mm f/4 on full frame for deep focus. 5600K diffuse daylight softbox with polarizing screen to eliminate glare on the plastic pouch film, preserving crystal-clear visibility of the tools inside.
-- **Turnkey Generative AI Prompt:**
-  ```text
-  High-end commercial flatlay photograph of dental sterilization and infection control supplies. A transparent medical-grade autoclave sterilization pouch sealed with chevron edge containing surgical steel instruments, showing a color-changing chemical indicator strip. Adjacent to a perforated stainless steel sterilization cassette with medical silicone racks, and a pair of textured medical nitrile gloves in rich cobalt blue. Shot on Hasselblad, 50mm f/4 lens, overhead 40-degree angle, balanced diffuse daylight clinical illumination, zero glare on transparent film, immaculate hygienic atmosphere, pure colors (#102748, #F0F4F8), high-resolution commercial medical catalog --ar 16:9 --v 6.1 --style raw
-  ```
-
-> **NOTE:** In the storefront layout, these visual assets can be integrated into the product grid category headers, category pill hover previews, or the category showcase cards. Additional categories (`HIGIENE BUCAL` and `IMPRESION`) share the same clinical visual design tokens and background gradient cards.
-
----
-
-### 5.5 Footer — Trust Badge Visual Bar
-
-**Current State:** The footer has text-based value-prop cards and pure text columns. No visual trust assets.
-
-**Proposed Change:** Add a horizontal trust badge row at the bottom of the footer, just above the copyright bar. This row shows recognizable visual assets:
-
-**Asset Role & Layout:** Displayed as a horizontal row of 4 visual trust chips above the copyright bar (`.footer-trust-badges`). Built with responsive wrapping, dark glassmorphism styling, and glowing SVG or rendered 3D asset integration.
-
-**Detailed Asset Specifications & Generative Prompts:**
-
-1. **Mercado Pago Chile Verified Gateway Seal (`badge-mercadopago.webp`):**
-   - **Visual Design:** Sleek modern security shield rendered in brushed titanium with a glowing Accent Green (`#CAE400`) verified checkmark at the center, framed by an ultra-clean circular lock motif. Crisp, professional micro-typography reading "Pagos Seguros • Mercado Pago Chile".
-   - **Lighting & Texture:** Subtle 3D volumetric glassmorphism, soft cyan/green rim glow, transparent PNG or dark navy backdrop (`#0B1A33`).
-   - **Turnkey Prompt:**
-     ```text
-     3D commercial render of a security payment trust badge, dark intense blue glassmorphism style. A modern metallic shield icon with brushed silver bevels and a vibrant neon chartreuse green (#CAE400) checkmark at the center, surrounded by clean minimalist typography reading "MERCADO PAGO CHILE - PAGO SEGURO". Soft studio rim lighting, pristine dark background (#0B1A33), high-end fintech e-commerce seal, 8k render, octane render style --ar 3:1 --v 6.1
-     ```
-
-2. **SII Factura Electrónica 19% IVA Tax Seal (`badge-sii-chile.webp`):**
-   - **Visual Design:** Formal legal document compliance seal. Stylized legal invoice icon embossed with a certified digital tax ribbon stamp, subtle Chilean red and blue accent threads, and crisp typography: "Facturación Electrónica SII • 19% IVA Crédito Fiscal".
-   - **Turnkey Prompt:**
-     ```text
-     3D modern institutional certification seal for Chilean tax compliance (SII). A crisp digital document icon with a gold and deep blue embossed wax seal emblem, subtle Chilean flag color accents (red, white, blue), clean typography reading "FACTURA ELECTRONICA SII - 19% IVA CHILE". Premium corporate trust badge, dark frosted glass background, octane render, pristine precision, 8k --ar 3:1 --v 6.1
-     ```
-
-3. **Logística Express RM y Melipilla Badge (`badge-despacho-express.webp`):**
-   - **Visual Design:** Courier delivery badge featuring a streamlined logistics delivery van silhouette with energetic motion rays and regional destination pin: "Despacho Express • Melipilla & Región Metropolitana (Starken / Chilexpress)".
-   - **Turnkey Prompt:**
-     ```text
-     Modern minimalist 3D logistics trust badge. A stylized white and metallic express delivery van with dynamic speed lines and a green location pin, sleek dark blue frosted glass card, typography reading "DESPACHO EXPRESS MELIPILLA Y RM - STARKEN CHILEXPRESS". Clean e-commerce fulfillment badge, soft volumetric lighting, 8k --ar 3:1 --v 6.1
-     ```
-
-4. **Registro Sanitario ISP Dispositivos Médicos (`badge-isp-chile.webp`):**
-   - **Visual Design:** Medical regulatory authority badge with a medical cross and caduceus shield in chrome and Accent Green, inscribed: "Dispositivos Médicos • Registro Sanitario ISP Chile".
-   - **Turnkey Prompt:**
-     ```text
-     High-end 3D medical regulatory compliance badge. A polished chrome medical cross inside a protective shield with subtle emerald green highlights, set on a dark navy glassmorphic card (#102748), typography reading "REGISTRO SANITARIO ISP CHILE - DISPOSITIVOS MEDICOS". Clean clinical certification seal, pristine studio lighting, 8k --ar 3:1 --v 6.1
-     ```
-
-**CSS:**
-```css
-.footer-trust-badges {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
-  padding: 1.5rem 0;
-  margin-top: 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.footer-trust-badge {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0.4rem 0.85rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
-  color: #94a3b8;
-  font-weight: 600;
-}
-
-.footer-trust-badge svg {
-  color: var(--brand-accent-green);
-  flex-shrink: 0;
-}
-```
-
----
-
-### 5.6 Product Card Placeholder Enhancement — Brand-Tinted Backgrounds
-
-**Current State:** All product card placeholders use the same dot-grid pattern on `#f8fafc` gray, regardless of category.
-
-**Proposed Change:** Apply category-specific subtle color tints to the placeholder backgrounds:
-
-| Reconciled Category (PR #6 Taxonomy) | Lucide Icon | Current Bg | New Brand Bg Tint | Clinical Mood |
-| :--- | :--- | :--- | :--- | :--- |
-| `INSTRUMENTAL Y ACCESORIOS` | `Scissors` | Gray dot-grid | Light Intense Blue tint: `#E8EDF5` | Cool, surgical precision |
-| `OPERATORIA` | `Wrench` | Gray dot-grid | Light Almond Cream: `#F9F3EC` | Warm, restorative aesthetics |
-| `DESECHABLES, ESTERILIZACION Y DESINFECCION` | `ShieldCheck` | Gray dot-grid | Light Frozen Water: `#EDF1F5` | Sterile, clinical hygiene |
-| `ENDODONCIA` | `Activity` | Gray dot-grid | Light Limonade tint: `#F5F7E8` | Analytical, specialized care |
-| `HIGIENE BUCAL` | `Sparkles` | Gray dot-grid | Light Fresh Mint: `#E6F4F1` | Fresh, prophylactic care |
-| `IMPRESION` | `Layers` | Gray dot-grid | Light Warm Sand: `#FAF0E6` | Molds, models and prosthetics |
-
-**CSS Implementation:** Update the `.media-placeholder-box.gradient-*` selectors to use brand-aligned tints:
-
-```css
-.media-placeholder-box.gradient-teal {
-  background: radial-gradient(circle, #B8C6D9 1.2px, transparent 1.2px), #E8EDF5;
-  background-size: 16px 16px;
-}
-
-.media-placeholder-box.gradient-blue {
-  background: radial-gradient(circle, #D5D9B0 1.2px, transparent 1.2px), #F5F7E8;
-  background-size: 16px 16px;
-}
-
-.media-placeholder-box.gradient-amber {
-  background: radial-gradient(circle, #D9CDBE 1.2px, transparent 1.2px), #F9F3EC;
-  background-size: 16px 16px;
-}
-
-.media-placeholder-box.gradient-slate,
-.media-placeholder-box.gradient-cyan {
-  background: radial-gradient(circle, #C5CDD8 1.2px, transparent 1.2px), #EDF1F5;
-  background-size: 16px 16px;
-}
-```
-
-**Placeholder Icon & Taxonomy Reconciliation in `ProductCard.tsx`:**
-The legacy `ICON_BY_CATEGORY` dictionary in `src/components/ProductCard.tsx` mapped only the legacy English categories (`Diagnostics`, `Instruments`, `Materials`, `Sterilization`). In Phase 1/2, reconcile this dictionary to support the official Chilean categories (`Scissors`, `ShieldCheck`, `Wrench`, `Activity`, `Sparkles`, `Layers`) matching `CategoryFilter.tsx`, preventing card icons from falling back to generic `Activity`.
-
-```css
-.placeholder-icon-frame {
-  background: var(--brand-frozen);
-}
-.placeholder-icon-frame svg {
-  color: var(--brand-blue);
-}
-```
-
-#### 5.6.2 Master E-Commerce Product Packshot Template (`product-packshot-template.webp`)
-
-For real product imagery or AI-generated storefront packshots, all product cards must follow a rigorous, uniform photographic template to maintain catalog consistency.
-
-- **UI Role & Constraints:** 1:1 square aspect ratio (1200x1200px rendered down to 280x280px retina). Subject must fit within an 80% inner safe-zone bounding box to avoid collision with top-left discount badges (`-15%`) and bottom-right quick-add buttons.
-- **Composition & Angle:** 15° low-angle eye-level hero perspective. The product (e.g. contra-angle handpiece or composite syringe kit) is centered, accompanied by its branded retail packaging box standing upright slightly behind it.
-- **Optics & Mechanics:** 85mm or 100mm Macro lens stopped down to f/8.0 for full front-to-back focal sharpness (deep commercial depth of field, zero blurry edges). Medium format digital back emulation for pristine micro-contrast.
-- **Lighting Setup:** Dual vertical strip softboxes flanking the product at 45°, creating balanced linear specular highlights on curved surfaces. Large overhead diffusion panel for soft top-fill. Ground plane features a delicate, realistic contact ambient shadow fading out softly.
-- **Backdrop & Grading:** Clean infinity cyclorama background with an ultra-subtle radial gradient from warm Almond Cream (`#FDF8F3`) at the center to pale Frozen Water (`#F0F4F8`) at the outer edges. Clean neutral white balance (5500K).
-- **Turnkey Generative AI Prompt:**
-  ```text
-  Commercial e-commerce studio product packshot of dental clinic equipment, 1:1 square ratio. Centered composition with balanced negative space: an unboxed precision contra-angle dental handpiece in satin surgical stainless steel, standing next to its minimalist medical retail product packaging box in intense navy blue (#102748) and clean white typography. Shot on Hasselblad H6D, 85mm f/8 lens for complete edge-to-edge sharpness, professional catalog lighting with diffused softboxes, clean contact shadow underneath, subtle radial gradient backdrop from warm almond cream (#FDF8F3) to pale frozen water tint (#F0F4F8). Sterile, immaculate retail dental supply quality, 8k, photorealistic --ar 1:1 --v 6.1 --style raw
-  ```
-
----
-
-### 5.7 Navbar Brand Identity Reinforcement
-
-**Current State:** The brand uses a generic Activity Lucide icon in a navy square + "PRONTO" text + "ODONTOLOGIA" badge.
-
-**Proposed Changes:**
-
-- **Brand name typography:** Switch `.brand-name` to `--font-display` (Baloo Da 2) at weight 800, size 1.6rem. The rounded, friendly geometry of Baloo Da 2 will immediately give "PRONTO" a distinctive branded character instead of the generic geometric DM Sans.
-
-- **Brand icon wrapper:** Change background from `--navy-900` to `--brand-blue: #102748`. The icon inside should use the `--brand-accent-green: #CAE400` color instead of white, creating a vibrant brand mark.
-
-- **Brand sub-badge "ODONTOLOGIA":** Change background from teal-50 to `--brand-limonade: #ECEFBE`, text color to `--brand-accent-green-text: #3D4A00`, border to `#DDE1A0`.
-
-- **Brand slogan addition (optional):** Below the brand badge, add a small "Insumos a un click de distancia" in Syne 400 italic at 0.65rem in `--text-muted`. This reinforces the brand tagline. Only include on desktop (hide below 992px).
-
----
-
-## 📐 6. Component-Level Change Specifications
-
-### 6.1 Files Modified
-
-| File | Changes | Phase |
-| :--- | :--- | :--- |
-| `index.html` | Google Fonts import (Baloo Da 2 + Syne). Update theme-color to `#102748`. | P1 |
-| `src/index.css` | New color tokens. Font family overrides. All component color updates. New CSS classes for promo strip, hero image panel, footer trust badges, placeholder tints. | P1-P3 |
-| `src/components/ProductCard.tsx` | Reconcile `ICON_BY_CATEGORY` to support the 6 Chilean dental categories from PR #6; update typography and badge colors. | P1-P2 |
-| `src/components/Hero.tsx` | Restructure to image panel layout. Move guarantee items to trust strip. | P2 |
-| `src/components/Navbar.tsx` | Brand slogan line (optional). Icon color update (handled via CSS). | P1 |
-| `src/components/Footer.tsx` | Add trust badge row. Update footer link hover color reference. | P3 |
-| `src/App.tsx` | Insert promo strip component between Hero and CategoryFilter. | P2 |
-
-> **Multi-Page CSS Isolation Guardrail (reconciled with PR #6):**  
-> Storefront CSS changes in `src/index.css` apply exclusively to `index.html`. The admin portal introduced in PR #6 lives on `/admin` (`admin.html`) with its own scoped styles in `src/admin/admin.css`. Storefront styling changes must never bleed into or alter `src/admin/admin.css`.
-
-### 6.2 New Component: PromoStrip
-
-A lightweight stateless component for the promotional strip:
-
-```tsx
-// src/components/PromoStrip.tsx
-import { Package, Truck, FileCheck } from 'lucide-react'
-
-export default function PromoStrip() {
-  return (
-    <div className="promo-strip">
-      <div className="promo-strip-item">
-        <Package size={16} />
-        <span>Insumos a un click de distancia</span>
-      </div>
-      <div className="promo-strip-item">
-        <Truck size={16} />
-        <span>Despacho Express Melipilla y RM</span>
-      </div>
-      <div className="promo-strip-item">
-        <FileCheck size={16} />
-        <span>Factura Electronica SII - 19% IVA</span>
-      </div>
-    </div>
-  )
-}
-```
-
----
-
-## 🛠️ 7. Implementation Phases
-
-All phases respect the project guardrails: Vanilla CSS only, React 18 state, zero test regressions.
-
-| Phase | Target | Key Actions | Risk | Test Impact |
-| :--- | :--- | :--- | :--- | :--- |
-| **P1** | **Typography + Colors (Foundation)** | Replace Google Fonts import with Baloo Da 2 + Syne. Update all CSS tokens (colors, fonts). Update theme-color meta tag. This is the "big bang" that touches index.html and index.css only. | Low | Zero — CSS-only changes |
-| **P2** | **Hero + Promo Strip** | Restructure Hero.tsx (image panel + trust strip). Create PromoStrip.tsx. Add to App.tsx. Add hero image CSS. | Medium | Hero test may need mock update for new structure |
-| **P3** | **Footer Trust Badges + Placeholder Tints** | Add trust badge row to Footer.tsx. Update placeholder CSS tints. | Low | Footer test may need update for new DOM elements |
-| **P4** | **Polish + Mobile Responsive QA** | Verify all responsive breakpoints with new fonts/colors. Adjust sizes as needed for Baloo Da 2 metrics (it runs wider than DM Sans). Test category scroll, hero image scaling. | Low-Med | Zero — CSS adjustments |
-
----
-
-## ❓ 8. Open Questions and Decisions Required
-
-### Q1: Hero Image — Source Strategy
-The hero requires a brand lifestyle photograph. Options:
-- **A)** You provide or commission a real product photo
-- **B)** I generate a representative hero image using the image generation tool during implementation
-- **C)** Use a high-quality placeholder image initially and replace with real photography later
-
-Recommendation: Option B for the initial implementation, with a plan to replace with real photography (Option A) for production launch.
-
-### Q2: CTA Button Color — Accent Green or Cayenne?
-The brand manual specifies Limonade/Accent Green for CTAs (like "Contactanos"). However, the bright `#CAE400` green-yellow may feel unusual for "Agregar al Carro" (add-to-cart) buttons. Options:
-- **A)** Use `#CAE400` accent-green for ALL CTAs (strict brand compliance)
-- **B)** Use `#CAE400` for primary hero/contact CTAs, but use `--brand-blue: #102748` (Intense Blue) for add-to-cart buttons
-- **C)** Use `--brand-cayenne: #C84B31` (warm red-orange) for add-to-cart, `#CAE400` for hero CTAs
-
-Recommendation: Option B — Accent Green for hero and WhatsApp CTAs (the "Contactanos" type buttons), Intense Blue for commerce actions (add-to-cart, checkout). This gives the site color variety while remaining on-brand.
-
-### Q3: Category Section Dividers (5.4)
-The category section dividers in the product grid are the most complex structural change. Should we:
-- **A)** Include them in this phase (requires ProductList.tsx restructure)
-- **B)** Defer to a future phase and rely on the promo strip for visual rhythm
-- **C)** Implement a simplified version (just a text header, no imagery)
-
-Recommendation: Option B for now — the promo strip + placeholder tints + hero image already add significant visual variety. Section dividers can come later.
-
-### Q4: Brand Slogan in Navbar (5.7)
-Adding the slogan "Insumos a un click de distancia" below the brand badge:
-- **A)** Include it (adds personality, reinforces tagline)
-- **B)** Skip it (navbar already has enough elements)
-
-Recommendation: Option A — it is very lightweight (a single span) and reinforces the brand tagline from the manual.
-
-### Q5: Cayenne Red Exact Value
-The brand manual says "Cayenne Red / Orange" but does not provide an exact hex. I have proposed `#C84B31` which is a warm cayenne-red with orange undertones. Should I:
-- **A)** Use `#C84B31` as proposed
-- **B)** Use a different value if you have the exact brand hex from the designer
-
----
-
-## ✅ 9. Verification Plan
-
-### Automated Tests
-```bash
-pnpm test          # All 330 unit and integration tests must pass without regressions
-pnpm build         # Multi-page bundle build validation (dist/index.html & dist/admin.html)
-```
-
-### Visual Verification Checklist
-- Baloo Da 2 loads correctly for headings/brand (check Network tab for Google Fonts)
-- Syne loads correctly for body text
-- Intense Blue (`#102748`) is the dominant dark color (navbar, utility bar, footer)
-- Accent Green (`#CAE400`) appears on CTA buttons
-- Cayenne Red-Orange appears on discount badges, featured card strips, cart badge
-- Page background is warm cream (`#FDF8F3`) not cool gray
-- Borders are warm-toned, not cool slate
-- Hero section shows lifestyle image panel (or placeholder)
-- Promo strip shows slogan and 3 value propositions
-- Footer trust badges appear above copyright bar
-- Product placeholders have category-specific tints
-- Mobile responsive: fonts render at appropriate sizes
-- Mobile responsive: promo strip wraps or scrolls gracefully
-
-### Cross-Browser Spot Check
-- Chrome (primary), Firefox, Safari (macOS), Edge
-- Mobile: Chrome Android, Safari iOS
-
----
-
-## 📊 10. Before/After Summary Table
-
-| Aspect | Current State | After Brand Overhaul |
-| :--- | :--- | :--- |
-| **Primary dark** | Navy `#0b192c` / `#07101d` | Intense Blue `#102748` / `#0b1a33` |
-| **CTA buttons** | Teal `#088395` | Accent Green `#CAE400` (hero) / Intense Blue `#102748` (cart) |
-| **Warm accent** | Amber `#b45309` | Cayenne Red-Orange `#C84B31` |
-| **Page background** | Cool gray `#f8fafb` | Warm cream `#FDF8F3` |
-| **Display font** | DM Sans 800 | **Baloo Da 2** 800 (rounded, friendly) |
-| **Body font** | DM Sans 400-600 | **Syne** 400-600 (contemporary, clean) |
-| **Hero section** | Text + icon card, no imagery | Lifestyle image panel + compact trust strip |
-| **Between hero and grid** | Nothing | Brand slogan promo strip |
-| **Product placeholders** | Uniform gray dot-grid | Category-specific brand-tinted backgrounds |
-| **Footer** | Text only, no trust assets | Visual trust badge row (Mercado Pago, SII, carriers) |
-| **Brand personality** | "Competent template" | "Established dental supplier with warm, branded identity" |
-
----
-
-> **Bottom Line:** This overhaul brings the storefront into compliance with the professional brand manual while surgically inserting visual assets at the 5 key dead zones that make the site feel "soulless." The result should be a warm, commercially confident, distinctively branded dental supply storefront that a clinic manager in Melipilla recognizes as an established, trustworthy supplier — not a template.
+## 📎 Appendix A — Second-Audit Claim Validation
+
+Every claim from the independent audit re-verified against code on Sep 21, 2026:
+
+| Audit claim                                                                     | Verdict                                                                                                                                    | Evidence / nuance                                                       |
+| :------------------------------------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- |
+| Zero product photos across catalog                                              | ✅ Confirmed (corrected: 11 products, not 12) — and production `pronto-*` items also `images: []`                                          | `products.ts` all entries; `import-catalog-csv.ts:210`                  |
+| Placeholder gradients = +4 hue families                                         | ✅ Confirmed — nuance: variety only in fallback; production is uniform `gradient-teal`                                                     | `index.css:1271-1318`                                                   |
+| `object-fit: cover` will crop real photos                                       | ✅ Confirmed                                                                                                                               | `index.css:1373`                                                        |
+| No favicon; `og-preview.png` missing                                            | ✅ Confirmed                                                                                                                               | `public/` = 6 files only; `index.html` references nonexistent asset     |
+| Generic Lucide logo; naming drift                                               | ✅ Confirmed                                                                                                                               | `Navbar.tsx:69-77`; `Footer.tsx`; `index.html`                          |
+| Fabricated ratings / permanent discounts                                        | ✅ Confirmed with nuance — affects `isActive:false` fallback seeds; production imports `reviewsCount:0`, no `originalPrice`                | `products.ts`; `import-catalog-csv.ts:196-197`                          |
+| Placeholder phone in 4 places                                                   | ✅ Confirmed — worse: env var exists but 5 files bypass it                                                                                 | `Navbar/Hero/Footer/ProductQuickView/ErrorBoundary` vs `whatsapp.ts:15` |
+| Fictional manufacturers                                                         | ✅ Confirmed                                                                                                                               | `products.ts` manufacturers list                                        |
+| Cyan `#0E7490` on navy ≈ 2.8:1; footer hover regresses                          | ✅ Confirmed — recomputed ≈2.79:1; `#38bdf8` on navy-950 ≈8:1                                                                              | contrast math; `index.css:2516`                                         |
+| Space Grotesk + Inter = AI-default stack                                        | ⚖️ Subjective but fair — decision re-opened                                                                                                | §10.2                                                                   |
+| "Soul" section aspirational                                                     | ✅ Valid — replaced with concrete tactics                                                                                                  | §10.5                                                                   |
+| Mobile never audited                                                            | ✅ Confirmed — 1-col grid, hidden utility bar, no `inputmode`, no affordance                                                               | `index.css:2635-2746`                                                   |
+| Checkout/payment surfaces un-audited                                            | ✅ Confirmed — text-only payment cards, no marks, no explainer                                                                             | `CheckoutModal.tsx:714-788`                                             |
+| `Últimas N unid.` leaks raw stock                                               | ✅ Confirmed — violates `src/data/AGENTS.md` confidentiality rule                                                                          | `ProductCard.tsx:96`                                                    |
+| No B2B card IA / unit of sale                                                   | ✅ Confirmed — no `unitOfSale` field; units embedded in 4 of 11 names                                                                      | `types`, `products.ts`                                                  |
+| No motion system                                                                | ✅ Confirmed                                                                                                                               | `App.tsx` badge pulse only; no added-state                              |
+| A11y asserted not audited                                                       | ✅ Confirmed — `role="dialog"` yes, focus trap no; lime-as-focus already documented                                                        | all 4 modals                                                            |
+| Lime text-on-white ~1.4:1                                                       | ⚠️ Misstated — lime is a _fill_ (dark text on it passes); the 1.4:1 figure is as a focus indicator per `AGENTS.md`. Point stands in spirit | `index.css:91`                                                          |
+| No spacing scale; §10 decisions truncated                                       | ✅ Confirmed                                                                                                                               | fixed in §10.1/§12                                                      |
+| **(Missed by both)** Footer `$100.000` vs cart `FREE_SHIPPING_THRESHOLD=150000` | ✅ New finding added                                                                                                                       | `Footer.tsx:85` vs `Cart.tsx:14`                                        |
