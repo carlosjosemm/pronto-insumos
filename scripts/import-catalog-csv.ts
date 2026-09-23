@@ -155,7 +155,6 @@ async function importCatalog() {
 
   let inactivatedCount = 0
   for (const doc of existingSnap.docs) {
-    const data = doc.data()
     // If it's a prototype item or any item not part of the new pronto- catalog
     if (doc.id.startsWith('odon-')) {
       batch.delete(doc.ref)

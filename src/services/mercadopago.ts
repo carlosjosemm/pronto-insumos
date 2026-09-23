@@ -44,10 +44,10 @@ export async function createMercadoPagoPreference(
       success: true,
       initPoint: data.initPoint || data.sandboxInitPoint
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.warn(
       'Vercel serverless preference endpoint not active in current environment, using fallback simulation:',
-      error.message
+      error instanceof Error ? error.message : error
     )
     return {
       success: true,

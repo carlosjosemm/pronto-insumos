@@ -77,7 +77,7 @@ async function fixCatalogData() {
   let updatedBadgeCount = 0
 
   for (const doc of snapshot.docs) {
-    const data = doc.data() as any
+    const data = doc.data() as { mediaBadge?: string; brand?: string; manufacturer?: string }
 
     // 1. Purge legacy prototype items (odon-*)
     if (doc.id.startsWith('odon-')) {

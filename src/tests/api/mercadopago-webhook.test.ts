@@ -110,7 +110,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     const productRef = { id: 'prod-turbine-1' }
 
     const mockTransactionUpdate = vi.fn()
-    const mockTransactionGet = vi.fn().mockImplementation((ref: any) => {
+    const mockTransactionGet = vi.fn().mockImplementation((ref: { id?: string }) => {
       if (ref?.id === 'order-doc-abc') {
         return Promise.resolve({
           exists: true,
@@ -160,7 +160,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
           doc: vi.fn().mockReturnValue({ id: 'audit-dummy-id' })
         }
       }),
-      runTransaction: vi.fn(async (cb: any) => {
+      runTransaction: vi.fn(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
         await cb({
           get: mockTransactionGet,
           update: mockTransactionUpdate,
@@ -169,7 +169,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       })
     }
 
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -245,7 +245,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       runTransaction: vi.fn()
     }
 
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -309,7 +309,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       runTransaction: vi.fn()
     }
 
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -374,7 +374,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
         }
         return {}
       }),
-      runTransaction: vi.fn(async (cb: any) => {
+      runTransaction: vi.fn(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
         await cb({
           get: mockTransactionGet,
           update: mockTransactionUpdate
@@ -382,7 +382,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       })
     }
 
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -411,7 +411,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     const mockAdminDb = {
       collection: vi.fn()
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -492,7 +492,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       }),
       runTransaction: vi.fn()
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const req = {

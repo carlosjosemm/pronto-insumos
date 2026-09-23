@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatCategoryDisplayName, CATEGORY_DISPLAY_MAP } from '../../utils/categoryAlias'
+import { formatCategoryDisplayName } from '../../utils/categoryAlias'
 
 describe('Category Display Alias Utility', () => {
   it('should alias "DESECHABLES, ESTERILIZACION Y DESINFECCION" to "Desechables y Esterilización"', () => {

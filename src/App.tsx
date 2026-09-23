@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
 import PromoStrip from './components/PromoStrip'
@@ -22,87 +22,179 @@ import { CartItem, Product, ProductCategory, PromoCode, Toast } from './types'
 import { CheckCircle2 } from 'lucide-react'
 import { calculateIVA } from './utils/currency'
 
+type PaymentReturnStatus = 'approved' | 'failure' | 'pending' | null
+
+interface UrlBootstrap {
+  /** True when the URL carried payment-return or tracking parameters to consume. */
+  hasParams: boolean
+  /** Set when the shopper landed back from Mercado Pago with a status. */
+  approved: boolean
+  paymentReturn: {
+    isOpen: boolean
+    status: PaymentReturnStatus
+    orderId: string
+    paymentId: string
+  }
+  tracking: {
+    isOpen: boolean
+    orderId: string
+    rut: string
+  }
+}
+
+/**
+ * Reads the payment-return / tracking query parameters once, so the state they
+ * seed can be created with a lazy initializer instead of being written back
+ * from a mount effect (which would cause a cascading render).
+ */
+function parseUrlBootstrap(): UrlBootstrap {
+  const empty: UrlBootstrap = {
+    hasParams: false,
+    approved: false,
+    paymentReturn: { isOpen: false, status: null, orderId: '', paymentId: '' },
+    tracking: { isOpen: false, orderId: '', rut: '' }
+  }
+  if (typeof window === 'undefined') return empty
+
+  const params = new URLSearchParams(window.location.search)
+  const rawStatus = (params.get('status') || params.get('collection_status') || '').toLowerCase().trim()
+  const orderIdParam = params.get('orderId') || params.get('external_reference')
+  const paymentIdParam = params.get('payment_id') || params.get('collection_id')
+
+  let status: PaymentReturnStatus = null
+  if (rawStatus === 'approved') {
+    status = 'approved'
+  } else if (rawStatus === 'failure' || rawStatus === 'rejected' || rawStatus === 'cancelled') {
+    status = 'failure'
+  } else if (rawStatus === 'pending' || rawStatus === 'in_process') {
+    status = 'pending'
+  }
+
+  const trackParam = params.get('track') || params.get('tracking')
+  const shouldTrack = Boolean(trackParam) && !rawStatus
+
+  const bootstrap: UrlBootstrap = {
+    hasParams: Boolean(status) || shouldTrack,
+    approved: status === 'approved',
+    paymentReturn: {
+      isOpen: Boolean(status),
+      status,
+      orderId: orderIdParam ? orderIdParam.trim().toUpperCase() : '',
+      paymentId: paymentIdParam ? paymentIdParam.trim() : ''
+    },
+    tracking: { isOpen: false, orderId: '', rut: '' }
+  }
+
+  if (shouldTrack) {
+    bootstrap.tracking = {
+      isOpen: true,
+      orderId:
+        trackParam !== 'true' ? (trackParam as string).trim().toUpperCase() : (orderIdParam || '').trim().toUpperCase(),
+      rut: params.get('rut') || ''
+    }
+  }
+
+  return bootstrap
+}
+
 export default function App() {
   const [search, setSearch] = useState<string>('')
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory>('all')
   const [sortBy, setSortBy] = useState<string>('featured')
   const [inStockOnly, setInStockOnly] = useState<boolean>(false)
 
+  const bootstrap = useMemo(() => parseUrlBootstrap(), [])
+
   const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState<boolean>(true)
+  const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null)
   const hasRevalidated = useRef(false)
 
+  // `loading` is derived from which request has completed, so a filter change
+  // flips it to true during render instead of via a state-setting effect.
+  const catalogRequestKey = `${selectedCategory}|${search}|${sortBy}|${inStockOnly}`
+  const loading = loadedRequestKey !== catalogRequestKey
+
   const [cart, setCart] = useState<CartItem[]>(() => {
+    if (bootstrap.approved) return []
     const stored = loadCartFromStorage()
     return stored ? stored.items : []
   })
+  // Mirrors `cart` so the catalog effect can read the latest cart without
+  // taking it as a dependency (which would re-fetch on every cart change).
+  const cartRef = useRef(cart)
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false)
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false)
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null)
   const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(() => {
+    if (bootstrap.approved) return null
     const stored = loadCartFromStorage()
     return stored ? stored.appliedPromo : null
   })
   const [toasts, setToasts] = useState<Toast[]>([])
-  const [paymentReturn, setPaymentReturn] = useState<{
-    isOpen: boolean
-    status: 'approved' | 'failure' | 'pending' | null
-    orderId: string
-    paymentId: string
-  }>({
-    isOpen: false,
-    status: null,
-    orderId: '',
-    paymentId: ''
-  })
-  const [isTrackingOpen, setIsTrackingOpen] = useState<boolean>(false)
-  const [trackingInitialOrderId, setTrackingInitialOrderId] = useState<string>('')
-  const [trackingInitialRut, setTrackingInitialRut] = useState<string>('')
+  const [paymentReturn, setPaymentReturn] = useState(() => bootstrap.paymentReturn)
+  const [isTrackingOpen, setIsTrackingOpen] = useState<boolean>(bootstrap.tracking.isOpen)
+  const [trackingInitialOrderId, setTrackingInitialOrderId] = useState<string>(bootstrap.tracking.orderId)
+  const [trackingInitialRut, setTrackingInitialRut] = useState<string>(bootstrap.tracking.rut)
 
-  // Load products when filters/search change
+  // Toast Notification Helper
+  const addToast = useCallback((message: string) => {
+    const id = Date.now()
+    setToasts((prev) => [...prev, { id, message }])
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id))
+    }, 3000)
+  }, [])
+
+  useEffect(() => {
+    cartRef.current = cart
+  }, [cart])
+
+  // Load products when filters/search change, then revalidate the stored cart
+  // against the freshly loaded inventory.
   useEffect(() => {
     let isMounted = true
-    setLoading(true)
-    fetchProducts({
-      category: selectedCategory,
-      search,
-      sortBy,
-      inStockOnly
-    })
-      .then((res) => {
-        if (isMounted) {
-          setProducts(res)
+
+    const load = async () => {
+      try {
+        const res = await fetchProducts({
+          category: selectedCategory,
+          search,
+          sortBy,
+          inStockOnly
+        })
+        if (!isMounted) return
+
+        setProducts(res)
+
+        if (
+          !hasRevalidated.current &&
+          cartRef.current.length > 0 &&
+          selectedCategory === 'all' &&
+          !search &&
+          !inStockOnly
+        ) {
+          hasRevalidated.current = true
+          const reval = revalidateCartAgainstCatalog(cartRef.current, res)
+          if (reval.hasChanges) {
+            setCart(reval.items)
+            if (reval.removedCount > 0 || reval.adjustedCount > 0) {
+              addToast('Se actualizó el carro según el stock disponible en bodega')
+            }
+          }
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         console.warn('Error fetching products:', err)
-      })
-      .finally(() => {
-        if (isMounted) {
-          setLoading(false)
-        }
-      })
+      } finally {
+        if (isMounted) setLoadedRequestKey(catalogRequestKey)
+      }
+    }
+
+    load()
 
     return () => {
       isMounted = false
     }
-  }, [selectedCategory, search, sortBy, inStockOnly])
-
-  // Revalidate cart items on initial catalog load against full inventory
-  useEffect(() => {
-    if (hasRevalidated.current || cart.length === 0) return
-
-    if (products.length > 0 && selectedCategory === 'all' && !search && !inStockOnly) {
-      hasRevalidated.current = true
-      const reval = revalidateCartAgainstCatalog(cart, products)
-      if (reval.hasChanges) {
-        setCart(reval.items)
-        if (reval.removedCount > 0 || reval.adjustedCount > 0) {
-          addToast('Se actualizó el carro según el stock disponible en bodega')
-        }
-      }
-    }
-  }, [products, selectedCategory, search, inStockOnly])
+  }, [selectedCategory, search, sortBy, inStockOnly, catalogRequestKey, addToast])
 
   // Persist cart and promo code changes to localStorage
   useEffect(() => {
@@ -115,74 +207,24 @@ export default function App() {
     clearCartFromStorage()
   }
 
-  // Check for Mercado Pago return query parameters on mount
+  // Consume the payment-return / tracking parameters. The state they seed was
+  // already created by the lazy initializers above; this effect only performs
+  // the external side effect of tidying the address bar.
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    const rawStatus = (params.get('status') || params.get('collection_status') || '').toLowerCase().trim()
-    const orderIdParam = params.get('orderId') || params.get('external_reference')
-    const paymentIdParam = params.get('payment_id') || params.get('collection_id')
-
-    let normalizedStatus: 'approved' | 'failure' | 'pending' | null = null
-    if (rawStatus === 'approved') {
-      normalizedStatus = 'approved'
-    } else if (rawStatus === 'failure' || rawStatus === 'rejected' || rawStatus === 'cancelled') {
-      normalizedStatus = 'failure'
-    } else if (rawStatus === 'pending' || rawStatus === 'in_process') {
-      normalizedStatus = 'pending'
+    if (!bootstrap.hasParams || typeof window === 'undefined') return
+    if (bootstrap.approved) clearCartFromStorage()
+    try {
+      const cleanUrl = window.location.pathname + window.location.hash
+      window.history.replaceState({}, document.title, cleanUrl)
+    } catch {
+      // Fallback for non-browser or test environments
     }
-
-    if (normalizedStatus) {
-      const cleanOrderId = orderIdParam ? orderIdParam.trim().toUpperCase() : ''
-      const cleanPaymentId = paymentIdParam ? paymentIdParam.trim() : ''
-
-      setPaymentReturn({
-        isOpen: true,
-        status: normalizedStatus,
-        orderId: cleanOrderId,
-        paymentId: cleanPaymentId
-      })
-
-      if (normalizedStatus === 'approved') {
-        handleOrderSuccess()
-      }
-
-      // Clean technical query parameters from browser address bar
-      try {
-        const cleanUrl = window.location.pathname + window.location.hash
-        window.history.replaceState({}, document.title, cleanUrl)
-      } catch {
-        // Fallback for non-browser or test environments
-      }
-    }
-
-    // Check for order tracking query parameter on mount
-    const trackParam = params.get('track') || params.get('tracking')
-    if (trackParam && !rawStatus) {
-      const targetId =
-        typeof trackParam === 'string' && trackParam !== 'true'
-          ? trackParam.trim().toUpperCase()
-          : (orderIdParam || '').trim().toUpperCase()
-      const rutParam = params.get('rut') || ''
-      setTrackingInitialOrderId(targetId)
-      setTrackingInitialRut(rutParam)
-      setIsTrackingOpen(true)
-    }
-  }, [])
+  }, [bootstrap])
 
   const handleOpenTracking = (initialId = '', initialRut = '') => {
     setTrackingInitialOrderId(initialId)
     setTrackingInitialRut(initialRut)
     setIsTrackingOpen(true)
-  }
-
-  // Toast Notification Helper
-  const addToast = (message: string) => {
-    const id = Date.now()
-    setToasts((prev) => [...prev, { id, message }])
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 3000)
   }
 
   // Cart Operations
@@ -284,9 +326,10 @@ export default function App() {
       {/* Footer */}
       <Footer onOpenTracking={() => handleOpenTracking()} />
 
-      {/* Quick View Modal */}
+      {/* Quick View Modal — keyed by product so its gallery/quantity state resets per product */}
       {quickViewProduct && (
         <ProductQuickView
+          key={quickViewProduct.id}
           product={quickViewProduct}
           onClose={() => setQuickViewProduct(null)}
           onAddToCart={handleAddToCart}
@@ -328,13 +371,16 @@ export default function App() {
         }}
       />
 
-      {/* Customer Order Tracking Modal */}
-      <OrderTrackingModal
-        isOpen={isTrackingOpen}
-        onClose={() => setIsTrackingOpen(false)}
-        initialOrderId={trackingInitialOrderId}
-        initialRut={trackingInitialRut}
-      />
+      {/* Customer Order Tracking Modal — mounted only while open so its form
+          state initializes from the initial* props on every open */}
+      {isTrackingOpen && (
+        <OrderTrackingModal
+          isOpen={isTrackingOpen}
+          onClose={() => setIsTrackingOpen(false)}
+          initialOrderId={trackingInitialOrderId}
+          initialRut={trackingInitialRut}
+        />
+      )}
 
       {/* Toast Alerts */}
       <div className="toast-container" role="status" aria-live="polite">

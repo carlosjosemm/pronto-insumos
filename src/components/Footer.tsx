@@ -1,5 +1,5 @@
 import React from 'react'
-import { Activity, ShieldCheck, Headphones, RefreshCw, MapPin, Building2, Phone, CreditCard, Truck } from 'lucide-react'
+import { Activity, ShieldCheck, RefreshCw, MapPin, Building2, Phone, CreditCard, Truck } from 'lucide-react'
 
 export interface FooterProps {
   onOpenTracking?: () => void

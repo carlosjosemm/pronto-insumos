@@ -71,7 +71,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
         })
       })
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -106,7 +106,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
         })
       })
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -152,7 +152,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
         commit: batchCommitSpy
       })
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',

@@ -106,6 +106,14 @@ export type OrderStatus =
 
 export interface Order {
   orderId: string
+  /**
+   * Firestore order timestamp: written as a `serverTimestamp()` sentinel, read
+   * back as a `Timestamp`, seeded as an ISO string. Deliberately left open —
+   * the admin portal passes this straight to `new Date(...)`, so narrowing it
+   * here breaks `src/admin/components/OrderTable.tsx`. Tighten both sides
+   * together in a dedicated pass.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createdAt?: any
   updatedAt?: string
   paymentMethod: PaymentMethod
@@ -219,7 +227,7 @@ export interface OrderStatusHistory {
   actorRole: AuditActorRole
   timestamp: string
   reason: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export type InventoryChangeType =
@@ -240,5 +248,5 @@ export interface InventoryAuditLog {
   changedByEmail?: string | null
   actorRole: AuditActorRole
   timestamp: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }

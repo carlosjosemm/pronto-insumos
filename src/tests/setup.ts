@@ -1,8 +1,11 @@
 import '@testing-library/jest-dom'
 
+/** Writable view of the Vite env so individual keys can be deleted per suite. */
+const mutableEnv = import.meta.env as unknown as Record<string, unknown>
+
 // Mock import.meta.env for test environment
 if (typeof import.meta.env === 'undefined') {
-  // @ts-ignore
+  // @ts-expect-error import.meta.env is typed as always-present, but some runners leave it undefined
   import.meta.env = {}
 }
 
@@ -23,8 +26,8 @@ Object.assign(import.meta.env, {
 // Ensure developer .env.local Firestore environment settings do not leak into unit tests
 delete process.env.FIRESTORE_ENV
 delete process.env.VITE_FIRESTORE_ENV
-delete (import.meta.env as any).FIRESTORE_ENV
-delete (import.meta.env as any).VITE_FIRESTORE_ENV
+delete mutableEnv.FIRESTORE_ENV
+delete mutableEnv.VITE_FIRESTORE_ENV
 
 // Clean in-memory Storage implementation for test environment (fixes Node 22 jsdom limitation)
 class LocalStorageMock implements Storage {

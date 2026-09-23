@@ -71,7 +71,7 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
         })
       })
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -102,7 +102,7 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
         })
       })
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -145,7 +145,7 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
         })
       })
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',

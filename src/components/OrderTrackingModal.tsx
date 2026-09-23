@@ -2,11 +2,9 @@ import React, { useState, useEffect } from 'react'
 import {
   X,
   Search,
-  PackageCheck,
   Truck,
   CheckCircle2,
   Clock,
-  FileText,
   Upload,
   AlertCircle,
   MessageSquare,
@@ -36,7 +34,10 @@ export default function OrderTrackingModal({
   const [orderId, setOrderId] = useState<string>(initialOrderId)
   const [rut, setRut] = useState<string>(initialRut)
   const [rutError, setRutError] = useState<string>('')
-  const [loading, setLoading] = useState<boolean>(false)
+  // When the caller pre-fills valid credentials the modal auto-searches on
+  // mount, so the spinner is already on for the first paint.
+  const autoSearchOnMount = Boolean(initialOrderId && initialRut && validateRut(initialRut))
+  const [loading, setLoading] = useState<boolean>(autoSearchOnMount)
   const [error, setError] = useState<string>('')
   const [trackingData, setTrackingData] = useState<OrderTrackingInfo | null>(null)
 
@@ -45,21 +46,6 @@ export default function OrderTrackingModal({
   const [voucherUploading, setVoucherUploading] = useState<boolean>(false)
   const [voucherSuccess, setVoucherSuccess] = useState<string>('')
   const [voucherError, setVoucherError] = useState<string>('')
-
-  // Sync props when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      if (initialOrderId) setOrderId(initialOrderId)
-      if (initialRut) setRut(initialRut)
-      setError('')
-      setVoucherSuccess('')
-      setVoucherError('')
-
-      if (initialOrderId && initialRut && validateRut(initialRut)) {
-        performSearch(initialOrderId, initialRut)
-      }
-    }
-  }, [isOpen, initialOrderId, initialRut])
 
   // ESC key handler
   useEffect(() => {
@@ -70,8 +56,6 @@ export default function OrderTrackingModal({
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose])
-
-  if (!isOpen) return null
 
   const handleRutChange = (val: string) => {
     const formatted = formatRut(val)
@@ -108,6 +92,33 @@ export default function OrderTrackingModal({
       setError(result?.error || 'No se encontró el pedido o los datos son incorrectos.')
     }
   }
+
+  // Auto-search when the modal is opened with prefilled credentials. The form
+  // state is initialized from the initial* props at mount (the caller mounts
+  // this component only while open), and every state update here happens after
+  // the awaited request, so no render is cascaded from the effect body.
+  useEffect(() => {
+    if (!autoSearchOnMount) return
+    let cancelled = false
+
+    const run = async () => {
+      const result = await fetchOrderTracking({ orderId: initialOrderId.trim().toUpperCase(), rut: initialRut })
+      if (cancelled) return
+      setLoading(false)
+      if (result?.success && result?.data) {
+        setTrackingData(result.data)
+      } else {
+        setError(result?.error || 'No se encontró el pedido o los datos son incorrectos.')
+      }
+    }
+
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [autoSearchOnMount, initialOrderId, initialRut])
+
+  if (!isOpen) return null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

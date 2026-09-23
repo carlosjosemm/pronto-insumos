@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { AdminApp } from '../../admin/AdminApp'
 import * as firebaseAuth from 'firebase/auth'
+import type { NextOrObserver, User } from 'firebase/auth'
 
 vi.mock('firebase/auth', () => ({
   onAuthStateChanged: vi.fn(),
@@ -16,8 +17,8 @@ describe('AdminApp Component (Auth Gating & Router)', () => {
   })
 
   it('renders login screen when unauthenticated', async () => {
-    vi.mocked(firebaseAuth.onAuthStateChanged).mockImplementation((_auth, callback: any) => {
-      callback(null)
+    vi.mocked(firebaseAuth.onAuthStateChanged).mockImplementation((_auth, callback: NextOrObserver<User>) => {
+      if (typeof callback === 'function') callback(null)
       return () => {}
     })
 
@@ -36,8 +37,8 @@ describe('AdminApp Component (Auth Gating & Router)', () => {
       getIdTokenResult: vi.fn().mockResolvedValue({ claims: { admin: true } })
     }
 
-    vi.mocked(firebaseAuth.onAuthStateChanged).mockImplementation((_auth, callback: any) => {
-      callback(mockUser)
+    vi.mocked(firebaseAuth.onAuthStateChanged).mockImplementation((_auth, callback: NextOrObserver<User>) => {
+      if (typeof callback === 'function') callback(mockUser as unknown as User)
       return () => {}
     })
 

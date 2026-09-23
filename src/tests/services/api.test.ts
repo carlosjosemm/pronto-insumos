@@ -236,13 +236,17 @@ describe('submitOrder', () => {
     expect(result.itemsCount).toBe(2)
 
     expect(setDoc).toHaveBeenCalledTimes(1)
-    const [docRef, submittedPayload] = vi.mocked(setDoc).mock.calls[0] as any
+    const [docRef, submittedPayload] = vi.mocked(setDoc).mock.calls[0] as unknown as [
+      { id: string },
+      Record<string, unknown>
+    ]
     expect(docRef.id).toBe(result.orderId)
     expect(submittedPayload.status).toBe('PENDIENTE_PAGO_MERCADOPAGO')
     expect(submittedPayload.paymentMethod).toBe('mercadopago')
     expect(submittedPayload.orderId).toBe(result.orderId)
-    expect(submittedPayload.items).toHaveLength(1)
-    expect(submittedPayload.items[0].quantity).toBe(2)
+    const items = submittedPayload.items as Array<Record<string, unknown>>
+    expect(items).toHaveLength(1)
+    expect(items[0].quantity).toBe(2)
   })
 
   it('should initialize Transferencia orders with status PENDIENTE_TRANSFERENCIA', async () => {
@@ -256,7 +260,7 @@ describe('submitOrder', () => {
 
     expect(result.success).toBe(true)
     expect(setDoc).toHaveBeenCalledTimes(1)
-    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as any
+    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as unknown as Record<string, unknown>
     expect(submittedPayload.status).toBe('PENDIENTE_TRANSFERENCIA')
     expect(submittedPayload.paymentMethod).toBe('transferencia')
   })
@@ -272,7 +276,7 @@ describe('submitOrder', () => {
 
     expect(result.success).toBe(true)
     expect(setDoc).toHaveBeenCalledTimes(1)
-    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as any
+    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as unknown as Record<string, unknown>
     expect(submittedPayload.status).toBe('COTIZACION_SOLICITADA_WHATSAPP')
   })
 
@@ -308,7 +312,10 @@ describe('submitOrder', () => {
     expect(result.success).toBe(true)
     expect(result.orderId).toBe(customId)
 
-    const [docRef, submittedPayload] = vi.mocked(setDoc).mock.calls[0] as any
+    const [docRef, submittedPayload] = vi.mocked(setDoc).mock.calls[0] as unknown as [
+      { id: string },
+      Record<string, unknown>
+    ]
     expect(docRef.id).toBe(customId)
     expect(submittedPayload.orderId).toBe(customId)
   })

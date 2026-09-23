@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import CategoryShowcase, { CATEGORY_BANNERS } from '../../components/CategoryShowcase'
+import CategoryShowcase from '../../components/CategoryShowcase'
 
 describe('CategoryShowcase Component (Section 5.4 Category Assets)', () => {
   it('should render all 4 delivered category showcase cards when selectedCategory is "all"', () => {

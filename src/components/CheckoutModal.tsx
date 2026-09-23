@@ -13,8 +13,7 @@ import {
   FileText,
   ShieldAlert,
   Upload,
-  Truck,
-  AlertCircle
+  Truck
 } from 'lucide-react'
 import { submitOrder, generateOrderId } from '../services/api'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'

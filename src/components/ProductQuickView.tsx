@@ -37,16 +37,12 @@ export interface ProductQuickViewProps {
 }
 
 export default function ProductQuickView({ product, onClose, onAddToCart }: ProductQuickViewProps) {
+  // Quantity, gallery index and failed-image state are scoped to a single
+  // product: the caller keys this component by product id, so switching
+  // products remounts it and resets everything without a sync effect.
   const [quantity, setQuantity] = useState<number>(1)
   const [activeImgIndex, setActiveImgIndex] = useState<number>(0)
   const [failedImages, setFailedImages] = useState<Record<number, boolean>>({})
-
-  // Reset states when product changes
-  useEffect(() => {
-    setQuantity(1)
-    setActiveImgIndex(0)
-    setFailedImages({})
-  }, [product])
 
   const photos = product?.images && product.images.length > 0 ? product.images : []
   const hasMultiplePhotos = photos.length > 1

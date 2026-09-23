@@ -56,7 +56,7 @@ export async function fetchProducts({
   sortBy = 'featured',
   inStockOnly = false
 }: FetchProductsOptions = {}): Promise<Product[]> {
-  let result: Product[] = []
+  let result: Product[]
 
   const hasFirebaseConfig = Boolean(import.meta.env.VITE_FIREBASE_PROJECT_ID && import.meta.env.VITE_FIREBASE_API_KEY)
 
@@ -76,8 +76,8 @@ export async function fetchProducts({
       )
 
       result = await Promise.race([fetchPromise, timeoutPromise])
-    } catch (err: any) {
-      console.warn('Firestore catalog fallback to local products:', err.message)
+    } catch (err: unknown) {
+      console.warn('Firestore catalog fallback to local products:', err instanceof Error ? err.message : err)
       result = [...PRODUCTS]
     }
   } else {
@@ -183,8 +183,8 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
   try {
     const orderDocRef = doc(db, getCollectionName('orders'), orderId)
     await setDoc(orderDocRef, payload)
-  } catch (err: any) {
-    console.warn('Firestore order submit notice:', err.message)
+  } catch (err: unknown) {
+    console.warn('Firestore order submit notice:', err instanceof Error ? err.message : err)
   }
 
   return {

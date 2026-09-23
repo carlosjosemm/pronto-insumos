@@ -118,8 +118,11 @@ export async function uploadTransferVoucher({
       status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
       message: 'Comprobante recepcionado exitosamente. En proceso de validación contable.'
     }
-  } catch (err: any) {
-    console.warn('Endpoint /api/upload-voucher no disponible o falló; usando simulación local:', err.message)
+  } catch (err: unknown) {
+    console.warn(
+      'Endpoint /api/upload-voucher no disponible o falló; usando simulación local:',
+      err instanceof Error ? err.message : err
+    )
     // Simulated fallback for tests or offline development
     return {
       success: true,

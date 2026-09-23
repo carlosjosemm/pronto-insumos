@@ -210,7 +210,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
           })
         })
       }
-      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
       const req = {
         method: 'POST',
@@ -254,7 +254,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
           })
         })
       }
-      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
       const req = {
         method: 'POST',
@@ -292,7 +292,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
           })
         })
       }
-      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
       const req = {
         method: 'POST',
@@ -334,7 +334,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
           })
         })
       }
-      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
       const req = {
         method: 'POST',

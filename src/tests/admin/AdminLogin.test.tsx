@@ -17,7 +17,7 @@ describe('AdminLogin Component', () => {
     }
     vi.mocked(firebaseAuth.signInWithEmailAndPassword).mockResolvedValue({
       user: mockUser
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof firebaseAuth.signInWithEmailAndPassword>>)
 
     render(<AdminLogin onLoginSuccess={handleSuccess} />)
 
@@ -46,7 +46,7 @@ describe('AdminLogin Component', () => {
     }
     vi.mocked(firebaseAuth.signInWithEmailAndPassword).mockResolvedValue({
       user: mockUser
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof firebaseAuth.signInWithEmailAndPassword>>)
 
     render(<AdminLogin onLoginSuccess={handleSuccess} />)
 

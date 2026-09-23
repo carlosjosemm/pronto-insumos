@@ -62,6 +62,8 @@ async function setupAdmin() {
           })
         })
 
+  const auth = getAuth(app)
+
   const targetEmail = process.argv[2] || process.env.ADMIN_EMAIL
   const targetPassword = process.argv[3] || process.env.ADMIN_INITIAL_PASSWORD
 
@@ -96,8 +98,8 @@ async function setupAdmin() {
     await auth.setCustomUserClaims(user.uid, { admin: true })
     console.log(`🛡️ Permiso administrativo { admin: true } asignado a ${targetEmail}.`)
     console.log(`\n🎉 Configuración completada. Ya puedes iniciar sesión en /admin.\n`)
-  } catch (err: any) {
-    console.error('❌ Error al configurar el administrador:', err.message)
+  } catch (err: unknown) {
+    console.error('❌ Error al configurar el administrador:', err instanceof Error ? err.message : err)
     process.exit(1)
   }
 }

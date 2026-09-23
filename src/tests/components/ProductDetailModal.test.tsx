@@ -131,9 +131,7 @@ describe('Product Detail Modal (ProductQuickView)', () => {
   })
 
   it('closes on close button, backdrop click, and Escape key', () => {
-    const { rerender } = render(
-      <ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
-    )
+    render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
 
     // Close button
     fireEvent.click(screen.getByLabelText('Cerrar ventana'))

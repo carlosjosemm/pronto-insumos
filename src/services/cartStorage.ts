@@ -207,7 +207,7 @@ export function revalidateCartAgainstCatalog(storedItems: CartItem[], catalog: P
     const maxStock =
       typeof liveProduct.stockCount === 'number' && liveProduct.stockCount > 0 ? liveProduct.stockCount : 99
 
-    let finalQuantity = Math.max(1, Math.min(item.quantity, maxStock))
+    const finalQuantity = Math.max(1, Math.min(item.quantity, maxStock))
     if (finalQuantity !== item.quantity) {
       adjustedCount++
       hasChanges = true

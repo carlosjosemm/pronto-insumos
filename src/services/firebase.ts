@@ -51,8 +51,8 @@ export async function seedProductsToFirestore(): Promise<SeedResult> {
       }
     }
     return { success: true, count: snapshot.size, message: 'Firestore ya contiene productos sembrados.' }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error al sembrar base de datos en Firestore:', error)
-    return { success: false, error: error.message || 'Error desconocido' }
+    return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' }
   }
 }
