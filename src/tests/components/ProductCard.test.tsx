@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import React from 'react'
 import ProductCard from '../../components/ProductCard'
 import { Product } from '../../types'
@@ -172,6 +172,40 @@ describe('ProductCard component', () => {
     expect(screen.getByText('Últimas unidades')).toBeInTheDocument()
     // Confidentiality: the exact warehouse count must never be rendered
     expect(screen.queryByText(/Últimas 4 unid\./)).toBeNull()
+  })
+
+  describe('Transient "Agregado ✓" state (C.9)', () => {
+    it('should confirm the first add transiently and then revert to the Agregar CTA', () => {
+      vi.useFakeTimers()
+      try {
+        render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+
+        fireEvent.click(screen.getByText('Agregar'))
+        expect(screen.getByText('Agregado ✓')).toBeInTheDocument()
+        expect(screen.queryByText('Agregar')).toBeNull()
+
+        act(() => {
+          vi.advanceTimersByTime(900)
+        })
+
+        expect(screen.queryByText('Agregado ✓')).toBeNull()
+        expect(screen.getByText('Agregar')).toBeInTheDocument()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('should still call onAddToCart exactly once while showing the transient state', () => {
+      const onAddToCart = vi.fn()
+      render(<ProductCard product={mockProduct} onAddToCart={onAddToCart} onQuickView={() => {}} />)
+
+      fireEvent.click(screen.getByText('Agregar'))
+      expect(onAddToCart).toHaveBeenCalledTimes(1)
+
+      // Clicking the confirmation must not re-add the product
+      fireEvent.click(screen.getByText('Agregado ✓'))
+      expect(onAddToCart).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('Cart-aware stepper (D.6)', () => {

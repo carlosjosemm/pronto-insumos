@@ -33,6 +33,7 @@ import {
 } from '../config/delivery'
 import type { DeliveryZone } from '../config/delivery'
 import { useScrollLock } from '../hooks/useScrollLock'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 /** Factura Electrónica is disabled storefront-wide — the path is kept behind this flag. */
 const FACTURA_ENABLED = false
@@ -77,6 +78,7 @@ export default function CheckoutModal({
 
   // Freeze the page behind the modal
   useScrollLock(isOpen)
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen)
 
   useEffect(() => {
     if (!isOpen) return
@@ -356,7 +358,7 @@ export default function CheckoutModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={handleClose} role="dialog" aria-modal="true">
+    <div ref={dialogRef} className="modal-overlay" onClick={handleClose} role="dialog" aria-modal="true">
       <div className="modal-card" style={{ maxWidth: '620px' }} onClick={(e) => e.stopPropagation()}>
         <button className="modal-close-btn" onClick={handleClose} aria-label="Cerrar ventana">
           <X size={18} />

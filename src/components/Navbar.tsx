@@ -117,7 +117,9 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
               <ShoppingBag size={18} />
               <span className="cart-btn-label">Carro</span>
               {cartCount > 0 && (
-                <span className={`cart-count-badge ${isPulsing ? 'cart-count-badge--pulse' : ''}`}>{cartCount}</span>
+                <span className={`cart-count-badge ${isPulsing ? 'cart-count-badge--pulse' : ''}`} aria-live="polite">
+                  {cartCount}
+                </span>
               )}
             </button>
           </div>

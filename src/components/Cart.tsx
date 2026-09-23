@@ -26,6 +26,7 @@ import {
   MIN_ORDER_ZONE
 } from '../config/delivery'
 import { useScrollLock } from '../hooks/useScrollLock'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   Diagnostics: Activity,
@@ -60,6 +61,7 @@ export default function Cart({
 
   // Freeze the page behind the drawer
   useScrollLock(isOpen)
+  const drawerRef = useFocusTrap<HTMLElement>(isOpen)
 
   useEffect(() => {
     if (!isOpen) return
@@ -106,7 +108,7 @@ export default function Cart({
   return (
     <>
       <div className="cart-drawer-overlay" onClick={onClose}></div>
-      <aside className="cart-drawer" aria-label="Carro de compras">
+      <aside ref={drawerRef} className="cart-drawer" role="dialog" aria-modal="true" aria-label="Carro de compras">
         {/* Header */}
         <div className="cart-drawer-header">
           <div className="cart-drawer-title">
@@ -240,7 +242,9 @@ export default function Cart({
                     >
                       <Minus size={12} />
                     </button>
-                    <span className="qty-val">{item.quantity}</span>
+                    <span className="qty-val" aria-live="polite">
+                      {item.quantity}
+                    </span>
                     <button
                       className="qty-btn"
                       onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}

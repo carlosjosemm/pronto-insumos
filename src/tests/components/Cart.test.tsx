@@ -73,6 +73,14 @@ describe('Cart component', () => {
     expect(screen.getByText(/Carro Odontológico/)).toBeInTheDocument()
   })
 
+  it('should expose the drawer as a modal dialog so the focus trap has a target (D.4)', () => {
+    const { container } = render(<Cart {...defaultProps} />)
+    const drawer = screen.getByRole('dialog', { name: 'Carro de compras' })
+    expect(drawer).toHaveAttribute('aria-modal', 'true')
+    expect(drawer).toHaveClass('cart-drawer')
+    expect(container.querySelector('.cart-drawer')).toBe(drawer)
+  })
+
   it('should display the total item count in the header', () => {
     render(<Cart {...defaultProps} />)
     // 2 + 1 = 3 items total, shown in "Carro Odontológico (3)"

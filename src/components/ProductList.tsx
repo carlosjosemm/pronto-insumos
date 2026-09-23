@@ -23,11 +23,16 @@ export default function ProductList({
 }: ProductListProps) {
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--slate-600)' }}>
-        <div className="brand-icon-wrapper" style={{ margin: '0 auto 1rem', animation: 'spin 1s linear infinite' }}>
-          ⏳
-        </div>
-        <p style={{ fontWeight: '600' }}>Cargando catálogo de insumos odontológicos...</p>
+      <div className="products-grid" aria-busy="true">
+        <span className="visually-hidden">Cargando catálogo</span>
+        {[...Array(8)].map((_, i) => (
+          <div className="skeleton-card" key={i} aria-hidden="true">
+            <div className="skeleton-block skeleton-media" />
+            <div className="skeleton-block skeleton-line skeleton-line--medium" />
+            <div className="skeleton-block skeleton-line skeleton-line--wide" />
+            <div className="skeleton-block skeleton-line skeleton-line--short" />
+          </div>
+        ))}
       </div>
     )
   }

@@ -18,6 +18,7 @@ import { formatCLP } from '../utils/currency'
 import { formatRut, validateRut } from '../utils/rut'
 import { BANK_DETAILS } from '../config/bankDetails'
 import { useScrollLock } from '../hooks/useScrollLock'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 export interface OrderTrackingModalProps {
   isOpen: boolean
@@ -50,6 +51,7 @@ export default function OrderTrackingModal({
 
   // Freeze the page behind the modal
   useScrollLock(isOpen)
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen)
 
   // ESC key handler
   useEffect(() => {
@@ -174,7 +176,7 @@ export default function OrderTrackingModal({
   ]
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+    <div ref={dialogRef} className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div
         className="modal-card"
         style={{ maxWidth: '680px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}

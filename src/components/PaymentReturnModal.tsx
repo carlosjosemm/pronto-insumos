@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import { CheckCircle2, AlertCircle, Clock, X, MessageSquare, ArrowRight, RefreshCw } from 'lucide-react'
 import { useScrollLock } from '../hooks/useScrollLock'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 export interface PaymentReturnModalProps {
   isOpen: boolean
@@ -21,6 +22,7 @@ export default function PaymentReturnModal({
 }: PaymentReturnModalProps) {
   // Freeze the page behind the modal
   useScrollLock(isOpen)
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen)
 
   useEffect(() => {
     if (!isOpen) return
@@ -41,6 +43,7 @@ export default function PaymentReturnModal({
 
   return (
     <div
+      ref={dialogRef}
       className="modal-overlay"
       onClick={onClose}
       role="dialog"

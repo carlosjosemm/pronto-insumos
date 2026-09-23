@@ -112,6 +112,18 @@ The storefront is browsed between patients, so the ≤768px breakpoint in `src/i
 * **Sticky action bar.** `.detail-modal-footer` is `position: sticky; bottom: 0` inside the scrolling `.product-detail-modal-body`, so the `Agregar al Carro` action stays reachable at every viewport; do not "fix" it to mobile-only.
 * **Keyboard hints.** Phone is `type="tel" inputmode="tel"`, email is `type="email"`, postal code is `inputmode="numeric"`. **RUT and the SIS registry number stay `inputmode="text"`** — a numeric keypad cannot produce the `K` check digit. `CheckoutModal.test.tsx` asserts all four.
 
+### 2.4 Motion & Accessibility Contract
+
+**Motion.** 150–250 ms on `cubic-bezier(0.4, 0, 0.2, 1)`, expressed through the declared tokens rather than re-typed curves: entrance animations use `var(--transition-fast)` / `var(--transition-base)`, and hover/state transitions use `var(--transition-fast)`. Exactly these animate — add-to-cart, drawer/modal entrance, image fade-in, card hover lift, badge pulse — and nothing else. `@media (prefers-reduced-motion: reduce)` suppresses **every** one of them (`.product-card-entrance`, `.cart-count-badge--pulse`, `.toast-progress`, `.skeleton-block`, `.product-card-img`, `.modal-overlay`, `.modal-card`, `.cart-drawer-overlay`, `.cart-drawer`, `.toast-item`) plus the hover transforms and button transitions. If you add an animation, add it to that block in the same change.
+
+**Focus trap.** `src/hooks/useFocusTrap.ts` (D.4) is attached to the element carrying `role="dialog"` in all five overlay surfaces: `CheckoutModal`, `OrderTrackingModal`, `PaymentReturnModal`, `ProductQuickView`, and the `Cart` drawer. The drawer gained `role="dialog" aria-modal="true"` in Phase 8 precisely so it has a trap target. The hook moves initial focus to the first focusable element, wraps Tab/Shift+Tab, and restores focus to the previously focused element on unmount. `src/tests/hooks/useFocusTrap.test.tsx` covers all four behaviours; `Cart.test.tsx` asserts the drawer's dialog role. There is **no** third-party focus-trap dependency — do not add one.
+
+**Loading state.** `ProductList` renders 8 `.skeleton-card`s inside `.products-grid` with `aria-busy="true"` and a `.visually-hidden` `Cargando catálogo` label; the old `⏳` emoji loader and its undefined `animation: spin` reference are gone. The shimmer is `@keyframes skeleton-shimmer` and is disabled under reduced motion.
+
+**Transient add confirmation.** `ProductCard` shows `Agregado ✓` on the CTA for 900 ms after the first add, then the stepper takes over (D.6). It is driven by a `justAdded` state plus a `setTimeout` in an effect — the same shape as the navbar badge pulse, which keeps `react-hooks/set-state-in-effect` satisfied. Clicking the confirmation must not re-add the product.
+
+**Live regions.** `aria-live="polite"` is on the navbar cart-count badge and on the `.qty-val` of the `ProductCard` stepper, the `Cart` drawer and `ProductQuickView`, so quantity changes are announced. The toast container remains the only other live region.
+
 ---
 
 ## 🛒 3. Deep Dive: Checkout Modal (`CheckoutModal.tsx`)

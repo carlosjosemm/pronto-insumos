@@ -4,6 +4,7 @@ import { formatCLP } from '../utils/currency'
 import { formatCategoryDisplayName } from '../utils/categoryAlias'
 import { whatsappLink } from '../config/contact'
 import { useScrollLock } from '../hooks/useScrollLock'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 import {
   X,
   Star,
@@ -50,6 +51,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
 
   // Freeze the page behind the modal
   useScrollLock(Boolean(product))
+  const dialogRef = useFocusTrap<HTMLDivElement>(Boolean(product))
 
   const photos = product?.images && product.images.length > 0 ? product.images : []
   const hasMultiplePhotos = photos.length > 1
@@ -118,6 +120,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
 
   return (
     <div
+      ref={dialogRef}
       className="modal-overlay"
       onClick={onClose}
       role="dialog"
@@ -414,7 +417,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
               >
                 <Minus size={14} />
               </button>
-              <span className="qty-val">{quantity}</span>
+              <span className="qty-val" aria-live="polite">
+                {quantity}
+              </span>
               <button
                 className="qty-btn"
                 onClick={() => setQuantity(Math.min(maxStock, quantity + 1))}

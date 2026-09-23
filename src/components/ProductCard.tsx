@@ -75,6 +75,16 @@ export default function ProductCard({
   const [imgError, setImgError] = React.useState<boolean>(false)
   const hasPhoto = Boolean(product.images && product.images.length > 0 && !imgError)
 
+  // Transient confirmation shown on the CTA right after the first add, before the
+  // stepper takes over (redesign proposal §10.7 / C.9).
+  const [justAdded, setJustAdded] = React.useState<boolean>(false)
+
+  React.useEffect(() => {
+    if (!justAdded) return
+    const timer = setTimeout(() => setJustAdded(false), 900)
+    return () => clearTimeout(timer)
+  }, [justAdded])
+
   const handleOpenDetail = () => {
     onQuickView(product)
   }
@@ -212,6 +222,16 @@ export default function ProductCard({
               <ShoppingBag size={15} />
               <span>Agotado</span>
             </button>
+          ) : justAdded ? (
+            <button
+              type="button"
+              className="btn-add-cart btn-add-cart--added"
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`${product.name} agregado al carro`}
+            >
+              <ShoppingBag size={15} />
+              <span>Agregado ✓</span>
+            </button>
           ) : cartQuantity > 0 ? (
             <div className="quantity-controls" role="group" aria-label={`Cantidad de ${product.name} en el carro`}>
               <button
@@ -225,7 +245,9 @@ export default function ProductCard({
               >
                 <Minus size={14} />
               </button>
-              <span className="qty-val">{cartQuantity}</span>
+              <span className="qty-val" aria-live="polite">
+                {cartQuantity}
+              </span>
               <button
                 type="button"
                 className="qty-btn"
@@ -250,6 +272,7 @@ export default function ProductCard({
               onClick={(e) => {
                 e.stopPropagation()
                 onAddToCart(product)
+                setJustAdded(true)
               }}
               aria-label={`Agregar ${product.name} al carro`}
               title="Agregar al carro"
