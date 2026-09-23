@@ -168,6 +168,7 @@ pnpm dlx vercel --prod
 ### 🛡️ Deployment Guardrails
 * **Pre-Flight Testing:** Never execute `vercel --prod` without first confirming that `pnpm test` and `pnpm build` succeed without errors.
 * **Environment Variable Sync:** When introducing new environment variables (client or server), add them to `.env.example` and set them in the Vercel Dashboard before running `vercel --prod`.
+* **`public/og-preview.png` is a hard gate for `vercel --prod`:** `index.html` references `https://pronto-insumos.vercel.app/og-preview.png` from `og:image`, `twitter:image` and the JSON-LD `image`. That file is a **human-produced asset** (redesign proposal Appendix B.1) and is currently **absent**, so link previews of the storefront — including the WhatsApp shares that are one of PRONTO's own sales channels — render a broken image. The meta tags ship regardless; ❌ **never generate a substitute image**, and do not promote to production until the real 1200×630 PNG (≤300 KB) has been dropped at `public/og-preview.png`. The favicon, by contrast, has a final turnkey SVG already committed at `public/favicon.svg`.
 
 ---
 

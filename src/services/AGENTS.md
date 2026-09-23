@@ -104,7 +104,8 @@ When the customer returns to the site, `revalidateCartAgainstCatalog(storedItems
 4. **Commercial contact data lives in [`src/config/contact.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/contact.ts), not in components:**
    * `WHATSAPP_NUMBER` (digits only, from `VITE_WHATSAPP_NUMBER`), `WHATSAPP_DISPLAY` (derived `+56 9 XXXX XXXX`) and `whatsappLink(text?)` are the single source of truth.
    * **No component may hardcode a `wa.me` URL or a phone number again.** Previously `Navbar`, `Hero`, `Footer`, `ProductQuickView` and `ErrorBoundary` each embedded `56912345678` literally, so changing `VITE_WHATSAPP_NUMBER` silently left five stale copies behind. All five now import from `contact.ts`.
-   * `whatsapp.ts` retains its own `VITE_WHATSAPP_NUMBER` read — consolidating it onto `contact.ts` is deliberately **not** done here.
+   * **`whatsapp.ts` is a deliberate exception and still reads the env var itself:** it keeps its own `import.meta.env.VITE_WHATSAPP_NUMBER || '56912345678'` read, independent of `contact.ts`. Consequence to be aware of: the fallback literal and the env lookup now exist in **two** places, so they can drift — a change to the fallback in one file will not propagate to the other. Consolidating `whatsapp.ts` onto `contact.ts` is intentionally out of scope for this pass; when it is done, `contact.ts` becomes the only place that reads the variable.
+   * **Known outstanding exception in the UI layer:** `OrderTrackingModal.tsx` still builds its support link from a literal `56987654321`, which differs from `WHATSAPP_NUMBER`. See [src/components/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/AGENTS.md) §4.1.2.
 
 ---
 
