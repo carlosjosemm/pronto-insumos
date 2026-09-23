@@ -22,9 +22,14 @@ vi.mock('../../services/whatsapp', () => ({
   generateWhatsAppQuoteUrl: vi.fn(() => 'https://wa.me/56912345678?text=Test')
 }))
 
+vi.mock('../../services/orderConfirmation', () => ({
+  sendOrderConfirmationEmail: vi.fn().mockResolvedValue(true)
+}))
+
 import CheckoutModal, { CheckoutModalProps } from '../../components/CheckoutModal'
 import { submitOrder } from '../../services/api'
 import { processMercadoPagoPayment } from '../../services/mercadopago'
+import { sendOrderConfirmationEmail } from '../../services/orderConfirmation'
 import { CartItem, Product } from '../../types'
 
 const mockProduct: Product = {
@@ -489,6 +494,66 @@ describe('CheckoutModal Component', () => {
       fireEvent.click(trackBtn)
 
       expect(onOpenTrackingMock).toHaveBeenCalledWith(expect.stringMatching(/^PRONTO-/), '12.345.678-5')
+    })
+  })
+
+  describe('Transactional order-confirmation email (Phase 5.1)', () => {
+    it('should fire sendOrderConfirmationEmail after a bank transfer order is registered', async () => {
+      render(<CheckoutModal {...defaultProps} />)
+      fillStep1()
+      fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+      fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+      await waitFor(() => {
+        expect(submitOrder).toHaveBeenCalledTimes(1)
+        expect(sendOrderConfirmationEmail).toHaveBeenCalledWith('PRONTO-TEST1234', '12.345.678-5')
+      })
+    })
+
+    it('should fire sendOrderConfirmationEmail after a WhatsApp quote order is registered', async () => {
+      render(<CheckoutModal {...defaultProps} />)
+      fillStep1()
+      fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+      fireEvent.click(screen.getByLabelText(/Cotización Formal Asistida por WhatsApp/i))
+      fireEvent.click(screen.getByText('Generar Cotización'))
+
+      await waitFor(() => {
+        expect(submitOrder).toHaveBeenCalledTimes(1)
+        expect(sendOrderConfirmationEmail).toHaveBeenCalledWith('PRONTO-TEST1234', '12.345.678-5')
+      })
+    })
+
+    it('should NOT fire sendOrderConfirmationEmail for Mercado Pago orders (webhook covers it)', async () => {
+      render(<CheckoutModal {...defaultProps} />)
+      fillStep1()
+      fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+      fireEvent.click(screen.getByLabelText(/Pago Inmediato Mercado Pago Chile/i))
+      fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+      await waitFor(() => {
+        expect(submitOrder).toHaveBeenCalledTimes(1)
+        expect(processMercadoPagoPayment).toHaveBeenCalledTimes(1)
+      })
+      expect(sendOrderConfirmationEmail).not.toHaveBeenCalled()
+    })
+
+    it('should NOT fire sendOrderConfirmationEmail when order registration fails', async () => {
+      vi.mocked(submitOrder).mockResolvedValue({
+        success: false,
+        orderId: '',
+        timestamp: '',
+        total: 0,
+        itemsCount: 0
+      })
+      render(<CheckoutModal {...defaultProps} />)
+      fillStep1()
+      fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
+      fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+      await waitFor(() => {
+        expect(submitOrder).toHaveBeenCalledTimes(1)
+      })
+      expect(sendOrderConfirmationEmail).not.toHaveBeenCalled()
     })
   })
 })

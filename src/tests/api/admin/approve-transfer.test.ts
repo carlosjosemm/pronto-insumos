@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import handler from '../../../../api/admin/approve-transfer'
 import * as adminAuth from '../../../../api/lib/adminAuth'
 import * as firebaseAdminLib from '../../../../api/lib/firebaseAdmin'
@@ -253,5 +253,103 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
 
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
+  })
+
+  describe('Transactional Emails on Approval (Resend)', () => {
+    let resendKeyBackup: string | undefined
+    let warehouseBackup: string | undefined
+
+    beforeEach(() => {
+      resendKeyBackup = process.env.RESEND_API_KEY
+      warehouseBackup = process.env.WAREHOUSE_NOTIFICATION_EMAIL
+      delete process.env.RESEND_API_KEY
+      delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
+    })
+
+    afterEach(() => {
+      if (resendKeyBackup === undefined) delete process.env.RESEND_API_KEY
+      else process.env.RESEND_API_KEY = resendKeyBackup
+      if (warehouseBackup === undefined) delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
+      else process.env.WAREHOUSE_NOTIFICATION_EMAIL = warehouseBackup
+    })
+
+    function mockApprovableOrderDb() {
+      const mockOrderData = {
+        orderId: 'PRONTO-123',
+        status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+        totalAmount: 189990,
+        items: [{ productId: 'odon-101', name: 'Turbina', quantity: 2, price: 94995 }],
+        customer: {
+          fullName: 'Dra. Andrea',
+          email: 'andrea@clinica.cl',
+          rut: '12345678-5',
+          address: 'Calle 1',
+          city: 'Melipilla'
+        }
+      }
+      const mockOrderRef = { get: vi.fn().mockResolvedValue({ exists: true }) }
+      const mockProductRef = {}
+      const mockDb = {
+        collection: vi.fn((name: string) => {
+          if (name === 'orders') return { doc: vi.fn(() => mockOrderRef) }
+          if (name === 'products') return { doc: vi.fn(() => mockProductRef) }
+          return { doc: vi.fn(() => ({ id: 'mock-id' })) }
+        }),
+        runTransaction: vi.fn(async (callback) => {
+          const mockTransaction = {
+            get: vi.fn(async (ref: unknown) => {
+              if (ref === mockOrderRef) return { exists: true, data: () => mockOrderData }
+              if (ref === mockProductRef) return { exists: true, data: () => ({ stockCount: 10, inStock: true }) }
+              return { exists: false }
+            }),
+            update: vi.fn(),
+            set: vi.fn()
+          }
+          return await callback(mockTransaction)
+        })
+      }
+      return mockDb
+    }
+
+    it('should send customer approval + warehouse alert emails after a successful approval', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
+      vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+        mockApprovableOrderDb() as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+      )
+
+      const req = { method: 'POST', body: { orderId: 'PRONTO-123' } } as VercelRequest
+      await handler(req, mockRes as VercelResponse)
+
+      expect(statusOutput).toBe(200)
+      expect(jsonOutput.success).toBe(true)
+
+      const resendCalls = fetchSpy.mock.calls.filter((c) => String(c[0]).includes('api.resend.com'))
+      expect(resendCalls).toHaveLength(2)
+      const recipients = resendCalls.map((c) => (JSON.parse(c[1]?.body as string).to as string[])[0])
+      expect(recipients).toContain('andrea@clinica.cl')
+      expect(recipients).toContain('bodega@prontoinsumos.com')
+    })
+
+    it('should still return 200 when email sending fails (non-blocking)', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
+      vi.spyOn(global, 'fetch').mockRejectedValue(new Error('resend down'))
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+        mockApprovableOrderDb() as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+      )
+
+      const req = { method: 'POST', body: { orderId: 'PRONTO-123' } } as VercelRequest
+      await handler(req, mockRes as VercelResponse)
+
+      expect(statusOutput).toBe(200)
+      expect(jsonOutput.success).toBe(true)
+    })
   })
 })

@@ -17,6 +17,7 @@ import { OrderTrackingInfo } from '../types'
 import { formatCLP } from '../utils/currency'
 import { formatRut, validateRut } from '../utils/rut'
 import { BANK_DETAILS } from '../config/bankDetails'
+import { whatsappLink } from '../config/contact'
 import { useScrollLock } from '../hooks/useScrollLock'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 
@@ -164,7 +165,7 @@ export default function OrderTrackingModal({
   const getWhatsAppSupportUrl = () => {
     const cleanId = trackingData?.orderId || orderId || 'CONSULTA'
     const msg = `Hola PRONTO Insumos, necesito asistencia con el estado de mi pedido ${cleanId}.`
-    return `https://wa.me/56987654321?text=${encodeURIComponent(msg)}`
+    return whatsappLink(msg)
   }
 
   const STEPS = [

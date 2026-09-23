@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 // Mock firebaseAdmin before importing webhook handler
@@ -606,6 +606,188 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'rejected' })
 
       process.env.MERCADOPAGO_WEBHOOK_SECRET = originalSecret
+    })
+  })
+
+  describe('Transactional Email Notifications (Resend)', () => {
+    let resendKeyBackup: string | undefined
+    let warehouseBackup: string | undefined
+
+    beforeEach(() => {
+      resendKeyBackup = process.env.RESEND_API_KEY
+      warehouseBackup = process.env.WAREHOUSE_NOTIFICATION_EMAIL
+      delete process.env.RESEND_API_KEY
+      delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
+      // Signature tests above may leave the string "undefined" behind — ensure open webhook
+      delete process.env.MERCADOPAGO_WEBHOOK_SECRET
+    })
+
+    afterEach(() => {
+      if (resendKeyBackup === undefined) delete process.env.RESEND_API_KEY
+      else process.env.RESEND_API_KEY = resendKeyBackup
+      if (warehouseBackup === undefined) delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
+      else process.env.WAREHOUSE_NOTIFICATION_EMAIL = warehouseBackup
+    })
+
+    function mockSuccessfulPaymentDb() {
+      const orderRef = { id: 'order-doc-abc' }
+      const productRef = { id: 'prod-turbine-1' }
+      const mockTransactionUpdate = vi.fn()
+      const orderData = {
+        orderId: 'PRONTO-123456',
+        status: 'PENDIENTE_PAGO_MERCADOPAGO',
+        totalAmount: 189990,
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2, price: 94995 }],
+        customer: {
+          fullName: 'Dra. Andrea',
+          email: 'andrea@clinica.cl',
+          rut: '12345678-5',
+          address: 'Calle 1',
+          city: 'Melipilla'
+        }
+      }
+      const mockTransactionGet = vi.fn().mockImplementation((ref: { id?: string }) => {
+        if (ref?.id === 'order-doc-abc') {
+          return Promise.resolve({ exists: true, data: () => orderData })
+        }
+        return Promise.resolve({ exists: true, data: () => ({ stockCount: 5, inStock: true }) })
+      })
+      const mockAdminDb = {
+        collection: vi.fn((colName: string) => {
+          if (colName === 'orders') {
+            return {
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                  get: vi.fn().mockResolvedValue({
+                    empty: false,
+                    docs: [{ id: 'order-doc-abc', ref: orderRef, data: () => orderData }]
+                  })
+                })
+              })
+            }
+          }
+          if (colName === 'products') {
+            return { doc: vi.fn().mockReturnValue(productRef) }
+          }
+          return { doc: vi.fn().mockReturnValue({ id: 'audit-dummy-id' }) }
+        }),
+        runTransaction: vi.fn(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
+          await cb({ get: mockTransactionGet, update: mockTransactionUpdate, set: vi.fn() })
+        })
+      }
+      return { mockAdminDb, mockTransactionUpdate }
+    }
+
+    /** fetch spy that answers both the Mercado Pago API call and Resend sends. */
+    function mockFetchBoundaries(resendOk = true) {
+      return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+        const url = String(input)
+        if (url.includes('api.resend.com')) {
+          return {
+            ok: resendOk,
+            status: resendOk ? 200 : 500,
+            json: async () => (resendOk ? { id: 'email_xyz' } : {}),
+            text: async () => (resendOk ? '' : 'Resend error')
+          } as Response
+        }
+        return {
+          ok: true,
+          json: async () => ({ status: 'approved', external_reference: 'PRONTO-123456', id: 998877 })
+        } as Response
+      })
+    }
+
+    const resendCalls = (fetchSpy: { mock: { calls: unknown[][] } }) =>
+      fetchSpy.mock.calls.filter((c) => String(c[0]).includes('api.resend.com'))
+
+    const resendRecipient = (call: unknown[]) =>
+      (JSON.parse(((call[1] as RequestInit | undefined)?.body ?? '{}') as string).to as string[])[0]
+
+    it('should send customer payment-confirmation and warehouse emails after approved payment', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      const fetchSpy = mockFetchBoundaries()
+      const { mockAdminDb } = mockSuccessfulPaymentDb()
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
+
+      const sends = resendCalls(fetchSpy)
+      expect(sends).toHaveLength(2)
+      const recipients = sends.map(resendRecipient)
+      expect(recipients).toContain('andrea@clinica.cl')
+      expect(recipients).toContain('bodega@prontoinsumos.com')
+    })
+
+    it('should not send any email on duplicate delivery (no re-notification)', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      const fetchSpy = mockFetchBoundaries()
+      const { mockAdminDb } = mockSuccessfulPaymentDb()
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+
+      // Simulate the transaction seeing the order already paid (concurrency guard path)
+      const alreadyPaidDb = {
+        ...mockAdminDb,
+        collection: vi.fn((colName: string) => {
+          if (colName === 'orders') {
+            return {
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                  get: vi.fn().mockResolvedValue({
+                    empty: false,
+                    docs: [
+                      {
+                        id: 'order-doc-abc',
+                        ref: { id: 'order-doc-abc' },
+                        data: () => ({
+                          orderId: 'PRONTO-123456',
+                          status: 'PAGADO_MERCADOPAGO',
+                          mercadopagoPaymentId: '998877'
+                        })
+                      }
+                    ]
+                  })
+                })
+              })
+            }
+          }
+          return {}
+        })
+      }
+      vi.mocked(getAdminFirestore).mockReturnValue(alreadyPaidDb as unknown as ReturnType<typeof getAdminFirestore>)
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(resendCalls(fetchSpy)).toHaveLength(0)
+    })
+
+    it('should still return 200 when Resend is down (email outage never breaks the webhook)', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      const fetchSpy = mockFetchBoundaries(false)
+      const { mockAdminDb } = mockSuccessfulPaymentDb()
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
+      expect(resendCalls(fetchSpy).length).toBeGreaterThan(0)
     })
   })
 })

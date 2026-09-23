@@ -3,22 +3,26 @@
 **Last Updated:** September 2026  
 **Target Market:** Melipilla & Región Metropolitana, Chile  
 **Deployment Stack:** Vercel (Frontend React 18 + Serverless Node.js) & Google Firebase / Firestore  
-**Repository State:** Advanced functional prototype with automated test coverage, but containing **critical security vulnerabilities, flawed payment/stock logic, Chilean tax (SII) gaps, and operational blockers** that must be resolved before handling real financial transactions.
+**Repository State:** Advanced functional storefront with automated test coverage. Phases 0–5 resolved; remaining work covers catalog assets, legal compliance, and DevOps polish before go-live.
 
 ---
 
 ## 📑 Table of Contents
-1. [Diagnosis: Previous Roadmap vs. Actual Codebase Reality](#1-diagnosis-previous-roadmap-vs-actual-codebase-reality)
-2. [Phase 0: Critical Security & Payment Architecture Blockers (Priority P0 - Immediate)](#phase-0-critical-security--payment-architecture-blockers-priority-p0---immediate)
-3. [Phase 1: Chilean Localization, Pricing & Tax Compliance (SII / ISP / CLP)](#phase-1-chilean-localization-pricing--tax-compliance-sii--isp--clp)
-4. [Phase 2: Checkout UX, Cart Persistence & Payment Return Flows](#phase-2-checkout-ux-cart-persistence--payment-return-flows)
-5. [Phase 3: Logistics, Shipping & Local Warehouse Pickup (Melipilla / RM)](#phase-3-logistics-shipping--local-warehouse-pickup-melipilla--rm)
-6. [Phase 4: Backoffice Operations & Order Management Dashboard](#phase-4-backoffice-operations--order-management-dashboard)
-7. [Phase 5: Transactional Communications (Email & WhatsApp)](#phase-5-transactional-communications-email--whatsapp)
-8. [Phase 6: Real Catalog Assets, Photography & Technical Datasheets](#phase-6-real-catalog-assets-photography--technical-datasheets)
-9. [Phase 7: Legal Compliance, SERNAC Warranty & Customer Trust](#phase-7-legal-compliance-sernac-warranty--customer-trust)
-10. [Phase 8: Performance, Infrastructure, DevOps & Telemetry](#phase-8-performance-infrastructure-devops--telemetry)
-11. [Prioritization Matrix & Effort Estimation](#prioritization-matrix--effort-estimation)
+
+- [PRONTO INSUMOS ODONTOLÓGICOS — Production Readiness TODO \& Audit Report](#pronto-insumos-odontológicos--production-readiness-todo--audit-report)
+  - [📑 Table of Contents](#-table-of-contents)
+  - [1. Diagnosis: Previous Roadmap vs. Actual Codebase Reality](#1-diagnosis-previous-roadmap-vs-actual-codebase-reality)
+  - [Phase 0: Critical Security \& Payment Architecture Blockers (Priority P0 - Immediate)](#phase-0-critical-security--payment-architecture-blockers-priority-p0---immediate)
+  - [Phase 1: Chilean Localization, Pricing \& Tax Compliance (SII / ISP / CLP)](#phase-1-chilean-localization-pricing--tax-compliance-sii--isp--clp)
+  - [Phase 2: Checkout UX, Cart Persistence \& Payment Return Flows](#phase-2-checkout-ux-cart-persistence--payment-return-flows)
+  - [Phase 3: Logistics, Shipping \& Local Warehouse Pickup (Melipilla / RM)](#phase-3-logistics-shipping--local-warehouse-pickup-melipilla--rm)
+  - [Phase 4: Backoffice Operations \& Order Management Dashboard](#phase-4-backoffice-operations--order-management-dashboard)
+  - [Phase 5: Transactional Communications (Email \& WhatsApp)](#phase-5-transactional-communications-email--whatsapp)
+  - [Phase 6: Real Catalog Assets, Photography \& Technical Datasheets](#phase-6-real-catalog-assets-photography--technical-datasheets)
+  - [Phase 7: Legal Compliance, SERNAC Warranty \& Customer Trust](#phase-7-legal-compliance-sernac-warranty--customer-trust)
+  - [Phase 8: Performance, Infrastructure, DevOps \& Telemetry](#phase-8-performance-infrastructure-devops--telemetry)
+  - [Prioritization Matrix \& Effort Estimation](#prioritization-matrix--effort-estimation)
+  - [🏁 Go-Live Acceptance Criteria](#-go-live-acceptance-criteria)
 
 ---
 
@@ -26,18 +30,18 @@
 
 The previous document `PROJECT_ASSESSMENT_AND_ROADMAP.md` was outdated with respect to the actual codebase. Several tasks marked as pending `[ ]` had already been developed, while severe operational and security flaws were left unaddressed:
 
-| Item | In Old Roadmap | Reality in Code | Diagnosis / Required Action |
-| :--- | :---: | :---: | :--- |
-| **Chilean RUT Validation (Modulo 11)** | Pending `[ ]` | Implemented ✅ | Exists in `src/utils/rut.ts` and validated in `CheckoutModal.tsx`. |
-| **B2B Invoicing Fields (Giro, Razón Social)** | Pending `[ ]` | Implemented ✅ | The Boleta/Factura toggle collects these fields in `CheckoutModal.tsx`. |
-| **Endpoint `/api/create-preference`** | Pending `[ ]` | Created ✅ | Implemented in `api/create-preference.ts` for Vercel Serverless. |
-| **SEO Meta Tags & Schema.org LocalBusiness** | Pending `[ ]` | Implemented ✅ | Added to `index.html`. Missing actual image file `og-preview.png`. |
-| **Global React Error Boundary** | Pending `[ ]` | Implemented ✅ | Created in `src/components/ErrorBoundary.tsx` with unit test. |
-| **Webhook Security with `firebase-admin`** | Mentioned | **CRITICAL: Unresolved ❌** | `api/webhooks/mercadopago.ts` imports the client SDK with `import.meta.env`, failing in Node and posing execution risks. |
-| **Stock Deduction & Idempotency** | Not noticed | **CRITICAL: Flawed Logic ❌** | Frontend decrements stock before payment happens. Webhook lacks idempotency and decrements twice upon retries. |
-| **Currency & Pricing (CLP vs USD)** | Not noticed | **CRITICAL: Currency Bug ❌** | Prices in `src/data/products.ts` use USD decimal format (`189.99`). Sent to Mercado Pago as CLP, charging only $190 Chilean Pesos ($0.20 USD). |
-| **Mock Customer & Card Fields in Checkout** | Not noticed | **Insecure / Prototype ❌** | Checkout form contains hardcoded mock values ("Dra. Camila Fuentes") and mock credit card inputs stored in React state. |
-| **Database Seed Button in Footer** | Not noticed | **Hazardous ❌** | The public footer displays a `"🔥 Sembrar Firebase DB"` button callable by any visitor. |
+| Item                                          | In Old Roadmap |        Reality in Code        | Diagnosis / Required Action                                                                                                                    |
+| :-------------------------------------------- | :------------: | :---------------------------: | :--------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Chilean RUT Validation (Modulo 11)**        | Pending `[ ]`  |        Implemented ✅         | Exists in `src/utils/rut.ts` and validated in `CheckoutModal.tsx`.                                                                             |
+| **B2B Invoicing Fields (Giro, Razón Social)** | Pending `[ ]`  |        Implemented ✅         | The Boleta/Factura toggle collects these fields in `CheckoutModal.tsx`.                                                                        |
+| **Endpoint `/api/create-preference`**         | Pending `[ ]`  |          Created ✅           | Implemented in `api/create-preference.ts` for Vercel Serverless.                                                                               |
+| **SEO Meta Tags & Schema.org LocalBusiness**  | Pending `[ ]`  |        Implemented ✅         | Added to `index.html`. Missing actual image file `og-preview.png`.                                                                             |
+| **Global React Error Boundary**               | Pending `[ ]`  |        Implemented ✅         | Created in `src/components/ErrorBoundary.tsx` with unit test.                                                                                  |
+| **Webhook Security with `firebase-admin`**    |   Mentioned    |  **CRITICAL: Unresolved ❌**  | `api/webhooks/mercadopago.ts` imports the client SDK with `import.meta.env`, failing in Node and posing execution risks.                       |
+| **Stock Deduction & Idempotency**             |  Not noticed   | **CRITICAL: Flawed Logic ❌** | Frontend decrements stock before payment happens. Webhook lacks idempotency and decrements twice upon retries.                                 |
+| **Currency & Pricing (CLP vs USD)**           |  Not noticed   | **CRITICAL: Currency Bug ❌** | Prices in `src/data/products.ts` use USD decimal format (`189.99`). Sent to Mercado Pago as CLP, charging only $190 Chilean Pesos ($0.20 USD). |
+| **Mock Customer & Card Fields in Checkout**   |  Not noticed   |  **Insecure / Prototype ❌**  | Checkout form contains hardcoded mock values ("Dra. Camila Fuentes") and mock credit card inputs stored in React state.                        |
+| **Database Seed Button in Footer**            |  Not noticed   |       **Hazardous ❌**        | The public footer displays a `"🔥 Sembrar Firebase DB"` button callable by any visitor.                                                        |
 
 ---
 
@@ -45,27 +49,27 @@ The previous document `PROJECT_ASSESSMENT_AND_ROADMAP.md` was outdated with resp
 
 These items carry immediate risks of financial loss, critical security vulnerabilities, or complete payment transaction failures. **They must be resolved before handling any real transactions.**
 
-- [x] **0.1. Fix False Client-Side Payment Approval (`CheckoutModal.tsx` & `src/services/api.ts`)** ✅ *(Resolved: Orders initialized with PENDIENTE_PAGO_MERCADOPAGO; client stock deduction purged; verified by unit tests)*
+- [x] **0.1. Fix False Client-Side Payment Approval (`CheckoutModal.tsx` & `src/services/api.ts`)** ✅ _(Resolved: Orders initialized with PENDIENTE_PAGO_MERCADOPAGO; client stock deduction purged; verified by unit tests)_
 
-- [x] **0.2. Migrate Serverless Webhooks to `firebase-admin` with Service Account** ✅ *(Resolved: firebase-admin installed; api/lib/firebaseAdmin.ts singleton created; webhook uses admin Firestore queries & transactions; unit tests passing)*
+- [x] **0.2. Migrate Serverless Webhooks to `firebase-admin` with Service Account** ✅ _(Resolved: firebase-admin installed; api/lib/firebaseAdmin.ts singleton created; webhook uses admin Firestore queries & transactions; unit tests passing)_
 
-- [x] **0.3. Synchronize Order Identifier (`orderId` / `external_reference`)** ✅ *(Resolved: generateOrderId creates canonical PRONTO-XXXXXX; unified across CheckoutModal, preference payload, and Firestore order document; unit tests passing)*
+- [x] **0.3. Synchronize Order Identifier (`orderId` / `external_reference`)** ✅ _(Resolved: generateOrderId creates canonical PRONTO-XXXXXX; unified across CheckoutModal, preference payload, and Firestore order document; unit tests passing)_
 
-- [x] **0.4. Enforce Idempotency in the Mercado Pago Webhook** ✅ *(Resolved: Fast-path idempotency pre-check and atomic all-in-one Firestore transaction inside api/webhooks/mercadopago.ts; duplicate deliveries return HTTP 200 without mutating stock or orders; comprehensive unit tests passing)*
+- [x] **0.4. Enforce Idempotency in the Mercado Pago Webhook** ✅ _(Resolved: Fast-path idempotency pre-check and atomic all-in-one Firestore transaction inside api/webhooks/mercadopago.ts; duplicate deliveries return HTTP 200 without mutating stock or orders; comprehensive unit tests passing)_
 
-- [x] **0.5. Cryptographic Signature Verification on Webhooks (`x-signature`)** ✅ *(Resolved: api/lib/mercadopagoSignature.ts computes HMAC-SHA256 over Mercado Pago manifest template; timing-safe equality verification in api/webhooks/mercadopago.ts rejects unauthorized requests with 401; unit and integration tests passing)*
+- [x] **0.5. Cryptographic Signature Verification on Webhooks (`x-signature`)** ✅ _(Resolved: api/lib/mercadopagoSignature.ts computes HMAC-SHA256 over Mercado Pago manifest template; timing-safe equality verification in api/webhooks/mercadopago.ts rejects unauthorized requests with 401; unit and integration tests passing)_
 
-- [x] **0.6. Create and Deploy Firestore Security Rules (`firestore.rules`)** ✅ *(Resolved: firestore.rules created with public read-only catalog, admin-only catalog write, strict pending-only order creation schema preventing injection, client-side order read/update/delete denied; firebase.json configured and deploy:rules script added; unit tests passing)*
+- [x] **0.6. Create and Deploy Firestore Security Rules (`firestore.rules`)** ✅ _(Resolved: firestore.rules created with public read-only catalog, admin-only catalog write, strict pending-only order creation schema preventing injection, client-side order read/update/delete denied; firebase.json configured and deploy:rules script added; unit tests passing)_
 
-- [x] **0.7. Remove Public Database Seed Button (`Footer.tsx`)** ✅ *(Resolved: Public seed button completely removed from Footer.tsx; footer restructured to authentic 4-column B2B distributor layout; unit tests verified)*
+- [x] **0.7. Remove Public Database Seed Button (`Footer.tsx`)** ✅ _(Resolved: Public seed button completely removed from Footer.tsx; footer restructured to authentic 4-column B2B distributor layout; unit tests verified)_
 
-- [x] **0.8. Purge Mock Data and Ensure Privacy / PCI-DSS Compliance** ✅ *(Resolved: CheckoutModal form state initialized with empty strings and clean placeholders; cardNumber, expDate, and cvc eliminated from CustomerInfo and component state; input whitespace sanitization added; clean Chilean clinical inputs; comprehensive unit tests passing with zero regressions)*
+- [x] **0.8. Purge Mock Data and Ensure Privacy / PCI-DSS Compliance** ✅ _(Resolved: CheckoutModal form state initialized with empty strings and clean placeholders; cardNumber, expDate, and cvc eliminated from CustomerInfo and component state; input whitespace sanitization added; clean Chilean clinical inputs; comprehensive unit tests passing with zero regressions)_
 
 ---
 
 ## Phase 1: Chilean Localization, Pricing & Tax Compliance (SII / ISP / CLP)
 
-- [x] **1.1. Standardize Pricing in Chilean Pesos (CLP) Without Decimals** ✅ *(Resolved: Standardized all 10 catalog product prices to integer CLP; implemented formatCLP, calculateIVA, and parseCLP in src/utils/currency.ts; updated ProductCard, ProductQuickView, Cart, App, CheckoutModal, and WhatsApp service; free shipping threshold updated to $150.000 CLP; 100% test coverage with 173 passing tests)*
+- [x] **1.1. Standardize Pricing in Chilean Pesos (CLP) Without Decimals** ✅ _(Resolved: Standardized all 10 catalog product prices to integer CLP; implemented formatCLP, calculateIVA, and parseCLP in src/utils/currency.ts; updated ProductCard, ProductQuickView, Cart, App, CheckoutModal, and WhatsApp service; free shipping threshold updated to $150.000 CLP; 100% test coverage with 173 passing tests)_
   - **Current Issue:** `src/data/products.ts` uses decimal currency numbers (`189.99`, `129.50`). In Chile, CLP has no decimal subdivisions. Sending `189.99` with currency `CLP` to Mercado Pago results in charging only $190 Chilean Pesos for a professional dental turbine.
   - **Required Action:**
     - Update all catalog items to valid CLP values: e.g., LED Turbine `$189.990 CLP`, Composite Kit `$79.990 CLP`, Ultrasonic Scaler `$245.000 CLP`.
@@ -73,16 +77,16 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - Round tax calculations (19% IVA) to whole integer values (`Math.round`).
     - Adjust `FREE_SHIPPING_THRESHOLD` to a realistic CLP figure (e.g., `$150.000 CLP` instead of `150.00`).
 
-- [x] **1.2. B2B Fiscal Billing Data Capture & Purchase Voucher (Boleta & Factura SII)** ✅ *(Resolved: Implemented calculateTaxBreakdown and validateFacturaFields in src/utils/tax.ts; mandatory Factura validation in CheckoutModal with inline Chilean errors; structured billing payload with tax breakdown saved to Firestore orders; printable pro-forma purchase voucher with window.print() added to confirmation screen; 100% test coverage with 183 tests passing)*
-  - **Context:** Chilean dental clinics and practitioners require valid tax deduction (crédito fiscal IVA 19%). B2B transactions require issuing electronic invoices (*Factura Electrónica*) while retail clients receive *Boleta Electrónica*. Official electronic invoicing in Chile is performed free of charge via the SII Portal Tributario (`sii.cl`), requiring no paid third-party DTE provider.
+- [x] **1.2. B2B Fiscal Billing Data Capture & Purchase Voucher (Boleta & Factura SII)** ✅ _(Resolved: Implemented calculateTaxBreakdown and validateFacturaFields in src/utils/tax.ts; mandatory Factura validation in CheckoutModal with inline Chilean errors; structured billing payload with tax breakdown saved to Firestore orders; printable pro-forma purchase voucher with window.print() added to confirmation screen; 100% test coverage with 183 tests passing)_
+  - **Context:** Chilean dental clinics and practitioners require valid tax deduction (crédito fiscal IVA 19%). B2B transactions require issuing electronic invoices (_Factura Electrónica_) while retail clients receive _Boleta Electrónica_. Official electronic invoicing in Chile is performed free of charge via the SII Portal Tributario (`sii.cl`), requiring no paid third-party DTE provider.
   - **Required Action:**
     - **Checkout Fiscal Validation (`CheckoutModal.tsx`):**
       - If **Boleta**: Validate customer RUT (Modulo 11) and full name.
-      - If **Factura**: Strictly enforce and validate all legally required SII fields: *RUT Empresa* (Modulo 11), *Razón Social*, *Giro Comercial* (e.g. "Clínica Dental", "Servicios Odontológicos"), and *Dirección / Comuna Fiscal*. Block step progression if any field is missing or invalid.
+      - If **Factura**: Strictly enforce and validate all legally required SII fields: _RUT Empresa_ (Modulo 11), _Razón Social_, _Giro Comercial_ (e.g. "Clínica Dental", "Servicios Odontológicos"), and _Dirección / Comuna Fiscal_. Block step progression if any field is missing or invalid.
     - **Structured Order Schema (`types/index.ts` & `api.ts`):**
       - Save structured `billing` payload on the order in Firestore containing tax breakdown (`neto`, `iva`, `total`), fiscal identifiers, and status `PENDIENTE_EMISION_SII`.
     - **Printable Pro-Forma Purchase Voucher:**
-      - In Step 3 (Order Confirmation), provide a 1-click printable/downloadable purchase voucher (*Comprobante de Venta Pro-Forma*) with PRONTO distributor header, itemized list, fiscal breakdown, and disclaimer for official SII dispatch.
+      - In Step 3 (Order Confirmation), provide a 1-click printable/downloadable purchase voucher (_Comprobante de Venta Pro-Forma_) with PRONTO distributor header, itemized list, fiscal breakdown, and disclaimer for official SII dispatch.
     - **Admin/Operator Handoff:**
       - Organize fiscal fields for 1-click copy into the free SII portal (`sii.cl`).
 
@@ -90,7 +94,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
   - **Context:** Certain dental materials (local anesthetics, needles, specialized prescription pharmaceuticals) require verification of professional accreditation with the Chilean Superintendencia de Salud (SIS registry).
   - **Fulfilled & Verified:**
     - **Catalog Regulatory Classification (`src/data/products.ts`):**
-      - Flagged prescription items with `prescriptionRequired: true`. Added authentic regulated supply `odon-501` (*Anestésico Dental Lidocaína 2% con Epinefrina 1:100.000*, Registro ISP F-14220) and `odon-402` (*Motor de Implante Odontológico*).
+      - Flagged prescription items with `prescriptionRequired: true`. Added authentic regulated supply `odon-501` (_Anestésico Dental Lidocaína 2% con Epinefrina 1:100.000_, Registro ISP F-14220) and `odon-402` (_Motor de Implante Odontológico_).
     - **UI Regulatory Indicators (`ProductCard.tsx`, `ProductQuickView.tsx`, `Cart.tsx`):**
       - Displays `⚕️ Requiere SIS` badge on product cards.
       - Displays full ISP warning badge and regulatory advisory callout in Quick View.
@@ -192,7 +196,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - **Public Secured Order Lookup API (`/api/track-order.ts`):**
       - Authenticates lookups using canonical Order ID (`PRONTO-XXXXXX`) and Chilean Modulo 11 customer RUT.
       - Queries Firestore using `firebase-admin` (safely bypassing client-side read restrictions on `/orders`).
-      - Returns sanitized tracking payload (`OrderTrackingInfo`) mapping database states to a 5-stage fulfillment timeline (*Registrado*, *Comprobante/Pago*, *Preparación en Melipilla*, *En Ruta*, *Entregado*).
+      - Returns sanitized tracking payload (`OrderTrackingInfo`) mapping database states to a 5-stage fulfillment timeline (_Registrado_, _Comprobante/Pago_, _Preparación en Melipilla_, _En Ruta_, _Entregado_).
       - Filters out private credentials, database internals, and card details.
     - **Client-Side Tracking Adapter (`src/services/orderTracking.ts`):**
       - Fetches `/api/track-order` with defensive error handling and local mock fallback for development/test environments.
@@ -223,7 +227,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - Automatically add freight charges to the subtotal and include in tax/billing breakdown before creating payment preferences.
 
 - [ ] **3.2. Estimated Delivery Time Windows**
-  - Display estimated fulfillment times in the cart and checkout (e.g., *"Same-day / 24-hour delivery for clinics in Melipilla"* and *"24-48 hours for wider RM"*).
+  - Display estimated fulfillment times in the cart and checkout (e.g., _"Same-day / 24-hour delivery for clinics in Melipilla"_ and _"24-48 hours for wider RM"_).
 
 ---
 
@@ -285,19 +289,33 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 
 ## Phase 5: Transactional Communications (Email & WhatsApp)
 
-- [ ] **5.1. Transactional Email Service (Resend / SendGrid / Postmark)**
-  - Authenticate a custom sender domain with SPF, DKIM, and DMARC records (e.g., `orders@prontoinsumos.cl`).
-  - **Customer Confirmation Email:**
-    - Immediate order receipt with item breakdown, 19% IVA, freight charge, and billing details.
-    - If bank transfer selected: clear bank deposit details and upload link for the payment receipt.
-  - **Internal Warehouse Notification:**
-    - Real-time alert to Melipilla dispatch staff whenever a paid order or high-volume quotation arrives.
+- [x] **5.1. Transactional Email Service (Resend)** ✅ _(Resolved: Resend free tier (3,000 emails/mo) integrated via plain `fetch` — zero new dependencies; verified sender domain `prontoinsumos.com` with live DKIM/SPF/DMARC records at GoDaddy DNS; fail-safe shared sender + four localized templates; four trigger points wired; idempotent order-confirmation endpoint; comprehensive unit tests passing)_
+  - **Fulfilled & Verified:**
+    - **Sender Domain Authentication:**
+      - `prontoinsumos.com` verified in Resend dashboard; DKIM (`resend._domainkey` TXT), SPF (`send`/`rsend` CNAMEs + `feedback.forge.rmta.net` MX), and DMARC (`v=DMARC1; p=quarantine`) records live at GoDaddy DNS.
+      - `EMAIL_FROM` configurable (verified-domain local part is arbitrary); `RESEND_API_KEY` and `WAREHOUSE_NOTIFICATION_EMAIL` stored strictly in serverless `process.env` (`.env.local` + Vercel env vars).
+    - **Fail-Safe Email Layer (`api/lib/email.ts`):**
+      - Single `fetch` POST to `api.resend.com/emails` (no SDK dependency); returns `{ sent, reason }` and never throws — email outages cannot break payment reconciliation, voucher intake, or admin approvals.
+      - Missing `RESEND_API_KEY` short-circuits with a warning log (unit tests, offline dev).
+      - 8-second `AbortSignal.timeout` guards webhook latency against a hung provider.
+    - **Localized Templates (`api/lib/emailTemplates.ts`):**
+      - `{ subject, html, text }` outputs; every user-supplied value HTML-escaped (`escapeHtml`); integer CLP formatting and 19% IVA/neto breakdown; bank details sourced from `VITE_BANK_*` overrides.
+      - Four templates: `buildOrderConfirmationEmail` (incl. Banco de Chile deposit details + voucher upload link for transfers), `buildPaymentConfirmedEmail`, `buildTransferApprovedEmail`, `buildWarehouseAlertEmail`.
+    - **Trigger Points:**
+      - Order registered (transfer / WhatsApp quote): new `/api/order-confirmation` endpoint — dual-factor Order ID + RUT auth, idempotent via `confirmationEmailSentAt` order flag stamped only after a successful send.
+      - `PAGADO_MERCADOPAGO` (webhook): customer payment confirmation + warehouse dispatch alert, gated on a `stockDeducted` transaction flag so retries/concurrency aborts never re-notify.
+      - `TRANSFERENCIA_COMPROBANTE_SUBIDO` (`/api/upload-voucher`): warehouse alert to verify against Banco de Chile.
+      - `TRANSFERENCIA_APROBADA` (`/api/admin/approve-transfer`): customer approval notice + warehouse alert, gated on non-duplicate transaction result.
+      - CheckoutModal fires `sendOrderConfirmationEmail()` fire-and-forget for `transferencia`/`whatsapp` methods only — Mercado Pago orders are covered by the verified webhook.
+    - **Automated Test Coverage:**
+      - New suites: `src/tests/api/email.test.ts`, `src/tests/api/order-confirmation.test.ts`, `src/tests/services/orderConfirmation.test.ts`.
+      - Extended suites: `mercadopago-webhook.test.ts`, `upload-voucher.test.ts`, `admin/approve-transfer.test.ts`, `CheckoutModal.test.tsx`, `whatsapp.test.ts`.
+      - Total repository test suite: 381 tests passing (100% test reliability); production build and `tsc` typecheck clean.
 
-- [ ] **5.2. Configure Official Production WhatsApp Number**
-  - **Current Issue:** `VITE_WHATSAPP_NUMBER` in `.env.example` and `.env.local` is set to placeholder `56912345678`.
-  - **Required Action:**
-    - Replace with the real WhatsApp Business number for the Melipilla operation.
-    - Configure automated welcome and catalog messages inside the WhatsApp Business app.
+- [x] **5.2. Configure Official Production WhatsApp Number** ✅ _(Resolved: real business number `56929831595` set as `VITE_WHATSAPP_NUMBER` and as the in-code fallback in `src/services/whatsapp.ts`; WhatsApp Business app greeting/away/quick-reply configuration remains a manual operational task outside the codebase)_
+  - `VITE_WHATSAPP_NUMBER` updated in `.env.local`, `.env.example`, and Vercel environment variables.
+  - Fallback default in `src/services/whatsapp.ts` replaced from placeholder `56912345678` to `56929831595`; `whatsapp.test.ts` updated accordingly.
+  - Automated WhatsApp Cloud API messaging deliberately deferred — `wa.me` click-to-chat links cover the current flow without Meta template approval overhead.
 
 ---
 
@@ -308,20 +326,20 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
     - `Product` data model updated with `images?: string[]` and `packageContents?: string[]`.
     - Curated high-resolution dental photography URLs configured across catalog items in `src/data/products.ts`.
     - Interactive multi-photo gallery implemented in `ProductQuickView.tsx` with thumbnail navigation, keyboard controls, and full fallback to category iconography in `ProductCard.tsx`.
-    - *(Optional future enhancement: migrate images to dedicated Firebase Storage bucket when custom assets are photographed).*
+    - _(Optional future enhancement: migrate images to dedicated Firebase Storage bucket when custom assets are photographed)._
 
 - [ ] **6.2. Downloadable Technical Documentation (Datasheets & ISP Registration)**
   - For clinic sanitization audits, dentists require technical datasheets and sanitary registration codes.
-  - Provide a download link on product details: *"Download Technical Datasheet (PDF)"*.
+  - Provide a download link on product details: _"Download Technical Datasheet (PDF)"_.
 
 - [ ] **6.3. Expand Catalog SKUs by Dental Specialty**
   - Organize dental items into standard industry categories:
-    - *Endodontics* (files, gutta-percha, sealers).
-    - *Periodontics & Prophylaxis* (curettes, ultrasonic tips, prophy paste).
-    - *Restorative & Esthetics* (composites, bonding agents, curing lights).
-    - *Orthodontics* (brackets, archwires, elastics).
-    - *Surgery & Implants* (sutures, blades, surgical instruments).
-    - *Sterilization & Infection Control* (pouches, autoclave accessories, surface disinfectants).
+    - _Endodontics_ (files, gutta-percha, sealers).
+    - _Periodontics & Prophylaxis_ (curettes, ultrasonic tips, prophy paste).
+    - _Restorative & Esthetics_ (composites, bonding agents, curing lights).
+    - _Orthodontics_ (brackets, archwires, elastics).
+    - _Surgery & Implants_ (sutures, blades, surgical instruments).
+    - _Sterilization & Infection Control_ (pouches, autoclave accessories, surface disinfectants).
 
 ---
 
@@ -373,7 +391,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
   - **Note on Guardrails:** In strict adherence to `AGENTS.md` (Anti-Overshooting Principle #5 and Section 7), PRONTO uses lean Vercel CLI deployments without bloated multi-stage runners or heavy container pipelines.
   - **Required Action:**
     - Enforce local mandatory pre-flight checks (`pnpm test && pnpm exec tsc --noEmit && pnpm build`) before releases.
-    - *(Optional)* Add a minimal GitHub Actions workflow (`.github/workflows/ci.yml`) running only `pnpm test` and `pnpm build` on pull requests.
+    - _(Optional)_ Add a minimal GitHub Actions workflow (`.github/workflows/ci.yml`) running only `pnpm test` and `pnpm build` on pull requests.
 
 - [ ] **8.5. Real-Time Error Monitoring & Analytics (Sentry & GA4)**
   - Integrate **Sentry for React** to capture unhandled client runtime errors across mobile devices and browsers.
@@ -436,6 +454,6 @@ The store is officially ready to process its first real commercial transaction w
 2. [x] Approved Mercado Pago transactions update the Firestore order status and deduct physical stock **exclusively** via the verified serverless webhook.
 3. [x] If a customer abandons or gets rejected on the payment gateway, inventory remains intact and the order is not marked as paid.
 4. [x] Secret server keys for Firebase and Mercado Pago are stored strictly in serverless environment variables.
-5. [ ] The purchasing clinic receives an immediate formal order confirmation with an order number via email and/or WhatsApp.
+5. [x] The purchasing clinic receives an immediate formal order confirmation with an order number via email and/or WhatsApp.
 6. [x] Customers can select Boleta or Factura with validated RUT and company data, and the business issues the corresponding legal tax invoice.
 7. [ ] The storefront runs on a branded `.cl` domain with active SSL and visible consumer legal terms conforming to Chilean law.

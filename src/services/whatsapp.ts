@@ -12,7 +12,7 @@ export interface WhatsAppQuoteParams {
  * WhatsApp Quote Generator for PRONTO INSUMOS ODONTOLÓGICOS (Melipilla & RM)
  */
 export function generateWhatsAppQuoteUrl({ orderId, customer, items, total }: WhatsAppQuoteParams): string {
-  const phone = import.meta.env.VITE_WHATSAPP_NUMBER || '56912345678'
+  const phone = import.meta.env?.VITE_WHATSAPP_NUMBER || '56929831595'
 
   const itemsText = items
     .map((i) => `• *${i.quantity}x* ${i.product.name} - ${formatCLP(i.product.price * i.quantity)}`)

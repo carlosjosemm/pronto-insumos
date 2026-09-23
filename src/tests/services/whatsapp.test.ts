@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { generateWhatsAppQuoteUrl } from '../../services/whatsapp'
 import { CartItem, CustomerInfo } from '../../types'
 
@@ -69,6 +69,8 @@ describe('generateWhatsAppQuoteUrl', () => {
   })
 
   it('should include the configured phone number', () => {
+    vi.stubEnv('VITE_WHATSAPP_NUMBER', '56999887766')
+
     const url = generateWhatsAppQuoteUrl({
       orderId: 'PRONTO-123456',
       customer: mockCustomer,
@@ -76,7 +78,22 @@ describe('generateWhatsAppQuoteUrl', () => {
       total: 459970
     })
 
-    expect(url).toContain('wa.me/56912345678')
+    expect(url).toContain('wa.me/56999887766')
+    vi.unstubAllEnvs()
+  })
+
+  it('should fall back to the production business number when the env var is unset', () => {
+    vi.stubEnv('VITE_WHATSAPP_NUMBER', '')
+
+    const url = generateWhatsAppQuoteUrl({
+      orderId: 'PRONTO-123456',
+      customer: mockCustomer,
+      items: mockCartItems,
+      total: 459970
+    })
+
+    expect(url).toContain('wa.me/56929831595')
+    vi.unstubAllEnvs()
   })
 
   it('should include the order ID in the encoded message', () => {
