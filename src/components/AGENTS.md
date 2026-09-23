@@ -62,10 +62,22 @@ The landing page composes the brand experience in a fixed narrative order:
 1. [`Hero.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Hero.tsx): editorial headline + CTA, compact inline B2B trust strip, and the right-column lifestyle photography panel (with `imgError` state fallback).
 2. [`PromoStrip.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/PromoStrip.tsx): slim value-proposition band (slogan, express delivery, SII invoicing).
 3. [`CategoryFilter.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryFilter.tsx): category pills, result count, stock toggle, and sort selector (`#catalog-section` scroll anchor).
-4. [`CategoryShowcase.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryShowcase.tsx): 4-card specialty hub when viewing `all`, or a contextual banner for the active category. Cards are native `<button>` elements (keyboard accessible); categories without a banner render nothing.
+4. [`CategoryShowcase.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryShowcase.tsx): 4-card specialty hub when viewing `all`, or a contextual banner for the active category. Cards are native `<button>` elements (keyboard accessible); categories without a banner render nothing. Its banner copy/photography data lives in [`categoryBanners.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/categoryBanners.ts) — **not** in the component module, so `CategoryShowcase.tsx` exports components only (React Fast Refresh). Do not move `CATEGORY_BANNERS` back into the component file.
 5. [`ProductList.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductList.tsx): catalog grid.
 
 > **Category display labels:** Internal Firestore keys (e.g. `DESECHABLES, ESTERILIZACION Y DESINFECCION`) are never shown raw. Always render through `formatCategoryDisplayName()` from [src/utils/categoryAlias.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/categoryAlias.ts), which is the single source of truth for storefront naming (also consumed by `CATEGORIES` in `src/data/products.ts`).
+
+#### `App.tsx` state contracts (do not regress these)
+
+`App.tsx` was refactored to satisfy the React Compiler-era `react-hooks` rules (see root [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md) §8.4). The following are load-bearing contracts, not incidental implementation details:
+
+* **Catalog `loading` is derived, never stored.** `loading === (loadedRequestKey !== catalogRequestKey)`, where `catalogRequestKey` is `${selectedCategory}|${search}|${sortBy}|${inStockOnly}`. The fetch effect writes `loadedRequestKey` only in its `finally`. A filter change therefore flips `loading` to `true` during render — do **not** reintroduce `setLoading(true)` at the top of an effect.
+* **Mercado Pago return / tracking query parameters are parsed once, at module scope,** by `parseUrlBootstrap()`, and consumed through lazy `useState` initializers (`paymentReturn`, `isTrackingOpen`, `trackingInitialOrderId`, `trackingInitialRut`, and the approved-return cart reset). The mount effect performs **only** external side effects: `clearCartFromStorage()` and `history.replaceState()`. Moving this parsing back into a state-setting effect will fail `pnpm lint` and reintroduce a cascading render.
+* **Cart revalidation happens after the awaited fetch,** reading `cartRef.current` rather than `cart`. This keeps `cart` out of the effect's dependency array (which would trigger a re-fetch on every cart mutation) while still satisfying `exhaustive-deps`. `cartRef` is kept in sync by a dedicated effect.
+* **Overlay state is scoped by remount, not by reset effects:**
+  - `ProductQuickView` is rendered with `key={quickViewProduct.id}`, so its quantity, gallery index and failed-image state reset per product. Removing the `key` silently reintroduces stale state when switching products.
+  - `OrderTrackingModal` is rendered only while `isTrackingOpen` is true (`{isTrackingOpen && …}`), so its form state initializes from `initialOrderId` / `initialRut` on every open. Removing the conditional render reintroduces the prop→state sync effect that the hooks rules forbid.
+* **`addToast` is wrapped in `useCallback`** because it is a dependency of the catalog effect.
 
 ---
 
@@ -153,6 +165,16 @@ Under [`firestore.rules`](file:///c:/Users/ecmv2/Documents/PRONTO/firestore.rule
   2. **Customer / Clinic Tax ID:** Validated Chilean RUT (Modulo 11) matching the order.
 * **Serverless Proxy:** The modal queries [`/api/track-order`](file:///c:/Users/ecmv2/Documents/PRONTO/api/track-order.ts), which uses `firebase-admin` to fetch the order and returns a sanitized `OrderTrackingInfo` model without exposing internal tokens, server secrets, or database timestamps.
 
+### 4.1.1 Lifecycle Contract — mount-while-open, auto-search after the await
+
+The modal is **mounted only while open** (`{isTrackingOpen && <OrderTrackingModal … />}` in `App.tsx`). Its form state (`orderId`, `rut`, error and voucher fields) therefore initializes from the `initialOrderId` / `initialRut` props at mount, and there is **no prop→state synchronisation effect**. Removing the conditional render in `App.tsx` reintroduces the stale-state bug this replaced.
+
+Auto-search behaviour when the caller prefills valid credentials:
+
+* `autoSearchOnMount = Boolean(initialOrderId && initialRut && validateRut(initialRut))` also seeds the `loading` initializer, so the spinner is already on for the first paint.
+* The auto-search effect performs its state updates **after** the awaited `fetchOrderTracking()` call. The effect body itself must stay free of synchronous `setState` — this is what `react-hooks/set-state-in-effect` enforces, and `pnpm lint` will fail otherwise.
+* `performSearch()` remains the manual path used by the form's *Consultar* button and by the voucher re-fetch; it is a plain function, not a hook.
+
 ### 4.2 The 5-Stage Fulfillment Timeline
 
 ```mermaid
@@ -211,6 +233,7 @@ Vertical 1-column Product Detail Modal:
 * **Multi-Photo Gallery:** Thumbnail strip, next/prev navigation buttons, and keyboard arrow controls.
 * **Clinical Checklists:** Technical specifications checklist (`specs`) and itemized packaging contents (`packageContents` e.g., *"1x Turbina LED, 1x Llave de desarme, 1x Manual técnico"*).
 * **Sanitary Notice:** Detailed citation of ISP compliance and autoclave sterilization parameters (134°C).
+* **Per-product state via remount:** `App.tsx` renders this component with `key={quickViewProduct.id}`. Quantity, active gallery index and failed-image state are therefore scoped to a single product and reset by remounting — there is deliberately **no** "reset when `product` changes" effect (it would be a synchronous `setState` inside an effect, which `pnpm lint` rejects). Keep the `key`.
 
 ### 6.3 `CategoryFilter.tsx`
 Clinical category tabs (Instrumental, Materiales Restauradores, Equipamiento, Desechables, Endodoncia, Ortodoncia, Periodoncia) with accessible ARIA roles, instant stock toggle (`Solo productos en stock`), and price/rating sort dropdown.

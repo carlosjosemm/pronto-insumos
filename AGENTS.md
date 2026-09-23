@@ -106,6 +106,14 @@ pnpm test
 # Run tests with live file watcher
 pnpm test:watch
 
+# Lint the repo (ESLint flat config, zero errors expected)
+pnpm lint
+pnpm lint:fix
+
+# Check or apply the declared Prettier formatting
+pnpm format:check
+pnpm format
+
 # Build production bundle for Vercel (dist/index.html & dist/admin.html)
 pnpm build
 
@@ -117,6 +125,9 @@ pnpm run deploy:rules
 
 # Provision an administrator account for the backoffice portal (/admin)
 pnpm run setup:admin tu-email@prontoinsumos.cl TuPasswordSegura123!
+# NOTE: this script initializes its Firebase Auth client with getAuth(app). It must be
+# created from the app instance returned by initializeApp/cert — the script previously
+# referenced a bare `auth` identifier that was never defined and always threw ReferenceError.
 
 # --- Isolated Development / QA Testing Database Operations ---
 pnpm run schema:validate:dev     # Validate isolated dev_* collections against frozen schema
@@ -157,4 +168,55 @@ pnpm dlx vercel --prod
 ### 🛡️ Deployment Guardrails
 * **Pre-Flight Testing:** Never execute `vercel --prod` without first confirming that `pnpm test` and `pnpm build` succeed without errors.
 * **Environment Variable Sync:** When introducing new environment variables (client or server), add them to `.env.example` and set them in the Vercel Dashboard before running `vercel --prod`.
+
+---
+
+## 🧹 8. Code Style, Formatting & Linting
+
+The repository previously had no declared style. Editors with format-on-save enabled (the repo owner's IDE does) silently rewrote every touched file to Prettier's *defaults* — double quotes, semicolons, 80 columns — which contradicted the single-quote / no-semicolon style that 100% of `src/` already used. A three-line change could land as a 40-line diff.
+
+That is now fixed by declaring the rules in-repo, so format-on-save is a near no-op.
+
+### 8.1 The declared style (`.prettierrc`)
+
+```json
+{ "printWidth": 120, "tabWidth": 2, "semi": false, "singleQuote": true,
+  "jsxSingleQuote": false, "trailingComma": "none", "arrowParens": "always",
+  "bracketSpacing": true, "endOfLine": "lf" }
+```
+
+These values were chosen to **match the style the codebase already used**, not to impose a new one. `.editorconfig` gives non-Prettier editors the same baseline. `pnpm format:check` is the source of truth; it must pass.
+
+### 8.2 Deliberate exclusions (`.prettierignore`)
+
+| Excluded | Why |
+| :--- | :--- |
+| `*.md` | The AGENTS.md policy files, `PRODUCTION_READINESS_TODO.md` and the redesign proposal of record are read **verbatim** by agents. Prettier's Markdown printer reflows tables, rewrites `*` bullets to `-` and `*emphasis*` to `_emphasis_` — a content-level rewrite of documents whose formatting is intentional. |
+| `src/admin/**`, `api/**`, `admin.html` | **Temporary carve-out.** Excluded so the storefront UI overhaul did not touch trees outside its scope. Remove these lines and run `pnpm format` once that work has landed. |
+| `pnpm-lock.yaml`, `dist`, `coverage`, `public` | Generated / vendored. |
+
+### 8.3 ESLint (`eslint.config.js`)
+
+Flat config: `js.configs.recommended` + `typescript-eslint` recommended + `react-hooks` (`recommended-latest`) + `react-refresh`. `pnpm lint` currently reports **zero errors and zero warnings** across 38 files.
+
+* **Scope carve-out:** `src/admin/**` and `api/**` are in the `ignores` list. They carry their own runtime contracts and were outside the scope of the pass that introduced ESLint. Widen `ignores` in a dedicated follow-up.
+* **React Compiler-era rules are enabled and respected.** `react-hooks/set-state-in-effect` and `react-hooks/immutability` are **not** downgraded to warnings. The codebase was refactored to satisfy them — see §8.4. Do not re-introduce synchronous `setState` inside an effect body to "simplify" something; `pnpm lint` will fail.
+* **`no-explicit-any` is an error, with exactly one documented exception:** `Order.createdAt` in `src/types/index.ts`. See [src/types/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/AGENTS.md).
+
+### 8.4 Patterns adopted to satisfy the hooks rules
+
+| Pattern | Where | Contract |
+| :--- | :--- | :--- |
+| `loading` derived from a request key, not `setState` in an effect | `App.tsx` | `loading === (loadedRequestKey !== catalogRequestKey)`. A filter change flips `loading` during render; the fetch only writes `loadedRequestKey` in its `finally`. |
+| URL bootstrap parsed once at module scope, consumed by lazy `useState` initializers | `App.tsx` (`parseUrlBootstrap`) | The mount effect performs **only** external side effects (`clearCartFromStorage`, `history.replaceState`). Never move the payment-return/tracking parsing back into an effect with `setState`. |
+| Cart revalidation runs after the awaited fetch, reading a `cartRef` mirror | `App.tsx` | Keeps `cart` out of the effect's dependency array (which would re-fetch on every cart change) while still satisfying `exhaustive-deps`. |
+| Overlay state scoped by remount instead of a reset effect | `ProductQuickView` (`key={product.id}`), `OrderTrackingModal` (mounted only while open) | Callers **must** keep the `key` / the conditional render. Removing them silently reintroduces stale gallery/quantity/form state. |
+| Every state update in an auto-search effect happens after the `await` | `OrderTrackingModal` | The effect body itself must stay free of synchronous `setState`. |
+
+### 8.5 Working rules for future agents
+
+1. **Never reformat files you did not change.** If a diff shows formatting-only hunks in untouched regions, something is misconfigured — check `.prettierrc` is being picked up.
+2. Run `pnpm lint` and `pnpm format:check` alongside `pnpm test` and `pnpm build` before committing.
+3. `git blame` on the formatting sweep is noise by design — that was a deliberate one-time normalization (`style: apply the declared formatting rules repo-wide`).
+
 

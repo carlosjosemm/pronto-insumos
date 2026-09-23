@@ -101,3 +101,21 @@ When the customer returns to the site, `revalidateCartAgainstCatalog(storedItems
    * Stock decrement authority is strictly restricted to serverless webhooks and authenticated admin transactions.
 3. **Zero Card Input Handling (PCI-DSS):**
    * `processMercadoPagoPayment()` in `mercadopago.ts` never accepts or transmits card numbers. It requests a preference URL from `/api/create-preference` and returns the checkout link.
+
+---
+
+## 🧯 5. Error-Handling Conventions (`catch` clauses)
+
+Every service in this directory degrades gracefully: when a boundary (Firestore, `/api/create-preference`, `/api/track-order`, `/api/upload-voucher`) is unavailable it logs a diagnostic warning and falls back to local simulation or the static catalog. That resilience contract is unchanged — only the *typing* of the caught value was tightened:
+
+* **`catch` parameters are typed `unknown`, never `any`** (`no-explicit-any` is an error). Each site narrows explicitly before reading a message:
+
+  ```ts
+  } catch (err: unknown) {
+    console.warn('Endpoint /api/track-order no disponible, usando fallback:', err instanceof Error ? err.message : err)
+  }
+  ```
+
+* **Why this matters:** the previous `catch (err: any)` form let `err.message` be read on a thrown non-`Error` (a rejected string, a Firestore `FirebaseError` shape change, etc.), which produced `undefined` in the logs and hid the real failure. The `instanceof Error` guard keeps the diagnostic honest.
+* **Applies to:** `api.ts` (`fetchProducts`, `submitOrder`), `firebase.ts` (`seedProductsToFirestore`), `mercadopago.ts`, `orderTracking.ts`, `transferVoucher.ts`.
+* **Do not "simplify" these back to `any`.** If a new boundary needs the original error object, pass it through to `console.warn`/`console.error` as-is (as `firebase.ts` does) rather than widening the type.

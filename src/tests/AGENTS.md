@@ -56,3 +56,77 @@ pnpm test:coverage
 - [ ] Test standard happy path.
 - [ ] Test edge cases (invalid inputs, network error responses, empty arrays).
 - [ ] Run `pnpm test` to verify zero regression across all test suites.
+- [ ] Run `pnpm lint` — test files are **inside** the lint scope (see §5).
+
+---
+
+## 🧷 5. Typing Conventions Under `no-explicit-any`
+
+`no-explicit-any` is an **error** across `src/tests/**`, so the suites no longer use `any` for mock plumbing. The patterns adopted are load-bearing — prefer them over re-widening a type.
+
+### 5.1 Mock return values
+
+Cast through `unknown` using `ReturnType`/`Awaited` rather than `as any`, so a signature change upstream surfaces as a type error instead of silently passing:
+
+```ts
+// Firestore Admin doubles
+vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+  mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+)
+
+// Firebase Auth doubles
+vi.mocked(firebaseAuthAdmin.getAuth).mockReturnValue({
+  verifyIdToken: mockVerify
+} as unknown as ReturnType<typeof firebaseAuthAdmin.getAuth>)
+```
+
+For `onAuthStateChanged`, the parameter is the SDK's `NextOrObserver<User>` union — type it as such and guard before invoking, since it may be an observer object rather than a function:
+
+```ts
+vi.mocked(firebaseAuth.onAuthStateChanged).mockImplementation((_auth, callback: NextOrObserver<User>) => {
+  if (typeof callback === 'function') callback(null)
+  return () => {}
+})
+```
+
+### 5.2 Captured responses and payloads
+
+* `mockRes.json` captures into `Record<string, unknown>` (`let jsonOutput: Record<string, unknown> = {}`), and `json: vi.fn((data: unknown) => …)`.
+* **Nested reads need a local cast**, because `Record<string, unknown>` values are `unknown`:
+  ```ts
+  const product = jsonOutput.product as Record<string, unknown>
+  expect(product.priceNeto).toBe(7555)
+  ```
+* **Callbacks that mutate a captured variable must use an object holder.** TypeScript's control-flow analysis does not track assignments made inside a closure, so a plain `let captured: Record<string, unknown> | null = null` narrows to `null` (and then to `never`) at the assertion site. Use:
+  ```ts
+  const capturedProductUpdate: { current: Record<string, unknown> | null } = { current: null }
+  // …inside the mock: capturedProductUpdate.current = data
+  expect(capturedProductUpdate.current?.stockCount).toBe(5)
+  ```
+
+### 5.3 Deliberately invalid input
+
+When a test intentionally passes a wrong type to prove runtime resilience, use `@ts-expect-error` (not `@ts-ignore`) with a reason, so the suppression fails loudly if the call ever becomes valid:
+
+```ts
+// @ts-expect-error deliberate invalid input to assert runtime resilience
+expect(formatCLP(null)).toBe('$0')
+```
+
+### 5.4 `setup.ts` — one load-bearing line, do not "clean it up"
+
+```ts
+if (typeof import.meta.env === 'undefined') {
+  // @ts-expect-error import.meta.env is typed as always-present, but some runners leave it undefined
+  import.meta.env = {}
+}
+```
+
+This assignment is what makes the `Object.assign(import.meta.env, { VITE_FIREBASE_*: … })` block below it effective for suites that load the Firebase client. Rewriting it as a cast expression (e.g. `(import.meta as …).env = {}`) **silently breaks** `src/tests/admin/{AdminDashboard,OrderDetailPanel,ProductEditModal,StockAdjustModal}.test.tsx`, which then fail at import time with `FirebaseError: auth/invalid-api-key`. Keep the direct assignment form.
+
+Also note `const mutableEnv = import.meta.env as unknown as Record<string, unknown>` exists purely so `delete mutableEnv.FIRESTORE_ENV` type-checks — `ImportMetaEnv`'s keys are read-only, and `delete` on a read-only property is a type error.
+
+### 5.5 Removed / changed assertions
+
+* `src/tests/components/ProductDetailModal.test.tsx` — dropped an unused `rerender` destructuring.
+* `src/tests/components/CategoryShowcase.test.tsx` and `src/tests/utils/categoryAlias.test.ts` — dropped unused imports. `CATEGORY_BANNERS` now lives in `src/components/categoryBanners.ts`; import it from there if a future test needs it.
