@@ -56,6 +56,20 @@ describe('Navbar component', () => {
     expect(screen.getByText('Melipilla · San Antonio')).toBeInTheDocument()
   })
 
+  it('should render the mobile utility row with the phone and tracking actions', () => {
+    const { container } = render(<Navbar {...defaultProps} onOpenTracking={() => {}} />)
+    const row = container.querySelector('.nav-mobile-utility')
+    expect(row).toBeInTheDocument()
+    expect(screen.getByText('Mesa Clínica')).toBeInTheDocument()
+    expect(screen.getByText('Seguimiento')).toBeInTheDocument()
+  })
+
+  it('should omit the mobile tracking action when no tracking handler is provided', () => {
+    render(<Navbar {...defaultProps} />)
+    expect(screen.getByText('Mesa Clínica')).toBeInTheDocument()
+    expect(screen.queryByText('Seguimiento')).not.toBeInTheDocument()
+  })
+
   it('should pulse cart badge when count increases', () => {
     const { rerender } = render(<Navbar {...defaultProps} cartCount={1} />)
     expect(screen.getByText('1')).not.toHaveClass('cart-count-badge--pulse')

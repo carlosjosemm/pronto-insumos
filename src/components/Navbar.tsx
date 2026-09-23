@@ -134,6 +134,20 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
             aria-label="Buscar insumos y equipos dentales"
           />
         </div>
+
+        {/* Mobile utility row — restores the phone + tracking actions the hidden top bar takes away */}
+        <div className="nav-mobile-utility">
+          <a href={whatsappLink()} className="nav-mobile-utility-link" target="_blank" rel="noopener noreferrer">
+            <Phone size={14} />
+            <span>Mesa Clínica</span>
+          </a>
+          {onOpenTracking && (
+            <button type="button" onClick={onOpenTracking} className="nav-mobile-utility-link">
+              <Truck size={14} />
+              <span>Seguimiento</span>
+            </button>
+          )}
+        </div>
       </header>
     </>
   )

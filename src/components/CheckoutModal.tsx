@@ -558,6 +558,7 @@ export default function CheckoutModal({
                   </label>
                   <input
                     type="text"
+                    inputMode="text"
                     required
                     placeholder="12.345.678-K"
                     value={formData.rut}
@@ -740,7 +741,8 @@ export default function CheckoutModal({
                     Teléfono Móvil
                   </label>
                   <input
-                    type="text"
+                    type="tel"
+                    inputMode="tel"
                     required
                     placeholder="+56 9 1234 5678"
                     value={formData.phone}
@@ -865,6 +867,7 @@ export default function CheckoutModal({
                   </label>
                   <input
                     type="text"
+                    inputMode="numeric"
                     required
                     placeholder="Ej: 9500000"
                     value={formData.zip}
@@ -929,6 +932,7 @@ export default function CheckoutModal({
                       <input
                         id="sis-registry-number"
                         type="text"
+                        inputMode="text"
                         placeholder="Ej: 148925"
                         value={sisRegistryNumber}
                         onChange={(e) => {

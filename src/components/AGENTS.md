@@ -7,7 +7,7 @@ This document is the **authoritative domain and technical reference** for the us
 ## 🏥 1. Business Context & Clinical Domain Architecture
 
 ### 1.1 The Chilean Dental Supplies Market & PRONTO's Role
-PRONTO Insumos Odontológicos operates as a specialized **depósito dental** (dental supply distributor) physically based in **Melipilla, Chile** (warehouse and local pickup point at **Av. Ortúzar 750**). 
+PRONTO Insumos Odontológicos operates as a specialized **depósito dental** (dental supply distributor) physically based in **Melipilla, Chile** (warehouse and dispatch depot at **Av. Ortúzar 750** — corporate information only; there is **no** customer pickup, see root [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md) §3.4). 
 
 The customer base is primarily **B2B (Business-to-Business)**:
 1. **Private Dental Clinics (Sociedades Odontológicas):** SpA, EIRL, or Sociedades de Profesionales that purchase consumables, impression materials, and handpieces as operational expenses.
@@ -102,6 +102,16 @@ The brand mark is **type, not an image** — it renders as crisp text at any zoo
 * **Favicon:** `public/favicon.svg`, wired via `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />` in `index.html`.
 * **`og-preview.png`:** `index.html` references `https://pronto-insumos.vercel.app/og-preview.png` in `og:image`, `twitter:image` and the JSON-LD `image`. The file is produced by a human (redesign proposal Appendix B.1) and dropped at `public/og-preview.png`; the meta tags ship regardless. **Do not generate a substitute image.** `vercel --prod` is blocked until the real file exists.
 
+### 2.3 Mobile Behaviour (≤768px)
+
+The storefront is browsed between patients, so the ≤768px breakpoint in `src/index.css` is a designed surface, not a fallback:
+
+* **Product grid stays 2 columns.** `.products-grid` is `repeat(2, minmax(0, 1fr))` with a tightened `0.85rem` gap at ≤768px; it must not collapse to a single column.
+* **`.nav-mobile-utility`** restores the `Mesa Clínica` + `Seguimiento` actions that hiding `.top-utility-bar` takes away — see §7.1.
+* **`.category-pills`** carries a visible thin scrollbar (`scrollbar-width: thin` + a 4px `::-webkit-scrollbar`) so the horizontal overflow is discoverable without JS. It previously hid the scrollbar entirely.
+* **Sticky action bar.** `.detail-modal-footer` is `position: sticky; bottom: 0` inside the scrolling `.product-detail-modal-body`, so the `Agregar al Carro` action stays reachable at every viewport; do not "fix" it to mobile-only.
+* **Keyboard hints.** Phone is `type="tel" inputmode="tel"`, email is `type="email"`, postal code is `inputmode="numeric"`. **RUT and the SIS registry number stay `inputmode="text"`** — a numeric keypad cannot produce the `K` check digit. `CheckoutModal.test.tsx` asserts all four.
+
 ---
 
 ## 🛒 3. Deep Dive: Checkout Modal (`CheckoutModal.tsx`)
@@ -132,14 +142,14 @@ graph TD
 | :--- | :--- | :--- | :--- | :--- |
 | **Tipo de Documento** | `formData.documentType` | `📄 Boleta Electrónica` | The fiscal document issued through the Chilean SII. **Boleta only, as built** — the Factura card is removed behind `const FACTURA_ENABLED = false`. The Factura branch (corporate RUT + Razón Social + Giro) still exists in code and in the order schema, so re-enabling is a one-line change; until then clinics are routed to the WhatsApp quotation path via the note under the card. | Required (`'boleta'` \| `'factura'`). Defaults to `'boleta'`. |
 | **Nombre del Profesional** | `formData.fullName` | *Nombre del Profesional o Representante Legal* | Identifies the ordering dentist or the clinic's legal representative. Used for package labeling, reception desk delivery signing, and customer care. | Required string. Trimmed of whitespace. |
-| **RUT del Comprador** | `formData.rut` | *RUT Personal (RUN)* (Boleta) / *RUT Empresa / Sociedad* (Factura) | Chilean national identity tax number. For Boleta, represents the individual practitioner. For Factura, represents the incorporated dental practice (Sociedad Odontológica). | Must satisfy official Chilean **Modulo 11 check digit** via `validateRut()` in [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts). Formats dynamically as `12.345.678-K`. |
+| **RUT del Comprador** | `formData.rut` | *RUT Personal (RUN)* (Boleta) / *RUT Empresa / Sociedad* (Factura) | Chilean national identity tax number. For Boleta, represents the individual practitioner. For Factura, represents the incorporated dental practice (Sociedad Odontológica). | Must satisfy official Chilean **Modulo 11 check digit** via `validateRut()` in [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts). Formats dynamically as `12.345.678-K`. Deliberately keeps `inputmode="text"` — a numeric keypad cannot produce the `K` check digit. |
 | **Email para Documento SII** | `formData.email` | *Email para Documento SII* | **Critical Chilean Fiscal Field:** Electronic tax documents (DTEs) issued through electronic invoicing providers connected to the SII must be dispatched to a formal electronic mailbox. In dental clinics, this email is often monitored by the clinic's accountant or administrator (`facturacion@clinica.cl`), ensuring tax documents are not lost in personal dentist inboxes. For Boleta, receives the purchase confirmation and Boleta PDF. | Required standard email format (`type="email"`). |
 | **Razón Social** | `formData.razonSocial` | *Razón Social (según SII) \** | **Factura Only:** The official registered legal entity name of the clinic or dental society (e.g., *"Centro Odontológico Melipilla SpA"*). The SII rejects invoices where the Razón Social does not match the company RUT in the tax registry. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
 | **Giro Comercial** | `formData.giroComercial` | *Giro Comercial Registrado \** | **Factura Only:** The registered economic activity code and description recognized by the SII (e.g., *"Servicios odontológicos"*, *"Atención médica y dental"*). Invoices lacking a valid economic activity are legally rejected for tax credit. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
-| **Teléfono Móvil** | `formData.phone` | *Teléfono Móvil* | Direct telephone and WhatsApp contact for courier logistics. Crucial for Melipilla urban delivery and regional couriers to confirm clinic reception hours before dispatching packages. | Required string. |
+| **Teléfono Móvil** | `formData.phone` | *Teléfono Móvil* | Direct telephone and WhatsApp contact for delivery coordination. Crucial for the Melipilla urban route and the scheduled San Antonio route to confirm clinic reception hours before dispatching. | Required string. Rendered as `type="tel" inputmode="tel"` so mobile devices open the phone keypad. |
 | **Dirección de Entrega / Fiscal** | `formData.address` | *Dirección de Entrega / Fiscal \** | Dual-purpose field: Specifies the street, building, office number (e.g., *"Av. Ortúzar 750, Of. 302"*), and acts as the fiscal address registered on the electronic tax invoice. | Mandatory. Validated via `validateFacturaFields` when Factura is selected. |
 | **Comuna de Despacho** | `formData.city` | *Comuna de Despacho \** | **A `<select>`, not free text.** Only the two real delivery zones are offered — `Melipilla` (default) and `San Antonio` — sourced from `DELIVERY_ZONES` in [src/config/delivery.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/delivery.ts). It determines logistics eligibility (the San Antonio minimum order) and satisfies the SII DTE address requirement. | Mandatory. Defaults to `DEFAULT_DELIVERY_ZONE` (`Melipilla`). |
-| **Código Postal / Región** | `formData.zip` | *Código Postal / Región* | Chilean postal district code (e.g., *"9500000"* for Melipilla) or regional identifier for courier sorting hubs (Chilexpress/Starken). | Required string. |
+| **Código Postal / Región** | `formData.zip` | *Código Postal / Región* | Chilean postal district code (e.g., *"9500000"* for Melipilla) or regional identifier. Carries `inputmode="numeric"`. | Required string. |
 | **N° Registro SIS** | `sisRegistryNumber` | *N° Registro SIS (Superintendencia) \** | **Sanitary Verification Field:** Mandatory only when cart contains regulated clinical supplies (`prescriptionRequired === true`). Represents the practitioner's official registration in the Superintendencia de Salud's RNPI. | Required if `hasRegulatedItems`. Minimum 4 numeric/alphanumeric characters. |
 | **Credencial / Receta** | `credentialFileName` | *Credencial Profesional o Receta (Opcional)* | Allows uploading an image or PDF of the professional credential or prescription authorizing controlled supply acquisition. | Optional file attachment (`.pdf`, `.jpg`, `.png`). |
 
@@ -236,7 +246,7 @@ stateDiagram-v2
     [*] --> Registrado: Pedido Ingresado
     Registrado --> ComprobantePago: Pago Confirmado / Comprobante Subido
     ComprobantePago --> PreparacionBodega: Factura Emitida & Empaque en Bodega Melipilla
-    PreparacionBodega --> EnRuta: Despachado (Ruta Urbana / Starken / Chilexpress)
+    PreparacionBodega --> EnRuta: Despachado (Ruta Melipilla / Ruta Programada San Antonio)
     EnRuta --> Entregado: Entregado en Clínica Dental
     Entregado --> [*]
 ```
@@ -315,8 +325,9 @@ Clinical category tabs (Instrumental, Materiales Restauradores, Equipamiento, De
 
 ### 7.1 `Navbar.tsx`
 * **Brand Lockup:** the code-rendered `PRONTO` / `INSUMOS ODONTOLÓGICOS` wordmark with the `--signal` underline motif — see §2.2. The link carries `aria-label="PRONTO Insumos Odontológicos"`.
-* **Top Commercial Utility Bar:** Displays Melipilla express delivery notices, warehouse pickup address (Av. Ortúzar 750), Factura Electrónica SII compliance, and the direct "Seguimiento de Pedido" action button.
-* **Technical Search:** Debounced keyword search matching product names, clinical descriptions, categories, and SKU REF codes.
+* **Top Commercial Utility Bar:** left side carries `Despacho a clínicas en Melipilla y San Antonio`; right side carries the `Seguimiento de Pedido` button (only when `onOpenTracking` is passed), `Boleta Electrónica · IVA 19%`, and `Mesa Clínica: {WHATSAPP_DISPLAY}`. It no longer advertises Factura, pickup, or the warehouse address. It is an `--ink-900` surface, so its icons use `var(--accent-on-dark)`, never `var(--accent)`.
+* **Mobile utility row (`.nav-mobile-utility`):** the utility bar is `display: none` ≤768px, which took the phone and tracking actions with it. This row — rendered inside `<header className="navbar">` right after `.nav-search-mobile` — restores them: a `Mesa Clínica` link to `whatsappLink()` plus a `Seguimiento` button (again gated on `onOpenTracking`). It is `display: none` above 768px and only becomes a flex row in the ≤768px block. `Navbar.test.tsx` covers both the rendered row and the handler-gated omission.
+* **Technical Search:** Debounced keyword search matching product names, clinical descriptions, categories, and SKU REF codes. Two inputs exist — `.nav-search` (desktop) and `.nav-search-mobile` — with the latter shown ≤768px.
 * **Dynamic Cart Badge:** Visual item counter with micro-animation upon addition.
 * **Contact data:** the "Mesa Clínica" phone and its `wa.me` link come from `src/config/contact.ts` (`WHATSAPP_DISPLAY`, `whatsappLink()`), never from a literal.
 
@@ -325,8 +336,8 @@ Clinical category tabs (Instrumental, Materiales Restauradores, Equipamiento, De
 * Grounded 4-column B2B distributor layout:
   1. *Identidad Corporativa:* Corporate details, Av. Ortúzar 750 warehouse location, Melipilla, Chile.
   2. *Catálogo Clínico:* Quick links to primary dental categories.
-  3. *Logística y Seguimiento:* Tracking modal trigger, shipping routes (Melipilla, RM, Regiones vía Starken/Chilexpress), and withdrawal policies.
-  4. *Contacto y Certificaciones:* Factura Electrónica SII notice, ISP sanitary compliance statement, and technical WhatsApp hotline.
+  3. *Logística Regional:* Tracking modal trigger plus the delivery facts — `Despacho Express Clínicas Melipilla`, `Despacho Programado San Antonio`, `Compra mínima San Antonio: $60.000`, `Despacho Gratuito sobre $150.000`. There are **no** RM/Starken/Chilexpress routes and **no** withdrawal policy, because there is no pickup.
+  4. *Contacto y Formas de Pago:* `Boleta Electrónica Inmediata (19% IVA)`, `Factura para Clínicas — Cotización por WhatsApp`, the ISP homologation statement, and the technical WhatsApp hotline.
 * **Free-shipping figure must match the cart:** the logistics list advertises `Despacho Gratuito sobre $150.000`. It previously said `$100.000` while the cart computed against `150000`, so the storefront contradicted itself. Treat the cart constant as authoritative.
 * **Contact icons use `var(--accent-on-dark)`** — the footer is an `--ink-900` surface, where `--accent` fails contrast. The retired `--brand-accent-green` token must not reappear.
 * **Zero Prototype Buttons:** Administrative wipe/seed buttons are strictly eliminated from public view.

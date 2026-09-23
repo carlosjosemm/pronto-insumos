@@ -119,6 +119,22 @@ describe('CheckoutModal Component', () => {
     expect(rutInput.value).toBe('12.345.678-5')
   })
 
+  it('should use the correct mobile keyboard hints on the checkout inputs', () => {
+    render(<CheckoutModal {...defaultProps} />)
+
+    const phoneInput = screen.getByPlaceholderText('+56 9 1234 5678') as HTMLInputElement
+    expect(phoneInput.type).toBe('tel')
+    expect(phoneInput.getAttribute('inputmode')).toBe('tel')
+
+    expect((screen.getByPlaceholderText('contacto@clinica.cl') as HTMLInputElement).type).toBe('email')
+    expect((screen.getByPlaceholderText('Ej: 9500000') as HTMLInputElement).getAttribute('inputmode')).toBe('numeric')
+
+    // A numeric keypad cannot produce the K check digit, so the RUT stays on a text keyboard
+    const rutInput = screen.getByPlaceholderText('12.345.678-K') as HTMLInputElement
+    expect(rutInput.type).toBe('text')
+    expect(rutInput.getAttribute('inputmode')).toBe('text')
+  })
+
   it('should offer only Boleta and route Factura through the WhatsApp quotation path', () => {
     render(<CheckoutModal {...defaultProps} />)
 

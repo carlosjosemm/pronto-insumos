@@ -22,7 +22,7 @@ This directory contains the **automated test suite** for PRONTO, powered by **Vi
 ## 🚫 2. Anti-Overshooting & Testing Guardrails
 
 1. **Preserve Passing Tests (Zero Regression Policy):**
-   * Currently, **all 355 tests across 53 test suites pass (100% passing)**.
+   * Currently, **all 358 tests across 53 test suites pass (100% passing)**.
    * ❌ **NEVER** comment out, delete, or skip (`test.skip`) failing tests to get a passing build. If a test fails after your changes, diagnose and fix the root cause.
 2. **Speed & Efficiency:**
    * Automated tests must execute quickly without hanging.
