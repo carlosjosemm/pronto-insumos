@@ -1,13 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getAdminFirestore } from "../lib/firebaseAdmin";
-import { verifyAdminToken } from "../lib/adminAuth";
-import { getCollectionName } from "../lib/firestoreEnv";
-import { sendEmail, getWarehouseEmail } from "../lib/email";
+import { getAdminFirestore } from "../firebaseAdmin.js";
+import { verifyAdminToken } from "../adminAuth.js";
+import { getCollectionName } from "../firestoreEnv.js";
+import { sendEmail, getWarehouseEmail } from "../email.js";
 import {
   buildTransferApprovedEmail,
   buildWarehouseAlertEmail,
   toOrderEmailData,
-} from "../lib/emailTemplates";
+} from "../emailTemplates.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");

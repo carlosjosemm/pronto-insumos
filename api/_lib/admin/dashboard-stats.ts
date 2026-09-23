@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getAdminFirestore } from '../lib/firebaseAdmin'
-import { verifyAdminToken } from '../lib/adminAuth'
-import { getCollectionName } from '../lib/firestoreEnv'
+import { getAdminFirestore } from '../firebaseAdmin.js'
+import { verifyAdminToken } from '../adminAuth.js'
+import { getCollectionName } from '../firestoreEnv.js'
 
 function getChileDate(dateInput?: any): string {
   if (!dateInput) return ''

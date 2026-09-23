@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { verifyAdminToken } from '../../../../api/lib/adminAuth'
-import * as firebaseAdminLib from '../../../../api/lib/firebaseAdmin'
+import { verifyAdminToken } from '../../../../api/_lib/adminAuth'
+import * as firebaseAdminLib from '../../../../api/_lib/firebaseAdmin'
 import * as firebaseAuthAdmin from 'firebase-admin/auth'
 import type { VercelRequest } from '@vercel/node'
 
-vi.mock('../../../../api/lib/firebaseAdmin', () => ({
+vi.mock('../../../../api/_lib/firebaseAdmin', () => ({
   getAdminApp: vi.fn()
 }))
 
@@ -12,7 +12,7 @@ vi.mock('firebase-admin/auth', () => ({
   getAuth: vi.fn()
 }))
 
-describe('Serverless Admin Auth Middleware (api/lib/adminAuth.ts)', () => {
+describe('Serverless Admin Auth Middleware (api/_lib/adminAuth.ts)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })

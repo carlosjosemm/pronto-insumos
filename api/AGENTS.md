@@ -7,7 +7,7 @@ This document is the **authoritative technical and operational guide** for the s
 ## 🎯 1. Directory Scope & Runtime Architecture
 
 - **Execution Runtime:** Node.js (Vercel Serverless Function Environment).
-- **Core Philosophy:** Lean, stateless micro-endpoints. No monolithic Express/NestJS apps, no heavy ORMs, and no persistent background threads.
+- **Core Philosophy:** Lean, stateless micro-endpoints. No monolithic Express/NestJS apps, no heavy ORMs, and no persistent background threads. The one routed entry point (`api/admin/[action].ts`) is a documented exception to the single-purpose rule, forced by the Vercel Hobby function cap — see §1.2.
 - **Database Driver:** Official Google Cloud `firebase-admin` SDK executing with service account privileges.
 
 ### 1.1 Summary of Serverless Endpoints
@@ -19,6 +19,35 @@ This document is the **authoritative technical and operational guide** for the s
 | [`/api/track-order`](file:///c:/Users/ecmv2/Documents/PRONTO/api/track-order.ts)                   | `POST` | Dual Factor (Order ID + Chilean RUT) | Public order lookup service bypassing client-side Firestore read locks. Verifies ownership via Chilean Modulo 11 RUT and returns a sanitized 5-stage fulfillment timeline.                                                              |
 | [`/api/upload-voucher`](file:///c:/Users/ecmv2/Documents/PRONTO/api/upload-voucher.ts)             | `POST` | Dual Factor (Order ID + Chilean RUT) | Intake endpoint for bank transfer receipts (Banco de Chile). Validates file size (<= 5MB), MIME types (PDF, PNG, JPG), records voucher URL, and transitions order status to `'TRANSFERENCIA_COMPROBANTE_SUBIDO'`.                       |
 | [`/api/order-confirmation`](file:///c:/Users/ecmv2/Documents/PRONTO/api/order-confirmation.ts)     | `POST` | Dual Factor (Order ID + Chilean RUT) | Sends the transactional "order received" confirmation email via Resend for orders created client-side (bank transfer & WhatsApp quote). Idempotent via the `confirmationEmailSentAt` order flag (stamped only after a successful send). |
+
+### 1.2 Function Layout & the Vercel Hobby Function Cap
+
+The Vercel **Hobby plan refuses any deployment that adds more than 12 Serverless Functions**. Vercel treats *every* file under `api/` as a function unless its path contains a `_`-prefixed path segment, starts with `.`, or ends in `.d.ts`. That cap dictates the backend layout:
+
+| Path | Role | Counted as a function? |
+| :--- | :--- | :--- |
+| `api/create-preference.ts`, `api/order-confirmation.ts`, `api/track-order.ts`, `api/upload-voucher.ts`, `api/webhooks/mercadopago.ts` | Public endpoints | ✅ Yes |
+| `api/admin/[action].ts` | **Single routed entry point** for all 11 administrative actions | ✅ Yes |
+| `api/_lib/**` | Shared non-route code (`adminAuth`, `firebaseAdmin`, `firestoreEnv`, `email`, `emailTemplates`, `mercadopagoSignature`) **and** the 11 admin handler modules under `api/_lib/admin/` | ❌ No — `_`-prefixed segment |
+
+**Current function count: 6** (Hobby cap 12 — 6 slots of headroom).
+
+- **Routing:** `/api/admin/<action>` → `req.query.action === '<action>'`. A plain `Record<string, handler>` lookup table in `api/admin/[action].ts` dispatches to the matching module under `api/_lib/admin/`. Unknown, missing, empty, or non-string actions return `404 { success: false, error: 'Endpoint de administración no encontrado' }` and log a `[Admin Router]` warning. Inherited prototype keys (`constructor`, `__proto__`, …) are rejected by an own-property check.
+- **Public URLs are unchanged** — `src/admin/services/adminApi.ts` and `vercel.json` need no edits.
+- **No framework.** The dispatcher holds no routing library, no middleware pipeline, and no CORS/auth of its own: each delegated handler keeps its own CORS headers, `OPTIONS` preflight, method gate, `verifyAdminToken` call, and error handling.
+- **Rule of thumb:** anything under `api/` that is *not* a public route belongs in `api/_lib/`. Every new `api/*.ts` route consumes one of the 12 Hobby slots.
+
+### 1.3 Runtime Module Resolution (ESM on Vercel)
+
+Vercel does **not** bundle `api/` functions. It transpiles each file in place and ships the directory tree, so **Node's own ESM resolver** runs against the emitted `.js` files at request time. Two consequences are load-bearing — break either one and every affected endpoint returns `FUNCTION_INVOCATION_FAILED` (HTTP 500) while the build still reports success.
+
+1. **Relative imports must carry an explicit `.js` extension.** `package.json` declares `"type": "module"`, and Node's ESM resolver rejects extensionless specifiers. `import { getAdminFirestore } from './_lib/firebaseAdmin'` transpiles fine but throws `ERR_MODULE_NOT_FOUND` at runtime. Always write `'./_lib/firebaseAdmin.js'`.
+   - **Exception — type-only imports targeting a directory** (e.g. `import type { Product } from '../../../src/types'`) stay extensionless: they are erased during transpile and appending `.js` would break TypeScript's directory resolution.
+   - Vitest/Vite maps the `.js` specifier back to the `.ts` source, so tests and the storefront bundle are unaffected.
+   - `src/utils/schemaValidation.ts` is traced into the `api/admin/[action]` bundle, so its own `./rut.js` import obeys the same rule.
+
+2. **`jose` is pinned to v5 via `pnpm.overrides`.** `firebase-admin` → `jwks-rsa@4` is CommonJS and calls `require('jose')` at module load, but `jose@6` is ESM-only, so *merely importing `firebase-admin/auth`* crashes with `ERR_REQUIRE_ESM` under Vercel's Node loader (stock Node ≥ 22.12 tolerates it via `require(esm)`; Vercel's does not). Upstream: [auth0/node-jwks-rsa#507](https://github.com/auth0/node-jwks-rsa/issues/507) and [firebase/firebase-admin-node#3181](https://github.com/firebase/firebase-admin-node/issues/3181). jose v5 is the last dual CJS/ESM major, and `jwks-rsa` only uses `jose.importJWK`/`jose.exportSPKI`, which are API-identical across jose 4/5/6.
+   - **Removal condition:** drop the override once `jwks-rsa` publishes the lazy-`jose` fix ([PR #508](https://github.com/auth0/node-jwks-rsa/pull/508)) — i.e. any version above `4.1.0` — and re-verify that `firebase-admin/auth` loads on a preview deploy before promoting.
 
 ---
 
@@ -97,13 +126,13 @@ PRONTO enforces **two layers of idempotency defense**:
 
 ---
 
-## ✉️ 4. Transactional Email Layer (Resend — `api/lib/email.ts` & `api/lib/emailTemplates.ts`)
+## ✉️ 4. Transactional Email Layer (Resend — `api/_lib/email.ts` & `api/_lib/emailTemplates.ts`)
 
 PRONTO sends transactional email via **Resend** (single `fetch` POST to `https://api.resend.com/emails` — zero SDK dependency) with a verified sender domain (`prontoinsumos.com`, DKIM/SPF/DMARC authenticated at the DNS provider).
 
 ### 4.1 The Fail-Safe Contract
 
-`sendEmail()` in [`api/lib/email.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/email.ts) **never throws**. A missing `RESEND_API_KEY`, a Resend API rejection, or a network failure resolves to `{ sent: false, reason }` and only logs a `console.warn`. This guarantees an email outage can never break payment reconciliation, voucher intake, or admin approvals. Outbound calls carry an 8-second `AbortSignal.timeout` so a hung provider cannot stall a webhook.
+`sendEmail()` in [`api/_lib/email.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/email.ts) **never throws**. A missing `RESEND_API_KEY`, a Resend API rejection, or a network failure resolves to `{ sent: false, reason }` and only logs a `console.warn`. This guarantees an email outage can never break payment reconciliation, voucher intake, or admin approvals. Outbound calls carry an 8-second `AbortSignal.timeout` so a hung provider cannot stall a webhook.
 
 ### 4.2 Environment Variables (`process.env` ONLY — never `VITE_`)
 
@@ -113,7 +142,7 @@ PRONTO sends transactional email via **Resend** (single `fetch` POST to `https:/
 - `SITE_URL` (optional) — Base URL for order-tracking deep links inside emails (defaults to `https://prontoinsumos.com`).
 - Bank details in emails reuse the same public `VITE_BANK_*` variables as the storefront (non-secret, single source of truth).
 
-### 4.3 Trigger Points & Templates ([`api/lib/emailTemplates.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/emailTemplates.ts))
+### 4.3 Trigger Points & Templates ([`api/_lib/emailTemplates.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/emailTemplates.ts))
 
 All templates return `{ subject, html, text }`, escape every user-supplied value (`escapeHtml`), and format money as integer CLP (`$189.990`) with the 19% IVA/neto breakdown.
 
@@ -145,7 +174,7 @@ All templates return `{ subject, html, text }`, escape every user-supplied value
    - ✅ Secrets (`MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET`, `FIREBASE_PRIVATE_KEY`) belong strictly in `process.env`.
 2. **Database Access (`firebase-admin` ONLY):**
    - ❌ **NEVER** import client Firebase instances from `src/services/firebase.ts`.
-   - ✅ Use `getAdminFirestore()` from [`api/lib/firebaseAdmin.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firebaseAdmin.ts) initialized as a singleton using service account credentials.
+   - ✅ Use `getAdminFirestore()` from [`api/_lib/firebaseAdmin.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/firebaseAdmin.ts) initialized as a singleton using service account credentials.
 3. **CORS & Response Standard:**
    - All functions set permissive CORS headers for web clients while restricting methods:
      ```typescript
@@ -159,9 +188,11 @@ All templates return `{ subject, html, text }`, escape every user-supplied value
 
 ## 🛡️ 6. Deep Dive: Administrative Serverless Endpoints (`api/admin/`)
 
-The internal administrative portal communicates with dedicated serverless endpoints under `api/admin/`. These endpoints perform privileged operations (order updates, transfer approval, inventory mutations) protected by Firebase ID token authentication.
+The internal administrative portal communicates with dedicated serverless endpoints under the public `/api/admin/` URL space. These endpoints perform privileged operations (order updates, transfer approval, inventory mutations) protected by Firebase ID token authentication.
 
-### 6.1 Admin Authentication Middleware ([`api/lib/adminAuth.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/adminAuth.ts))
+Because of the Hobby function cap (§1.2), the 11 handlers are **not** separate route files: each lives as a plain module under `api/_lib/admin/`, and the single function `api/admin/[action].ts` dispatches to it on `req.query.action`. Behaviour is identical to a dedicated file per endpoint — every handler still owns its CORS headers, `OPTIONS` preflight, method gate, `verifyAdminToken` call, and error handling.
+
+### 6.1 Admin Authentication Middleware ([`api/_lib/adminAuth.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/adminAuth.ts))
 
 - **Cryptographic Verification:** Extracts `Authorization: Bearer <ID_TOKEN>` and invokes `auth.verifyIdToken(token, true)` via `firebase-admin/auth`.
 - **Custom Claim Enforcement:** Asserts `decodedToken.admin === true`. If the claim is missing or false, immediately rejects with `403 Forbidden` (`"Permisos insuficientes: se requiere rol de administrador"`).
@@ -169,19 +200,21 @@ The internal administrative portal communicates with dedicated serverless endpoi
 
 ### 6.2 Admin Endpoints Reference
 
+Each row's link points at the handler module under `api/_lib/admin/`; the public URL is served by the routed entry point `api/admin/[action].ts` (§1.2).
+
 | Endpoint                                                                                                 | Method | Role & Transaction Behavior                                                                                                                                                                                                                                                                                                                                                          |
 | :------------------------------------------------------------------------------------------------------- | :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`/api/admin/dashboard-stats`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/dashboard-stats.ts)     | `GET`  | Aggregates daily sales in CLP (localized to `America/Santiago`), counts pending bank transfers, identifies low-stock items (<5 units), and counts monthly orders.                                                                                                                                                                                                                    |
-| [`/api/admin/orders`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/orders.ts)                       | `GET`  | Fetches orders sorted by creation date with optional status filtering and pagination. Returns customer tax data, sanitary verification, and uploaded transfer vouchers.                                                                                                                                                                                                              |
-| [`/api/admin/approve-transfer`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/approve-transfer.ts)   | `POST` | **Crucial Operational Transition:** Approves a bank transfer order inside a Firestore atomic transaction (`adminDb.runTransaction`). Decrements physical stock in `products` for all consolidated items, transitions order status to `'TRANSFERENCIA_APROBADA'`, records `approvedBy` (admin email) and `approvedAt` timestamp, and writes an audit event to `order_status_history`. |
-| [`/api/admin/dispatch-order`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/dispatch-order.ts)       | `POST` | Updates fulfillment state to `'DESPACHADO'`. Records carrier name (e.g. Starken, Chilexpress, Blue Express, Melipilla Express), tracking number, and dispatch timestamp. Records audit trail.                                                                                                                                                                                        |
-| [`/api/admin/mark-delivered`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/mark-delivered.ts)       | `POST` | Updates fulfillment state to `'ENTREGADO'`, recording final delivery confirmation timestamp and audit trail.                                                                                                                                                                                                                                                                         |
-| [`/api/admin/products`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/products.ts)                   | `GET`  | Retrieves full catalog inventory with live `stockCount`, `inStock` flags, `isActive` visibility state, and pricing for backoffice staff.                                                                                                                                                                                                                                             |
-| [`/api/admin/update-stock`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/update-stock.ts)           | `POST` | Adjusts product inventory count. Supports audit logging in `inventory_audit_logs` with reason codes (`reposicion`, `merma`, `correccion`, `venta_manual`) and operator notes. Updates `inStock = (newStock > 0 && isActive !== false)`.                                                                                                                                              |
-| [`/api/admin/update-product`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/update-product.ts)       | `POST` | Updates product metadata: name, description, category, integer CLP price (with automatic `priceNeto = Math.round(price / 1.19)` re-calculation), manufacturer, package contents, and specs. Records audit log.                                                                                                                                                                       |
-| [`/api/admin/create-product`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/create-product.ts)       | `POST` | Registers a new dental clinical supply in Firestore Admin. Generates unique canonical IDs (`pronto-*`), supports dynamic categories, validates strictly against frozen schema, enforces Chilean integer CLP and net calculations (`priceNeto = Math.round(price / 1.19)`), and writes an initial audit record to `inventory_audit_logs`.                                             |
-| [`/api/admin/toggle-visibility`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/toggle-visibility.ts) | `POST` | Instant catalog visibility switch: toggles `isActive` without zeroing or clearing physical warehouse `stockCount`. Updates `inStock = (stockCount > 0 && newIsActive)`.                                                                                                                                                                                                              |
-| [`/api/admin/order-history`](file:///c:/Users/ecmv2/Documents/PRONTO/api/admin/order-history.ts)         | `GET`  | Retrieves chronological status transition timeline from `order_status_history` for an order, supporting both direct Document ID and `orderId` fallback query.                                                                                                                                                                                                                        |
+| [`/api/admin/dashboard-stats`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/dashboard-stats.ts)     | `GET`  | Aggregates daily sales in CLP (localized to `America/Santiago`), counts pending bank transfers, identifies low-stock items (<5 units), and counts monthly orders.                                                                                                                                                                                                                    |
+| [`/api/admin/orders`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/orders.ts)                       | `GET`  | Fetches orders sorted by creation date with optional status filtering and pagination. Returns customer tax data, sanitary verification, and uploaded transfer vouchers.                                                                                                                                                                                                              |
+| [`/api/admin/approve-transfer`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/approve-transfer.ts)   | `POST` | **Crucial Operational Transition:** Approves a bank transfer order inside a Firestore atomic transaction (`adminDb.runTransaction`). Decrements physical stock in `products` for all consolidated items, transitions order status to `'TRANSFERENCIA_APROBADA'`, records `approvedBy` (admin email) and `approvedAt` timestamp, and writes an audit event to `order_status_history`. |
+| [`/api/admin/dispatch-order`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/dispatch-order.ts)       | `POST` | Updates fulfillment state to `'DESPACHADO'`. Records carrier name (e.g. Starken, Chilexpress, Blue Express, Melipilla Express), tracking number, and dispatch timestamp. Records audit trail.                                                                                                                                                                                        |
+| [`/api/admin/mark-delivered`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/mark-delivered.ts)       | `POST` | Updates fulfillment state to `'ENTREGADO'`, recording final delivery confirmation timestamp and audit trail.                                                                                                                                                                                                                                                                         |
+| [`/api/admin/products`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/products.ts)                   | `GET`  | Retrieves full catalog inventory with live `stockCount`, `inStock` flags, `isActive` visibility state, and pricing for backoffice staff.                                                                                                                                                                                                                                             |
+| [`/api/admin/update-stock`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/update-stock.ts)           | `POST` | Adjusts product inventory count. Supports audit logging in `inventory_audit_logs` with reason codes (`reposicion`, `merma`, `correccion`, `venta_manual`) and operator notes. Updates `inStock = (newStock > 0 && isActive !== false)`.                                                                                                                                              |
+| [`/api/admin/update-product`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/update-product.ts)       | `POST` | Updates product metadata: name, description, category, integer CLP price (with automatic `priceNeto = Math.round(price / 1.19)` re-calculation), manufacturer, package contents, and specs. Records audit log.                                                                                                                                                                       |
+| [`/api/admin/create-product`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/create-product.ts)       | `POST` | Registers a new dental clinical supply in Firestore Admin. Generates unique canonical IDs (`pronto-*`), supports dynamic categories, validates strictly against frozen schema, enforces Chilean integer CLP and net calculations (`priceNeto = Math.round(price / 1.19)`), and writes an initial audit record to `inventory_audit_logs`.                                             |
+| [`/api/admin/toggle-visibility`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/toggle-visibility.ts) | `POST` | Instant catalog visibility switch: toggles `isActive` without zeroing or clearing physical warehouse `stockCount`. Updates `inStock = (stockCount > 0 && newIsActive)`.                                                                                                                                                                                                              |
+| [`/api/admin/order-history`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/admin/order-history.ts)         | `GET`  | Retrieves chronological status transition timeline from `order_status_history` for an order, supporting both direct Document ID and `orderId` fallback query.                                                                                                                                                                                                                        |
 
 ### 6.3 Relational Traceability & Audit Trail Architecture
 
@@ -198,7 +231,7 @@ To achieve tamper-proof traceability without an external SQL database, the serve
 
 ---
 
-## 🧪 7. Multi-Environment Firestore Isolation (`api/lib/firestoreEnv.ts`)
+## 🧪 7. Multi-Environment Firestore Isolation (`api/_lib/firestoreEnv.ts`)
 
 ### 7.1 The Development & QA Testing Bottleneck
 
@@ -206,7 +239,7 @@ Previously, PRONTO operated against a single Firestore database. Running local d
 
 ### 7.2 Dynamic Collection Namespacing Resolution
 
-The serverless backend resolves collection targets dynamically via `getCollectionName()` in [`api/lib/firestoreEnv.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firestoreEnv.ts):
+The serverless backend resolves collection targets dynamically via `getCollectionName()` in [`api/_lib/firestoreEnv.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/api/_lib/firestoreEnv.ts):
 
 ```typescript
 export function getFirestoreEnv(): "production" | "development" | "test" {
@@ -237,7 +270,7 @@ export function getCollectionName(baseCollection: CanonicalCollection): string {
   - **Development (`dev_*`):** Used during local development (`pnpm dev`) and Vercel Preview deployments (`VERCEL_ENV === 'preview'`). Collections accessed: `dev_orders`, `dev_products`, `dev_order_status_history`, `dev_inventory_audit_logs`.
   - **Production:** Live production deployments point to canonical root collections: `orders`, `products`, `order_status_history`, `inventory_audit_logs`.
   - **Unit Testing (`NODE_ENV === 'test'`):** Points strictly to canonical names, guaranteeing 100% test determinism across all Vitest suites and mocks.
-- **Complete Scoping:** All 11 serverless functions in `api/` access collections exclusively via `getCollectionName()`.
+- **Complete Scoping:** Every `api/` serverless function — the public routes, the `api/admin/[action].ts` router, and every handler under `api/_lib/` — accesses collections exclusively via `getCollectionName()`.
 
 ---
 
@@ -270,7 +303,7 @@ export function getCollectionName(baseCollection: CanonicalCollection): string {
 
 ### 8.3 Chilean Timezone Alignment in Executive Metrics
 
-- **The Challenge:** Standard UTC dates cause sales made in Chile between 20:00 and 23:59 (CLT/CLST) to be assigned to the _next day's_ sales bucket, confusing Melipilla warehouse accounting.
+- **The Challenge:** Standard UTC dates cause sales made in Chile between 20:00 and 23:59 (CLT/CLST) to be assigned to the *next day's* sales bucket, confusing Melipilla warehouse accounting.
 - **The Solution:** `/api/admin/dashboard-stats` uses `Intl.DateTimeFormat` with `timeZone: 'America/Santiago'` to extract `YYYY-MM-DD` and `YYYY-MM` keys, ensuring daily revenue and monthly volume strictly match the Chilean business day.
 
 ### 8.4 Decoupled Catalog Visibility (`isActive`) vs Physical Stock (`stockCount`)

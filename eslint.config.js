@@ -14,7 +14,7 @@ import tseslint from 'typescript-eslint'
  */
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'coverage/**', 'public/**', 'node_modules/**', 'src/admin/**', 'api/**']
+    ignores: ['dist/**', 'coverage/**', 'public/**', 'node_modules/**', '.vercel/**', 'src/admin/**', 'api/**']
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

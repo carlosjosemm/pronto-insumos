@@ -29,7 +29,7 @@ for (const envFile of ['.env.local', '.env']) {
  * Manual smoke-test for transactional communications (Phase 5).
  *
  * Sends real emails through Resend using the PRODUCTION templates in
- * api/lib/emailTemplates.ts, to the address in TEST_EMAIL or
+ * api/_lib/emailTemplates.ts, to the address in TEST_EMAIL or
  * WAREHOUSE_NOTIFICATION_EMAIL. Also generates the real WhatsApp quote
  * URL and optionally opens it in the browser (wa.me click-to-chat).
  *
@@ -90,8 +90,8 @@ async function main() {
   const recipient = (toOverride || process.env.TEST_EMAIL || process.env.WAREHOUSE_NOTIFICATION_EMAIL || '').trim()
 
   // Dynamic imports AFTER env is loaded (emailTemplates reads VITE_BANK_* at module scope)
-  const { sendEmail, getEmailFrom, getWarehouseEmail } = await import('../api/lib/email')
-  const templates = await import('../api/lib/emailTemplates')
+  const { sendEmail, getEmailFrom, getWarehouseEmail } = await import('../api/_lib/email')
+  const templates = await import('../api/_lib/emailTemplates')
   const { generateWhatsAppQuoteUrl } = await import('../src/services/whatsapp')
 
   console.log('--- Config ---')

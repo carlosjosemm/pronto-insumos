@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 // Mock firebaseAdmin before importing preference handler
-vi.mock('../../../api/lib/firebaseAdmin', () => ({
+vi.mock('../../../api/_lib/firebaseAdmin', () => ({
   getAdminFirestore: vi.fn(() => null)
 }))
 
 import handler from '../../../api/create-preference'
-import { getAdminFirestore } from '../../../api/lib/firebaseAdmin'
+import { getAdminFirestore } from '../../../api/_lib/firebaseAdmin'
 
 function createMockRes() {
   const res: Partial<VercelResponse> = {

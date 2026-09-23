@@ -1,4 +1,4 @@
-import { validateRut } from './rut'
+import { validateRut } from './rut.js'
 import type { OrderStatus, PaymentMethod } from '../types'
 
 /**

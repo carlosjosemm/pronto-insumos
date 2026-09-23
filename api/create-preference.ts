@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getAdminFirestore } from './lib/firebaseAdmin'
-import { getCollectionName } from './lib/firestoreEnv'
+import { getAdminFirestore } from './_lib/firebaseAdmin.js'
+import { getCollectionName } from './_lib/firestoreEnv.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || ''
