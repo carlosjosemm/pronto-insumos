@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { sendEmail, getEmailFrom, getWarehouseEmail } from '../../../api/lib/email'
+import { sendEmail, getEmailFrom, getWarehouseEmail } from '../../../api/_lib/email'
 import {
   buildOrderConfirmationEmail,
   buildPaymentConfirmedEmail,
@@ -7,7 +7,7 @@ import {
   buildWarehouseAlertEmail,
   toOrderEmailData,
   OrderEmailData
-} from '../../../api/lib/emailTemplates'
+} from '../../../api/_lib/emailTemplates'
 
 const sampleOrderData: OrderEmailData = {
   orderId: 'PRONTO-ABC123',
@@ -30,7 +30,7 @@ const sampleOrderData: OrderEmailData = {
   }
 }
 
-describe('Transactional Email Sender (api/lib/email.ts)', () => {
+describe('Transactional Email Sender (api/_lib/email.ts)', () => {
   const envBackup: Record<string, string | undefined> = {}
 
   beforeEach(() => {
@@ -156,7 +156,7 @@ describe('Transactional Email Sender (api/lib/email.ts)', () => {
   })
 })
 
-describe('Email Templates (api/lib/emailTemplates.ts)', () => {
+describe('Email Templates (api/_lib/emailTemplates.ts)', () => {
   it('should build order confirmation with items, CLP totals, IVA and bank details for transferencia', () => {
     const tpl = buildOrderConfirmationEmail(sampleOrderData)
 

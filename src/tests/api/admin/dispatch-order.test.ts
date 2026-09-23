@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import handler from '../../../../api/admin/dispatch-order'
-import * as adminAuth from '../../../../api/lib/adminAuth'
-import * as firebaseAdminLib from '../../../../api/lib/firebaseAdmin'
+import handler from '../../../../api/_lib/admin/dispatch-order'
+import * as adminAuth from '../../../../api/_lib/adminAuth'
+import * as firebaseAdminLib from '../../../../api/_lib/firebaseAdmin'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-vi.mock('../../../../api/lib/adminAuth', () => ({
+vi.mock('../../../../api/_lib/adminAuth', () => ({
   verifyAdminToken: vi.fn()
 }))
 
-vi.mock('../../../../api/lib/firebaseAdmin', () => ({
+vi.mock('../../../../api/_lib/firebaseAdmin', () => ({
   getAdminFirestore: vi.fn()
 }))
 

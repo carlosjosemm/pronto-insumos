@@ -51,13 +51,13 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 
 - [x] **0.1. Fix False Client-Side Payment Approval (`CheckoutModal.tsx` & `src/services/api.ts`)** ✅ _(Resolved: Orders initialized with PENDIENTE_PAGO_MERCADOPAGO; client stock deduction purged; verified by unit tests)_
 
-- [x] **0.2. Migrate Serverless Webhooks to `firebase-admin` with Service Account** ✅ _(Resolved: firebase-admin installed; api/lib/firebaseAdmin.ts singleton created; webhook uses admin Firestore queries & transactions; unit tests passing)_
+- [x] **0.2. Migrate Serverless Webhooks to `firebase-admin` with Service Account** ✅ _(Resolved: firebase-admin installed; api/_lib/firebaseAdmin.ts singleton created; webhook uses admin Firestore queries & transactions; unit tests passing)_
 
 - [x] **0.3. Synchronize Order Identifier (`orderId` / `external_reference`)** ✅ _(Resolved: generateOrderId creates canonical PRONTO-XXXXXX; unified across CheckoutModal, preference payload, and Firestore order document; unit tests passing)_
 
 - [x] **0.4. Enforce Idempotency in the Mercado Pago Webhook** ✅ _(Resolved: Fast-path idempotency pre-check and atomic all-in-one Firestore transaction inside api/webhooks/mercadopago.ts; duplicate deliveries return HTTP 200 without mutating stock or orders; comprehensive unit tests passing)_
 
-- [x] **0.5. Cryptographic Signature Verification on Webhooks (`x-signature`)** ✅ _(Resolved: api/lib/mercadopagoSignature.ts computes HMAC-SHA256 over Mercado Pago manifest template; timing-safe equality verification in api/webhooks/mercadopago.ts rejects unauthorized requests with 401; unit and integration tests passing)_
+- [x] **0.5. Cryptographic Signature Verification on Webhooks (`x-signature`)** ✅ _(Resolved: api/_lib/mercadopagoSignature.ts computes HMAC-SHA256 over Mercado Pago manifest template; timing-safe equality verification in api/webhooks/mercadopago.ts rejects unauthorized requests with 401; unit and integration tests passing)_
 
 - [x] **0.6. Create and Deploy Firestore Security Rules (`firestore.rules`)** ✅ _(Resolved: firestore.rules created with public read-only catalog, admin-only catalog write, strict pending-only order creation schema preventing injection, client-side order read/update/delete denied; firebase.json configured and deploy:rules script added; unit tests passing)_
 
@@ -239,7 +239,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
   - **Context & Objective:** Implement a functional internal backoffice portal accessible via the `/admin` path (using client routing or hash-based view toggle `#/admin`) to handle order consultations, fulfillment state transitions, and warehouse inventory adjustments.
   - **Core Architecture & Guardrails:**
     - **Separate Vite Multi-Page App (`admin.html` + `src/admin/`):** Complete isolation between storefront and backoffice. Zero bundle overhead on customer storefront (`dist/index.html` ~111 kB JS, `dist/admin.html` ~63 kB JS).
-    - **Admin Authentication Engine:** Firebase Auth Email/Password + `{ admin: true }` custom claims gate in `AdminLogin.tsx` and `AdminApp.tsx`. CLI provisioning script in `scripts/setup-admin.ts`. Serverless middleware verification in `api/lib/adminAuth.ts`.
+    - **Admin Authentication Engine:** Firebase Auth Email/Password + `{ admin: true }` custom claims gate in `AdminLogin.tsx` and `AdminApp.tsx`. CLI provisioning script in `scripts/setup-admin.ts`. Serverless middleware verification in `api/_lib/adminAuth.ts`.
     - **Firestore Security Alignment:** Admin mutations routed through dedicated `/api/admin/*` serverless endpoints with Bearer token authentication. Atomic stock decrement inside Firestore transactions upon transfer approval.
   - **Sub-feature A: Order History & Clinical Invoicing Consultation (`/admin#orders`):**
     - Searchable order table: filter by canonical `orderId` (e.g., `PRONTO-123456`), clinic name, or Chilean RUT.
@@ -294,11 +294,11 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
     - **Sender Domain Authentication:**
       - `prontoinsumos.com` verified in Resend dashboard; DKIM (`resend._domainkey` TXT), SPF (`send`/`rsend` CNAMEs + `feedback.forge.rmta.net` MX), and DMARC (`v=DMARC1; p=quarantine`) records live at GoDaddy DNS.
       - `EMAIL_FROM` configurable (verified-domain local part is arbitrary); `RESEND_API_KEY` and `WAREHOUSE_NOTIFICATION_EMAIL` stored strictly in serverless `process.env` (`.env.local` + Vercel env vars).
-    - **Fail-Safe Email Layer (`api/lib/email.ts`):**
+    - **Fail-Safe Email Layer (`api/_lib/email.ts`):**
       - Single `fetch` POST to `api.resend.com/emails` (no SDK dependency); returns `{ sent, reason }` and never throws — email outages cannot break payment reconciliation, voucher intake, or admin approvals.
       - Missing `RESEND_API_KEY` short-circuits with a warning log (unit tests, offline dev).
       - 8-second `AbortSignal.timeout` guards webhook latency against a hung provider.
-    - **Localized Templates (`api/lib/emailTemplates.ts`):**
+    - **Localized Templates (`api/_lib/emailTemplates.ts`):**
       - `{ subject, html, text }` outputs; every user-supplied value HTML-escaped (`escapeHtml`); integer CLP formatting and 19% IVA/neto breakdown; bank details sourced from `VITE_BANK_*` overrides.
       - Four templates: `buildOrderConfirmationEmail` (incl. Banco de Chile deposit details + voucher upload link for transfers), `buildPaymentConfirmedEmail`, `buildTransferApprovedEmail`, `buildWarehouseAlertEmail`.
     - **Trigger Points:**
@@ -397,7 +397,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
   - Integrate **Sentry for React** to capture unhandled client runtime errors across mobile devices and browsers.
   - Set up Google Analytics 4 (GA4) with e-commerce events (`view_item`, `add_to_cart`, `begin_checkout`, `purchase`) to analyze dental clinic purchasing behavior in Melipilla and RM.
 
-- [ ] **8.6. Consolidate `api/` Endpoints Below the Vercel Hobby Function Cap** 🔴 **BLOCKS EVERY DEPLOYMENT**
+- [x] **8.6. Consolidate `api/` Endpoints Below the Vercel Hobby Function Cap** ✅ _(Resolved: the 11 `api/admin/*` handlers moved to `api/_lib/admin/*` and are now dispatched by the single routed entry point `api/admin/[action].ts`; every shared module moved `api/lib/` → `api/_lib/`. `api/` counts **6** functions against the Hobby cap of 12 — 6 slots of headroom. Public URLs and `src/admin/services/adminApi.ts` are unchanged. The single-purpose-function guardrail exception is recorded in root `AGENTS.md` §2.2 and `api/AGENTS.md` §1.2, and covered by the new `src/tests/api/admin/admin-router.test.ts` suite. **Lifting the cap exposed two further, pre-existing runtime blockers that had never been reachable because no deploy had succeeded since 2026-09-17 — both are fixed and verified live (see the two Runtime Blocker bullets below).**)_
   - **Current Issue:** Every deployment — preview *and* production — is rejected at the output stage, after the build has already succeeded:
 
     ```
@@ -405,18 +405,21 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
     on the Hobby plan. Create a team (Pro plan) to deploy more.
     ```
 
-    `api/` currently exposes **15** serverless functions — `api/admin/*` (11), `create-preference`, `track-order`, `upload-voucher`, `webhooks/mercadopago` — against a **Hobby-plan ceiling of 12**. The build completes (`Build Completed in /vercel/output`); it is the *deployment* that is refused.
+    This entry originally counted **15** serverless functions — `api/admin/*` (11), `create-preference`, `track-order`, `upload-voucher`, `webhooks/mercadopago`. The real count was **22**: Vercel counts _every_ file under `api/` whose path has no `_`-prefixed segment, so the 6 shared modules under `api/lib/*` counted too. Against a **Hobby-plan ceiling of 12**, the build completes (`Build Completed in /vercel/output`) while the _deployment_ is refused. **After this task: 6 functions.**
   - **How it broke:** the admin portal endpoints landed on 2026-09-17 (`f23a868`, `c836962`, `5782be6`), taking `api/` from 4 → 15 files. The last successful deployment predates that (`vercel project ls` reports the project as last updated ~9 days prior), so **no deployment has succeeded since 2026-09-17**. This is entirely independent of the pnpm/lockfile regression fixed in PR #10 — that fix was necessary but not sufficient.
   - **Required Action (pick one; do not mix):**
     1. **Consolidate into fewer functions — no cost, preferred.** Collapse the 11 `api/admin/*` endpoints behind a single routed entry point (e.g. `api/admin/[action].ts` or `api/admin/[...route].ts`) that dispatches on the path. That alone takes 15 → 5 and restores headroom. A plain `switch` on the route is sufficient.
     2. **Upgrade the Vercel project to Pro.** Removes the cap, costs money, requires no repo change.
   - **Acceptance Criteria:**
-    - [ ] `pnpm dlx vercel@latest deploy` produces a Preview URL that reaches `● Ready`.
-    - [ ] `pnpm dlx vercel@latest deploy --prod` succeeds once the `og-preview.png` gate (§7.3 and root `AGENTS.md` §7) is also satisfied.
-    - [ ] Every suite under `src/tests/api/**` still passes **unchanged** — the admin client adapter `src/admin/services/adminApi.ts` must keep calling the same public URLs, or be updated in the same change.
-    - [ ] Security behaviour is unchanged: every admin route still requires `Authorization: Bearer <ID_TOKEN>` plus `decodedToken.admin === true` via `api/lib/adminAuth.ts`, and `firestore.rules` is untouched.
-  - **⚠️ Guardrail tension — resolve before writing code:** root `AGENTS.md` §2.2 mandates *"single-purpose Vercel Serverless Functions"* and forbids monolithic backend frameworks. A routed `api/admin/*` entry point is a deliberate, documented exception to that rule, so get it agreed first and record the decision in root `AGENTS.md` §2/§7 and `api/AGENTS.md` when it lands. **Do not** introduce Express, NestJS, Koa or Fastify to achieve it.
-  - **Also stale, worth fixing in the same pass:** `api/AGENTS.md` claims *"All 11 serverless functions in `api/`"* — the real count is 15, and that number is now load-bearing because of the cap. Its §5.2 endpoint table also predates `create-product`, `update-product` and `toggle-visibility`.
+    - [x] `pnpm dlx vercel@latest deploy` produces a Preview URL that reaches `● Ready`. _(Done — verified against a live preview: `✓ Ready in 30s`. `api/admin/{orders,dashboard-stats,products}` all returned `403 {"success":false,"error":"Encabezado de autorización ausente o malformado"}`, `api/admin/nonexistent` returned `404 {"success":false,"error":"Endpoint de administración no encontrado"}` from the dispatcher, `api/admin/approve-transfer` returned `405`, and the runtime logs recorded **zero** errors across all five requests.)_
+    - [ ] `pnpm dlx vercel@latest deploy --prod` succeeds once the `og-preview.png` gate (§7.3 and root `AGENTS.md` §7) is also satisfied. _(Human step.)_
+    - [x] Every suite under `src/tests/api/**` still passes **unchanged** — the admin client adapter `src/admin/services/adminApi.ts` must keep calling the same public URLs, or be updated in the same change. _(Done: assertions untouched; only handler import paths were rewritten. `adminApi.ts` needed zero changes.)_
+    - [x] Security behaviour is unchanged: every admin route still requires `Authorization: Bearer <ID_TOKEN>` plus `decodedToken.admin === true` via `api/_lib/adminAuth.ts`, and `firestore.rules` is untouched. _(Done: handler bodies moved verbatim — verified by diff that only import lines changed.)_
+  - **⚠️ Guardrail tension — resolved:** root `AGENTS.md` §2.2 mandates *"single-purpose Vercel Serverless Functions"* and forbids monolithic backend frameworks. The routed `api/admin/[action].ts` entry point is now a **documented exception** to that rule — the decision is recorded in root `AGENTS.md` §2.2 and `api/AGENTS.md` §1.2. No Express, NestJS, Koa or Fastify was introduced: the dispatcher is a plain `Record<string, handler>` lookup table.
+  - **Also stale, now fixed:** `api/AGENTS.md` claimed *"All 11 serverless functions in `api/`"* — the real count was 22, and it is load-bearing because of the cap. Corrected to 6 in the new §1.2 function-layout table, with the `_lib` exclusion convention documented. Its admin endpoint table already covered `create-product`, `update-product` and `toggle-visibility` (that part of the claim was itself stale) and now links to the modules under `api/_lib/admin/`.
+  - **🔴 Runtime Blocker A — extensionless ESM imports (pre-existing, fixed):** Vercel does not bundle `api/`; it transpiles each file in place and ships the tree, so Node's ESM resolver runs at request time. With `"type": "module"` in `package.json`, every extensionless relative import (`'./_lib/firebaseAdmin'`) threw `ERR_MODULE_NOT_FOUND` — **every** `api/` function 500'd with `FUNCTION_INVOCATION_FAILED`, including the untouched public endpoints. Proven pre-existing by building `main` (`e4206bc`) in a throwaway worktree and inspecting its emitted `create-preference.js` (identical extensionless specifiers). Fixed by appending `.js` to relative **value** imports across `api/` plus `src/utils/schemaValidation.ts`'s `./rut.js`. Type-only imports that target a directory (`'../../../src/types'`) stay extensionless — they are erased at transpile time. Convention recorded in `api/AGENTS.md` §1.3.
+  - **🔴 Runtime Blocker B — `jwks-rsa` CJS requiring ESM-only `jose` (pre-existing, fixed):** `firebase-admin` → `jwks-rsa@4` is CommonJS and calls `require('jose')` at module load, while `jose@6` is ESM-only — so *merely importing `firebase-admin/auth`* crashed with `ERR_REQUIRE_ESM`, taking down every admin route (the core of this task). Known upstream: [auth0/node-jwks-rsa#507](https://github.com/auth0/node-jwks-rsa/issues/507) / [firebase/firebase-admin-node#3181](https://github.com/firebase/firebase-admin-node/issues/3181); the fix ([PR #508](https://github.com/auth0/node-jwks-rsa/pull/508)) is merged but **unreleased** (`jwks-rsa` latest is still `4.1.0`). Worked around with `pnpm.overrides` pinning `jose` to `^5.10.0` — the last dual CJS/ESM major, and `jwks-rsa` only uses `jose.importJWK`/`exportSPKI`, which are API-identical across jose 4/5/6. **Trade-off accepted:** jose v5 is EOL per its own `SECURITY.md`; the CVE that motivated the v6 bump (CVE-2025-45767) is *disputed by the maintainer* and specific to v6.0.10. **Removal condition:** drop the override once `jwks-rsa` > `4.1.0` ships, then re-verify `firebase-admin/auth` on a preview deploy. Documented in `api/AGENTS.md` §1.3 and root `AGENTS.md` §7.
+  - **Note for future local deploys:** running `vercel build` creates a gitignored `.vercel/output` tree that `pnpm lint` previously swept up (2800 errors from build artifacts). `.vercel/**` was added to `eslint.config.js` `ignores`, alongside the existing `dist/**` / `coverage/**` / `public/**` entries.
 
 ---
 

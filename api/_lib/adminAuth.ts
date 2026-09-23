@@ -1,5 +1,5 @@
 import { getAuth } from 'firebase-admin/auth'
-import { getAdminApp } from './firebaseAdmin'
+import { getAdminApp } from './firebaseAdmin.js'
 import type { VercelRequest } from '@vercel/node'
 
 export interface AdminAuthResult {

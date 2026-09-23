@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getAdminFirestore } from '../lib/firebaseAdmin'
-import { verifyAdminToken } from '../lib/adminAuth'
-import { getCollectionName } from '../lib/firestoreEnv'
-import { validateProductSchema } from '../../src/utils/schemaValidation'
-import type { Product, InventoryAuditLog } from '../../src/types'
+import { getAdminFirestore } from '../firebaseAdmin.js'
+import { verifyAdminToken } from '../adminAuth.js'
+import { getCollectionName } from '../firestoreEnv.js'
+import { validateProductSchema } from '../../../src/utils/schemaValidation.js'
+import type { Product, InventoryAuditLog } from '../../../src/types'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')

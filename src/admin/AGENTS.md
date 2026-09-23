@@ -86,7 +86,7 @@ Staff authentication is powered by Firebase Authentication with administrative c
      npx tsx scripts/setup-admin.ts tu-email@prontoinsumos.cl TuPasswordSegura123!
      ```
    - Connects to Firebase Authentication via Google Cloud, creates the user (or retrieves existing UID), and persists the custom claim. Once completed, the user can immediately log in at `/admin`.
-3. **Serverless Token Verification Middleware (`api/lib/adminAuth.ts`):**
+3. **Serverless Token Verification Middleware (`api/_lib/adminAuth.ts`):**
    - Validates `Authorization: Bearer <ID_TOKEN>`.
    - Verifies signature, expiry, and `decodedToken.admin === true`.
    - Never trusts client-provided identity without cryptographic signature verification.

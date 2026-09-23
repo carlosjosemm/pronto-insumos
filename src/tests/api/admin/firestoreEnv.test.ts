@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { getFirestoreEnv, getCollectionName } from '../../../../api/lib/firestoreEnv'
+import { getFirestoreEnv, getCollectionName } from '../../../../api/_lib/firestoreEnv'
 
-describe('Serverless Firestore Environment Resolver (api/lib/firestoreEnv.ts)', () => {
+describe('Serverless Firestore Environment Resolver (api/_lib/firestoreEnv.ts)', () => {
   const originalEnv = { ...process.env }
 
   beforeEach(() => {

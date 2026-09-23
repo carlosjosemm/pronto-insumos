@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (377 tests across 55 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (429 tests across 59 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -29,6 +29,7 @@ Agents modifying this codebase must adhere to these absolute guardrails:
 2. **NO Monolithic or Heavy Backend Frameworks:**
    * Do **NOT** add Express, NestJS, Koa, or Fastify.
    * All backend logic is handled cleanly by single-purpose **Vercel Serverless Functions** in the `api/` directory.
+   * **Documented exception — `api/admin/[action].ts`:** the Vercel Hobby plan refuses any deployment adding more than **12** Serverless Functions, so the 11 administrative endpoints are collapsed behind one routed entry point that dispatches on `req.query.action` via a plain lookup table. Public URLs (`/api/admin/orders`, …) are unchanged. This is **not** a framework — no Express/NestJS/Koa/Fastify, no middleware pipeline, just a dispatch table. Shared non-route code lives under `api/_lib/`; paths with a `_`-prefixed segment are excluded from Vercel's function count. Full rationale and layout: [api/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/api/AGENTS.md) §1.2.
 3. **NO Additional CSS Frameworks:**
    * Do **NOT** install Tailwind CSS, Bootstrap, Material UI, Chakra, or Shadcn.
    * The project has a complete, handcrafted Vanilla CSS design system with CSS custom properties in [src/index.css](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css). Keep styles centralized, fast, and dependency-free.
@@ -108,7 +109,7 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 55 suites / 377 tests)
+# Run all automated tests (Vitest, 59 suites / 429 tests)
 pnpm test
 
 # Run tests with live file watcher
@@ -163,7 +164,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 377+ tests pass
+pnpm test          # Ensure all 429+ tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Deploy a Staging / Preview Release (Generates a unique preview URL)
@@ -177,6 +178,7 @@ pnpm dlx vercel --prod
 * **Pre-Flight Testing:** Never execute `vercel --prod` without first confirming that `pnpm test` and `pnpm build` succeed without errors.
 * **Environment Variable Sync:** When introducing new environment variables (client or server), add them to `.env.example` and set them in the Vercel Dashboard before running `vercel --prod`.
 * **`public/og-preview.png` is a hard gate for `vercel --prod`:** `index.html` references `https://pronto-insumos.vercel.app/og-preview.png` from `og:image`, `twitter:image` and the JSON-LD `image`. That file is a **human-produced asset** (redesign proposal Appendix B.1) and is currently **absent**, so link previews of the storefront — including the WhatsApp shares that are one of PRONTO's own sales channels — render a broken image. The meta tags ship regardless; ❌ **never generate a substitute image**, and do not promote to production until the real 1200×630 PNG (≤300 KB) has been dropped at `public/og-preview.png`. The favicon, by contrast, has a final turnkey SVG already committed at `public/favicon.svg`.
+* **A green build does NOT mean the functions run.** Vercel transpiles `api/` in place and lets Node's ESM resolver run at request time, so ESM/CJS resolution faults surface as HTTP 500 `FUNCTION_INVOCATION_FAILED` *after* a successful build. Two load-bearing invariants — explicit `.js` extensions on relative imports, and the `jose` v5 `pnpm.overrides` pin — are documented in [api/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/api/AGENTS.md) §1.3. ❌ **Never remove the `jose` override or drop a `.js` import extension** without re-deploying a preview and hitting the affected endpoints.
 
 ---
 

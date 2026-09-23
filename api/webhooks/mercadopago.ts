@@ -1,13 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getAdminFirestore } from "../lib/firebaseAdmin";
-import { verifyMercadoPagoSignature } from "../lib/mercadopagoSignature";
-import { getCollectionName } from "../lib/firestoreEnv";
-import { sendEmail, getWarehouseEmail } from "../lib/email";
+import { getAdminFirestore } from "../_lib/firebaseAdmin.js";
+import { verifyMercadoPagoSignature } from "../_lib/mercadopagoSignature.js";
+import { getCollectionName } from "../_lib/firestoreEnv.js";
+import { sendEmail, getWarehouseEmail } from "../_lib/email.js";
 import {
   buildPaymentConfirmedEmail,
   buildWarehouseAlertEmail,
   toOrderEmailData,
-} from "../lib/emailTemplates";
+} from "../_lib/emailTemplates.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MERCADOPAGO_ACCESS_TOKEN =

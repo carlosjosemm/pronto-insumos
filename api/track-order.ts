@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getAdminFirestore } from './lib/firebaseAdmin'
-import { getCollectionName } from './lib/firestoreEnv'
+import { getAdminFirestore } from './_lib/firebaseAdmin.js'
+import { getCollectionName } from './_lib/firestoreEnv.js'
 
 function normalizeRut(raw: string): string {
   return (raw || '').replace(/[^0-9kK]/g, '').toUpperCase()

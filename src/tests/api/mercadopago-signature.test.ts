@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import crypto from 'crypto'
-import { verifyMercadoPagoSignature } from '../../../api/lib/mercadopagoSignature'
+import { verifyMercadoPagoSignature } from '../../../api/_lib/mercadopagoSignature'
 
-describe('Mercado Pago Signature Verification (api/lib/mercadopagoSignature)', () => {
+describe('Mercado Pago Signature Verification (api/_lib/mercadopagoSignature)', () => {
   const mockSecret = 'prod_secret_key_abcdef123456'
   const mockDataId = '998877'
   const mockRequestId = 'req-uuid-12345'
