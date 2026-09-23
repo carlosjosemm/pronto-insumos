@@ -88,9 +88,10 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
   const isCurrentImgFailed = failedImages[activeImgIndex]
   const currentPhotoUrl = photos[activeImgIndex]
 
-  const discountPercent = (product.originalPrice && product.originalPrice > product.price)
-    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
-    : 0
+  const discountPercent =
+    product.originalPrice && product.originalPrice > product.price
+      ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+      : 0
   const showDiscount = discountPercent >= 5
 
   const handlePrevPhoto = (e: React.MouseEvent) => {
@@ -113,7 +114,13 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
   )}`
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-product-title">
+    <div
+      className="modal-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-product-title"
+    >
       <div className="modal-card modal-card-vertical" onClick={(e) => e.stopPropagation()}>
         {/* Modal Close Button */}
         <button className="modal-close-btn" onClick={onClose} aria-label="Cerrar ventana">
@@ -149,13 +156,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
                 <span>{product.mediaBadge}</span>
               </div>
 
-              {showDiscount && (
-                <div className="discount-badge">-{discountPercent}%</div>
-              )}
+              {showDiscount && <div className="discount-badge">-{discountPercent}%</div>}
 
-              {product.prescriptionRequired && (
-                <div className="rx-badge">Uso Profesional</div>
-              )}
+              {product.prescriptionRequired && <div className="rx-badge">Uso Profesional</div>}
 
               {/* Photo Counter Pill */}
               {hasMultiplePhotos && (
@@ -231,9 +234,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             <div className="detail-meta-header">
               <span className="product-category-tag">{formatCategoryDisplayName(product.category)}</span>
               <span className="product-ref-badge">REF: {skuRef}</span>
-              {product.tag && product.tag.trim() && (
-                <span className="product-tag-chip">{product.tag}</span>
-              )}
+              {product.tag && product.tag.trim() && <span className="product-tag-chip">{product.tag}</span>}
               {product.prescriptionRequired && (
                 <span
                   style={{
@@ -301,10 +302,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               </div>
 
               <div className="detail-stock-indicator">
-                <span
-                  className="product-stock-dot"
-                  style={{ background: isAvailable ? '#059669' : '#dc2626' }}
-                />
+                <span className="product-stock-dot" style={{ background: isAvailable ? '#059669' : '#dc2626' }} />
                 <span style={{ color: isAvailable ? '#059669' : '#dc2626', fontWeight: '600', fontSize: '0.8rem' }}>
                   {isAvailable ? 'Disponible para despacho y retiro en Melipilla' : 'Sin stock inmediato en bodega'}
                 </span>
@@ -324,7 +322,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
                   lineHeight: '1.4'
                 }}
               >
-                <strong>⚠️ Dispositivo / Fármaco Regulado por ISP Chile:</strong> Para la adquisición y despacho de este insumo se solicitará acreditación profesional (N° de Registro SIS - Superintendencia de Salud) durante el checkout.
+                <strong>⚠️ Dispositivo / Fármaco Regulado por ISP Chile:</strong> Para la adquisición y despacho de este
+                insumo se solicitará acreditación profesional (N° de Registro SIS - Superintendencia de Salud) durante
+                el checkout.
               </div>
             )}
 
@@ -418,9 +418,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               title={isAvailable ? 'Agregar insumo al carro' : 'Sin stock disponible'}
             >
               <ShoppingBag size={17} />
-              <span>
-                {isAvailable ? `Agregar al Carro • ${formatCLP(totalPrice)}` : 'Sin Stock Inmediato'}
-              </span>
+              <span>{isAvailable ? `Agregar al Carro • ${formatCLP(totalPrice)}` : 'Sin Stock Inmediato'}</span>
             </button>
 
             <a

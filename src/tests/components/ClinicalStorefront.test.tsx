@@ -12,8 +12,8 @@ const mockProduct: Product = {
   name: 'Fotocurador Clínico LED Spectrum',
   category: 'Diagnostics',
   manufacturer: 'Woodpecker',
-  price: 150.00,
-  originalPrice: 190.00,
+  price: 150.0,
+  originalPrice: 190.0,
   rating: 4.9,
   reviewsCount: 38,
   inStock: true,
@@ -29,14 +29,7 @@ const mockProduct: Product = {
 describe('Clinical Storefront UI/UX Enhancement Tests', () => {
   describe('Navbar & Top Commercial Utility Bar', () => {
     it('should display the top utility bar announcements for Melipilla and SII Factura', () => {
-      render(
-        <Navbar
-          search=""
-          setSearch={() => {}}
-          cartCount={2}
-          onOpenCart={() => {}}
-        />
-      )
+      render(<Navbar search="" setSearch={() => {}} cartCount={2} onOpenCart={() => {}} />)
       expect(screen.getByText(/Despacho prioritario en Melipilla/i)).toBeInTheDocument()
       expect(screen.getByText(/Factura Electrónica Inmediata \(19% IVA\)/i)).toBeInTheDocument()
       expect(screen.getByText(/Mesa Clínica: \+56 9 1234 5678/i)).toBeInTheDocument()
@@ -63,26 +56,14 @@ describe('Clinical Storefront UI/UX Enhancement Tests', () => {
 
   describe('ProductCard Clinical Specifications', () => {
     it('should render formatted technical SKU REF code and NOT expose internal warehouse stock counts', () => {
-      render(
-        <ProductCard
-          product={mockProduct}
-          onAddToCart={() => {}}
-          onQuickView={() => {}}
-        />
-      )
+      render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
       expect(screen.getByText('REF: OD-TEST-500')).toBeInTheDocument()
       expect(screen.queryByText(/Bodega Melipilla/i)).not.toBeInTheDocument()
       expect(screen.queryByText(/12 en Bodega/i)).not.toBeInTheDocument()
     })
 
     it('should specify that the price includes IVA with simple wording', () => {
-      render(
-        <ProductCard
-          product={mockProduct}
-          onAddToCart={() => {}}
-          onQuickView={() => {}}
-        />
-      )
+      render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
       expect(screen.getByText(/IVA incluido/i)).toBeInTheDocument()
       expect(screen.queryByText(/Facturado/i)).not.toBeInTheDocument()
     })

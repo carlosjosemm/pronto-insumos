@@ -19,22 +19,11 @@ const mockProduct: Product = {
   prescriptionRequired: true,
   tag: 'Más Vendido',
   description: 'Pieza de mano de alta velocidad con iluminación LED por fibra óptica.',
-  specs: [
-    'Velocidad de rotación: 380.000 a 420.000 RPM',
-    'Conexión Midwest 4 vías autoclaveable a 135°C'
-  ],
+  specs: ['Velocidad de rotación: 380.000 a 420.000 RPM', 'Conexión Midwest 4 vías autoclaveable a 135°C'],
   placeholderTheme: 'gradient-teal',
   mediaBadge: 'Fibra Óptica LED',
-  images: [
-    'https://example.com/photo1.jpg',
-    'https://example.com/photo2.jpg',
-    'https://example.com/photo3.jpg'
-  ],
-  packageContents: [
-    '1x Turbina LED MasterTorque',
-    '1x Llave extractora de rotor',
-    '1x Manual técnico'
-  ]
+  images: ['https://example.com/photo1.jpg', 'https://example.com/photo2.jpg', 'https://example.com/photo3.jpg'],
+  packageContents: ['1x Turbina LED MasterTorque', '1x Llave extractora de rotor', '1x Manual técnico']
 }
 
 describe('Product Detail Modal (ProductQuickView)', () => {
@@ -53,22 +42,20 @@ describe('Product Detail Modal (ProductQuickView)', () => {
   })
 
   it('renders clinical details, SKU code, and simple IVA incluido pricing', () => {
-    render(
-      <ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
-    )
+    render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
 
     expect(screen.getByRole('heading', { name: mockProduct.name })).toBeInTheDocument()
     expect(screen.getByText('REF: OD-101')).toBeInTheDocument()
     expect(screen.getByText(/IVA incluido/i)).toBeInTheDocument()
     expect(screen.getByText('$189.990')).toBeInTheDocument()
     expect(screen.getByText('$229.990')).toBeInTheDocument()
-    expect(screen.getByText('Dispositivo odontológico especializado de uso profesional clínico exclusivo.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Dispositivo odontológico especializado de uso profesional clínico exclusivo.')
+    ).toBeInTheDocument()
   })
 
   it('renders technical specifications and package contents checklist', () => {
-    render(
-      <ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
-    )
+    render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
 
     expect(screen.getByText('Especificaciones Técnicas')).toBeInTheDocument()
     expect(screen.getByText('Velocidad de rotación: 380.000 a 420.000 RPM')).toBeInTheDocument()
@@ -78,9 +65,7 @@ describe('Product Detail Modal (ProductQuickView)', () => {
   })
 
   it('renders multi-photo gallery and switches active photo on thumbnail click', () => {
-    render(
-      <ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
-    )
+    render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
 
     // Main image displays first photo
     const mainImg = screen.getByAltText(`${mockProduct.name} - Vista 1`) as HTMLImageElement
@@ -98,9 +83,7 @@ describe('Product Detail Modal (ProductQuickView)', () => {
   })
 
   it('cycles photos with next and previous buttons', () => {
-    render(
-      <ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
-    )
+    render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
 
     const nextBtn = screen.getByTitle('Foto siguiente')
     fireEvent.click(nextBtn)
@@ -116,9 +99,7 @@ describe('Product Detail Modal (ProductQuickView)', () => {
   })
 
   it('cycles photos with keyboard arrow keys', () => {
-    render(
-      <ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
-    )
+    render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
 
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     expect(screen.getByAltText(`${mockProduct.name} - Vista 2`)).toBeInTheDocument()
@@ -128,9 +109,7 @@ describe('Product Detail Modal (ProductQuickView)', () => {
   })
 
   it('handles quantity increment, decrement, and stock cap', () => {
-    render(
-      <ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
-    )
+    render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
 
     const decBtn = screen.getByLabelText('Disminuir cantidad')
     const incBtn = screen.getByLabelText('Aumentar cantidad')
@@ -176,9 +155,7 @@ describe('Product Detail Modal (ProductQuickView)', () => {
       images: undefined
     }
 
-    render(
-      <ProductQuickView product={productWithoutImages} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
-    )
+    render(<ProductQuickView product={productWithoutImages} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
 
     expect(screen.getByRole('heading', { name: mockProduct.name })).toBeInTheDocument()
     expect(screen.queryByRole('tab')).toBeNull()
@@ -191,17 +168,13 @@ describe('Product Detail Modal (ProductQuickView)', () => {
       rating: 0
     }
 
-    render(
-      <ProductQuickView product={productZeroReviews} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
-    )
+    render(<ProductQuickView product={productZeroReviews} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
 
     expect(screen.queryByText(/reseñas clínicas verificadas/i)).toBeNull()
   })
 
   it('renders manufacturer line when manufacturer is provided', () => {
-    render(
-      <ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />
-    )
+    render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
     expect(screen.getByText('Instruments · NSK')).toBeInTheDocument()
   })
 })
@@ -215,9 +188,7 @@ describe('ProductCard Click Interactions', () => {
   })
 
   it('triggers onQuickView when clicking the card media box', () => {
-    render(
-      <ProductCard product={mockProduct} onAddToCart={onAddToCartMock} onQuickView={onQuickViewMock} />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={onAddToCartMock} onQuickView={onQuickViewMock} />)
 
     const mediaBox = screen.getByTitle(`Ver detalles de ${mockProduct.name}`)
     fireEvent.click(mediaBox)
@@ -226,9 +197,7 @@ describe('ProductCard Click Interactions', () => {
   })
 
   it('triggers onQuickView when clicking the product title', () => {
-    render(
-      <ProductCard product={mockProduct} onAddToCart={onAddToCartMock} onQuickView={onQuickViewMock} />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={onAddToCartMock} onQuickView={onQuickViewMock} />)
 
     const titleEl = screen.getByRole('heading', { name: mockProduct.name })
     fireEvent.click(titleEl)
@@ -237,9 +206,7 @@ describe('ProductCard Click Interactions', () => {
   })
 
   it('triggers onAddToCart without triggering onQuickView when clicking Agregar button', () => {
-    render(
-      <ProductCard product={mockProduct} onAddToCart={onAddToCartMock} onQuickView={onQuickViewMock} />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={onAddToCartMock} onQuickView={onQuickViewMock} />)
 
     const addBtn = screen.getByTitle('Agregar al carro')
     fireEvent.click(addBtn)

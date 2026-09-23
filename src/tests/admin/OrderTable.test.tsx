@@ -47,12 +47,7 @@ const mockOrders: Order[] = [
 describe('OrderTable Component', () => {
   it('renders order rows and filters by search text', () => {
     const handleSelect = vi.fn()
-    render(
-      <OrderTable
-        orders={mockOrders}
-        onSelectOrder={handleSelect}
-      />
-    )
+    render(<OrderTable orders={mockOrders} onSelectOrder={handleSelect} />)
 
     expect(screen.getByText('PRONTO-100001')).toBeInTheDocument()
     expect(screen.getByText('PRONTO-100002')).toBeInTheDocument()

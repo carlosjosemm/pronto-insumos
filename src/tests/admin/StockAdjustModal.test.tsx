@@ -27,13 +27,7 @@ describe('StockAdjustModal Component', () => {
     const handleClose = vi.fn()
     const handleSuccess = vi.fn()
 
-    render(
-      <StockAdjustModal
-        product={mockProduct}
-        onClose={handleClose}
-        onSuccess={handleSuccess}
-      />
-    )
+    render(<StockAdjustModal product={mockProduct} onClose={handleClose} onSuccess={handleSuccess} />)
 
     expect(screen.getByText('Turbina LED Push Button')).toBeInTheDocument()
     expect(screen.getByText(/Stock actual en bodega Melipilla/i)).toBeInTheDocument()

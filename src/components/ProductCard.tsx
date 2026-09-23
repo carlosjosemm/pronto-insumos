@@ -20,10 +20,10 @@ import { formatCategoryDisplayName } from '../utils/categoryAlias'
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   'INSTRUMENTAL Y ACCESORIOS': Scissors,
   'DESECHABLES, ESTERILIZACION Y DESINFECCION': ShieldCheck,
-  'OPERATORIA': Wrench,
-  'ENDODONCIA': Activity,
+  OPERATORIA: Wrench,
+  ENDODONCIA: Activity,
   'HIGIENE BUCAL': Sparkles,
-  'IMPRESION': Layers,
+  IMPRESION: Layers,
   // Legacy & fallback category keys
   Diagnostics: Activity,
   Instruments: Home,
@@ -45,12 +45,14 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
   const isLowStock = isAvailable && product.stockCount !== undefined && product.stockCount <= 5
 
   // Featured card accent strip
-  const isFeatured = product.tag === 'Más Vendido' || product.tag === 'Recomendado' || product.tag === 'Recomendado Melipilla'
+  const isFeatured =
+    product.tag === 'Más Vendido' || product.tag === 'Recomendado' || product.tag === 'Recomendado Melipilla'
 
   // Discount percentage (show only when >= 5%)
-  const discountPercent = (product.originalPrice && product.originalPrice > product.price)
-    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
-    : 0
+  const discountPercent =
+    product.originalPrice && product.originalPrice > product.price
+      ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+      : 0
   const showDiscount = discountPercent >= 5
 
   // Formatted SKU code (e.g. REF: OD-101)
@@ -126,14 +128,10 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
         )}
 
         {/* Discount Badge */}
-        {showDiscount && (
-          <div className="discount-badge">-{discountPercent}%</div>
-        )}
+        {showDiscount && <div className="discount-badge">-{discountPercent}%</div>}
 
         {/* Rx Badge */}
-        {product.prescriptionRequired && (
-          <div className="rx-badge">Uso Profesional</div>
-        )}
+        {product.prescriptionRequired && <div className="rx-badge">Uso Profesional</div>}
       </div>
 
       {/* Product Content Body */}
@@ -141,9 +139,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
         {/* Badges Row (Dedicated top row for marketing & regulatory pills) */}
         {Boolean((product.tag && product.tag.trim()) || product.prescriptionRequired) && (
           <div className="product-badges-row">
-            {product.tag && product.tag.trim() && (
-              <span className="product-tag-chip">{product.tag}</span>
-            )}
+            {product.tag && product.tag.trim() && <span className="product-tag-chip">{product.tag}</span>}
             {product.prescriptionRequired && (
               <span
                 className="product-regulated-chip"
@@ -157,14 +153,8 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
         {/* Category & Brand Attribution Line (Cleanly positioned below badges) */}
         <div className="product-taxonomy-header">
-          <span className="product-category-tag">
-            {formatCategoryDisplayName(product.category)}
-          </span>
-          {product.manufacturer && (
-            <span className="product-brand-tag">
-              · {product.manufacturer}
-            </span>
-          )}
+          <span className="product-category-tag">{formatCategoryDisplayName(product.category)}</span>
+          {product.manufacturer && <span className="product-brand-tag">· {product.manufacturer}</span>}
         </div>
 
         <h3 className="product-title" id={`product-title-${product.id}`}>
@@ -195,9 +185,7 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
         <div className="product-card-pricing-row">
           <div className="price-primary-row">
             <span className="current-price">{formatCLP(product.price)}</span>
-            {product.originalPrice && (
-              <span className="original-price">{formatCLP(product.originalPrice)}</span>
-            )}
+            {product.originalPrice && <span className="original-price">{formatCLP(product.originalPrice)}</span>}
           </div>
           <span className="tax-breakdown-label">IVA incluido</span>
         </div>

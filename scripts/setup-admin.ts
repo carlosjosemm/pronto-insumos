@@ -14,7 +14,10 @@ for (const envFile of ['.env.local', '.env']) {
       const eqIdx = trimmed.indexOf('=')
       if (eqIdx > 0) {
         const key = trimmed.slice(0, eqIdx).trim()
-        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '')
+        const val = trimmed
+          .slice(eqIdx + 1)
+          .trim()
+          .replace(/^["']|["']$/g, '')
         if (!process.env[key]) {
           process.env[key] = val
         }
@@ -42,19 +45,22 @@ async function setupAdmin() {
     console.error('  - FIREBASE_PROJECT_ID=' + (projectId || 'pronto-insumos'))
     console.error('  - FIREBASE_CLIENT_EMAIL=firebase-adminsdk-...@pronto-insumos.iam.gserviceaccount.com')
     console.error('  - FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n..."\n')
-    console.error('💡 Puedes obtenerlas en: Firebase Console > Configuración del Proyecto > Cuentas de servicio > Generar nueva clave privada.\n')
+    console.error(
+      '💡 Puedes obtenerlas en: Firebase Console > Configuración del Proyecto > Cuentas de servicio > Generar nueva clave privada.\n'
+    )
     process.exit(1)
   }
 
-  const app = getApps().length > 0
-    ? getApps()[0]
-    : initializeApp({
-        credential: cert({
-          projectId,
-          clientEmail,
-          privateKey
+  const app =
+    getApps().length > 0
+      ? getApps()[0]
+      : initializeApp({
+          credential: cert({
+            projectId,
+            clientEmail,
+            privateKey
+          })
         })
-      })
 
   const targetEmail = process.argv[2] || process.env.ADMIN_EMAIL
   const targetPassword = process.argv[3] || process.env.ADMIN_INITIAL_PASSWORD

@@ -61,7 +61,9 @@ describe('AdminLogin Component', () => {
 
     await waitFor(() => {
       expect(firebaseAuth.signOut).toHaveBeenCalledTimes(1)
-      expect(screen.getByText(/Acceso denegado: esta cuenta no cuenta con permisos administrativos/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/Acceso denegado: esta cuenta no cuenta con permisos administrativos/i)
+      ).toBeInTheDocument()
       expect(handleSuccess).not.toHaveBeenCalled()
     })
   })

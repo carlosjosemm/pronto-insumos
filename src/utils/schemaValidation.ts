@@ -111,7 +111,8 @@ export function validateOrderSchema(doc: any): ValidationResult {
   } else {
     const c = doc.customer
     if (!c.fullName || typeof c.fullName !== 'string') errors.push('customer.fullName es requerido')
-    if (!c.email || typeof c.email !== 'string' || !c.email.includes('@')) errors.push('customer.email debe ser un correo válido')
+    if (!c.email || typeof c.email !== 'string' || !c.email.includes('@'))
+      errors.push('customer.email debe ser un correo válido')
     if (!c.rut || !validateRut(c.rut)) errors.push('customer.rut no es un RUT chileno válido (Módulo 11)')
     if (!c.address || typeof c.address !== 'string') errors.push('customer.address es requerido')
     if (!c.city || typeof c.city !== 'string') errors.push('customer.city es requerido')

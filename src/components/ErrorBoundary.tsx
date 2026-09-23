@@ -32,45 +32,66 @@ export default class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'var(--slate-50, #f8fafc)',
-          padding: '1.5rem',
-          fontFamily: 'inherit'
-        }}>
-          <div style={{
-            maxWidth: '480px',
-            width: '100%',
-            background: 'white',
-            borderRadius: '16px',
-            padding: '2rem',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
-            border: '1px solid var(--slate-200, #e2e8f0)',
-            textAlign: 'center'
-          }}>
-            <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: '#fef2f2',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '1rem',
-              color: '#ef4444'
-            }}>
+        <div
+          style={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--slate-50, #f8fafc)',
+            padding: '1.5rem',
+            fontFamily: 'inherit'
+          }}
+        >
+          <div
+            style={{
+              maxWidth: '480px',
+              width: '100%',
+              background: 'white',
+              borderRadius: '16px',
+              padding: '2rem',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
+              border: '1px solid var(--slate-200, #e2e8f0)',
+              textAlign: 'center'
+            }}
+          >
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: '#fef2f2',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem',
+                color: '#ef4444'
+              }}
+            >
               <AlertTriangle size={32} />
             </div>
 
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--slate-900, #0f172a)', marginBottom: '0.5rem' }}>
+            <h2
+              style={{
+                fontSize: '1.25rem',
+                fontWeight: '800',
+                color: 'var(--slate-900, #0f172a)',
+                marginBottom: '0.5rem'
+              }}
+            >
               Inconveniente Inesperado
             </h2>
 
-            <p style={{ fontSize: '0.875rem', color: 'var(--slate-600, #475569)', lineHeight: '1.5', marginBottom: '1.5rem' }}>
-              Ha ocurrido un detalle al procesar la aplicación. No te preocupes, el inventario y tu pedido no se han visto afectados.
+            <p
+              style={{
+                fontSize: '0.875rem',
+                color: 'var(--slate-600, #475569)',
+                lineHeight: '1.5',
+                marginBottom: '1.5rem'
+              }}
+            >
+              Ha ocurrido un detalle al procesar la aplicación. No te preocupes, el inventario y tu pedido no se han
+              visto afectados.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

@@ -8,12 +8,16 @@ export default function PromoStrip() {
           <Sparkles size={16} className="promo-strip-icon" />
           <span className="promo-strip-highlight">Insumos a un click de distancia</span>
         </div>
-        <span className="promo-strip-divider" aria-hidden="true">•</span>
+        <span className="promo-strip-divider" aria-hidden="true">
+          •
+        </span>
         <div className="promo-strip-item">
           <Truck size={16} className="promo-strip-icon" />
           <span>Despacho Express Melipilla y RM</span>
         </div>
-        <span className="promo-strip-divider" aria-hidden="true">•</span>
+        <span className="promo-strip-divider" aria-hidden="true">
+          •
+        </span>
         <div className="promo-strip-item">
           <FileText size={16} className="promo-strip-icon" />
           <span>Factura Electrónica SII · 19% IVA</span>

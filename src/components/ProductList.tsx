@@ -24,15 +24,19 @@ export default function ProductList({ products, loading, onAddToCart, onQuickVie
 
   if (products.length === 0) {
     return (
-      <div style={{
-        background: 'white',
-        borderRadius: 'var(--radius-lg)',
-        padding: '3.5rem 1.5rem',
-        textAlign: 'center',
-        border: '1px solid var(--slate-200)'
-      }}>
+      <div
+        style={{
+          background: 'white',
+          borderRadius: 'var(--radius-lg)',
+          padding: '3.5rem 1.5rem',
+          textAlign: 'center',
+          border: '1px solid var(--slate-200)'
+        }}
+      >
         <AlertCircle size={48} style={{ color: 'var(--slate-400)', marginBottom: '1rem' }} />
-        <h3 style={{ fontSize: '1.25rem', fontWeight: '800', marginBottom: '0.5rem' }}>No se encontraron insumos odontológicos</h3>
+        <h3 style={{ fontSize: '1.25rem', fontWeight: '800', marginBottom: '0.5rem' }}>
+          No se encontraron insumos odontológicos
+        </h3>
         <p style={{ color: 'var(--slate-600)', maxWidth: '420px', margin: '0 auto' }}>
           Intenta cambiar el término de búsqueda o selecciona otra categoría odontológica.
         </p>
@@ -43,16 +47,8 @@ export default function ProductList({ products, loading, onAddToCart, onQuickVie
   return (
     <div className="products-grid">
       {products.map((product, index) => (
-        <div
-          key={product.id}
-          className="product-card-entrance"
-          style={{ animationDelay: `${(index % 4) * 60}ms` }}
-        >
-          <ProductCard
-            product={product}
-            onAddToCart={onAddToCart}
-            onQuickView={onQuickView}
-          />
+        <div key={product.id} className="product-card-entrance" style={{ animationDelay: `${(index % 4) * 60}ms` }}>
+          <ProductCard product={product} onAddToCart={onAddToCart} onQuickView={onQuickView} />
         </div>
       ))}
     </div>

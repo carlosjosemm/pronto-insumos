@@ -62,7 +62,7 @@ export default function CategoryFilter({
   }, [catalog])
 
   const displayedCategories = React.useMemo(() => {
-    const knownIds = new Set(CATEGORIES.map(c => c.id))
+    const knownIds = new Set(CATEGORIES.map((c) => c.id))
     const extraCategories: typeof CATEGORIES = []
 
     catalog.forEach((p) => {
@@ -71,7 +71,7 @@ export default function CategoryFilter({
         const displayName = p.category
           .toLowerCase()
           .split(' ')
-          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
           .join(' ')
         extraCategories.push({
           id: p.category,
@@ -118,11 +118,7 @@ export default function CategoryFilter({
         <div className="filter-options">
           {/* Stock Toggle */}
           <label className="stock-toggle-label">
-            <input
-              type="checkbox"
-              checked={inStockOnly}
-              onChange={(e) => onToggleInStock(e.target.checked)}
-            />
+            <input type="checkbox" checked={inStockOnly} onChange={(e) => onToggleInStock(e.target.checked)} />
             <span>Solo en Stock</span>
           </label>
 

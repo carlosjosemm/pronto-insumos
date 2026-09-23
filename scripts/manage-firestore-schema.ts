@@ -16,7 +16,10 @@ for (const envFile of ['.env.local', '.env']) {
       const eqIdx = trimmed.indexOf('=')
       if (eqIdx > 0) {
         const key = trimmed.slice(0, eqIdx).trim()
-        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '')
+        const val = trimmed
+          .slice(eqIdx + 1)
+          .trim()
+          .replace(/^["']|["']$/g, '')
         if (!process.env[key]) {
           process.env[key] = val
         }
@@ -36,19 +39,22 @@ if (!projectId || !clientEmail || !privateKey) {
   console.error('  - FIREBASE_PROJECT_ID=' + (projectId || 'pronto-insumos'))
   console.error('  - FIREBASE_CLIENT_EMAIL=firebase-adminsdk-...@pronto-insumos.iam.gserviceaccount.com')
   console.error('  - FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n..."\n')
-  console.error('💡 Puedes obtenerlas en: Firebase Console > Configuración del Proyecto > Cuentas de servicio > Generar nueva clave privada.\n')
+  console.error(
+    '💡 Puedes obtenerlas en: Firebase Console > Configuración del Proyecto > Cuentas de servicio > Generar nueva clave privada.\n'
+  )
   process.exit(1)
 }
 
-const app = getApps().length > 0
-  ? getApps()[0]
-  : initializeApp({
-      credential: cert({
-        projectId,
-        clientEmail,
-        privateKey
+const app =
+  getApps().length > 0
+    ? getApps()[0]
+    : initializeApp({
+        credential: cert({
+          projectId,
+          clientEmail,
+          privateKey
+        })
       })
-    })
 
 const db = getFirestore(app)
 
@@ -74,7 +80,7 @@ async function runValidate() {
   let validProducts = 0
   let invalidProducts = 0
 
-  productsSnap.forEach(doc => {
+  productsSnap.forEach((doc) => {
     const data = doc.data()
     const result = validateProductSchema({ id: doc.id, ...data })
     if (result.valid) {
@@ -94,7 +100,7 @@ async function runValidate() {
   let validOrders = 0
   let invalidOrders = 0
 
-  ordersSnap.forEach(doc => {
+  ordersSnap.forEach((doc) => {
     const data = doc.data()
     const result = validateOrderSchema({ orderId: doc.id, ...data })
     if (result.valid) {
@@ -145,7 +151,7 @@ async function runSeed() {
       manufacturer: prod.manufacturer || '',
       rating: prod.rating || 5.0,
       reviewsCount: prod.reviewsCount || 0,
-      createdAt: existing.exists ? (existing.data()?.createdAt || nowIso) : nowIso,
+      createdAt: existing.exists ? existing.data()?.createdAt || nowIso : nowIso,
       updatedAt: nowIso
     }
 
@@ -273,7 +279,9 @@ async function runPurgeAndSeed() {
     console.error('Estás intentando purgar la base de datos de PRODUCCIÓN (colecciones canónicas).')
     console.error('Para purgar el entorno de desarrollo/pruebas ejecuta: pnpm run schema:purge:dev')
     console.error('Si REALMENTE deseas purgar producción, debes incluir: --confirm-production-wipe')
-    console.error('Ejemplo: npx tsx scripts/manage-firestore-schema.ts --purge-and-seed --force --confirm-production-wipe\n')
+    console.error(
+      'Ejemplo: npx tsx scripts/manage-firestore-schema.ts --purge-and-seed --force --confirm-production-wipe\n'
+    )
     process.exit(1)
   }
 
@@ -289,7 +297,7 @@ async function runPurgeAndSeed() {
       for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
         const chunk = docs.slice(i, i + BATCH_LIMIT)
         const batch = db.batch()
-        chunk.forEach(doc => {
+        chunk.forEach((doc) => {
           batch.delete(doc.ref)
         })
         await batch.commit()
@@ -323,7 +331,7 @@ async function main() {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('❌ Error ejecutando script de esquema:', err)
   process.exit(1)
 })

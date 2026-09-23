@@ -9,7 +9,6 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
   return (
     <footer className="footer-container">
       <div className="footer-inner">
-        
         {/* Value Proposition Banners */}
         <div className="footer-value-props">
           <div className="footer-value-prop-card">
@@ -57,20 +56,41 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
         <div className="footer-grid-4col">
           {/* Column 1: Corporate Identity & Local Presence */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontWeight: '800', fontSize: '1.25rem', color: '#ffffff', marginBottom: '0.75rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.65rem',
+                fontWeight: '800',
+                fontSize: '1.25rem',
+                color: '#ffffff',
+                marginBottom: '0.75rem'
+              }}
+            >
               <div className="brand-icon-wrapper" style={{ width: '32px', height: '32px' }}>
                 <Activity size={20} />
               </div>
               <span>PRONTO ODONTOLOGÍA</span>
             </div>
             <p style={{ color: '#94a3b8', fontSize: '0.825rem', lineHeight: '1.6', marginBottom: '1rem' }}>
-              Distribuidor especializado en insumos y equipamiento odontológico para gabinetes, clínicas dentales y laboratorios en Melipilla y la Región Metropolitana.
+              Distribuidor especializado en insumos y equipamiento odontológico para gabinetes, clínicas dentales y
+              laboratorios en Melipilla y la Región Metropolitana.
             </p>
-            <div style={{ fontSize: '0.8rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <div><strong>RUT Empresa:</strong> 77.892.410-K</div>
-              <div><strong>Bodega & Despacho:</strong> Av. Ortúzar 750, Melipilla, Chile</div>
-              <div><strong>Distribución local:</strong> Melipilla, Talagante, Peñaflor y RM</div>
-              <div><strong>Horario de Atención:</strong> Lunes a Viernes 08:30 – 18:30 hrs</div>
+            <div
+              style={{ fontSize: '0.8rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}
+            >
+              <div>
+                <strong>RUT Empresa:</strong> 77.892.410-K
+              </div>
+              <div>
+                <strong>Bodega & Despacho:</strong> Av. Ortúzar 750, Melipilla, Chile
+              </div>
+              <div>
+                <strong>Distribución local:</strong> Melipilla, Talagante, Peñaflor y RM
+              </div>
+              <div>
+                <strong>Horario de Atención:</strong> Lunes a Viernes 08:30 – 18:30 hrs
+              </div>
             </div>
           </div>
 
@@ -88,7 +108,16 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
                   <button
                     type="button"
                     onClick={onOpenTracking}
-                    style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', padding: 0, font: 'inherit', textAlign: 'left', fontWeight: '700' }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#38bdf8',
+                      cursor: 'pointer',
+                      padding: 0,
+                      font: 'inherit',
+                      textAlign: 'left',
+                      fontWeight: '700'
+                    }}
                   >
                     • Seguimiento de Pedido en Línea
                   </button>
@@ -115,7 +144,16 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
             <p style={{ color: '#94a3b8', fontSize: '0.8rem', lineHeight: '1.5', marginBottom: '0.85rem' }}>
               Atención directa para presupuestos de insumos y equipamiento clínico.
             </p>
-            <div style={{ fontSize: '0.825rem', color: '#cbd5e1', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <div
+              style={{
+                fontSize: '0.825rem',
+                color: '#cbd5e1',
+                marginBottom: '1rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.35rem'
+              }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <Phone size={14} style={{ color: 'var(--brand-accent-green)' }} />
                 <span>Mesa Clínica: +56 9 1234 5678</span>
@@ -159,7 +197,10 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
 
         {/* Bottom Legal Disclaimer (Seed button eliminated) */}
         <div className="footer-bottom-bar">
-          <span>© {new Date().getFullYear()} PRONTO INSUMOS ODONTOLÓGICOS SPA. Todos los derechos reservados. Melipilla, Chile.</span>
+          <span>
+            © {new Date().getFullYear()} PRONTO INSUMOS ODONTOLÓGICOS SPA. Todos los derechos reservados. Melipilla,
+            Chile.
+          </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
             <span>Depósito Dental Certificado</span>
             <span>Facturación Electrónica SII</span>

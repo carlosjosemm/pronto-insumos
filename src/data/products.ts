@@ -33,7 +33,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: false,
     tag: 'Más Vendido',
-    description: 'Pieza de mano de alta velocidad con iluminación LED por fibra óptica, acople rápido push-button y triple spray de agua para gabinetes dentales.',
+    description:
+      'Pieza de mano de alta velocidad con iluminación LED por fibra óptica, acople rápido push-button y triple spray de agua para gabinetes dentales.',
     specs: [
       'Velocidad de rotación: 380.000 a 420.000 RPM',
       'Iluminación LED natural por fibra óptica (25.000 Lux)',
@@ -64,7 +65,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: false,
     tag: 'Certificado ISP',
-    description: 'Luz LED de polimerización para resinas compuestas de alta intensidad (3.000 mW/cm²) con espectro de amplia longitud de onda (385-515 nm).',
+    description:
+      'Luz LED de polimerización para resinas compuestas de alta intensidad (3.000 mW/cm²) con espectro de amplia longitud de onda (385-515 nm).',
     specs: [
       'Potencia ajustable: 1.000 a 3.000 mW/cm²',
       'Tiempo de fotocurado ultrarrápido (1 a 3 segundos)',
@@ -95,7 +97,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: false,
     tag: 'Recomendado Melipilla',
-    description: 'Unidad de detartraje y profilaxis ultrasónica con pieza de mano desmontable autoclaveable, irrigación de agua integrada y puntas de titanio.',
+    description:
+      'Unidad de detartraje y profilaxis ultrasónica con pieza de mano desmontable autoclaveable, irrigación de agua integrada y puntas de titanio.',
     specs: [
       'Frecuencia piezoeléctrica automática: 28 kHz - 32 kHz',
       'Pieza de mano desmontable esterilizable a 135°C',
@@ -127,7 +130,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: false,
     tag: 'Alta Estética',
-    description: 'Set de 8 jeringas de resina estética fotocurable con tecnología de nano-relleno para restauraciones directas en sectores anteriores y posteriores.',
+    description:
+      'Set de 8 jeringas de resina estética fotocurable con tecnología de nano-relleno para restauraciones directas en sectores anteriores y posteriores.',
     specs: [
       '8 Jeringas de 4g en tonos A1, A2, A3, A3.5, B2, C2, Incisal y Denti',
       'Excelente pulido y retención de brillo a largo plazo',
@@ -159,7 +163,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: false,
     tag: 'Normativa ISP',
-    description: 'Esterilizador a vapor automático de vacío fraccionado previo y posterior para instrumentos quirúrgicos huecos y piezas de mano dentales.',
+    description:
+      'Esterilizador a vapor automático de vacío fraccionado previo y posterior para instrumentos quirúrgicos huecos y piezas de mano dentales.',
     specs: [
       'Capacidad de cámara: 18 Litros de acero inoxidable 304',
       'Bomba de vacío silenciosa de triple ciclo fraccionado',
@@ -191,7 +196,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: false,
     tag: 'Uso Diario',
-    description: 'Material de impresión dental libre de polvo con indicador cromático de fase (Violeta -> Rosa -> Blanco) para modelos de estudio y prótesis.',
+    description:
+      'Material de impresión dental libre de polvo con indicador cromático de fase (Violeta -> Rosa -> Blanco) para modelos de estudio y prótesis.',
     specs: [
       'Cambio de color visual guía para mezcla y fraguado',
       'Alta elasticidad y resistencia al desgarro',
@@ -221,7 +227,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: false,
     tag: 'Endodoncia Avanzada',
-    description: 'Buscador de ápice digital multifrecuencia para medición exacta de conductos radiculares en ambiente seco y húmedo.',
+    description:
+      'Buscador de ápice digital multifrecuencia para medición exacta de conductos radiculares en ambiente seco y húmedo.',
     specs: [
       'Pantalla LCD a color de 4.5 pulgadas con gráfica en tiempo real',
       'Precisión del 98.4% en conductos con sangre o irrigantes',
@@ -253,7 +260,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: false,
     tag: 'Acero Quirúrgico',
-    description: 'Kit de diagnóstico oral de alta calidad en acero inoxidable alemán autoclaveable para exámenes de rutina en clínica.',
+    description:
+      'Kit de diagnóstico oral de alta calidad en acero inoxidable alemán autoclaveable para exámenes de rutina en clínica.',
     specs: [
       'Incluye 2 espejos nº 5 con mango, 2 exploradores dobles, 2 pinzas de algodón y 2 sondas OMS',
       'Acero inoxidable quirúrgico grado 316L antirreflejo',
@@ -285,7 +293,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: false,
     tag: 'Nuevo Ingreso',
-    description: 'Sabanillas clínicas de doble capa (papel absorbente + polietileno impermeable) para protección del sillón y paciente.',
+    description:
+      'Sabanillas clínicas de doble capa (papel absorbente + polietileno impermeable) para protección del sillón y paciente.',
     specs: [
       'Dimensiones: 33 cm x 45 cm (tamaño estándar pechera/campo)',
       'Excelente absorción de fluidos y barrera total contra humedad',
@@ -295,9 +304,7 @@ export const PRODUCTS: Product[] = [
     placeholderTheme: 'gradient-red',
     mediaBadge: 'Doble Capa Barredor',
     images: [],
-    packageContents: [
-      '1x Caja dispensadora con 100 campos impermeables 33x45cm'
-    ]
+    packageContents: ['1x Caja dispensadora con 100 campos impermeables 33x45cm']
   },
   {
     id: 'odon-402',
@@ -313,7 +320,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: true,
     tag: 'Cirugía e Implantes',
-    description: 'Consola quirúrgica para implantología y cirugía oral con pedal multifunción, contra-ángulo reductor 20:1 e irrigación salina.',
+    description:
+      'Consola quirúrgica para implantología y cirugía oral con pedal multifunción, contra-ángulo reductor 20:1 e irrigación salina.',
     specs: [
       'Torque máximo de 80 Ncm en contra-ángulo 20:1',
       '10 programas quirúrgicos personalizables',
@@ -346,7 +354,8 @@ export const PRODUCTS: Product[] = [
     isActive: false,
     prescriptionRequired: true,
     tag: 'Venta Regulada ISP',
-    description: 'Solución inyectable dental de anestesia local para procedimientos quirúrgicos y restauradores. Venta exclusiva bajo acreditación SIS o receta médica retenida.',
+    description:
+      'Solución inyectable dental de anestesia local para procedimientos quirúrgicos y restauradores. Venta exclusiva bajo acreditación SIS o receta médica retenida.',
     specs: [
       'Registro Sanitario ISP Chile N° F-14220',
       '50 Cartuchos de vidrio de 1.8ml en blíster sellado',
@@ -364,6 +373,6 @@ export const PRODUCTS: Product[] = [
 ]
 
 export const MOCK_PROMOS: Record<string, PromoCode> = {
-  'PRONTO10': { discountPercent: 10, code: 'PRONTO10', label: '10% Descuento Primer Pedido Odontológico' },
-  'DENT20': { discountPercent: 20, code: 'DENT20', label: '20% Convenio Clínicas Melipilla' }
+  PRONTO10: { discountPercent: 10, code: 'PRONTO10', label: '10% Descuento Primer Pedido Odontológico' },
+  DENT20: { discountPercent: 20, code: 'DENT20', label: '20% Convenio Clínicas Melipilla' }
 }

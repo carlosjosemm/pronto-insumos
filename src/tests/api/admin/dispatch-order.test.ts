@@ -71,15 +71,21 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.status).toBe('DESPACHADO')
-    expect(mockBatch.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      status: 'DESPACHADO',
-      courier: 'starken',
-      trackingNumber: 'STK-998877'
-    }))
-    expect(mockBatch.set).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      newStatus: 'DESPACHADO',
-      actorRole: 'ADMIN'
-    }))
+    expect(mockBatch.update).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: 'DESPACHADO',
+        courier: 'starken',
+        trackingNumber: 'STK-998877'
+      })
+    )
+    expect(mockBatch.set).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        newStatus: 'DESPACHADO',
+        actorRole: 'ADMIN'
+      })
+    )
   })
 
   it('falls back to query by orderId if direct doc lookup is not found', async () => {

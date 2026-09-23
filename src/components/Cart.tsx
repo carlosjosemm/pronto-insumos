@@ -1,6 +1,22 @@
 import React, { useState, useEffect } from 'react'
 import { CartItem, PromoCode } from '../types'
-import { X, ShoppingBag, Plus, Minus, Trash2, Tag, Lock, ArrowRight, ShieldCheck, Activity, Heart, Home, ShieldAlert, AlertTriangle, LucideIcon } from 'lucide-react'
+import {
+  X,
+  ShoppingBag,
+  Plus,
+  Minus,
+  Trash2,
+  Tag,
+  Lock,
+  ArrowRight,
+  ShieldCheck,
+  Activity,
+  Heart,
+  Home,
+  ShieldAlert,
+  AlertTriangle,
+  LucideIcon
+} from 'lucide-react'
 import { validatePromo } from '../services/api'
 import { formatCLP, calculateIVA } from '../utils/currency'
 
@@ -58,10 +74,12 @@ export default function Cart({
 
   const progressPercent = Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100)
   const remainingForFreeShipping = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal)
-  const hasRegulatedItems = items.some(item => item.product.prescriptionRequired)
+  const hasRegulatedItems = items.some((item) => item.product.prescriptionRequired)
   const hasStockIssues = items.some((item) => {
-    const isOutOfStock = !item.product.inStock || (typeof item.product.stockCount === 'number' && item.product.stockCount <= 0)
-    const maxStock = (typeof item.product.stockCount === 'number' && item.product.stockCount > 0) ? item.product.stockCount : 99
+    const isOutOfStock =
+      !item.product.inStock || (typeof item.product.stockCount === 'number' && item.product.stockCount <= 0)
+    const maxStock =
+      typeof item.product.stockCount === 'number' && item.product.stockCount > 0 ? item.product.stockCount : 99
     return isOutOfStock || item.quantity > maxStock
   })
 
@@ -87,7 +105,12 @@ export default function Cart({
             <ShoppingBag size={20} style={{ color: 'var(--teal-600)' }} />
             <span>Carro Odontológico ({items.reduce((acc, i) => acc + i.quantity, 0)})</span>
           </div>
-          <button className="modal-close-btn" style={{ position: 'static' }} onClick={onClose} aria-label="Cerrar carro">
+          <button
+            className="modal-close-btn"
+            style={{ position: 'static' }}
+            onClick={onClose}
+            aria-label="Cerrar carro"
+          >
             <X size={18} />
           </button>
         </div>
@@ -125,7 +148,8 @@ export default function Cart({
           >
             <ShieldAlert size={18} style={{ color: '#d97706', flexShrink: 0 }} />
             <span>
-              <strong>Insumos Regulados ISP:</strong> Tu carro incluye productos de venta controlada. Se solicitará tu N° de Registro SIS en el checkout.
+              <strong>Insumos Regulados ISP:</strong> Tu carro incluye productos de venta controlada. Se solicitará tu
+              N° de Registro SIS en el checkout.
             </span>
           </div>
         )}
@@ -145,8 +169,12 @@ export default function Cart({
           ) : (
             items.map((item) => {
               const ItemCategoryIcon = ICON_BY_CATEGORY[item.product.category] || ShoppingBag
-              const isOutOfStock = !item.product.inStock || (typeof item.product.stockCount === 'number' && item.product.stockCount <= 0)
-              const maxStock = (typeof item.product.stockCount === 'number' && item.product.stockCount > 0) ? item.product.stockCount : 99
+              const isOutOfStock =
+                !item.product.inStock || (typeof item.product.stockCount === 'number' && item.product.stockCount <= 0)
+              const maxStock =
+                typeof item.product.stockCount === 'number' && item.product.stockCount > 0
+                  ? item.product.stockCount
+                  : 99
               const isMaxStock = !isOutOfStock && item.quantity >= maxStock
               const isOverStock = !isOutOfStock && item.quantity > maxStock
 
@@ -162,14 +190,23 @@ export default function Cart({
                   <div className="cart-item-info">
                     <div className="cart-item-title">{item.product.name}</div>
                     {item.product.prescriptionRequired && (
-                      <span style={{ fontSize: '0.65rem', color: '#b45309', background: '#fef3c7', padding: '0.1rem 0.35rem', borderRadius: 'var(--radius-xs)', display: 'inline-block', marginBottom: '0.2rem', fontWeight: '700' }}>
+                      <span
+                        style={{
+                          fontSize: '0.65rem',
+                          color: '#b45309',
+                          background: '#fef3c7',
+                          padding: '0.1rem 0.35rem',
+                          borderRadius: 'var(--radius-xs)',
+                          display: 'inline-block',
+                          marginBottom: '0.2rem',
+                          fontWeight: '700'
+                        }}
+                      >
                         ⚕️ Requiere SIS (ISP)
                       </span>
                     )}
                     {isOutOfStock ? (
-                      <span className="cart-stock-cue cart-stock-cue--danger">
-                        Sin stock disponible
-                      </span>
+                      <span className="cart-stock-cue cart-stock-cue--danger">Sin stock disponible</span>
                     ) : isOverStock ? (
                       <span className="cart-stock-cue cart-stock-cue--danger">
                         Excede stock ({maxStock} unid. disp.)
@@ -182,45 +219,46 @@ export default function Cart({
                     <div className="cart-item-price">{formatCLP(item.product.price * item.quantity)}</div>
                   </div>
 
-                {/* Quantity Controls */}
-                <div className="quantity-controls">
+                  {/* Quantity Controls */}
+                  <div className="quantity-controls">
+                    <button
+                      className="qty-btn"
+                      onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)}
+                      aria-label={`Reducir cantidad de ${item.product.name}`}
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <span className="qty-val">{item.quantity}</span>
+                    <button
+                      className="qty-btn"
+                      onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
+                      disabled={item.quantity >= maxStock || isOutOfStock}
+                      aria-label={`Aumentar cantidad de ${item.product.name}`}
+                      title={
+                        isOutOfStock
+                          ? 'Sin stock disponible'
+                          : item.quantity >= maxStock
+                            ? 'Has alcanzado el stock máximo disponible de este producto'
+                            : `Aumentar cantidad de ${item.product.name}`
+                      }
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+
+                  {/* Delete Button */}
                   <button
-                    className="qty-btn"
-                    onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)}
-                    aria-label={`Reducir cantidad de ${item.product.name}`}
+                    onClick={() => onRemoveItem(item.product.id)}
+                    style={{ color: 'var(--text-muted)', padding: '0.4rem', borderRadius: 'var(--radius-xs)' }}
+                    title="Eliminar producto"
+                    aria-label={`Eliminar ${item.product.name} del carro`}
                   >
-                    <Minus size={12} />
-                  </button>
-                  <span className="qty-val">{item.quantity}</span>
-                  <button
-                    className="qty-btn"
-                    onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
-                    disabled={item.quantity >= maxStock || isOutOfStock}
-                    aria-label={`Aumentar cantidad de ${item.product.name}`}
-                    title={
-                      isOutOfStock
-                        ? 'Sin stock disponible'
-                        : item.quantity >= maxStock
-                        ? 'Has alcanzado el stock máximo disponible de este producto'
-                        : `Aumentar cantidad de ${item.product.name}`
-                    }
-                  >
-                    <Plus size={12} />
+                    <Trash2 size={16} />
                   </button>
                 </div>
-
-                {/* Delete Button */}
-                <button
-                  onClick={() => onRemoveItem(item.product.id)}
-                  style={{ color: 'var(--text-muted)', padding: '0.4rem', borderRadius: 'var(--radius-xs)' }}
-                  title="Eliminar producto"
-                  aria-label={`Eliminar ${item.product.name} del carro`}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            )
-          }))}
+              )
+            })
+          )}
         </div>
 
         {/* Cart Drawer Footer */}
@@ -253,22 +291,26 @@ export default function Cart({
             )}
 
             {appliedPromo && (
-              <div style={{
-                background: 'var(--teal-50)',
-                color: 'var(--teal-700)',
-                border: '1px solid var(--teal-100)',
-                padding: '0.45rem 0.75rem',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '0.8rem',
-                fontWeight: '700',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '0.75rem'
-              }}>
+              <div
+                style={{
+                  background: 'var(--teal-50)',
+                  color: 'var(--teal-700)',
+                  border: '1px solid var(--teal-100)',
+                  padding: '0.45rem 0.75rem',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '0.75rem'
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   <Tag size={14} />
-                  <span>{appliedPromo.label} ({appliedPromo.code})</span>
+                  <span>
+                    {appliedPromo.label} ({appliedPromo.code})
+                  </span>
                 </div>
                 <span>{formatCLP(-discountAmount)}</span>
               </div>
@@ -300,7 +342,10 @@ export default function Cart({
             {hasStockIssues && (
               <div className="cart-stock-warning-banner" role="alert">
                 <AlertTriangle size={15} style={{ flexShrink: 0 }} />
-                <span>Atención: Uno o más productos superan el stock disponible o están agotados. Ajusta las cantidades para continuar con el pago.</span>
+                <span>
+                  Atención: Uno o más productos superan el stock disponible o están agotados. Ajusta las cantidades para
+                  continuar con el pago.
+                </span>
               </div>
             )}
 

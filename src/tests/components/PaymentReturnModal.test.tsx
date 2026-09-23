@@ -45,14 +45,7 @@ describe('PaymentReturnModal Component', () => {
   it('should render failure status view with error advice and retry button', () => {
     const onRetryPayment = vi.fn()
     const onClose = vi.fn()
-    render(
-      <PaymentReturnModal
-        {...defaultProps}
-        status="failure"
-        onRetryPayment={onRetryPayment}
-        onClose={onClose}
-      />
-    )
+    render(<PaymentReturnModal {...defaultProps} status="failure" onRetryPayment={onRetryPayment} onClose={onClose} />)
 
     expect(screen.getByText('Pago No Completado o Rechazado')).toBeInTheDocument()
     expect(screen.getByText(/No se ha realizado ningún cobro a tu tarjeta/i)).toBeInTheDocument()

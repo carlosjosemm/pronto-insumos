@@ -82,14 +82,20 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.stockCount).toBe(12)
-    expect(mockBatch.update).toHaveBeenCalledWith(mockDoc, expect.objectContaining({
-      stockCount: 12,
-      inStock: true
-    }))
-    expect(mockBatch.set).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      changeType: 'STOCK_ADJUSTMENT',
-      reasonCode: 'reposicion'
-    }))
+    expect(mockBatch.update).toHaveBeenCalledWith(
+      mockDoc,
+      expect.objectContaining({
+        stockCount: 12,
+        inStock: true
+      })
+    )
+    expect(mockBatch.set).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        changeType: 'STOCK_ADJUSTMENT',
+        reasonCode: 'reposicion'
+      })
+    )
     expect(jsonOutput.inStock).toBe(true)
   })
 
@@ -127,9 +133,12 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.stockCount).toBe(25)
     expect(jsonOutput.inStock).toBe(false)
-    expect(mockBatch.update).toHaveBeenCalledWith(mockDoc, expect.objectContaining({
-      stockCount: 25,
-      inStock: false
-    }))
+    expect(mockBatch.update).toHaveBeenCalledWith(
+      mockDoc,
+      expect.objectContaining({
+        stockCount: 25,
+        inStock: false
+      })
+    )
   })
 })

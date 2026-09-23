@@ -198,7 +198,9 @@ describe('Cart component', () => {
       render(<Cart {...defaultProps} items={cartItemsOver} />)
 
       expect(screen.getByText('Excede stock (2 unid. disp.)')).toBeInTheDocument()
-      expect(screen.getByText(/Atención: Uno o más productos superan el stock disponible o están agotados/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/Atención: Uno o más productos superan el stock disponible o están agotados/i)
+      ).toBeInTheDocument()
 
       const checkoutBtn = screen.getByRole('button', { name: /Insumos sin Stock Suficiente/i })
       expect(checkoutBtn).toBeDisabled()
@@ -216,7 +218,9 @@ describe('Cart component', () => {
       render(<Cart {...defaultProps} items={cartItemsOos} />)
 
       expect(screen.getByText('Sin stock disponible')).toBeInTheDocument()
-      expect(screen.getByText(/Atención: Uno o más productos superan el stock disponible o están agotados/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/Atención: Uno o más productos superan el stock disponible o están agotados/i)
+      ).toBeInTheDocument()
 
       const plusButton = screen.getByTitle('Sin stock disponible')
       expect(plusButton).toBeDisabled()

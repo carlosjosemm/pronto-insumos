@@ -35,20 +35,13 @@ describe('CategoryShowcase Component (Section 5.4 Category Assets)', () => {
   })
 
   it('should render nothing when the active category has no showcase banner', () => {
-    const { container } = render(
-      <CategoryShowcase selectedCategory="HIGIENE BUCAL" onSelectCategory={vi.fn()} />
-    )
+    const { container } = render(<CategoryShowcase selectedCategory="HIGIENE BUCAL" onSelectCategory={vi.fn()} />)
     expect(container).toBeEmptyDOMElement()
   })
 
   it('should render the contextual category banner when a specific category is active', () => {
     const onSelect = vi.fn()
-    render(
-      <CategoryShowcase
-        selectedCategory="OPERATORIA"
-        onSelectCategory={onSelect}
-      />
-    )
+    render(<CategoryShowcase selectedCategory="OPERATORIA" onSelectCategory={onSelect} />)
 
     expect(screen.getByText('Operatoria y Materiales Restauradores')).toBeInTheDocument()
     expect(screen.getByText(/Resinas nanohíbridas de alta estética/i)).toBeInTheDocument()

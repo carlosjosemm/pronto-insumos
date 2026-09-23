@@ -36,7 +36,13 @@ export default function PaymentReturnModal({
   )}`
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="payment-return-title">
+    <div
+      className="modal-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="payment-return-title"
+    >
       <div
         className="modal-card"
         style={{ maxWidth: '540px', textAlign: 'center', padding: '2rem 1.75rem' }}
@@ -49,49 +55,60 @@ export default function PaymentReturnModal({
         {/* Status: APPROVED */}
         {status === 'approved' && (
           <div>
-            <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: 'var(--teal-50)',
-              color: 'var(--teal-600)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.25rem'
-            }}>
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: 'var(--teal-50)',
+                color: 'var(--teal-600)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem'
+              }}
+            >
               <CheckCircle2 size={40} />
             </div>
 
-            <h2 id="payment-return-title" style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.35rem' }}>
+            <h2
+              id="payment-return-title"
+              style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.35rem' }}
+            >
               ¡Pago Confirmado Exitosamente!
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
               Tu transacción ha sido acreditada vía Mercado Pago Chile / Webpay.
             </p>
 
-            <div style={{
-              background: 'var(--surface-muted)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '1rem 1.25rem',
-              textAlign: 'left',
-              marginBottom: '1.25rem',
-              fontSize: '0.825rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.45rem'
-            }}>
+            <div
+              style={{
+                background: 'var(--surface-muted)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '1rem 1.25rem',
+                textAlign: 'left',
+                marginBottom: '1.25rem',
+                fontSize: '0.825rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.45rem'
+              }}
+            >
               {orderId && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Código de Pedido:</span>
-                  <span style={{ fontWeight: '800', color: 'var(--navy-900)', fontFamily: 'monospace' }}>{orderId}</span>
+                  <span style={{ fontWeight: '800', color: 'var(--navy-900)', fontFamily: 'monospace' }}>
+                    {orderId}
+                  </span>
                 </div>
               )}
               {paymentId && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-muted)' }}>ID Transacción MP:</span>
-                  <span style={{ fontWeight: '600', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{paymentId}</span>
+                  <span style={{ fontWeight: '600', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                    {paymentId}
+                  </span>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -104,18 +121,21 @@ export default function PaymentReturnModal({
               </div>
             </div>
 
-            <div style={{
-              background: '#f0fdfa',
-              border: '1px solid #ccfbf1',
-              borderRadius: 'var(--radius-xs)',
-              padding: '0.75rem',
-              fontSize: '0.775rem',
-              color: 'var(--teal-800)',
-              textAlign: 'left',
-              marginBottom: '1.5rem',
-              lineHeight: '1.4'
-            }}>
-              📄 <strong>Comprobante y Facturación:</strong> Tu documento tributario oficial (Factura o Boleta Electrónica con 19% IVA) será emitido por nuestro equipo y remitido a tu correo electrónico registrado.
+            <div
+              style={{
+                background: '#f0fdfa',
+                border: '1px solid #ccfbf1',
+                borderRadius: 'var(--radius-xs)',
+                padding: '0.75rem',
+                fontSize: '0.775rem',
+                color: 'var(--teal-800)',
+                textAlign: 'left',
+                marginBottom: '1.5rem',
+                lineHeight: '1.4'
+              }}
+            >
+              📄 <strong>Comprobante y Facturación:</strong> Tu documento tributario oficial (Factura o Boleta
+              Electrónica con 19% IVA) será emitido por nuestro equipo y remitido a tu correo electrónico registrado.
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
@@ -140,47 +160,66 @@ export default function PaymentReturnModal({
         {/* Status: FAILURE */}
         {status === 'failure' && (
           <div>
-            <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: '#fef2f2',
-              color: '#dc2626',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.25rem'
-            }}>
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: '#fef2f2',
+                color: '#dc2626',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem'
+              }}
+            >
               <AlertCircle size={40} />
             </div>
 
-            <h2 id="payment-return-title" style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.35rem' }}>
+            <h2
+              id="payment-return-title"
+              style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.35rem' }}
+            >
               Pago No Completado o Rechazado
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
               La transacción en Mercado Pago no pudo procesarse o fue cancelada.
             </p>
 
-            <div style={{
-              background: '#fffbeb',
-              border: '1px solid #fde68a',
-              borderRadius: 'var(--radius-sm)',
-              padding: '1rem',
-              fontSize: '0.8rem',
-              color: '#92400e',
-              textAlign: 'left',
-              marginBottom: '1.5rem',
-              lineHeight: '1.45'
-            }}>
-              ℹ️ <strong>Tus insumos continúan guardados:</strong> No se ha realizado ningún cobro a tu tarjeta. Puedes reintentar el pago con otro medio o seleccionar <strong>Transferencia Bancaria Directa</strong> a nuestra cuenta de Banco de Chile.
+            <div
+              style={{
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                borderRadius: 'var(--radius-sm)',
+                padding: '1rem',
+                fontSize: '0.8rem',
+                color: '#92400e',
+                textAlign: 'left',
+                marginBottom: '1.5rem',
+                lineHeight: '1.45'
+              }}
+            >
+              ℹ️ <strong>Tus insumos continúan guardados:</strong> No se ha realizado ningún cobro a tu tarjeta. Puedes
+              reintentar el pago con otro medio o seleccionar <strong>Transferencia Bancaria Directa</strong> a nuestra
+              cuenta de Banco de Chile.
             </div>
 
             <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button type="button" className="btn-secondary" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={onClose}
+                style={{ flex: 1, justifyContent: 'center' }}
+              >
                 Cerrar
               </button>
               {onRetryPayment && (
-                <button type="button" className="btn-primary" onClick={onRetryPayment} style={{ flex: 2, justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={onRetryPayment}
+                  style={{ flex: 2, justifyContent: 'center' }}
+                >
                   <RefreshCw size={16} />
                   <span>Reintentar / Opciones de Pago</span>
                 </button>
@@ -192,21 +231,26 @@ export default function PaymentReturnModal({
         {/* Status: PENDING */}
         {status === 'pending' && (
           <div>
-            <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: '#eff6ff',
-              color: '#2563eb',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.25rem'
-            }}>
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: '#eff6ff',
+                color: '#2563eb',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem'
+              }}
+            >
               <Clock size={40} />
             </div>
 
-            <h2 id="payment-return-title" style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.35rem' }}>
+            <h2
+              id="payment-return-title"
+              style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.35rem' }}
+            >
               Pago en Proceso de Validación
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
@@ -214,26 +258,36 @@ export default function PaymentReturnModal({
             </p>
 
             {orderId && (
-              <div style={{
-                background: 'var(--surface-muted)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '0.85rem 1rem',
-                fontSize: '0.825rem',
-                marginBottom: '1.25rem',
-                display: 'flex',
-                justifyContent: 'space-between'
-              }}>
+              <div
+                style={{
+                  background: 'var(--surface-muted)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '0.85rem 1rem',
+                  fontSize: '0.825rem',
+                  marginBottom: '1.25rem',
+                  display: 'flex',
+                  justifyContent: 'space-between'
+                }}
+              >
                 <span style={{ color: 'var(--text-muted)' }}>Código de Pedido:</span>
                 <span style={{ fontWeight: '800', color: 'var(--navy-900)', fontFamily: 'monospace' }}>{orderId}</span>
               </div>
             )}
 
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.45', marginBottom: '1.5rem' }}>
-              Tan pronto como el banco confirme la recepción de los fondos, tu pedido será aprobado y despachado desde nuestra bodega en Melipilla. Recibirás una notificación por correo electrónico.
+            <p
+              style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.45', marginBottom: '1.5rem' }}
+            >
+              Tan pronto como el banco confirme la recepción de los fondos, tu pedido será aprobado y despachado desde
+              nuestra bodega en Melipilla. Recibirás una notificación por correo electrónico.
             </p>
 
-            <button type="button" className="btn-primary" onClick={onClose} style={{ width: '100%', justifyContent: 'center' }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={onClose}
+              style={{ width: '100%', justifyContent: 'center' }}
+            >
               Entendido, Volver a la Tienda
             </button>
           </div>

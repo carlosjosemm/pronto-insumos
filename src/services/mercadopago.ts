@@ -23,7 +23,9 @@ export interface MercadoPagoPaymentResult {
 /**
  * Call the Vercel serverless API endpoint to create a Mercado Pago Checkout Pro Preference
  */
-export async function createMercadoPagoPreference(params: MercadoPagoPaymentParams): Promise<{ success: boolean; initPoint?: string; error?: string }> {
+export async function createMercadoPagoPreference(
+  params: MercadoPagoPaymentParams
+): Promise<{ success: boolean; initPoint?: string; error?: string }> {
   try {
     const response = await fetch('/api/create-preference', {
       method: 'POST',
@@ -43,7 +45,10 @@ export async function createMercadoPagoPreference(params: MercadoPagoPaymentPara
       initPoint: data.initPoint || data.sandboxInitPoint
     }
   } catch (error: any) {
-    console.warn('Vercel serverless preference endpoint not active in current environment, using fallback simulation:', error.message)
+    console.warn(
+      'Vercel serverless preference endpoint not active in current environment, using fallback simulation:',
+      error.message
+    )
     return {
       success: true,
       initPoint: undefined
@@ -54,7 +59,12 @@ export async function createMercadoPagoPreference(params: MercadoPagoPaymentPara
 /**
  * Process Mercado Pago payment (invokes serverless endpoint when hosted, simulated locally)
  */
-export async function processMercadoPagoPayment({ orderId, items, total, customer }: MercadoPagoPaymentParams): Promise<MercadoPagoPaymentResult> {
+export async function processMercadoPagoPayment({
+  orderId,
+  items,
+  total,
+  customer
+}: MercadoPagoPaymentParams): Promise<MercadoPagoPaymentResult> {
   const prefResult = await createMercadoPagoPreference({ orderId, items, total, customer })
 
   // If running on live Vercel deployment with valid initPoint, open Mercado Pago Checkout Pro

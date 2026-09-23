@@ -86,11 +86,11 @@ describe('processMercadoPagoPayment', () => {
     const result = await processMercadoPagoPayment({
       orderId: 'PRONTO-500000',
       items: mockItems,
-      total: 245.50,
+      total: 245.5,
       customer: mockCustomer
     })
 
-    expect(result.totalPaid).toBe(245.50)
+    expect(result.totalPaid).toBe(245.5)
   })
 
   it('should include a valid ISO timestamp in paidAt', async () => {

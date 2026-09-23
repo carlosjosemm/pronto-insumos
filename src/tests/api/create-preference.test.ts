@@ -16,7 +16,11 @@ function createMockRes() {
     json: vi.fn().mockReturnThis(),
     end: vi.fn().mockReturnThis()
   }
-  return res as VercelResponse & { status: ReturnType<typeof vi.fn>; json: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> }
+  return res as VercelResponse & {
+    status: ReturnType<typeof vi.fn>
+    json: ReturnType<typeof vi.fn>
+    end: ReturnType<typeof vi.fn>
+  }
 }
 
 describe('Create Preference Serverless Endpoint (/api/create-preference)', () => {
@@ -213,7 +217,9 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
         headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-112233',
-          items: [{ product: { id: 'odon-101', name: 'Turbina Odontológica LED MasterTorque', price: 189990 }, quantity: 5 }],
+          items: [
+            { product: { id: 'odon-101', name: 'Turbina Odontológica LED MasterTorque', price: 189990 }, quantity: 5 }
+          ],
           customer: { fullName: 'Dr. Test' }
         }
       } as unknown as VercelRequest
@@ -335,7 +341,9 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
         headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-112236',
-          items: [{ product: { id: 'odon-101', name: 'Turbina Odontológica LED MasterTorque', price: 189990 }, quantity: 2 }],
+          items: [
+            { product: { id: 'odon-101', name: 'Turbina Odontológica LED MasterTorque', price: 189990 }, quantity: 2 }
+          ],
           customer: { fullName: 'Dr. Test' }
         }
       } as unknown as VercelRequest
@@ -353,4 +361,3 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     })
   })
 })
-

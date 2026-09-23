@@ -1,11 +1,5 @@
 import { useState } from 'react'
-import {
-  ArrowRight,
-  ShieldCheck,
-  Truck,
-  FileCheck,
-  MessageSquare
-} from 'lucide-react'
+import { ArrowRight, ShieldCheck, Truck, FileCheck, MessageSquare } from 'lucide-react'
 
 export interface HeroProps {
   onExploreClick: () => void
@@ -29,7 +23,8 @@ export default function Hero({ onExploreClick }: HeroProps) {
           </h1>
 
           <p className="hero-description">
-            Piezas de mano, resinas restauradoras, instrumental de diagnóstico y bioseguridad con despacho directo a consultas en Melipilla, Talagante, Peñaflor y la Región Metropolitana.
+            Piezas de mano, resinas restauradoras, instrumental de diagnóstico y bioseguridad con despacho directo a
+            consultas en Melipilla, Talagante, Peñaflor y la Región Metropolitana.
           </p>
 
           <div className="hero-cta-group">

@@ -129,9 +129,9 @@ describe('fetchProducts - sorting', () => {
       expect(isAvailable(result[0])).toBe(true)
 
       // Every in-stock product must precede every out-of-stock product
-      const firstOutOfStockIndex = result.findIndex(p => !isAvailable(p))
+      const firstOutOfStockIndex = result.findIndex((p) => !isAvailable(p))
       if (firstOutOfStockIndex !== -1) {
-        expect(result.slice(firstOutOfStockIndex).every(p => !isAvailable(p))).toBe(true)
+        expect(result.slice(firstOutOfStockIndex).every((p) => !isAvailable(p))).toBe(true)
       }
     } finally {
       PRODUCTS[0].inStock = originalStock
@@ -140,9 +140,9 @@ describe('fetchProducts - sorting', () => {
   })
 
   it('should preserve the requested sort order inside the in-stock partition', async () => {
-    const saved = PRODUCTS.slice(0, 2).map(p => ({ inStock: p.inStock, stockCount: p.stockCount }))
+    const saved = PRODUCTS.slice(0, 2).map((p) => ({ inStock: p.inStock, stockCount: p.stockCount }))
     try {
-      PRODUCTS.slice(0, 2).forEach(p => {
+      PRODUCTS.slice(0, 2).forEach((p) => {
         p.inStock = true
         p.stockCount = 10
       })
@@ -322,4 +322,3 @@ describe('submitOrder', () => {
     expect(id1).not.toBe(id2)
   })
 })
-

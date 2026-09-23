@@ -41,9 +41,9 @@ describe('Firestore Schema Validation Utility (src/utils/schemaValidation.ts)', 
 
       const res = validateProductSchema(invalidProduct)
       expect(res.valid).toBe(false)
-      expect(res.errors.some(e => e.includes('entero positivo en CLP'))).toBe(true)
-      expect(res.errors.some(e => e.includes('mayor o igual a 0'))).toBe(true)
-      expect(res.errors.some(e => e.includes('booleano'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('entero positivo en CLP'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('mayor o igual a 0'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('booleano'))).toBe(true)
     })
   })
 
@@ -101,9 +101,9 @@ describe('Firestore Schema Validation Utility (src/utils/schemaValidation.ts)', 
 
       const res = validateOrderSchema(invalidOrder)
       expect(res.valid).toBe(false)
-      expect(res.errors.some(e => e.includes('Módulo 11'))).toBe(true)
-      expect(res.errors.some(e => e.includes('razonSocial'))).toBe(true)
-      expect(res.errors.some(e => e.includes('items'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('Módulo 11'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('razonSocial'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('items'))).toBe(true)
     })
   })
 

@@ -579,10 +579,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       const requestId = 'req-test-uuid-valid'
       const ts = '1710372000'
       const manifest = `id:${paymentId};request-id:${requestId};ts:${ts};`
-      const validHash = (await import('crypto')).default
-        .createHmac('sha256', testSecret)
-        .update(manifest)
-        .digest('hex')
+      const validHash = (await import('crypto')).default.createHmac('sha256', testSecret).update(manifest).digest('hex')
 
       vi.spyOn(global, 'fetch').mockResolvedValueOnce({
         ok: true,
@@ -612,5 +609,3 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     })
   })
 })
-
-

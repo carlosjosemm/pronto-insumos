@@ -27,7 +27,7 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory>('all')
   const [sortBy, setSortBy] = useState<string>('featured')
   const [inStockOnly, setInStockOnly] = useState<boolean>(false)
-  
+
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const hasRevalidated = useRef(false)
@@ -159,7 +159,10 @@ export default function App() {
     // Check for order tracking query parameter on mount
     const trackParam = params.get('track') || params.get('tracking')
     if (trackParam && !rawStatus) {
-      const targetId = typeof trackParam === 'string' && trackParam !== 'true' ? trackParam.trim().toUpperCase() : (orderIdParam || '').trim().toUpperCase()
+      const targetId =
+        typeof trackParam === 'string' && trackParam !== 'true'
+          ? trackParam.trim().toUpperCase()
+          : (orderIdParam || '').trim().toUpperCase()
       const rutParam = params.get('rut') || ''
       setTrackingInitialOrderId(targetId)
       setTrackingInitialRut(rutParam)
@@ -189,11 +192,7 @@ export default function App() {
       const existing = prev.find((item) => item.product.id === product.id)
       if (existing) {
         const newQty = Math.min(maxStock, existing.quantity + quantity)
-        return prev.map((item) =>
-          item.product.id === product.id
-            ? { ...item, quantity: newQty }
-            : item
-        )
+        return prev.map((item) => (item.product.id === product.id ? { ...item, quantity: newQty } : item))
       }
       return [...prev, { product, quantity: Math.min(maxStock, quantity) }]
     })
@@ -221,7 +220,7 @@ export default function App() {
   }
 
   const totalCartCount = cart.reduce((acc, item) => acc + item.quantity, 0)
-  
+
   const subtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
   const discountAmount = appliedPromo ? Math.round((subtotal * appliedPromo.discountPercent) / 100) : 0
   const taxable = subtotal - discountAmount
@@ -271,10 +270,7 @@ export default function App() {
         />
 
         {/* Visual Category Showcase Hub / Contextual Category Banner */}
-        <CategoryShowcase
-          selectedCategory={selectedCategory}
-          onSelectCategory={setSelectedCategory}
-        />
+        <CategoryShowcase selectedCategory={selectedCategory} onSelectCategory={setSelectedCategory} />
 
         {/* Product Catalog Grid */}
         <ProductList
@@ -325,9 +321,9 @@ export default function App() {
         status={paymentReturn.status}
         orderId={paymentReturn.orderId}
         paymentId={paymentReturn.paymentId}
-        onClose={() => setPaymentReturn(prev => ({ ...prev, isOpen: false }))}
+        onClose={() => setPaymentReturn((prev) => ({ ...prev, isOpen: false }))}
         onRetryPayment={() => {
-          setPaymentReturn(prev => ({ ...prev, isOpen: false }))
+          setPaymentReturn((prev) => ({ ...prev, isOpen: false }))
           setIsCheckoutOpen(true)
         }}
       />

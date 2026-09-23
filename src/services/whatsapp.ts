@@ -13,9 +13,9 @@ export interface WhatsAppQuoteParams {
  */
 export function generateWhatsAppQuoteUrl({ orderId, customer, items, total }: WhatsAppQuoteParams): string {
   const phone = import.meta.env.VITE_WHATSAPP_NUMBER || '56912345678'
-  
+
   const itemsText = items
-    .map(i => `• *${i.quantity}x* ${i.product.name} - ${formatCLP(i.product.price * i.quantity)}`)
+    .map((i) => `• *${i.quantity}x* ${i.product.name} - ${formatCLP(i.product.price * i.quantity)}`)
     .join('\n')
 
   const sisText = customer.sanitaryVerification?.sisRegistryNumber

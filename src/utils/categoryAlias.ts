@@ -9,10 +9,10 @@ export const CATEGORY_DISPLAY_MAP: Record<string, string> = {
   'DESECHABLES, ESTERILIZACION Y DESINFECCION': 'Desechables y Esterilización',
   'desechables, esterilizacion y desinfeccion': 'Desechables y Esterilización',
   'INSTRUMENTAL Y ACCESORIOS': 'Instrumental y Accesorios',
-  'OPERATORIA': 'Operatoria',
-  'ENDODONCIA': 'Endodoncia',
+  OPERATORIA: 'Operatoria',
+  ENDODONCIA: 'Endodoncia',
   'HIGIENE BUCAL': 'Higiene Bucal',
-  'IMPRESION': 'Impresión'
+  IMPRESION: 'Impresión'
 }
 
 /**

@@ -14,7 +14,10 @@ for (const envFile of ['.env.local', '.env']) {
       const eqIdx = trimmed.indexOf('=')
       if (eqIdx > 0) {
         const key = trimmed.slice(0, eqIdx).trim()
-        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '')
+        const val = trimmed
+          .slice(eqIdx + 1)
+          .trim()
+          .replace(/^["']|["']$/g, '')
         if (!process.env[key]) {
           process.env[key] = val
         }
@@ -33,15 +36,16 @@ if (!projectId || !clientEmail || !privateKey) {
   process.exit(1)
 }
 
-const app = getApps().length > 0
-  ? getApps()[0]
-  : initializeApp({
-      credential: cert({
-        projectId,
-        clientEmail,
-        privateKey
+const app =
+  getApps().length > 0
+    ? getApps()[0]
+    : initializeApp({
+        credential: cert({
+          projectId,
+          clientEmail,
+          privateKey
+        })
       })
-    })
 
 const db = getFirestore(app)
 
@@ -80,14 +84,14 @@ async function fixCatalogData() {
       batch.delete(doc.ref)
       deletedPrototypeCount++
       opCount++
-    } 
+    }
     // 2. Fix mediaBadge on real catalog items
     else {
       const needsBadgeFix = !data.mediaBadge || data.mediaBadge.includes('Stock Inicial')
       if (needsBadgeFix) {
         const brand = data.brand || data.manufacturer || ''
         const cleanMediaBadge = brand && brand !== 'Genérico' && brand !== 'NACIONAL' ? brand : 'Clínico Certificado'
-        
+
         batch.update(doc.ref, {
           mediaBadge: cleanMediaBadge,
           updatedAt: nowIso
@@ -114,7 +118,7 @@ async function fixCatalogData() {
   console.log(`   - 📦 Productos totales activos en catálogo: ${snapshot.size - deletedPrototypeCount}\n`)
 }
 
-fixCatalogData().catch(err => {
+fixCatalogData().catch((err) => {
   console.error('❌ Error ejecutando data quality fix:', err)
   process.exit(1)
 })

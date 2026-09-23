@@ -27,13 +27,7 @@ describe('ProductEditModal Component', () => {
     const handleClose = vi.fn()
     const handleSuccess = vi.fn()
 
-    render(
-      <ProductEditModal
-        product={mockProduct}
-        onClose={handleClose}
-        onSuccess={handleSuccess}
-      />
-    )
+    render(<ProductEditModal product={mockProduct} onClose={handleClose} onSuccess={handleSuccess} />)
 
     expect(screen.getByDisplayValue('Kit Composite Nanohíbrido')).toBeInTheDocument()
     expect(screen.getByDisplayValue('79990')).toBeInTheDocument()
@@ -45,11 +39,13 @@ describe('ProductEditModal Component', () => {
     fireEvent.click(saveBtn)
 
     await waitFor(() => {
-      expect(editSpy).toHaveBeenCalledWith(expect.objectContaining({
-        productId: 'odon-102',
-        name: 'Kit Composite Estético Plus',
-        price: 79990
-      }))
+      expect(editSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          productId: 'odon-102',
+          name: 'Kit Composite Estético Plus',
+          price: 79990
+        })
+      )
       expect(handleSuccess).toHaveBeenCalledTimes(1)
       expect(handleClose).toHaveBeenCalledTimes(1)
     })
@@ -119,12 +115,14 @@ describe('ProductEditModal Component', () => {
     fireEvent.click(submitBtn)
 
     await waitFor(() => {
-      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({
-        name: 'Guantes de Látex Quirúrgico',
-        category: 'BIOSEGURIDAD', // normalized to uppercase
-        price: 9990,
-        stockCount: 25
-      }))
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Guantes de Látex Quirúrgico',
+          category: 'BIOSEGURIDAD', // normalized to uppercase
+          price: 9990,
+          stockCount: 25
+        })
+      )
       expect(handleSuccess).toHaveBeenCalledTimes(1)
       expect(handleClose).toHaveBeenCalledTimes(1)
     })

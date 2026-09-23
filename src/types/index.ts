@@ -6,10 +6,7 @@ export type ChileanDentalCategory =
   | 'INSTRUMENTAL Y ACCESORIOS'
   | 'OPERATORIA'
 
-export type ProductCategory =
-  | 'all'
-  | ChileanDentalCategory
-  | (string & {})
+export type ProductCategory = 'all' | ChileanDentalCategory | (string & {})
 
 export interface Category {
   id: ProductCategory
@@ -226,11 +223,7 @@ export interface OrderStatusHistory {
 }
 
 export type InventoryChangeType =
-  | 'STOCK_ADJUSTMENT'
-  | 'ORDER_FULFILLMENT_DEDUCTION'
-  | 'METADATA_UPDATE'
-  | 'VISIBILITY_TOGGLE'
-  | 'CATALOG_SEED'
+  'STOCK_ADJUSTMENT' | 'ORDER_FULFILLMENT_DEDUCTION' | 'METADATA_UPDATE' | 'VISIBILITY_TOGGLE' | 'CATALOG_SEED'
 
 export interface InventoryAuditLog {
   id: string
@@ -249,4 +242,3 @@ export interface InventoryAuditLog {
   timestamp: string
   metadata?: Record<string, any>
 }
-

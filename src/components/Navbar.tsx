@@ -40,7 +40,16 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
                   type="button"
                   onClick={onOpenTracking}
                   className="top-utility-link"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', padding: 0, display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    font: 'inherit',
+                    padding: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
                   aria-label="Abrir Seguimiento de Pedido"
                 >
                   <Truck size={13} style={{ color: '#38bdf8' }} />
@@ -95,17 +104,11 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
               <span>Melipilla & RM</span>
             </div>
 
-            <button
-              className="cart-trigger-btn"
-              onClick={onOpenCart}
-              aria-label="Abrir Carro de Compras"
-            >
+            <button className="cart-trigger-btn" onClick={onOpenCart} aria-label="Abrir Carro de Compras">
               <ShoppingBag size={18} />
               <span className="cart-btn-label">Carro</span>
               {cartCount > 0 && (
-                <span className={`cart-count-badge ${isPulsing ? 'cart-count-badge--pulse' : ''}`}>
-                  {cartCount}
-                </span>
+                <span className={`cart-count-badge ${isPulsing ? 'cart-count-badge--pulse' : ''}`}>{cartCount}</span>
               )}
             </button>
           </div>

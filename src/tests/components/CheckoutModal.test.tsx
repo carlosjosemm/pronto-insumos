@@ -45,9 +45,7 @@ const mockProduct: Product = {
   mediaBadge: 'LED'
 }
 
-const mockCartItems: CartItem[] = [
-  { product: mockProduct, quantity: 1 }
-]
+const mockCartItems: CartItem[] = [{ product: mockProduct, quantity: 1 }]
 
 const defaultProps: CheckoutModalProps = {
   isOpen: true,
@@ -198,7 +196,9 @@ describe('CheckoutModal Component', () => {
     // Complete Step 1
     fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: 'Dra. Andrea Morales' } })
     fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
-    fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'andrea@moralesdental.cl' } })
+    fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), {
+      target: { value: 'andrea@moralesdental.cl' }
+    })
     fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 5555 4444' } })
     fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 100' } })
     fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: 'Melipilla' } })
@@ -215,7 +215,7 @@ describe('CheckoutModal Component', () => {
     })
 
     const callPayload = vi.mocked(submitOrder).mock.calls[0][0]
-    const customerPayload = (callPayload.customer as unknown) as Record<string, unknown>
+    const customerPayload = callPayload.customer as unknown as Record<string, unknown>
 
     // Verify critical privacy & PCI-DSS rules
     expect(customerPayload).toBeDefined()
@@ -255,7 +255,7 @@ describe('CheckoutModal Component', () => {
     })
 
     const mpCallPayload = vi.mocked(processMercadoPagoPayment).mock.calls[0][0]
-    const mpCustomer = (mpCallPayload.customer as unknown) as Record<string, unknown>
+    const mpCustomer = mpCallPayload.customer as unknown as Record<string, unknown>
 
     expect(mpCustomer).not.toHaveProperty('cardNumber')
     expect(mpCustomer).not.toHaveProperty('expDate')
@@ -266,9 +266,13 @@ describe('CheckoutModal Component', () => {
     render(<CheckoutModal {...defaultProps} />)
 
     // Complete Step 1 with extra spaces
-    fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: '  Dra. Andrea Morales   ' } })
+    fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), {
+      target: { value: '  Dra. Andrea Morales   ' }
+    })
     fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: ' 12.345.678-5  ' } })
-    fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: ' andrea@moralesdental.cl  ' } })
+    fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), {
+      target: { value: ' andrea@moralesdental.cl  ' }
+    })
     fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: ' +56 9 5555 4444 ' } })
     fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: '  Av. Ortúzar 100  ' } })
     fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: ' Melipilla ' } })
@@ -298,7 +302,9 @@ describe('CheckoutModal Component', () => {
 
     fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: 'Dra. Andrea Morales' } })
     fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
-    fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'andrea@moralesdental.cl' } })
+    fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), {
+      target: { value: 'andrea@moralesdental.cl' }
+    })
     fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 5555 4444' } })
     fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 100' } })
     fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: 'Melipilla' } })
@@ -329,7 +335,9 @@ describe('CheckoutModal Component', () => {
     fireEvent.click(screen.getByText(/Factura Electrónica/i))
 
     // Fill common fields
-    fireEvent.change(screen.getByPlaceholderText(/Contacto \/ Solicitante/i), { target: { value: 'Dra. Camila Fuentes' } })
+    fireEvent.change(screen.getByPlaceholderText(/Contacto \/ Solicitante/i), {
+      target: { value: 'Dra. Camila Fuentes' }
+    })
     fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
     fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'camila@clinica.cl' } })
     fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 1234 5678' } })
@@ -346,8 +354,12 @@ describe('CheckoutModal Component', () => {
     expect(screen.queryByText(/Transferencia Bancaria Directa/i)).not.toBeInTheDocument()
 
     // Fill Razón Social and Giro
-    fireEvent.change(screen.getByPlaceholderText(/Centro Dental San Pedro/i), { target: { value: 'Centro Dental Melipilla SpA' } })
-    fireEvent.change(screen.getByPlaceholderText(/Servicios Odontológicos/i), { target: { value: 'Servicios Odontológicos' } })
+    fireEvent.change(screen.getByPlaceholderText(/Centro Dental San Pedro/i), {
+      target: { value: 'Centro Dental Melipilla SpA' }
+    })
+    fireEvent.change(screen.getByPlaceholderText(/Servicios Odontológicos/i), {
+      target: { value: 'Servicios Odontológicos' }
+    })
 
     // Advance
     fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
@@ -362,15 +374,21 @@ describe('CheckoutModal Component', () => {
     // Select Factura
     fireEvent.click(screen.getByText(/Factura Electrónica/i))
 
-    fireEvent.change(screen.getByPlaceholderText(/Contacto \/ Solicitante/i), { target: { value: 'Dra. Camila Fuentes' } })
+    fireEvent.change(screen.getByPlaceholderText(/Contacto \/ Solicitante/i), {
+      target: { value: 'Dra. Camila Fuentes' }
+    })
     fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
     fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'camila@clinica.cl' } })
     fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 1234 5678' } })
     fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 750' } })
     fireEvent.change(screen.getByPlaceholderText(/Región Metropolitana/i), { target: { value: 'Melipilla' } })
     fireEvent.change(screen.getByPlaceholderText('Ej: 9500000'), { target: { value: '9500000' } })
-    fireEvent.change(screen.getByPlaceholderText(/Centro Dental San Pedro/i), { target: { value: 'Centro Dental Melipilla SpA' } })
-    fireEvent.change(screen.getByPlaceholderText(/Servicios Odontológicos/i), { target: { value: 'Servicios Odontológicos' } })
+    fireEvent.change(screen.getByPlaceholderText(/Centro Dental San Pedro/i), {
+      target: { value: 'Centro Dental Melipilla SpA' }
+    })
+    fireEvent.change(screen.getByPlaceholderText(/Servicios Odontológicos/i), {
+      target: { value: 'Servicios Odontológicos' }
+    })
 
     // Step 2
     fireEvent.click(screen.getByText(/Seleccionar Método de Pago/i))
@@ -407,7 +425,7 @@ describe('CheckoutModal Component', () => {
     expect(screen.getByText('COMPROBANTE FACTURA')).toBeInTheDocument()
     expect(screen.getByText('Centro Dental Melipilla SpA')).toBeInTheDocument()
     expect(screen.getByText('$159.655')).toBeInTheDocument() // Neto
-    expect(screen.getByText('$30.335')).toBeInTheDocument()  // IVA
+    expect(screen.getByText('$30.335')).toBeInTheDocument() // IVA
     expect(screen.getByText('Imprimir / Guardar en PDF')).toBeInTheDocument()
   })
 
@@ -537,9 +555,13 @@ describe('CheckoutModal Component', () => {
       )
 
       // Fill in valid customer fields
-      fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: 'Dra. Andrea Morales' } })
+      fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), {
+        target: { value: 'Dra. Andrea Morales' }
+      })
       fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
-      fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'andrea@moralesdental.cl' } })
+      fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), {
+        target: { value: 'andrea@moralesdental.cl' }
+      })
       fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 5555 4444' } })
       fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 100' } })
       fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: 'Melipilla' } })
@@ -570,9 +592,13 @@ describe('CheckoutModal Component', () => {
       )
 
       // Fill in valid customer fields
-      fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: 'Dra. Andrea Morales' } })
+      fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), {
+        target: { value: 'Dra. Andrea Morales' }
+      })
       fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
-      fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'andrea@moralesdental.cl' } })
+      fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), {
+        target: { value: 'andrea@moralesdental.cl' }
+      })
       fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 5555 4444' } })
       fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 100' } })
       fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: 'Melipilla' } })
@@ -591,17 +617,16 @@ describe('CheckoutModal Component', () => {
   describe('Bank transfer workflow & order tracking integration (Task 2.4 & 2.5)', () => {
     it('should display bank transfer instructions, voucher upload, and order tracking button in Step 3', async () => {
       const onOpenTrackingMock = vi.fn()
-      render(
-        <CheckoutModal
-          {...defaultProps}
-          onOpenTracking={onOpenTrackingMock}
-        />
-      )
+      render(<CheckoutModal {...defaultProps} onOpenTracking={onOpenTrackingMock} />)
 
       // Step 1: Fill customer info
-      fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), { target: { value: 'Dra. Andrea Morales' } })
+      fireEvent.change(screen.getByPlaceholderText(/Dra\. Camila Fuentes/i), {
+        target: { value: 'Dra. Andrea Morales' }
+      })
       fireEvent.change(screen.getByPlaceholderText('12.345.678-K'), { target: { value: '12.345.678-5' } })
-      fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), { target: { value: 'andrea@moralesdental.cl' } })
+      fireEvent.change(screen.getByPlaceholderText('contacto@clinica.cl'), {
+        target: { value: 'andrea@moralesdental.cl' }
+      })
       fireEvent.change(screen.getByPlaceholderText('+56 9 1234 5678'), { target: { value: '+56 9 5555 4444' } })
       fireEvent.change(screen.getByPlaceholderText(/Av\. Ortúzar/i), { target: { value: 'Av. Ortúzar 100' } })
       fireEvent.change(screen.getByPlaceholderText(/Melipilla/i), { target: { value: 'Melipilla' } })
@@ -630,10 +655,7 @@ describe('CheckoutModal Component', () => {
       expect(trackBtn).toBeInTheDocument()
       fireEvent.click(trackBtn)
 
-      expect(onOpenTrackingMock).toHaveBeenCalledWith(
-        expect.stringMatching(/^PRONTO-/),
-        '12.345.678-5'
-      )
+      expect(onOpenTrackingMock).toHaveBeenCalledWith(expect.stringMatching(/^PRONTO-/), '12.345.678-5')
     })
   })
 })

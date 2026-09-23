@@ -82,9 +82,12 @@ describe('Serverless Admin Update Product (/api/admin/update-product)', () => {
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.updates.price).toBe(238000)
     expect(jsonOutput.updates.priceNeto).toBe(200000)
-    expect(mockBatch.update).toHaveBeenCalledWith(mockDoc, expect.objectContaining({
-      price: 238000,
-      priceNeto: 200000
-    }))
+    expect(mockBatch.update).toHaveBeenCalledWith(
+      mockDoc,
+      expect.objectContaining({
+        price: 238000,
+        priceNeto: 200000
+      })
+    )
   })
 })
