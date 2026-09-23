@@ -45,8 +45,13 @@ The catalog is structured around 6 authentic Chilean dental specialties reconcil
 2. **Confidential Warehouse Stock Counts:**
    * Each product defines a `stockCount: number` representing current physical inventory in the Melipilla warehouse.
    * **Confidentiality Iron Rule:** The exact `stockCount` integer is **strictly confidential internal data**. It is used by client logic to cap steppers and check availability, but **must never be displayed as raw numbers to public users** (e.g. never render *"Quedan 42 unidades en bodega"*), preventing competitors from profiling distributor inventory levels.
+   * **As built (this rule is now enforced, not just documented):** `ProductCard.tsx` used to render `Últimas {stockCount} unid.`, leaking the integer. It now renders the fixed string **`Últimas unidades`**. The low-stock *threshold* (`stockCount <= 5`) still drives whether the cue appears — only the number is withheld. `ProductCard.test.tsx` asserts both the new string and the absence of the old pattern. Never reintroduce an interpolated count here.
 3. **ISP Sanitary Compliance Flags (`prescriptionRequired`):**
    * Regulated supplies (such as local dental anesthetics or surgical scalpels) must have `prescriptionRequired: true`.
    * This flag triggers the `⚕️ Requiere SIS` badge on product cards and activates the mandatory Superintendencia de Salud (SIS) verification step in `CheckoutModal.tsx`.
 4. **Technical REF Codes:**
    * Every product possesses a unique SKU `id` that maps to a technical reference code in the UI (e.g., `id: 'odon-101'` maps to `REF: OD-101`), matching how dental clinic nurses and procurement managers order from distributor catalogs.
+5. **Fixture Honesty — no fabricated social proof or permanent discounts:**
+   * All 11 `odon-*` prototype items carry **`rating: 0` and `reviewsCount: 0`**. The star UI is intentionally kept in `ProductCard.tsx` / `ProductQuickView.tsx` (it renders nothing at zero reviews), so it stays dormant until a real review system exists. The previous values (4.7–5.0★ with 25–190 reviews) were fabricated and read as fake social proof.
+   * **`originalPrice` survives on exactly one fixture — `odon-401`** — as a single demo discount. Every other item was stripped of its `originalPrice`, because "17–23% off everything, permanently" is a discount-store signal, not a credible B2B catalogue. Add `originalPrice` only for a genuine, time-boxed promotion.
+   * Production `pronto-*` items imported via `scripts/import-catalog-csv.ts` already set `reviewsCount: 0` and carry no `originalPrice`, so they render no stars and no strikethrough.

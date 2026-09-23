@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, MessageSquare } from 'lucide-react'
+import { whatsappLink } from '../config/contact'
 
 interface Props {
   children: ReactNode
@@ -117,7 +118,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               </button>
 
               <a
-                href="https://wa.me/56912345678?text=Hola,%20tuve%20un%20inconveniente%20en%20el%20sitio%20web"
+                href={whatsappLink('Hola, tuve un inconveniente en el sitio web')}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{

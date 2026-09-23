@@ -1320,29 +1320,10 @@ textarea {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.media-placeholder-box.gradient-teal,
-.media-placeholder-box.gradient-blue {
-  background: radial-gradient(circle, #c4d4e6 1.2px, transparent 1.2px), #e8edf5;
-  background-size: 16px 16px;
-}
-
-.media-placeholder-box.gradient-emerald,
-.media-placeholder-box.gradient-cyan {
-  background: radial-gradient(circle, #dbe4aa 1.2px, transparent 1.2px), #f5f7e8;
-  background-size: 16px 16px;
-}
-
-.media-placeholder-box.gradient-amber,
-.media-placeholder-box.gradient-red {
-  background: radial-gradient(circle, #f0d6c8 1.2px, transparent 1.2px), #f9f3ec;
-  background-size: 16px 16px;
-}
-
-.media-placeholder-box.gradient-slate,
-.media-placeholder-box.gradient-indigo {
-  background: radial-gradient(circle, #cbd7e4 1.2px, transparent 1.2px), #edf1f5;
-  background-size: 16px 16px;
-}
+/* One neutral treatment for every product. The previous eight gradient themes
+   (gradient-teal/blue/cyan/emerald/indigo/slate/red/amber) resolved to four
+   pastel hue families and added decorative variety with no meaning; the
+   placeholderTheme field on Product is retained but no longer changes the look. */
 
 .media-placeholder-content {
   display: flex;

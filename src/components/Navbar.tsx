@@ -1,5 +1,6 @@
 import React from 'react'
 import { Activity, Search, ShoppingBag, MapPin, FileCheck, Phone, Truck } from 'lucide-react'
+import { WHATSAPP_DISPLAY, whatsappLink } from '../config/contact'
 
 export interface NavbarProps {
   search: string
@@ -63,9 +64,9 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
               <span>Factura Electrónica Inmediata (19% IVA)</span>
             </span>
             <span className="top-utility-divider">|</span>
-            <a href="https://wa.me/56912345678" className="top-utility-link" target="_blank" rel="noopener noreferrer">
+            <a href={whatsappLink()} className="top-utility-link" target="_blank" rel="noopener noreferrer">
               <Phone size={13} style={{ color: '#38bdf8' }} />
-              <span>Mesa Clínica: +56 9 1234 5678</span>
+              <span>Mesa Clínica: {WHATSAPP_DISPLAY}</span>
             </a>
           </div>
         </div>

@@ -144,8 +144,17 @@ describe('ProductCard component', () => {
     expect(container.querySelector('.product-brand-tag')).toBeNull()
   })
 
-  it('should render low-stock warning when stockCount <= 5', () => {
+  it('should render "Sin stock" (lowercase s) for unavailable products', () => {
+    const unavailable = { ...mockProduct, inStock: false, stockCount: 0 }
+    render(<ProductCard product={unavailable} onAddToCart={() => {}} onQuickView={() => {}} />)
+    expect(screen.getByText('Sin stock')).toBeInTheDocument()
+    expect(screen.queryByText('Sin Stock')).toBeNull()
+  })
+
+  it('should render low-stock warning without leaking the raw stock count when stockCount <= 5', () => {
     render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
-    expect(screen.getByText('Últimas 4 unid.')).toBeInTheDocument()
+    expect(screen.getByText('Últimas unidades')).toBeInTheDocument()
+    // Confidentiality: the exact warehouse count must never be rendered
+    expect(screen.queryByText(/Últimas 4 unid\./)).toBeNull()
   })
 })

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Product } from '../types'
 import { formatCLP } from '../utils/currency'
 import { formatCategoryDisplayName } from '../utils/categoryAlias'
+import { whatsappLink } from '../config/contact'
 import {
   X,
   Star,
@@ -105,9 +106,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
   }
 
   // Generate pre-filled WhatsApp link for inquiries
-  const whatsappUrl = `https://wa.me/56912345678?text=${encodeURIComponent(
+  const whatsappUrl = whatsappLink(
     `Hola PRONTO Insumos, quisiera consultar sobre el producto: ${product.name} (REF: ${skuRef}).`
-  )}`
+  )
 
   return (
     <div

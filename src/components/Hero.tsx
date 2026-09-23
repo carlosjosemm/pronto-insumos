@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ArrowRight, ShieldCheck, Truck, FileCheck, MessageSquare } from 'lucide-react'
+import { whatsappLink } from '../config/contact'
 
 export interface HeroProps {
   onExploreClick: () => void
@@ -34,7 +35,7 @@ export default function Hero({ onExploreClick }: HeroProps) {
             </button>
 
             <a
-              href="https://wa.me/56912345678?text=Hola,%20solicito%20cotizaci%C3%B3n%20de%20insumos%20para%20cl%C3%ADnica%20dental"
+              href={whatsappLink('Hola, solicito cotización de insumos para clínica dental')}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-secondary"

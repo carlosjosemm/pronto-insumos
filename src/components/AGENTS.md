@@ -226,10 +226,11 @@ To avoid customer frustration during checkout, the cart actively monitors invent
 ## 📦 6. Catalog Components Reference
 
 ### 6.1 `ProductCard.tsx`
-* **Confidential Stock Defense:** Warehouse inventory counts (`stockCount`) are **never rendered** to public users to prevent competitors from scraping inventory levels. Displays clean status cues (`En Stock`, `Pocas unidades`, `Sin Stock`).
+* **Confidential Stock Defense:** Warehouse inventory counts (`stockCount`) are **never rendered** to public users to prevent competitors from scraping inventory levels. The low-stock cue is the fixed string **`Últimas unidades`** (it used to interpolate the count as `Últimas N unid.` — never reintroduce that), the out-of-stock cue is **`Sin stock`**, and the add button reads `Agregar` / `Agotado`. `stockCount` still drives *whether* the cue shows (`<= 5`) and still caps steppers; only the number is withheld.
+* **Media placeholder:** All catalog items currently have `images: []`, so every card renders the icon-on-dot-grid placeholder. That placeholder uses **one neutral treatment** — the eight `gradient-*` theme rules were collapsed, so the `placeholderTheme` field no longer changes the look. See `src/index.css` (`.media-placeholder-box`).
 * **Technical REF SKU Header:** Features canonical REF codes (e.g. `REF: OD-101`) familiar to dental procurement staff.
 * **Sanitary Badging:** Displays `⚕️ Uso Profesional` or `⚕️ Requiere SIS` when `prescriptionRequired === true`.
-* **Pricing Standard:** Renders whole Chilean Peso amounts with `IVA incluido` tag.
+* **Pricing Standard:** Renders whole Chilean Peso amounts with `IVA incluido` tag. Ratings and strikethrough prices render only when the data actually exists (fixtures now carry `rating: 0` / `reviewsCount: 0`, and only one fixture carries an `originalPrice`).
 
 ### 6.2 `ProductQuickView.tsx`
 Vertical 1-column Product Detail Modal:
@@ -256,6 +257,8 @@ Clinical category tabs (Instrumental, Materiales Restauradores, Equipamiento, De
   2. *Catálogo Clínico:* Quick links to primary dental categories.
   3. *Logística y Seguimiento:* Tracking modal trigger, shipping routes (Melipilla, RM, Regiones vía Starken/Chilexpress), and withdrawal policies.
   4. *Contacto y Certificaciones:* Factura Electrónica SII notice, ISP sanitary compliance statement, and technical WhatsApp hotline.
+* **Free-shipping figure must match the cart:** the logistics list advertises `Despacho Gratuito sobre $150.000`. It previously said `$100.000` while the cart computed against `150000`, so the storefront contradicted itself. Treat the cart constant as authoritative.
+* **Contact icons use `var(--accent-on-dark)`** — the footer is an `--ink-900` surface, where `--accent` fails contrast. The retired `--brand-accent-green` token must not reappear.
 * **Zero Prototype Buttons:** Administrative wipe/seed buttons are strictly eliminated from public view.
 
 ### 7.3 `PaymentReturnModal.tsx`

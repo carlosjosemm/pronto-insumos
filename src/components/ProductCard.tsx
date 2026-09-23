@@ -90,12 +90,12 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
         {!isAvailable ? (
           <span className="product-stock-status stock-danger" style={{ color: 'var(--danger)' }}>
             <span className="product-stock-dot" style={{ background: 'var(--danger)' }} />
-            <span>Sin Stock</span>
+            <span>Sin stock</span>
           </span>
         ) : isLowStock ? (
           <span className="product-stock-status stock-warning" style={{ color: 'var(--accent-warm)' }}>
             <span className="product-stock-dot" style={{ background: 'var(--accent-warm)' }} />
-            <span>Últimas {product.stockCount} unid.</span>
+            <span>Últimas unidades</span>
           </span>
         ) : null}
       </div>

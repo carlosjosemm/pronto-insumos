@@ -1,5 +1,6 @@
 import React from 'react'
 import { Activity, ShieldCheck, RefreshCw, MapPin, Building2, Phone, CreditCard, Truck } from 'lucide-react'
+import { WHATSAPP_DISPLAY, whatsappLink } from '../config/contact'
 
 export interface FooterProps {
   onOpenTracking?: () => void
@@ -102,7 +103,7 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               <li>• Retiro Presencial en Av. Ortúzar</li>
               <li>• Ruta Pomaire, Talagante y Peñaflor</li>
               <li>• Envíos Región Metropolitana (Starken / Chilexpress)</li>
-              <li>• Despacho Gratuito sobre $100.000</li>
+              <li>• Despacho Gratuito sobre $150.000</li>
               {onOpenTracking && (
                 <li>
                   <button
@@ -155,16 +156,16 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Phone size={14} style={{ color: 'var(--brand-accent-green)' }} />
-                <span>Mesa Clínica: +56 9 1234 5678</span>
+                <Phone size={14} style={{ color: 'var(--accent-on-dark)' }} />
+                <span>Mesa Clínica: {WHATSAPP_DISPLAY}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <CreditCard size={14} style={{ color: 'var(--brand-accent-green)' }} />
+                <CreditCard size={14} style={{ color: 'var(--accent-on-dark)' }} />
                 <span>Webpay Plus, Redcompra y Banco de Chile</span>
               </div>
             </div>
             <a
-              href="https://wa.me/56912345678?text=Hola,%20necesito%20asistencia%20t%C3%A9cnica%20de%20insumos"
+              href={whatsappLink('Hola, necesito asistencia técnica de insumos')}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-primary"

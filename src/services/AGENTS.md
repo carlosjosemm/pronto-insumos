@@ -20,7 +20,7 @@ This document is the **authoritative domain and technical reference** for the cl
 | [`mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/mercadopago.ts) | Dispatches payment preference creation requests to `/api/create-preference`, obtaining the secure Mercado Pago Checkout Pro redirect URL. | Serverless `/api/create-preference` |
 | [`orderTracking.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/orderTracking.ts) | Client proxy querying `/api/track-order` to retrieve fulfillment progress using Order ID and customer RUT. | Serverless `/api/track-order` |
 | [`transferVoucher.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/transferVoucher.ts) | File validation (PDF, PNG, JPG <= 5MB), Base64 data URL conversion, and dispatch to `/api/upload-voucher`. | Serverless `/api/upload-voucher` |
-| [`whatsapp.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/whatsapp.ts) | Generates pre-formatted WhatsApp clinical quote URLs (`https://wa.me/569...`) with itemized SKU lists and tax breakdowns. | WhatsApp Click-to-Chat API |
+| [`whatsapp.ts`](file:///c:/ecmv2/Documents/PRONTO/src/services/whatsapp.ts) | Generates pre-formatted WhatsApp clinical quote URLs (`https://wa.me/569...`) with itemized SKU lists and tax breakdowns. Reads the number from `import.meta.env.VITE_WHATSAPP_NUMBER` with its own `56912345678` fallback. | WhatsApp Click-to-Chat API |
 
 ---
 
@@ -101,6 +101,10 @@ When the customer returns to the site, `revalidateCartAgainstCatalog(storedItems
    * Stock decrement authority is strictly restricted to serverless webhooks and authenticated admin transactions.
 3. **Zero Card Input Handling (PCI-DSS):**
    * `processMercadoPagoPayment()` in `mercadopago.ts` never accepts or transmits card numbers. It requests a preference URL from `/api/create-preference` and returns the checkout link.
+4. **Commercial contact data lives in [`src/config/contact.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/contact.ts), not in components:**
+   * `WHATSAPP_NUMBER` (digits only, from `VITE_WHATSAPP_NUMBER`), `WHATSAPP_DISPLAY` (derived `+56 9 XXXX XXXX`) and `whatsappLink(text?)` are the single source of truth.
+   * **No component may hardcode a `wa.me` URL or a phone number again.** Previously `Navbar`, `Hero`, `Footer`, `ProductQuickView` and `ErrorBoundary` each embedded `56912345678` literally, so changing `VITE_WHATSAPP_NUMBER` silently left five stale copies behind. All five now import from `contact.ts`.
+   * `whatsapp.ts` retains its own `VITE_WHATSAPP_NUMBER` read — consolidating it onto `contact.ts` is deliberately **not** done here.
 
 ---
 
