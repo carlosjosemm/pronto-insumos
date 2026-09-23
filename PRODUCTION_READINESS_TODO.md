@@ -3,7 +3,7 @@
 **Last Updated:** September 2026  
 **Target Market:** Melipilla & Región Metropolitana, Chile  
 **Deployment Stack:** Vercel (Frontend React 18 + Serverless Node.js) & Google Firebase / Firestore  
-**Repository State:** Advanced functional prototype with automated test coverage (84/84 passing tests in Vitest), but containing **critical security vulnerabilities, flawed payment/stock logic, Chilean tax (SII) gaps, and operational blockers** that must be resolved before handling real financial transactions.
+**Repository State:** Advanced functional prototype with automated test coverage, but containing **critical security vulnerabilities, flawed payment/stock logic, Chilean tax (SII) gaps, and operational blockers** that must be resolved before handling real financial transactions.
 
 ---
 
