@@ -2132,10 +2132,18 @@ textarea {
 .free-shipping-text {
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--navy-900);
+  color: var(--ink-800);
   margin-bottom: 0.4rem;
   display: flex;
   justify-content: space-between;
+}
+
+.free-shipping-zone-note {
+  margin: 0.5rem 0 0;
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.35;
 }
 
 .progress-track {

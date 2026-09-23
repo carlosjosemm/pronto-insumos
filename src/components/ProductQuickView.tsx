@@ -3,6 +3,7 @@ import { Product } from '../types'
 import { formatCLP } from '../utils/currency'
 import { formatCategoryDisplayName } from '../utils/categoryAlias'
 import { whatsappLink } from '../config/contact'
+import { useScrollLock } from '../hooks/useScrollLock'
 import {
   X,
   Star,
@@ -35,15 +36,20 @@ export interface ProductQuickViewProps {
   product: Product | null
   onClose: () => void
   onAddToCart: (product: Product, quantity?: number) => void
+  /** Units of this product already in the cart — seeds the local stepper (min 1). */
+  cartQuantity?: number
 }
 
-export default function ProductQuickView({ product, onClose, onAddToCart }: ProductQuickViewProps) {
+export default function ProductQuickView({ product, onClose, onAddToCart, cartQuantity = 0 }: ProductQuickViewProps) {
   // Quantity, gallery index and failed-image state are scoped to a single
   // product: the caller keys this component by product id, so switching
   // products remounts it and resets everything without a sync effect.
-  const [quantity, setQuantity] = useState<number>(1)
+  const [quantity, setQuantity] = useState<number>(() => Math.max(1, cartQuantity))
   const [activeImgIndex, setActiveImgIndex] = useState<number>(0)
   const [failedImages, setFailedImages] = useState<Record<number, boolean>>({})
+
+  // Freeze the page behind the modal
+  useScrollLock(Boolean(product))
 
   const photos = product?.images && product.images.length > 0 ? product.images : []
   const hasMultiplePhotos = photos.length > 1
@@ -301,7 +307,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               <div className="detail-stock-indicator">
                 <span className="product-stock-dot" style={{ background: isAvailable ? '#059669' : '#dc2626' }} />
                 <span style={{ color: isAvailable ? '#059669' : '#dc2626', fontWeight: '600', fontSize: '0.8rem' }}>
-                  {isAvailable ? 'Disponible para despacho y retiro en Melipilla' : 'Sin stock inmediato en bodega'}
+                  {isAvailable
+                    ? 'Disponible para despacho en Melipilla y San Antonio'
+                    : 'Sin stock inmediato en bodega'}
                 </span>
               </div>
             </div>
@@ -380,7 +388,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               <span className="divider">•</span>
               <span>Garantía Legal SERNAC 6 meses</span>
               <span className="divider">•</span>
-              <span>Factura Electrónica Inmediata (19% IVA)</span>
+              <span>Boleta Electrónica · IVA 19%</span>
             </div>
           </div>
 

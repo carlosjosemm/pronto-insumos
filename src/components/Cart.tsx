@@ -19,6 +19,13 @@ import {
 } from 'lucide-react'
 import { validatePromo } from '../services/api'
 import { formatCLP, calculateIVA } from '../utils/currency'
+import {
+  FREE_SHIPPING_THRESHOLD,
+  DELIVERY_ZONES,
+  MIN_ORDER_OUTSIDE_MELIPILLA,
+  MIN_ORDER_ZONE
+} from '../config/delivery'
+import { useScrollLock } from '../hooks/useScrollLock'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   Diagnostics: Activity,
@@ -26,8 +33,6 @@ const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   Materials: Heart,
   Sterilization: ShieldAlert
 }
-
-const FREE_SHIPPING_THRESHOLD = 150000
 
 export interface CartProps {
   isOpen: boolean
@@ -52,6 +57,9 @@ export default function Cart({
 }: CartProps) {
   const [promoInput, setPromoInput] = useState<string>('')
   const [promoError, setPromoError] = useState<string>('')
+
+  // Freeze the page behind the drawer
+  useScrollLock(isOpen)
 
   useEffect(() => {
     if (!isOpen) return
@@ -120,14 +128,18 @@ export default function Cart({
           <div className="free-shipping-text">
             <span>
               {remainingForFreeShipping > 0
-                ? `Agrega ${formatCLP(remainingForFreeShipping)} más para Despacho GRATIS Melipilla & RM`
-                : '✓ Despacho prioritario sin costo a tu Clínica'}
+                ? `Agrega ${formatCLP(remainingForFreeShipping)} más para Despacho GRATIS`
+                : `✓ Despacho sin costo — superaste los ${formatCLP(FREE_SHIPPING_THRESHOLD)}`}
             </span>
             <span>{Math.round(progressPercent)}%</span>
           </div>
           <div className="progress-track">
             <div className="progress-fill" style={{ width: `${progressPercent}%` }}></div>
           </div>
+          <p className="free-shipping-zone-note">
+            Despacho a {DELIVERY_ZONES.join(' y ')} · Compra mínima {MIN_ORDER_ZONE}:{' '}
+            {formatCLP(MIN_ORDER_OUTSIDE_MELIPILLA)}
+          </p>
         </div>
 
         {/* ISP Sanitary Notice when cart contains prescriptionRequired items */}
@@ -335,7 +347,7 @@ export default function Cart({
             </div>
 
             <div className="cart-summary-total">
-              <span>Total Facturado</span>
+              <span>Total a Pagar</span>
               <span>{formatCLP(total)}</span>
             </div>
 

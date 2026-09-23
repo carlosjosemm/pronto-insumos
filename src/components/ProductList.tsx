@@ -8,9 +8,19 @@ export interface ProductListProps {
   loading: boolean
   onAddToCart: (product: Product) => void
   onQuickView: (product: Product) => void
+  /** Map of productId → units already in the cart, threaded to the cards. */
+  cartQuantityById?: Record<string, number>
+  onUpdateQuantity?: (productId: string, qty: number) => void
 }
 
-export default function ProductList({ products, loading, onAddToCart, onQuickView }: ProductListProps) {
+export default function ProductList({
+  products,
+  loading,
+  onAddToCart,
+  onQuickView,
+  cartQuantityById,
+  onUpdateQuantity
+}: ProductListProps) {
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--slate-600)' }}>
@@ -48,7 +58,13 @@ export default function ProductList({ products, loading, onAddToCart, onQuickVie
     <div className="products-grid">
       {products.map((product, index) => (
         <div key={product.id} className="product-card-entrance" style={{ animationDelay: `${(index % 4) * 60}ms` }}>
-          <ProductCard product={product} onAddToCart={onAddToCart} onQuickView={onQuickView} />
+          <ProductCard
+            product={product}
+            onAddToCart={onAddToCart}
+            onQuickView={onQuickView}
+            cartQuantity={cartQuantityById?.[product.id] ?? 0}
+            onUpdateQuantity={onUpdateQuantity}
+          />
         </div>
       ))}
     </div>

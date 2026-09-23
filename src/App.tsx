@@ -262,6 +262,9 @@ export default function App() {
 
   const totalCartCount = cart.reduce((acc, item) => acc + item.quantity, 0)
 
+  // Units per product, so cards can swap their CTA for a quantity stepper
+  const cartQuantityById = useMemo(() => Object.fromEntries(cart.map((i) => [i.product.id, i.quantity])), [cart])
+
   const subtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
   const discountAmount = appliedPromo ? Math.round((subtotal * appliedPromo.discountPercent) / 100) : 0
   const taxable = subtotal - discountAmount
@@ -316,6 +319,8 @@ export default function App() {
           loading={loading}
           onAddToCart={handleAddToCart}
           onQuickView={setQuickViewProduct}
+          cartQuantityById={cartQuantityById}
+          onUpdateQuantity={handleUpdateQuantity}
         />
       </main>
 
@@ -329,6 +334,7 @@ export default function App() {
           product={quickViewProduct}
           onClose={() => setQuickViewProduct(null)}
           onAddToCart={handleAddToCart}
+          cartQuantity={cartQuantityById[quickViewProduct.id] ?? 0}
         />
       )}
 

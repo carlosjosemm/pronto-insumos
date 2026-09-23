@@ -12,6 +12,7 @@ This document is the **authoritative algorithmic and technical guide** for the p
   - ❌ Zero network calls or asynchronous promises.
   - ❌ Zero React hooks (`useState`, `useEffect`).
   - Given identical input arguments, they must always return identical outputs.
+* **Where hooks live:** anything that needs React state or a DOM side effect belongs in [`src/hooks/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/hooks) (e.g. `useScrollLock`, `useFocusTrap`), **not** here. That directory exists precisely to keep this purity contract intact.
 * **Zero External Dependencies:** No `lodash`, `moment.js`, or external math libraries. Built entirely with modern ECMAScript standards and native `Intl` formatters.
 
 ---

@@ -31,7 +31,7 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
           <div className="top-utility-left">
             <span className="top-utility-link">
               <MapPin size={13} style={{ color: '#38bdf8' }} />
-              <span>Despacho prioritario en Melipilla y rutas RM | Retiro en Av. Ortúzar</span>
+              <span>Despacho a clínicas en Melipilla y San Antonio</span>
             </span>
           </div>
           <div className="top-utility-right">
@@ -61,7 +61,7 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
             )}
             <span className="top-utility-link">
               <FileCheck size={13} style={{ color: '#34d399' }} />
-              <span>Factura Electrónica Inmediata (19% IVA)</span>
+              <span>Boleta Electrónica · IVA 19%</span>
             </span>
             <span className="top-utility-divider">|</span>
             <a href={whatsappLink()} className="top-utility-link" target="_blank" rel="noopener noreferrer">
@@ -110,7 +110,7 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
           <div className="nav-actions">
             <div className="trust-badge-item desktop-only-trust">
               <MapPin size={16} style={{ color: 'var(--brand-blue)' }} />
-              <span>Melipilla & RM</span>
+              <span>Melipilla · San Antonio</span>
             </div>
 
             <button className="cart-trigger-btn" onClick={onOpenCart} aria-label="Abrir Carro de Compras">

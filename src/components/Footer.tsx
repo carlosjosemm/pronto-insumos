@@ -28,7 +28,7 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
             </div>
             <div>
               <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Bodega Melipilla</div>
-              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Retiro y Despacho Local Directo</div>
+              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Despacho local directo a clínicas</div>
             </div>
           </div>
 
@@ -37,8 +37,8 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               <Truck size={24} />
             </div>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Rutas Semanales RM</div>
-              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Melipilla, Talagante y Santiago</div>
+              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Despacho San Antonio</div>
+              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Ruta programada a clínicas de la zona</div>
             </div>
           </div>
 
@@ -74,7 +74,7 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
             </div>
             <p style={{ color: '#94a3b8', fontSize: '0.825rem', lineHeight: '1.6', marginBottom: '1rem' }}>
               Distribuidor especializado en insumos y equipamiento odontológico para gabinetes, clínicas dentales y
-              laboratorios en Melipilla y la Región Metropolitana.
+              laboratorios en Melipilla y San Antonio.
             </p>
             <div
               style={{ fontSize: '0.8rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}
@@ -86,7 +86,7 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
                 <strong>Bodega & Despacho:</strong> Av. Ortúzar 750, Melipilla, Chile
               </div>
               <div>
-                <strong>Distribución local:</strong> Melipilla, Talagante, Peñaflor y RM
+                <strong>Distribución local:</strong> Melipilla y San Antonio
               </div>
               <div>
                 <strong>Horario de Atención:</strong> Lunes a Viernes 08:30 – 18:30 hrs
@@ -99,9 +99,8 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
             <h4 className="footer-heading">Logística Regional</h4>
             <ul className="footer-links-list">
               <li>• Despacho Express Clínicas Melipilla</li>
-              <li>• Retiro Presencial en Av. Ortúzar</li>
-              <li>• Ruta Pomaire, Talagante y Peñaflor</li>
-              <li>• Envíos Región Metropolitana (Starken / Chilexpress)</li>
+              <li>• Despacho Programado San Antonio</li>
+              <li>• Compra mínima San Antonio: $60.000</li>
               <li>• Despacho Gratuito sobre $150.000</li>
               {onOpenTracking && (
                 <li>
@@ -130,10 +129,10 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
           <div>
             <h4 className="footer-heading">Cumplimiento Clínico</h4>
             <ul className="footer-links-list">
-              <li>• Factura Electrónica Inmediata (19% IVA)</li>
+              <li>• Boleta Electrónica Inmediata (19% IVA)</li>
+              <li>• Factura para Clínicas — Cotización por WhatsApp</li>
               <li>• Dispositivos Homologados Registro ISP</li>
               <li>• Fichas de Seguridad de Materiales</li>
-              <li>• Convenios Especiales para Clínicas Dentales</li>
               <li>• Términos y Condiciones de Venta B2B</li>
             </ul>
           </div>
@@ -183,11 +182,11 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
           </div>
           <div className="footer-trust-badge">
             <Building2 size={18} />
-            <span>Facturación Electrónica SII · 19% IVA</span>
+            <span>Boleta Electrónica SII · 19% IVA</span>
           </div>
           <div className="footer-trust-badge">
             <Truck size={18} />
-            <span>Despacho Express RM · Melipilla y Alrededores</span>
+            <span>Despacho Melipilla y San Antonio</span>
           </div>
           <div className="footer-trust-badge">
             <Activity size={18} />
@@ -203,7 +202,7 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
             <span>Depósito Dental Certificado</span>
-            <span>Facturación Electrónica SII</span>
+            <span>Boleta Electrónica SII</span>
           </div>
         </div>
       </div>

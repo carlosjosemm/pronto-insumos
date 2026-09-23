@@ -17,6 +17,7 @@ import { OrderTrackingInfo } from '../types'
 import { formatCLP } from '../utils/currency'
 import { formatRut, validateRut } from '../utils/rut'
 import { BANK_DETAILS } from '../config/bankDetails'
+import { useScrollLock } from '../hooks/useScrollLock'
 
 export interface OrderTrackingModalProps {
   isOpen: boolean
@@ -46,6 +47,9 @@ export default function OrderTrackingModal({
   const [voucherUploading, setVoucherUploading] = useState<boolean>(false)
   const [voucherSuccess, setVoucherSuccess] = useState<string>('')
   const [voucherError, setVoucherError] = useState<string>('')
+
+  // Freeze the page behind the modal
+  useScrollLock(isOpen)
 
   // ESC key handler
   useEffect(() => {
@@ -607,7 +611,7 @@ export default function OrderTrackingModal({
                     <strong>Método de Pago:</strong> {trackingData.paymentMethod.toUpperCase()}
                   </div>
                   <div>
-                    <strong>Total Facturado:</strong> {formatCLP(trackingData.totalAmount)}
+                    <strong>Total a Pagar:</strong> {formatCLP(trackingData.totalAmount)}
                   </div>
                 </div>
               </div>

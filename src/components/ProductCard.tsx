@@ -12,6 +12,8 @@ import {
   Wrench,
   Sparkles,
   Layers,
+  Minus,
+  Plus,
   LucideIcon
 } from 'lucide-react'
 import { formatCLP } from '../utils/currency'
@@ -35,14 +37,24 @@ export interface ProductCardProps {
   product: Product
   onAddToCart: (product: Product) => void
   onQuickView: (product: Product) => void
+  /** Units of this product already in the cart — swaps the CTA for a stepper when > 0. */
+  cartQuantity?: number
+  onUpdateQuantity?: (productId: string, qty: number) => void
 }
 
-export default function ProductCard({ product, onAddToCart, onQuickView }: ProductCardProps) {
+export default function ProductCard({
+  product,
+  onAddToCart,
+  onQuickView,
+  cartQuantity = 0,
+  onUpdateQuantity
+}: ProductCardProps) {
   const CategoryIcon = ICON_BY_CATEGORY[product.category] || Activity
 
   // Defensive stock check
   const isAvailable = product.inStock && (product.stockCount === undefined || product.stockCount > 0)
   const isLowStock = isAvailable && product.stockCount !== undefined && product.stockCount <= 5
+  const maxStock = product.stockCount && product.stockCount > 0 ? product.stockCount : 99
 
   // Featured card accent strip
   const isFeatured =
@@ -188,21 +200,64 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
           <span className="tax-breakdown-label">IVA incluido</span>
         </div>
 
-        {/* Action Button Row (Full Width Agregar CTA) */}
+        {/* Action Row — cart-aware: a stepper replaces the CTA once the product is in the cart */}
         <div className="product-card-footer">
-          <button
-            className="btn-add-cart"
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddToCart(product)
-            }}
-            disabled={!isAvailable}
-            aria-label={`Agregar ${product.name} al carro`}
-            title={isAvailable ? 'Agregar al carro' : 'Sin stock disponible en bodega'}
-          >
-            <ShoppingBag size={15} />
-            <span>{isAvailable ? 'Agregar' : 'Agotado'}</span>
-          </button>
+          {!isAvailable ? (
+            <button
+              className="btn-add-cart"
+              disabled
+              aria-label={`${product.name} agotado`}
+              title="Sin stock disponible en bodega"
+            >
+              <ShoppingBag size={15} />
+              <span>Agotado</span>
+            </button>
+          ) : cartQuantity > 0 ? (
+            <div className="quantity-controls" role="group" aria-label={`Cantidad de ${product.name} en el carro`}>
+              <button
+                type="button"
+                className="qty-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onUpdateQuantity?.(product.id, cartQuantity - 1)
+                }}
+                aria-label={`Disminuir cantidad de ${product.name}`}
+              >
+                <Minus size={14} />
+              </button>
+              <span className="qty-val">{cartQuantity}</span>
+              <button
+                type="button"
+                className="qty-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onUpdateQuantity?.(product.id, cartQuantity + 1)
+                }}
+                disabled={cartQuantity >= maxStock}
+                aria-label={`Aumentar cantidad de ${product.name}`}
+                title={
+                  cartQuantity >= maxStock
+                    ? 'Has alcanzado el stock máximo disponible de este producto'
+                    : `Aumentar cantidad de ${product.name}`
+                }
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn-add-cart"
+              onClick={(e) => {
+                e.stopPropagation()
+                onAddToCart(product)
+              }}
+              aria-label={`Agregar ${product.name} al carro`}
+              title="Agregar al carro"
+            >
+              <ShoppingBag size={15} />
+              <span>Agregar</span>
+            </button>
+          )}
         </div>
       </div>
     </article>

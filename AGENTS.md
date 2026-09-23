@@ -9,9 +9,9 @@ This document is the root-level source of truth for any AI agent or engineer wor
 ## 🎯 1. Project Mission & Context
 
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
-* **Primary Geography:** Melipilla (warehouse & express local delivery) + Región Metropolitana (courier delivery).
-* **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, legal tax invoices (**Factura Electrónica** with 19% IVA), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (343 tests across 54 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
+* **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
+* **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (355 tests across 53 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -53,12 +53,18 @@ Every feature touching currency, identity, or taxation must strictly conform to 
 2. **RUT / RUN Validation (Modulo 11):**
    * All customer and clinic tax IDs must be validated using the official Chilean Modulo 11 check digit algorithm provided in [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts).
    * Store cleaned RUTs (digits + hyphen + check digit e.g., `12345678-5`) and format for display with thousand separators (`12.345.678-5`).
-3. **Tax Invoicing Compliance (SII):**
-   * Transactions must support both:
-     * **Boleta Electrónica:** For individual buyers (RUT + Name).
-     * **Factura Electrónica:** For registered dental clinics claiming tax credit (RUT Empresa, Razón Social, Giro Comercial, and registered fiscal address).
-4. **Delivery Logistics:**
-   * Support: Local Pickup in Melipilla (Av. Ortúzar), Local Urban Delivery, and Regional Shipping (Starken/Chilexpress).
+3. **Tax Invoicing Compliance (SII) — Boleta only, as built:**
+   * The storefront issues **Boleta Electrónica only**. `CheckoutModal.tsx` carries a single `📄 Boleta Electrónica` document card; the Factura path is retained in code but gated behind `const FACTURA_ENABLED = false` (the order schema still carries `documentType` plus the optional Factura fields, so re-enabling is a one-line change).
+   * **Do not advertise "Factura Electrónica Inmediata (19% IVA)"** anywhere on the storefront — that copy was swept to `Boleta Electrónica · IVA 19%`.
+   * Clinics that need a Factura are routed through the WhatsApp quotation path (`¿Necesitas Factura Electrónica para tu clínica? Cotízala por WhatsApp.`), and the Footer carries `Factura para Clínicas — Cotización por WhatsApp`.
+   * The order document still models both: **Boleta Electrónica** (RUT + Name) and **Factura Electrónica** (RUT Empresa, Razón Social, Giro Comercial, registered fiscal address) — see [src/types/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/AGENTS.md).
+4. **Delivery Logistics — Melipilla + San Antonio only, no pickup:**
+   * **Zones:** `Melipilla` (urban delivery, same day for orders confirmed before 16:00) and `San Antonio` (scheduled route). Both live in [`src/config/delivery.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/delivery.ts) as `DELIVERY_ZONES`; checkout exposes them as a `Comuna de Despacho` **select** (default `Melipilla`) instead of a free-text commune field.
+   * **Minimum order:** `MIN_ORDER_OUTSIDE_MELIPILLA = 60000` applies to **San Antonio delivery eligibility only** — `Melipilla` has no minimum. It is the only minimum-sale amount in the system and is enforced at Step 1 → Step 2.
+   * **Free shipping:** `FREE_SHIPPING_THRESHOLD = 150000`, applies to **both** zones.
+   * ❌ **No pickup / retiro as a fulfilment option.** "Retiro Presencial", "retiro express" and similar wording are removed. `Bodega: Av. Ortúzar 750, Melipilla` remains as *corporate/warehouse* information only — it identifies the physical depot, it is not a collection point customers can select.
+   * ❌ **No `RM` delivery copy.** San Antonio is in the Valparaíso region, so coverage copy reads `Melipilla y San Antonio`, never `Melipilla y RM`.
+   * `FREE_SHIPPING_THRESHOLD` and the zone list are imported from `src/config/delivery.ts` — never re-declare them locally (the Footer previously advertised `$100.000` while the cart computed `150000`).
 
 ---
 
@@ -90,6 +96,8 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 | [`src/data/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/data) | Static product catalog definitions, categories, and seed fixtures | [src/data/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/data/AGENTS.md) |
 | [`src/types/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/types) | Central domain models, relational audit history interfaces, and TypeScript contracts | [src/types/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/AGENTS.md) |
 | [`src/utils/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils) | Pure helper functions (RUT Modulo 11 validation, CLP formatting, tax math, schema validators) | [src/utils/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/AGENTS.md) |
+| [`src/config/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/config) | Shared commercial constants: `delivery.ts` (zones, free-shipping and minimum-order thresholds), `contact.ts` (WhatsApp number/display/link), `bankDetails.ts` | — |
+| [`src/hooks/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/hooks) | Reusable React hooks with DOM side effects (`useScrollLock`, `useFocusTrap`). **Not** in `src/utils/` — that directory is contractually pure (no hooks, no DOM, no side effects) | — |
 | [`src/tests/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests) | Vitest test suites maintaining 100% test reliability | [src/tests/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/AGENTS.md) |
 
 ---
@@ -100,7 +108,7 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 54 suites / 343 tests)
+# Run all automated tests (Vitest, 53 suites / 355 tests)
 pnpm test
 
 # Run tests with live file watcher
@@ -155,7 +163,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 343+ tests pass
+pnpm test          # Ensure all 355+ tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Deploy a Staging / Preview Release (Generates a unique preview URL)

@@ -173,4 +173,88 @@ describe('ProductCard component', () => {
     // Confidentiality: the exact warehouse count must never be rendered
     expect(screen.queryByText(/Últimas 4 unid\./)).toBeNull()
   })
+
+  describe('Cart-aware stepper (D.6)', () => {
+    it('should render the Agregar CTA when the product is not in the cart', () => {
+      render(
+        <ProductCard
+          product={mockProduct}
+          onAddToCart={() => {}}
+          onQuickView={() => {}}
+          cartQuantity={0}
+          onUpdateQuantity={() => {}}
+        />
+      )
+      expect(screen.getByText('Agregar')).toBeInTheDocument()
+      expect(screen.queryByRole('group', { name: /Cantidad de/i })).toBeNull()
+    })
+
+    it('should swap the CTA for a quantity stepper once the product is in the cart', () => {
+      const { container } = render(
+        <ProductCard
+          product={mockProduct}
+          onAddToCart={() => {}}
+          onQuickView={() => {}}
+          cartQuantity={3}
+          onUpdateQuantity={() => {}}
+        />
+      )
+      expect(screen.queryByText('Agregar')).toBeNull()
+      expect(container.querySelector('.qty-val')).toHaveTextContent('3')
+      expect(screen.getByLabelText(`Disminuir cantidad de ${mockProduct.name}`)).toBeInTheDocument()
+      expect(screen.getByLabelText(`Aumentar cantidad de ${mockProduct.name}`)).toBeInTheDocument()
+    })
+
+    it('should report +/- deltas to onUpdateQuantity and not open the quick view', () => {
+      const onUpdateQuantity = vi.fn()
+      const onQuickView = vi.fn()
+      render(
+        <ProductCard
+          product={mockProduct}
+          onAddToCart={() => {}}
+          onQuickView={onQuickView}
+          cartQuantity={2}
+          onUpdateQuantity={onUpdateQuantity}
+        />
+      )
+
+      fireEvent.click(screen.getByLabelText(`Aumentar cantidad de ${mockProduct.name}`))
+      expect(onUpdateQuantity).toHaveBeenCalledWith(mockProduct.id, 3)
+
+      fireEvent.click(screen.getByLabelText(`Disminuir cantidad de ${mockProduct.name}`))
+      expect(onUpdateQuantity).toHaveBeenCalledWith(mockProduct.id, 1)
+
+      // e.stopPropagation() must keep the card-level quick-view click from firing
+      expect(onQuickView).not.toHaveBeenCalled()
+    })
+
+    it('should disable the increment button at the stock ceiling', () => {
+      render(
+        <ProductCard
+          product={mockProduct}
+          onAddToCart={() => {}}
+          onQuickView={() => {}}
+          cartQuantity={4}
+          onUpdateQuantity={() => {}}
+        />
+      )
+      // mockProduct.stockCount is 4
+      expect(screen.getByLabelText(`Aumentar cantidad de ${mockProduct.name}`)).toBeDisabled()
+    })
+
+    it('should keep the disabled Agotado button for unavailable products regardless of cart quantity', () => {
+      const unavailable = { ...mockProduct, inStock: false, stockCount: 0 }
+      render(
+        <ProductCard
+          product={unavailable}
+          onAddToCart={() => {}}
+          onQuickView={() => {}}
+          cartQuantity={2}
+          onUpdateQuantity={() => {}}
+        />
+      )
+      expect(screen.getByRole('button', { name: `${unavailable.name} agotado` })).toBeDisabled()
+      expect(screen.queryByLabelText(`Aumentar cantidad de ${unavailable.name}`)).toBeNull()
+    })
+  })
 })

@@ -23,6 +23,19 @@ import { formatCLP } from '../utils/currency'
 import { calculateTaxBreakdown, validateFacturaFields } from '../utils/tax'
 import { BANK_DETAILS } from '../config/bankDetails'
 import { uploadTransferVoucher, validateVoucherFile } from '../services/transferVoucher'
+import { whatsappLink } from '../config/contact'
+import {
+  DELIVERY_ZONES,
+  DEFAULT_DELIVERY_ZONE,
+  MIN_ORDER_OUTSIDE_MELIPILLA,
+  MIN_ORDER_ZONE,
+  isBelowMinimumOrder
+} from '../config/delivery'
+import type { DeliveryZone } from '../config/delivery'
+import { useScrollLock } from '../hooks/useScrollLock'
+
+/** Factura Electrónica is disabled storefront-wide — the path is kept behind this flag. */
+const FACTURA_ENABLED = false
 
 export interface CheckoutModalProps {
   isOpen: boolean
@@ -62,6 +75,9 @@ export default function CheckoutModal({
 
   const hasRegulatedItems = cartItems.some((i) => i.product.prescriptionRequired)
 
+  // Freeze the page behind the modal
+  useScrollLock(isOpen)
+
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -81,7 +97,7 @@ export default function CheckoutModal({
     razonSocial: '',
     giroComercial: '',
     address: '',
-    city: '',
+    city: DEFAULT_DELIVERY_ZONE,
     zip: ''
   })
 
@@ -111,7 +127,7 @@ export default function CheckoutModal({
       razonSocial: '',
       giroComercial: '',
       address: '',
-      city: '',
+      city: DEFAULT_DELIVERY_ZONE,
       zip: ''
     })
   }
@@ -158,7 +174,17 @@ export default function CheckoutModal({
         return
       }
 
-      if (formData.documentType === 'factura') {
+      // Minimum-order gate: San Antonio despacho requires a $60.000 product subtotal
+      const productSubtotal = cartItems.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
+      const deliveryZone = (formData.city || DEFAULT_DELIVERY_ZONE) as DeliveryZone
+      if (isBelowMinimumOrder(deliveryZone, productSubtotal)) {
+        setSubmitError(
+          `La compra mínima para despacho a ${MIN_ORDER_ZONE} es de ${formatCLP(MIN_ORDER_OUTSIDE_MELIPILLA)}`
+        )
+        return
+      }
+
+      if (FACTURA_ENABLED && formData.documentType === 'factura') {
         const validation = validateFacturaFields({
           rut: formData.rut,
           razonSocial: formData.razonSocial,
@@ -429,24 +455,28 @@ export default function CheckoutModal({
                 >
                   Tipo de Documento Tributario (Chile - SII)
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, documentType: 'factura' })}
-                    style={{
-                      padding: '0.65rem',
-                      borderRadius: 'var(--radius-sm)',
-                      border: `2px solid ${formData.documentType === 'factura' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                      background: formData.documentType === 'factura' ? 'var(--teal-50)' : '#ffffff',
-                      fontWeight: '700',
-                      fontSize: '0.85rem',
-                      cursor: 'pointer',
-                      color: formData.documentType === 'factura' ? 'var(--teal-700)' : 'var(--text-secondary)',
-                      transition: 'var(--transition-fast)'
-                    }}
-                  >
-                    🏢 Factura Electrónica (Clínicas)
-                  </button>
+                <div
+                  style={{ display: 'grid', gridTemplateColumns: FACTURA_ENABLED ? '1fr 1fr' : '1fr', gap: '0.65rem' }}
+                >
+                  {FACTURA_ENABLED && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, documentType: 'factura' })}
+                      style={{
+                        padding: '0.65rem',
+                        borderRadius: 'var(--radius-sm)',
+                        border: `2px solid ${formData.documentType === 'factura' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
+                        background: formData.documentType === 'factura' ? 'var(--teal-50)' : '#ffffff',
+                        fontWeight: '700',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        color: formData.documentType === 'factura' ? 'var(--teal-700)' : 'var(--text-secondary)',
+                        transition: 'var(--transition-fast)'
+                      }}
+                    >
+                      🏢 Factura Electrónica (Clínicas)
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, documentType: 'boleta' })}
@@ -462,9 +492,24 @@ export default function CheckoutModal({
                       transition: 'var(--transition-fast)'
                     }}
                   >
-                    📄 Boleta Electrónica (Personal)
+                    📄 Boleta Electrónica
                   </button>
                 </div>
+                {!FACTURA_ENABLED && (
+                  <p
+                    style={{ margin: '0.5rem 0 0', fontSize: '0.775rem', color: 'var(--text-muted)', lineHeight: 1.45 }}
+                  >
+                    ¿Necesitas Factura Electrónica para tu clínica?{' '}
+                    <a
+                      href={whatsappLink('Hola, necesito cotización con Factura Electrónica para clínica dental')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: 'var(--accent)', fontWeight: '600' }}
+                    >
+                      Cotízala por WhatsApp.
+                    </a>
+                  </p>
+                )}
               </div>
 
               <div>
@@ -567,7 +612,7 @@ export default function CheckoutModal({
                 </div>
               </div>
 
-              {formData.documentType === 'factura' && (
+              {FACTURA_ENABLED && formData.documentType === 'factura' && (
                 <div
                   style={{
                     display: 'flex',
@@ -763,24 +808,35 @@ export default function CheckoutModal({
                       marginBottom: '0.25rem'
                     }}
                   >
-                    Ciudad / Comuna Fiscal *
+                    Comuna de Despacho *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     required
-                    placeholder="Ej: Melipilla, Región Metropolitana"
-                    value={formData.city}
+                    value={formData.city || DEFAULT_DELIVERY_ZONE}
                     onChange={(e) => {
                       setFormData({ ...formData, city: e.target.value })
                       if (facturaErrors.city) setFacturaErrors((prev) => ({ ...prev, city: '' }))
                     }}
+                    aria-label="Comuna de Despacho"
                     style={{
                       width: '100%',
                       padding: '0.6rem 0.85rem',
                       border: `1px solid ${facturaErrors.city ? '#dc2626' : 'var(--border-subtle)'}`,
-                      borderRadius: 'var(--radius-sm)'
+                      borderRadius: 'var(--radius-sm)',
+                      background: '#ffffff'
                     }}
-                  />
+                  >
+                    {DELIVERY_ZONES.map((zone) => (
+                      <option key={zone} value={zone}>
+                        {zone}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.city === MIN_ORDER_ZONE && (
+                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.725rem', color: 'var(--text-muted)' }}>
+                      Compra mínima para despacho a {MIN_ORDER_ZONE}: {formatCLP(MIN_ORDER_OUTSIDE_MELIPILLA)}
+                    </p>
+                  )}
                   {facturaErrors.city && (
                     <span
                       style={{
@@ -994,7 +1050,7 @@ export default function CheckoutModal({
                   alignItems: 'center'
                 }}
               >
-                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Total Facturado a Pagar:</span>
+                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Total a Pagar:</span>
                 <span style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--navy-900)' }}>
                   {formatCLP(totalAmount)}
                 </span>
@@ -1261,7 +1317,7 @@ export default function CheckoutModal({
                     marginBottom: '0.5rem'
                   }}
                 >
-                  <span style={{ color: 'var(--text-muted)' }}>Total Facturado:</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Total a Pagar:</span>
                   <span style={{ fontWeight: '800', color: 'var(--navy-900)' }}>{formatCLP(totalAmount)}</span>
                 </div>
                 <div
@@ -1482,7 +1538,7 @@ export default function CheckoutModal({
                               fontSize: '0.9rem'
                             }}
                           >
-                            <span>Total Facturado (CLP):</span>
+                            <span>Total a Pagar (CLP):</span>
                             <span>{formatCLP(breakdown.total)}</span>
                           </div>
                         </div>

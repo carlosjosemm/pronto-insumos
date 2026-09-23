@@ -28,11 +28,15 @@ const mockProduct: Product = {
 
 describe('Clinical Storefront UI/UX Enhancement Tests', () => {
   describe('Navbar & Top Commercial Utility Bar', () => {
-    it('should display the top utility bar announcements for Melipilla and SII Factura', () => {
+    it('should announce the Melipilla + San Antonio zone and the Boleta document', () => {
       render(<Navbar search="" setSearch={() => {}} cartCount={2} onOpenCart={() => {}} />)
-      expect(screen.getByText(/Despacho prioritario en Melipilla/i)).toBeInTheDocument()
-      expect(screen.getByText(/Factura Electrónica Inmediata \(19% IVA\)/i)).toBeInTheDocument()
+      expect(screen.getByText('Despacho a clínicas en Melipilla y San Antonio')).toBeInTheDocument()
+      expect(screen.getByText('Boleta Electrónica · IVA 19%')).toBeInTheDocument()
       expect(screen.getByText(/Mesa Clínica: \+56 9 1234 5678/i)).toBeInTheDocument()
+      // The retired pickup wording and Factura advertising must not come back
+      expect(screen.queryByText(/Retiro en Av\. Ortúzar/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Factura Electrónica Inmediata/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/rutas RM/i)).not.toBeInTheDocument()
     })
   })
 

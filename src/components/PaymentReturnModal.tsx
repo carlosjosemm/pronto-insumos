@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
 import { CheckCircle2, AlertCircle, Clock, X, MessageSquare, ArrowRight, RefreshCw } from 'lucide-react'
+import { useScrollLock } from '../hooks/useScrollLock'
 
 export interface PaymentReturnModalProps {
   isOpen: boolean
@@ -18,6 +19,9 @@ export default function PaymentReturnModal({
   onClose,
   onRetryPayment
 }: PaymentReturnModalProps) {
+  // Freeze the page behind the modal
+  useScrollLock(isOpen)
+
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -117,7 +121,9 @@ export default function PaymentReturnModal({
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Fulfillment:</span>
-                <span style={{ fontWeight: '600', color: 'var(--navy-900)' }}>Bodega Melipilla (Av. Ortúzar)</span>
+                <span style={{ fontWeight: '600', color: 'var(--ink-800)' }}>
+                  Despacho desde Bodega Melipilla (Av. Ortúzar)
+                </span>
               </div>
             </div>
 
@@ -134,8 +140,8 @@ export default function PaymentReturnModal({
                 lineHeight: '1.4'
               }}
             >
-              📄 <strong>Comprobante y Facturación:</strong> Tu documento tributario oficial (Factura o Boleta
-              Electrónica con 19% IVA) será emitido por nuestro equipo y remitido a tu correo electrónico registrado.
+              📄 <strong>Comprobante:</strong> Tu Boleta Electrónica (IVA 19%) será emitida por nuestro equipo y
+              remitida a tu correo electrónico registrado.
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>

@@ -51,9 +51,9 @@ describe('Navbar component', () => {
     expect(screen.getByText('5')).toBeInTheDocument()
   })
 
-  it('should display "Melipilla & RM" trust badge', () => {
+  it('should display "Melipilla · San Antonio" trust badge', () => {
     render(<Navbar {...defaultProps} />)
-    expect(screen.getByText('Melipilla & RM')).toBeInTheDocument()
+    expect(screen.getByText('Melipilla · San Antonio')).toBeInTheDocument()
   })
 
   it('should pulse cart badge when count increases', () => {
