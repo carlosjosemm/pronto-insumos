@@ -310,14 +310,18 @@ The Cart drawer is one of five surfaces that call `useScrollLock(...)` from [src
 
 ### 6.1 `ProductCard.tsx`
 * **Confidential Stock Defense:** Warehouse inventory counts (`stockCount`) are **never rendered** to public users to prevent competitors from scraping inventory levels. The low-stock cue is the fixed string **`Últimas unidades`** (it used to interpolate the count as `Últimas N unid.` — never reintroduce that), the out-of-stock cue is **`Sin stock`**, and the add button reads `Agregar` / `Agotado`. `stockCount` still drives *whether* the cue shows (`<= 5`) and still caps steppers; only the number is withheld.
-* **Media placeholder:** All catalog items currently have `images: []`, so every card renders the icon-on-dot-grid placeholder. That placeholder uses **one neutral treatment** — the eight `gradient-*` theme rules were collapsed, so the `placeholderTheme` field no longer changes the look. See `src/index.css` (`.media-placeholder-box`).
+* **Media contract (Phase 9):** `.media-placeholder-box` is a fixed **4:3** area, so a delivered photo never changes a card's height. Two treatments:
+  * *No photo* (all current catalog items have `images: []`) → the icon-on-dot-grid placeholder, which is now **category icon only** — the repeated product name was removed because it duplicated the card title. One neutral treatment; the eight `gradient-*` theme rules were collapsed, so `placeholderTheme` no longer changes the look.
+  * *Photo present* → the `.media-placeholder-box--photo` modifier: `var(--surface-card)` background, uniform `var(--space-4)` padding, and `object-fit: contain` on `.product-card-img`. `cover` on a fixed-height box cropped real photos — do not put it back.
 * **Badge diet — at most ONE media badge**, by priority **discount > Rx > mediaBadge**. The media area renders the discount pill, else the `Uso Profesional` Rx pill, else `mediaBadge`; never two at once. The `.discount-badge + .rx-badge` stacking rule was removed with it. `.product-card--featured` uses a `var(--signal)` top strip.
-* **Technical REF SKU Header:** Features canonical REF codes (e.g. `REF: OD-101`) familiar to dental procurement staff.
+* **REF-first procurement hierarchy (§8.3):** REF (e.g. `REF: OD-101`) is a muted mono line — `.product-card-ref` — at the **top of the card body**, not in the tech header. `unitOfSale` renders immediately under the title in `.product-unit-sale`, then price, then stock. The tech header now carries the stock cue only and is not rendered at all for a healthy product.
+* **`unitOfSale` (D.5):** optional string ≤60 chars describing the presentation clinics procure in (`Caja 100 un`, `Bolsa 500 g`, `Kit 8 jeringas × 4 g`…). Rendered raw under the title — **no `Venta:` prefix** — and omitted entirely when absent, so legacy documents are unaffected. Admin create/edit does not expose it yet; the field is optional by design.
 * **Sanitary Badging:** Displays `⚕️ Uso Profesional` or `⚕️ Requiere SIS` when `prescriptionRequired === true`.
 * **Cart-aware stepper (D.6):** the footer renders, in order of precedence —
   * `!isAvailable` → a disabled `Agotado` button;
-  * `cartQuantity === 0` → the `Agregar` CTA calling `onAddToCart(product)`;
+  * `justAdded` → the transient **`Agregado ✓`** confirmation (`.btn-add-cart--added`, 900 ms, then it reverts);
   * `cartQuantity > 0` → a `.quantity-controls` stepper (`−` / qty / `+`) that calls `onUpdateQuantity(product.id, cartQuantity ± 1)`; `+` is disabled at `stockCount`, and stepping down to 0 reverts to `Agregar`. Both buttons `e.stopPropagation()` so the card-level quick-view click does not fire.
+  * `cartQuantity === 0` → the `Agregar` CTA calling `onAddToCart(product)` and arming `justAdded`.
   * Props are threaded `App (cartQuantityById via useMemo) → ProductList → ProductCard`. `ProductQuickView` receives `cartQuantity` too and seeds its local stepper from it (`Math.max(1, cartQuantity)`).
 * **Pricing Standard:** Renders whole Chilean Peso amounts with `IVA incluido` tag. Ratings and strikethrough prices render only when the data actually exists (fixtures now carry `rating: 0` / `reviewsCount: 0`, and only one fixture carries an `originalPrice`).
 

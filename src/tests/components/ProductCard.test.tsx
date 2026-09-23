@@ -20,7 +20,8 @@ const mockProduct: Product = {
   description: 'Esterilizador a vapor automático de vacío fraccionado.',
   specs: ['18 Litros', 'Bomba de vacío silenciosa', 'Impresora térmica'],
   placeholderTheme: 'gradient-indigo',
-  mediaBadge: 'Clase B Vacío'
+  mediaBadge: 'Clase B Vacío',
+  unitOfSale: 'Caja 100 un'
 }
 
 describe('ProductCard component', () => {
@@ -172,6 +173,44 @@ describe('ProductCard component', () => {
     expect(screen.getByText('Últimas unidades')).toBeInTheDocument()
     // Confidentiality: the exact warehouse count must never be rendered
     expect(screen.queryByText(/Últimas 4 unid\./)).toBeNull()
+  })
+
+  describe('Media contract & procurement IA (Phase 9 / D.5)', () => {
+    it('should render REF as a muted line in the card body rather than in the tech header', () => {
+      const { container } = render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+      const refLine = container.querySelector('.product-card-ref')
+      expect(refLine).toHaveTextContent('REF: OD-TEST-001')
+      expect(refLine?.closest('.product-card-body')).not.toBeNull()
+      expect(container.querySelector('.product-card-tech-header .product-ref-badge')).toBeNull()
+    })
+
+    it('should render the sales unit under the product title', () => {
+      render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+      expect(screen.getByText('Caja 100 un')).toHaveClass('product-unit-sale')
+    })
+
+    it('should omit the sales-unit line when the product has no unitOfSale', () => {
+      const legacy = { ...mockProduct, unitOfSale: undefined }
+      const { container } = render(<ProductCard product={legacy} onAddToCart={() => {}} onQuickView={() => {}} />)
+      expect(container.querySelector('.product-unit-sale')).toBeNull()
+    })
+
+    it('should not repeat the product name inside the icon-only placeholder', () => {
+      const { container } = render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+      const media = container.querySelector('.media-placeholder-box')
+      expect(media?.querySelector('.placeholder-icon-frame')).toBeInTheDocument()
+      expect(container.querySelector('.placeholder-product-label')).toBeNull()
+      // The name must appear once, as the card title
+      expect(screen.getAllByText(mockProduct.name)).toHaveLength(1)
+    })
+
+    it('should switch the media box to the white padded photo variant when a photo exists', () => {
+      const withPhoto = { ...mockProduct, images: ['https://example.com/autoclave.jpg'] }
+      const { container } = render(<ProductCard product={withPhoto} onAddToCart={() => {}} onQuickView={() => {}} />)
+      const media = container.querySelector('.media-placeholder-box')
+      expect(media).toHaveClass('media-placeholder-box--photo')
+      expect(container.querySelector('.product-card-img')).toBeInTheDocument()
+    })
   })
 
   describe('Transient "Agregado ✓" state (C.9)', () => {

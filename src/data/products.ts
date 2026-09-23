@@ -42,6 +42,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-teal',
     mediaBadge: 'Fibra Óptica LED',
+    unitOfSale: '1 unidad',
     images: [],
     packageContents: [
       '1x Turbina de alta velocidad LED MasterTorque (Midwest 4 vías)',
@@ -73,6 +74,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-blue',
     mediaBadge: '3000 mW/cm²',
+    unitOfSale: '1 unidad',
     images: [],
     packageContents: [
       '1x Lámpara de fotocurado inalámbrica CuringPro 3000',
@@ -104,6 +106,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-cyan',
     mediaBadge: 'Piezoeléctrico 32kHz',
+    unitOfSale: '1 unidad',
     images: [],
     packageContents: [
       '1x Unidad principal de detartraje OdonClean Pro',
@@ -136,6 +139,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-emerald',
     mediaBadge: 'Nano-Híbrido',
+    unitOfSale: 'Kit 8 jeringas × 4 g',
     images: [],
     packageContents: [
       '8x Jeringas de resina compuesta de 4g (A1, A2, A3, A3.5, B2, C2, Incisal, Denti)',
@@ -168,6 +172,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-indigo',
     mediaBadge: 'Clase B Vacío',
+    unitOfSale: '1 unidad',
     images: [],
     packageContents: [
       '1x Autoclave Clase B 18L SterilMax',
@@ -200,6 +205,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-slate',
     mediaBadge: 'Guía Cromática',
+    unitOfSale: 'Bolsa 500 g',
     images: [],
     packageContents: [
       '1x Bolsa sellada al vacío de 500g de alginato cromático',
@@ -230,6 +236,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-emerald',
     mediaBadge: 'Precisión 98.4%',
+    unitOfSale: '1 unidad',
     images: [],
     packageContents: [
       '1x Localizador de ápice digital ApexPro V',
@@ -262,6 +269,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-blue',
     mediaBadge: 'Acero Alemán 316L',
+    unitOfSale: 'Set 10 piezas',
     images: [],
     packageContents: [
       '2x Espejos bucales planos nº 5 con mango ergonómico',
@@ -295,6 +303,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-red',
     mediaBadge: 'Doble Capa Barredor',
+    unitOfSale: 'Caja 100 un',
     images: [],
     packageContents: ['1x Caja dispensadora con 100 campos impermeables 33x45cm']
   },
@@ -321,6 +330,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-amber',
     mediaBadge: 'Torque 80 Ncm',
+    unitOfSale: '1 unidad',
     images: [],
     packageContents: [
       '1x Consola principal quirúrgica ImplaDrive Pro con pantalla táctil',
@@ -354,6 +364,7 @@ export const PRODUCTS: Product[] = [
     ],
     placeholderTheme: 'gradient-teal',
     mediaBadge: 'Regulado ISP / SIS',
+    unitOfSale: 'Caja 50 carpules',
     images: [],
     packageContents: [
       '1x Caja dispensadora con 50 cartuchos de vidrio de 1.8ml',

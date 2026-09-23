@@ -106,24 +106,25 @@ export default function ProductCard({
       role="article"
       title={`Ver detalles de ${product.name}`}
     >
-      {/* Technical Header */}
-      <div className="product-card-tech-header">
-        <span className="product-ref-badge">REF: {skuRef}</span>
-        {!isAvailable ? (
-          <span className="product-stock-status stock-danger" style={{ color: 'var(--danger)' }}>
-            <span className="product-stock-dot" style={{ background: 'var(--danger)' }} />
-            <span>Sin stock</span>
-          </span>
-        ) : isLowStock ? (
-          <span className="product-stock-status stock-warning" style={{ color: 'var(--accent-warm)' }}>
-            <span className="product-stock-dot" style={{ background: 'var(--accent-warm)' }} />
-            <span>Últimas unidades</span>
-          </span>
-        ) : null}
-      </div>
+      {/* Technical Header — stock state only; REF now lives in the card body */}
+      {!isAvailable || isLowStock ? (
+        <div className="product-card-tech-header">
+          {!isAvailable ? (
+            <span className="product-stock-status stock-danger" style={{ color: 'var(--danger)' }}>
+              <span className="product-stock-dot" style={{ background: 'var(--danger)' }} />
+              <span>Sin stock</span>
+            </span>
+          ) : (
+            <span className="product-stock-status stock-warning" style={{ color: 'var(--accent-warm)' }}>
+              <span className="product-stock-dot" style={{ background: 'var(--accent-warm)' }} />
+              <span>Últimas unidades</span>
+            </span>
+          )}
+        </div>
+      ) : null}
 
       {/* Media Presentation Box (Sterile Clinical Frame with Textured Dot-Grid) */}
-      <div className={`media-placeholder-box ${product.placeholderTheme}`}>
+      <div className={`media-placeholder-box ${hasPhoto ? 'media-placeholder-box--photo' : ''}`}>
         {hasPhoto ? (
           <img
             src={product.images![0]}
@@ -137,7 +138,6 @@ export default function ProductCard({
             <div className="placeholder-icon-frame">
               <CategoryIcon size={34} strokeWidth={1.75} />
             </div>
-            <span className="placeholder-product-label">{product.name}</span>
           </div>
         )}
 
@@ -156,6 +156,9 @@ export default function ProductCard({
 
       {/* Product Content Body */}
       <div className="product-card-body">
+        {/* REF-first procurement hierarchy (§8.3): REF → unit of sale → price */}
+        <span className="product-card-ref">REF: {skuRef}</span>
+
         {/* Badges Row (Dedicated top row for marketing & regulatory pills) */}
         {Boolean((product.tag && product.tag.trim()) || product.prescriptionRequired) && (
           <div className="product-badges-row">
@@ -180,6 +183,9 @@ export default function ProductCard({
         <h3 className="product-title" id={`product-title-${product.id}`}>
           {product.name}
         </h3>
+
+        {/* Sales unit — the presentation clinics actually procure in (Appendix D.5) */}
+        {product.unitOfSale && <span className="product-unit-sale">{product.unitOfSale}</span>}
 
         {/* Rating Stars (Only rendered when verified reviews exist) */}
         {product.reviewsCount !== undefined && product.reviewsCount > 0 ? (

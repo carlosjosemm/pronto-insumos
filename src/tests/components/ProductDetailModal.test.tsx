@@ -22,6 +22,7 @@ const mockProduct: Product = {
   specs: ['Velocidad de rotación: 380.000 a 420.000 RPM', 'Conexión Midwest 4 vías autoclaveable a 135°C'],
   placeholderTheme: 'gradient-teal',
   mediaBadge: 'Fibra Óptica LED',
+  unitOfSale: '1 unidad',
   images: ['https://example.com/photo1.jpg', 'https://example.com/photo2.jpg', 'https://example.com/photo3.jpg'],
   packageContents: ['1x Turbina LED MasterTorque', '1x Llave extractora de rotor', '1x Manual técnico']
 }
@@ -46,6 +47,7 @@ describe('Product Detail Modal (ProductQuickView)', () => {
 
     expect(screen.getByRole('heading', { name: mockProduct.name })).toBeInTheDocument()
     expect(screen.getByText('REF: OD-101')).toBeInTheDocument()
+    expect(screen.getByText('1 unidad')).toHaveClass('product-unit-sale')
     expect(screen.getByText(/IVA incluido/i)).toBeInTheDocument()
     expect(screen.getByText('$189.990')).toBeInTheDocument()
     expect(screen.getByText('$229.990')).toBeInTheDocument()

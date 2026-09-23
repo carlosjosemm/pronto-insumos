@@ -26,13 +26,22 @@ describe('PRODUCTS catalog data integrity', () => {
       'description',
       'specs',
       'placeholderTheme',
-      'mediaBadge'
+      'mediaBadge',
+      'unitOfSale'
     ]
 
     for (const product of PRODUCTS) {
       for (const field of requiredFields) {
         expect(product).toHaveProperty(field)
       }
+    }
+  })
+
+  it('every product should carry a non-empty unitOfSale of at most 60 characters (D.5)', () => {
+    for (const product of PRODUCTS) {
+      expect(typeof product.unitOfSale).toBe('string')
+      expect(product.unitOfSale?.trim().length).toBeGreaterThan(0)
+      expect(product.unitOfSale?.length).toBeLessThanOrEqual(60)
     }
   })
 

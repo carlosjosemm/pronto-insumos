@@ -123,6 +123,7 @@ export interface Product {
   specs: string[];               // Technical specifications checklist
   placeholderTheme: string;      // Fallback CSS theme class
   mediaBadge?: string;           // Optional secondary visual badge (absent on imported/legacy catalog docs; UI must guard)
+  unitOfSale?: string;           // Human-readable sales unit, e.g. 'Caja 100 un' — optional; absent on legacy docs
   images?: string[];             // URLs of product photos in Firebase Storage / CDN
   packageContents?: string[];    // Itemized checklist of box contents for clinic
   manufacturer?: string;         // Clinical manufacturer

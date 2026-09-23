@@ -35,6 +35,7 @@ export interface Product {
   specs: string[]
   placeholderTheme: string
   mediaBadge?: string
+  unitOfSale?: string // Human-readable sales unit, e.g. 'Caja 100 un' — optional; absent on legacy docs
   images?: string[]
   packageContents?: string[]
   manufacturer?: string

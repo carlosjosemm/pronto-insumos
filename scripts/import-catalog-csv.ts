@@ -118,7 +118,13 @@ async function importCatalog() {
     category: string
     brand: string
     price: number
+    unitOfSale?: string
   }[] = []
+
+  // Optional `unit_of_sale` column (Appendix D.5). The legacy price list has no such
+  // column, so the field is simply omitted from the document when the index is absent.
+  const headerColumns = parseCSVLine(lines[0]).map((h) => h.trim().toLowerCase())
+  const unitOfSaleIdx = headerColumns.indexOf('unit_of_sale')
 
   for (let i = 1; i < lines.length; i++) {
     const parts = parseCSVLine(lines[i])
@@ -138,7 +144,8 @@ async function importCatalog() {
         name: desc,
         category: cat,
         brand: marca || 'Genérico',
-        price
+        price,
+        unitOfSale: unitOfSaleIdx >= 0 ? parts[unitOfSaleIdx]?.trim() : undefined
       })
     }
   }
@@ -210,6 +217,7 @@ async function importCatalog() {
       specs: ['Insumo clínico odontológico certificado', 'Distribución oficial Pronto Insumos Melipilla'],
       placeholderTheme: 'gradient-teal',
       mediaBadge: cleanMediaBadge,
+      unitOfSale: item.unitOfSale?.trim() || undefined,
       images: [],
       packageContents: [`1x ${item.name}`],
       createdAt: nowIso,

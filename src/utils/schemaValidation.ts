@@ -81,6 +81,13 @@ export function validateProductSchema(input: unknown): ValidationResult {
     errors.push('Campo "specs" debe ser un arreglo de strings')
   }
 
+  if (
+    doc.unitOfSale !== undefined &&
+    (typeof doc.unitOfSale !== 'string' || doc.unitOfSale.trim() === '' || doc.unitOfSale.length > 60)
+  ) {
+    errors.push('Campo "unitOfSale" debe ser un string no vacío de hasta 60 caracteres si está presente')
+  }
+
   return {
     valid: errors.length === 0,
     errors

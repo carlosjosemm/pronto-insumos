@@ -96,6 +96,7 @@ To prevent data drift and ensure that all Firestore documents strictly satisfy d
 * Validates `stockCount`: Must be a non-negative integer (`>= 0`).
 * Validates boolean flags: `inStock`, `prescriptionRequired`, and optional `isActive`.
 * Asserts that array attributes (`specs`, `images`) are valid arrays.
+* Validates optional `unitOfSale`: when present it must be a **non-empty string of at most 60 characters** (`typeof !== 'string'`, `trim() === ''` or `length > 60` is an error). Absent on every legacy document — the field is optional, so no migration is needed and `pronto-*` / `odon-*` docs stay valid. `scripts/import-catalog-csv.ts` writes it only when the CSV carries a `unit_of_sale` column.
 
 #### 2. `validateOrderSchema(input: unknown): ValidationResult`
 * Validates canonical `orderId` (`PRONTO-XXXXXX`).

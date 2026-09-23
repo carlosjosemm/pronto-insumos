@@ -152,7 +152,6 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
                   <div className="placeholder-icon-frame">
                     <CategoryIcon size={44} strokeWidth={1.75} />
                   </div>
-                  <span className="gallery-placeholder-text">{product.name}</span>
                 </div>
               )}
 
@@ -272,6 +271,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
             <h2 id="modal-product-title" className="detail-product-title">
               {product.name}
             </h2>
+
+            {/* Sales unit — same line as the card (Appendix D.5) */}
+            {product.unitOfSale && <span className="product-unit-sale">{product.unitOfSale}</span>}
 
             {/* Clinical Rating (Optional - hidden when zero reviews) */}
             {product.reviewsCount !== undefined && product.reviewsCount > 0 && (
