@@ -16,7 +16,10 @@ for (const envFile of ['.env.local', '.env']) {
       const eqIdx = trimmed.indexOf('=')
       if (eqIdx > 0) {
         const key = trimmed.slice(0, eqIdx).trim()
-        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '')
+        const val = trimmed
+          .slice(eqIdx + 1)
+          .trim()
+          .replace(/^["']|["']$/g, '')
         if (!process.env[key]) {
           process.env[key] = val
         }
@@ -39,15 +42,16 @@ if (!projectId || !clientEmail || !privateKey) {
   process.exit(1)
 }
 
-const app = getApps().length > 0
-  ? getApps()[0]
-  : initializeApp({
-      credential: cert({
-        projectId,
-        clientEmail,
-        privateKey
+const app =
+  getApps().length > 0
+    ? getApps()[0]
+    : initializeApp({
+        credential: cert({
+          projectId,
+          clientEmail,
+          privateKey
+        })
       })
-    })
 
 const db = getFirestore(app)
 
@@ -91,7 +95,7 @@ async function importCatalog() {
   }
 
   // 1. Locate and parse CSV file
-  const customFileArg = process.argv.find(a => a.startsWith('--file='))
+  const customFileArg = process.argv.find((a) => a.startsWith('--file='))
   const csvFileName = customFileArg ? customFileArg.split('=')[1] : 'listo-of-prices-pronto-basic.csv'
   const csvFilePath = path.resolve(process.cwd(), csvFileName)
 
@@ -101,7 +105,7 @@ async function importCatalog() {
   }
 
   const rawContent = fs.readFileSync(csvFilePath, 'utf8')
-  const lines = rawContent.split(/\r?\n/).filter(l => l.trim().length > 0)
+  const lines = rawContent.split(/\r?\n/).filter((l) => l.trim().length > 0)
   if (lines.length < 2) {
     console.error('\n❌ Error: El archivo CSV está vacío o solo contiene cabecera.')
     process.exit(1)
@@ -114,7 +118,13 @@ async function importCatalog() {
     category: string
     brand: string
     price: number
+    unitOfSale?: string
   }[] = []
+
+  // Optional `unit_of_sale` column (Appendix D.5). The legacy price list has no such
+  // column, so the field is simply omitted from the document when the index is absent.
+  const headerColumns = parseCSVLine(lines[0]).map((h) => h.trim().toLowerCase())
+  const unitOfSaleIdx = headerColumns.indexOf('unit_of_sale')
 
   for (let i = 1; i < lines.length; i++) {
     const parts = parseCSVLine(lines[i])
@@ -134,7 +144,8 @@ async function importCatalog() {
         name: desc,
         category: cat,
         brand: marca || 'Genérico',
-        price
+        price,
+        unitOfSale: unitOfSaleIdx >= 0 ? parts[unitOfSaleIdx]?.trim() : undefined
       })
     }
   }
@@ -151,7 +162,6 @@ async function importCatalog() {
 
   let inactivatedCount = 0
   for (const doc of existingSnap.docs) {
-    const data = doc.data()
     // If it's a prototype item or any item not part of the new pronto- catalog
     if (doc.id.startsWith('odon-')) {
       batch.delete(doc.ref)
@@ -179,7 +189,10 @@ async function importCatalog() {
   for (let idx = 0; idx < parsedItems.length; idx++) {
     const item = parsedItems[idx]
     const productId = `pronto-${String(idx + 1).padStart(3, '0')}`
-    const sku = `REF-${item.brand.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase()}-${String(idx + 1).padStart(3, '0')}`
+    const sku = `REF-${item.brand
+      .replace(/[^A-Za-z0-9]/g, '')
+      .slice(0, 4)
+      .toUpperCase()}-${String(idx + 1).padStart(3, '0')}`
     const priceNeto = Math.round(item.price / 1.19)
 
     const cleanMediaBadge = item.brand && item.brand !== 'Genérico' ? item.brand : 'Clínico Certificado'
@@ -201,12 +214,10 @@ async function importCatalog() {
       prescriptionRequired: false,
       tag: '',
       description: item.name,
-      specs: [
-        'Insumo clínico odontológico certificado',
-        'Distribución oficial Pronto Insumos Melipilla'
-      ],
+      specs: ['Insumo clínico odontológico certificado', 'Distribución oficial Pronto Insumos Melipilla'],
       placeholderTheme: 'gradient-teal',
       mediaBadge: cleanMediaBadge,
+      unitOfSale: item.unitOfSale?.trim() || undefined,
       images: [],
       packageContents: [`1x ${item.name}`],
       createdAt: nowIso,
@@ -262,14 +273,16 @@ async function importCatalog() {
   }
 
   console.log(`\n🎉 [ÉXITO] Ingesta completada con éxito en ${targetEnv}:`)
-  console.log(`   - ${insertedCount} productos oficiales sembrados/actualizados (pronto-001 a pronto-${String(insertedCount).padStart(3, '0')}).`)
+  console.log(
+    `   - ${insertedCount} productos oficiales sembrados/actualizados (pronto-001 a pronto-${String(insertedCount).padStart(3, '0')}).`
+  )
   console.log(`   - ${inactivatedCount} productos prototipo anteriores inactivados.`)
   console.log(`   - ${insertedCount} registros de auditoría registrados en "${col('inventory_audit_logs')}".`)
   console.log(`\n👉 Ejecuta la validación de esquema para confirmar:`)
   console.log(`   pnpm run schema:validate${isDev ? ':dev' : ''}\n`)
 }
 
-importCatalog().catch(err => {
+importCatalog().catch((err) => {
   console.error('\n❌ Error durante la importación:', err)
   process.exit(1)
 })

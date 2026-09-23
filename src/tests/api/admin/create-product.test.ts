@@ -14,12 +14,12 @@ vi.mock('../../../../api/lib/firebaseAdmin', () => ({
 
 describe('Serverless Admin Create Product (/api/admin/create-product)', () => {
   let mockRes: Partial<VercelResponse>
-  let jsonOutput: any
+  let jsonOutput: Record<string, unknown> = {}
   let statusOutput: number
 
   beforeEach(() => {
     vi.clearAllMocks()
-    jsonOutput = null
+    jsonOutput = {}
     statusOutput = 200
 
     mockRes = {
@@ -28,8 +28,8 @@ describe('Serverless Admin Create Product (/api/admin/create-product)', () => {
         statusOutput = code
         return mockRes as VercelResponse
       }),
-      json: vi.fn((data: any) => {
-        jsonOutput = data
+      json: vi.fn((data: unknown) => {
+        jsonOutput = data as Record<string, unknown>
         return mockRes as VercelResponse
       }),
       end: vi.fn()
@@ -105,7 +105,7 @@ describe('Serverless Admin Create Product (/api/admin/create-product)', () => {
     const batchCommitMock = vi.fn().mockResolvedValue(undefined)
 
     const mockDb = {
-      collection: vi.fn((colName: string) => ({
+      collection: vi.fn(() => ({
         doc: vi.fn((docId?: string) => ({
           id: docId || 'mock-audit-id-123'
         }))
@@ -116,7 +116,9 @@ describe('Serverless Admin Create Product (/api/admin/create-product)', () => {
       }))
     }
 
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = {
       method: 'POST',
@@ -134,14 +136,15 @@ describe('Serverless Admin Create Product (/api/admin/create-product)', () => {
 
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
-    expect(jsonOutput.product.name).toBe('Guantes de Nitrilo Rosa (Caja 100 un)')
-    expect(jsonOutput.product.category).toBe('BIOSEGURIDAD Y PROTECCION')
-    expect(jsonOutput.product.price).toBe(8990)
+    const product = jsonOutput.product as Record<string, unknown>
+    expect(product.name).toBe('Guantes de Nitrilo Rosa (Caja 100 un)')
+    expect(product.category).toBe('BIOSEGURIDAD Y PROTECCION')
+    expect(product.price).toBe(8990)
     // 8990 / 1.19 = 7554.62 -> Math.round is 7555
-    expect(jsonOutput.product.priceNeto).toBe(7555)
-    expect(jsonOutput.product.stockCount).toBe(15)
-    expect(jsonOutput.product.inStock).toBe(true)
-    expect(jsonOutput.product.isActive).toBe(true)
+    expect(product.priceNeto).toBe(7555)
+    expect(product.stockCount).toBe(15)
+    expect(product.inStock).toBe(true)
+    expect(product.isActive).toBe(true)
 
     expect(batchSetMock).toHaveBeenCalledWith(
       expect.anything(),

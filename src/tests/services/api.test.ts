@@ -129,9 +129,9 @@ describe('fetchProducts - sorting', () => {
       expect(isAvailable(result[0])).toBe(true)
 
       // Every in-stock product must precede every out-of-stock product
-      const firstOutOfStockIndex = result.findIndex(p => !isAvailable(p))
+      const firstOutOfStockIndex = result.findIndex((p) => !isAvailable(p))
       if (firstOutOfStockIndex !== -1) {
-        expect(result.slice(firstOutOfStockIndex).every(p => !isAvailable(p))).toBe(true)
+        expect(result.slice(firstOutOfStockIndex).every((p) => !isAvailable(p))).toBe(true)
       }
     } finally {
       PRODUCTS[0].inStock = originalStock
@@ -140,9 +140,9 @@ describe('fetchProducts - sorting', () => {
   })
 
   it('should preserve the requested sort order inside the in-stock partition', async () => {
-    const saved = PRODUCTS.slice(0, 2).map(p => ({ inStock: p.inStock, stockCount: p.stockCount }))
+    const saved = PRODUCTS.slice(0, 2).map((p) => ({ inStock: p.inStock, stockCount: p.stockCount }))
     try {
-      PRODUCTS.slice(0, 2).forEach(p => {
+      PRODUCTS.slice(0, 2).forEach((p) => {
         p.inStock = true
         p.stockCount = 10
       })
@@ -236,13 +236,17 @@ describe('submitOrder', () => {
     expect(result.itemsCount).toBe(2)
 
     expect(setDoc).toHaveBeenCalledTimes(1)
-    const [docRef, submittedPayload] = vi.mocked(setDoc).mock.calls[0] as any
+    const [docRef, submittedPayload] = vi.mocked(setDoc).mock.calls[0] as unknown as [
+      { id: string },
+      Record<string, unknown>
+    ]
     expect(docRef.id).toBe(result.orderId)
     expect(submittedPayload.status).toBe('PENDIENTE_PAGO_MERCADOPAGO')
     expect(submittedPayload.paymentMethod).toBe('mercadopago')
     expect(submittedPayload.orderId).toBe(result.orderId)
-    expect(submittedPayload.items).toHaveLength(1)
-    expect(submittedPayload.items[0].quantity).toBe(2)
+    const items = submittedPayload.items as Array<Record<string, unknown>>
+    expect(items).toHaveLength(1)
+    expect(items[0].quantity).toBe(2)
   })
 
   it('should initialize Transferencia orders with status PENDIENTE_TRANSFERENCIA', async () => {
@@ -256,7 +260,7 @@ describe('submitOrder', () => {
 
     expect(result.success).toBe(true)
     expect(setDoc).toHaveBeenCalledTimes(1)
-    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as any
+    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as unknown as Record<string, unknown>
     expect(submittedPayload.status).toBe('PENDIENTE_TRANSFERENCIA')
     expect(submittedPayload.paymentMethod).toBe('transferencia')
   })
@@ -272,7 +276,7 @@ describe('submitOrder', () => {
 
     expect(result.success).toBe(true)
     expect(setDoc).toHaveBeenCalledTimes(1)
-    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as any
+    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as unknown as Record<string, unknown>
     expect(submittedPayload.status).toBe('COTIZACION_SOLICITADA_WHATSAPP')
   })
 
@@ -308,7 +312,10 @@ describe('submitOrder', () => {
     expect(result.success).toBe(true)
     expect(result.orderId).toBe(customId)
 
-    const [docRef, submittedPayload] = vi.mocked(setDoc).mock.calls[0] as any
+    const [docRef, submittedPayload] = vi.mocked(setDoc).mock.calls[0] as unknown as [
+      { id: string },
+      Record<string, unknown>
+    ]
     expect(docRef.id).toBe(customId)
     expect(submittedPayload.orderId).toBe(customId)
   })
@@ -322,4 +329,3 @@ describe('submitOrder', () => {
     expect(id1).not.toBe(id2)
   })
 })
-

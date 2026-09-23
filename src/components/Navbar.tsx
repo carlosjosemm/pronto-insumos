@@ -1,5 +1,6 @@
 import React from 'react'
-import { Activity, Search, ShoppingBag, MapPin, FileCheck, Phone, Truck } from 'lucide-react'
+import { Search, ShoppingBag, MapPin, FileCheck, Phone, Truck } from 'lucide-react'
+import { WHATSAPP_DISPLAY, whatsappLink } from '../config/contact'
 
 export interface NavbarProps {
   search: string
@@ -29,8 +30,8 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
         <div className="top-utility-container">
           <div className="top-utility-left">
             <span className="top-utility-link">
-              <MapPin size={13} style={{ color: '#38bdf8' }} />
-              <span>Despacho prioritario en Melipilla y rutas RM | Retiro en Av. Ortúzar</span>
+              <MapPin size={13} style={{ color: 'var(--accent-on-dark)' }} />
+              <span>Despacho a clínicas en Melipilla y San Antonio</span>
             </span>
           </div>
           <div className="top-utility-right">
@@ -40,23 +41,32 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
                   type="button"
                   onClick={onOpenTracking}
                   className="top-utility-link"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', padding: 0, display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    font: 'inherit',
+                    padding: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
                   aria-label="Abrir Seguimiento de Pedido"
                 >
-                  <Truck size={13} style={{ color: '#38bdf8' }} />
+                  <Truck size={13} style={{ color: 'var(--accent-on-dark)' }} />
                   <span>Seguimiento de Pedido</span>
                 </button>
                 <span className="top-utility-divider">|</span>
               </>
             )}
             <span className="top-utility-link">
-              <FileCheck size={13} style={{ color: '#34d399' }} />
-              <span>Factura Electrónica Inmediata (19% IVA)</span>
+              <FileCheck size={13} style={{ color: 'var(--accent-on-dark)' }} />
+              <span>Boleta Electrónica · IVA 19%</span>
             </span>
             <span className="top-utility-divider">|</span>
-            <a href="https://wa.me/56912345678" className="top-utility-link" target="_blank" rel="noopener noreferrer">
-              <Phone size={13} style={{ color: '#38bdf8' }} />
-              <span>Mesa Clínica: +56 9 1234 5678</span>
+            <a href={whatsappLink()} className="top-utility-link" target="_blank" rel="noopener noreferrer">
+              <Phone size={13} style={{ color: 'var(--accent-on-dark)' }} />
+              <span>Mesa Clínica: {WHATSAPP_DISPLAY}</span>
             </a>
           </div>
         </div>
@@ -65,15 +75,23 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
       {/* Main Navbar */}
       <header className="navbar">
         <div className="nav-container">
-          {/* Brand Identity */}
-          <a href="#" className="brand-logo">
-            <div className="brand-icon-wrapper">
-              <Activity size={22} />
-            </div>
-            <div className="brand-text-group">
-              <div className="brand-name">PRONTO</div>
-              <div className="brand-badge">ODONTOLOGÍA</div>
-            </div>
+          {/* Brand Identity — code-rendered wordmark lockup (§10.3) */}
+          <a href="#" className="brand-logo" aria-label="PRONTO Insumos Odontológicos">
+            <span className="brand-lockup">
+              <span className="brand-wordmark">
+                PRONTO
+                <svg
+                  className="brand-underline"
+                  viewBox="0 0 100 8"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="M2 4 Q 25 7 50 4 T 98 4" />
+                </svg>
+              </span>
+              <span className="brand-descriptor">INSUMOS ODONTOLÓGICOS</span>
+            </span>
           </a>
 
           {/* Desktop Search Bar */}
@@ -91,19 +109,15 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
           {/* Action Controls */}
           <div className="nav-actions">
             <div className="trust-badge-item desktop-only-trust">
-              <MapPin size={16} style={{ color: 'var(--brand-blue)' }} />
-              <span>Melipilla & RM</span>
+              <MapPin size={16} style={{ color: 'var(--ink-800)' }} />
+              <span>Melipilla · San Antonio</span>
             </div>
 
-            <button
-              className="cart-trigger-btn"
-              onClick={onOpenCart}
-              aria-label="Abrir Carro de Compras"
-            >
+            <button className="cart-trigger-btn" onClick={onOpenCart} aria-label="Abrir Carro de Compras">
               <ShoppingBag size={18} />
               <span className="cart-btn-label">Carro</span>
               {cartCount > 0 && (
-                <span className={`cart-count-badge ${isPulsing ? 'cart-count-badge--pulse' : ''}`}>
+                <span className={`cart-count-badge ${isPulsing ? 'cart-count-badge--pulse' : ''}`} aria-live="polite">
                   {cartCount}
                 </span>
               )}
@@ -121,6 +135,20 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Buscar insumos y equipos dentales"
           />
+        </div>
+
+        {/* Mobile utility row — restores the phone + tracking actions the hidden top bar takes away */}
+        <div className="nav-mobile-utility">
+          <a href={whatsappLink()} className="nav-mobile-utility-link" target="_blank" rel="noopener noreferrer">
+            <Phone size={14} />
+            <span>Mesa Clínica</span>
+          </a>
+          {onOpenTracking && (
+            <button type="button" onClick={onOpenTracking} className="nav-mobile-utility-link">
+              <Truck size={14} />
+              <span>Seguimiento</span>
+            </button>
+          )}
         </div>
       </header>
     </>

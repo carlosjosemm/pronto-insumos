@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import React from 'react'
 import ProductCard from '../../components/ProductCard'
 import { Product } from '../../types'
@@ -20,86 +20,45 @@ const mockProduct: Product = {
   description: 'Esterilizador a vapor automático de vacío fraccionado.',
   specs: ['18 Litros', 'Bomba de vacío silenciosa', 'Impresora térmica'],
   placeholderTheme: 'gradient-indigo',
-  mediaBadge: 'Clase B Vacío'
+  mediaBadge: 'Clase B Vacío',
+  unitOfSale: 'Caja 100 un'
 }
 
 describe('ProductCard component', () => {
   it('should render the product name', () => {
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
     const nameElements = screen.getAllByText('Autoclave Clase B 18L SterilMax')
     expect(nameElements.length).toBeGreaterThanOrEqual(1)
   })
 
   it('should render the current price formatted', () => {
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.getByText('$899.000')).toBeInTheDocument()
   })
 
   it('should render the original (strikethrough) price when present', () => {
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.getByText('$1.100.000')).toBeInTheDocument()
   })
 
   it('should render the product category', () => {
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.getByText('Sterilization')).toBeInTheDocument()
   })
 
   it('should render the product tag', () => {
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.getByText('Normativa ISP')).toBeInTheDocument()
   })
 
   it('should render the "Agregar" button', () => {
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.getByText('Agregar')).toBeInTheDocument()
   })
 
   it('should call onAddToCart when "Agregar" button is clicked', () => {
     const onAddToCart = vi.fn()
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={onAddToCart}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={onAddToCart} onQuickView={() => {}} />)
     fireEvent.click(screen.getByText(/Agregar/i))
     expect(onAddToCart).toHaveBeenCalledTimes(1)
     expect(onAddToCart).toHaveBeenCalledWith(mockProduct)
@@ -107,13 +66,7 @@ describe('ProductCard component', () => {
 
   it('should call onQuickView when product card is clicked', () => {
     const onQuickView = vi.fn()
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={onQuickView}
-      />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={onQuickView} />)
     const card = screen.getByRole('article')
     fireEvent.click(card)
     expect(onQuickView).toHaveBeenCalledTimes(1)
@@ -121,27 +74,31 @@ describe('ProductCard component', () => {
   })
 
   it('should display the rating value', () => {
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
     // Rating 5.0 is rendered as "5" in a styled span
     const ratingElements = screen.getAllByText('5')
     expect(ratingElements.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('should display the media badge text', () => {
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+  it('should show at most ONE media badge, preferring the discount over the mediaBadge', () => {
+    const { container } = render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+    expect(container.querySelector('.discount-badge')).toBeInTheDocument()
+    expect(container.querySelector('.placeholder-badge')).toBeNull()
+    expect(container.querySelector('.rx-badge')).toBeNull()
+  })
+
+  it('should fall back to the mediaBadge when there is no discount and no Rx flag', () => {
+    const plain = { ...mockProduct, originalPrice: undefined }
+    render(<ProductCard product={plain} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.getByText('Clase B Vacío')).toBeInTheDocument()
+  })
+
+  it('should prefer the Rx badge over the mediaBadge for regulated products', () => {
+    const regulated = { ...mockProduct, originalPrice: undefined, prescriptionRequired: true }
+    const { container } = render(<ProductCard product={regulated} onAddToCart={() => {}} onQuickView={() => {}} />)
+    expect(container.querySelector('.rx-badge')).toBeInTheDocument()
+    expect(container.querySelector('.placeholder-badge')).toBeNull()
+    expect(container.querySelector('.discount-badge')).toBeNull()
   })
 
   it('should NOT render rating or placeholder when product has zero reviews', () => {
@@ -150,13 +107,7 @@ describe('ProductCard component', () => {
       reviewsCount: 0,
       rating: 0
     }
-    render(
-      <ProductCard
-        product={productZeroReviews}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={productZeroReviews} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.queryByText('(0)')).toBeNull()
     expect(screen.queryByText('Sin reseñas aún')).toBeNull()
   })
@@ -166,24 +117,12 @@ describe('ProductCard component', () => {
       ...mockProduct,
       mediaBadge: undefined
     }
-    const { container } = render(
-      <ProductCard
-        product={productNoBadge}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    const { container } = render(<ProductCard product={productNoBadge} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(container.querySelector('.placeholder-badge')).toBeNull()
   })
 
   it('should render discount badge when originalPrice exists and is greater than price', () => {
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.getByText('-18%')).toBeInTheDocument()
   })
 
@@ -192,13 +131,7 @@ describe('ProductCard component', () => {
       ...mockProduct,
       originalPrice: undefined
     }
-    render(
-      <ProductCard
-        product={productNoDiscount}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={productNoDiscount} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.queryByText(/-\d+%/)).toBeNull()
   })
 
@@ -208,24 +141,12 @@ describe('ProductCard component', () => {
       originalPrice: 800000,
       price: 899000
     }
-    render(
-      <ProductCard
-        product={productSurgePrice}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    render(<ProductCard product={productSurgePrice} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.queryByText(/-\d+%/)).toBeNull()
   })
 
   it('should render manufacturer when manufacturer is provided', () => {
-    const { container } = render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    const { container } = render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
     const brandEl = container.querySelector('.product-brand-tag')
     expect(brandEl).toBeInTheDocument()
     expect(brandEl).toHaveTextContent('SterilMax')
@@ -236,24 +157,177 @@ describe('ProductCard component', () => {
       ...mockProduct,
       manufacturer: undefined
     }
-    const { container } = render(
-      <ProductCard
-        product={productNoMfr}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
+    const { container } = render(<ProductCard product={productNoMfr} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(container.querySelector('.product-brand-tag')).toBeNull()
   })
 
-  it('should render low-stock warning when stockCount <= 5', () => {
-    render(
-      <ProductCard
-        product={mockProduct}
-        onAddToCart={() => {}}
-        onQuickView={() => {}}
-      />
-    )
-    expect(screen.getByText('Últimas 4 unid.')).toBeInTheDocument()
+  it('should render "Sin stock" (lowercase s) for unavailable products', () => {
+    const unavailable = { ...mockProduct, inStock: false, stockCount: 0 }
+    render(<ProductCard product={unavailable} onAddToCart={() => {}} onQuickView={() => {}} />)
+    expect(screen.getByText('Sin stock')).toBeInTheDocument()
+    expect(screen.queryByText('Sin Stock')).toBeNull()
+  })
+
+  it('should render low-stock warning without leaking the raw stock count when stockCount <= 5', () => {
+    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+    expect(screen.getByText('Últimas unidades')).toBeInTheDocument()
+    // Confidentiality: the exact warehouse count must never be rendered
+    expect(screen.queryByText(/Últimas 4 unid\./)).toBeNull()
+  })
+
+  describe('Media contract & procurement IA (Phase 9 / D.5)', () => {
+    it('should render REF as a muted line in the card body rather than in the tech header', () => {
+      const { container } = render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+      const refLine = container.querySelector('.product-card-ref')
+      expect(refLine).toHaveTextContent('REF: OD-TEST-001')
+      expect(refLine?.closest('.product-card-body')).not.toBeNull()
+      expect(container.querySelector('.product-card-tech-header .product-ref-badge')).toBeNull()
+    })
+
+    it('should render the sales unit under the product title', () => {
+      render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+      expect(screen.getByText('Caja 100 un')).toHaveClass('product-unit-sale')
+    })
+
+    it('should omit the sales-unit line when the product has no unitOfSale', () => {
+      const legacy = { ...mockProduct, unitOfSale: undefined }
+      const { container } = render(<ProductCard product={legacy} onAddToCart={() => {}} onQuickView={() => {}} />)
+      expect(container.querySelector('.product-unit-sale')).toBeNull()
+    })
+
+    it('should not repeat the product name inside the icon-only placeholder', () => {
+      const { container } = render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+      const media = container.querySelector('.media-placeholder-box')
+      expect(media?.querySelector('.placeholder-icon-frame')).toBeInTheDocument()
+      expect(container.querySelector('.placeholder-product-label')).toBeNull()
+      // The name must appear once, as the card title
+      expect(screen.getAllByText(mockProduct.name)).toHaveLength(1)
+    })
+
+    it('should switch the media box to the white padded photo variant when a photo exists', () => {
+      const withPhoto = { ...mockProduct, images: ['https://example.com/autoclave.jpg'] }
+      const { container } = render(<ProductCard product={withPhoto} onAddToCart={() => {}} onQuickView={() => {}} />)
+      const media = container.querySelector('.media-placeholder-box')
+      expect(media).toHaveClass('media-placeholder-box--photo')
+      expect(container.querySelector('.product-card-img')).toBeInTheDocument()
+    })
+  })
+
+  describe('Transient "Agregado ✓" state (C.9)', () => {
+    it('should confirm the first add transiently and then revert to the Agregar CTA', () => {
+      vi.useFakeTimers()
+      try {
+        render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+
+        fireEvent.click(screen.getByText('Agregar'))
+        expect(screen.getByText('Agregado ✓')).toBeInTheDocument()
+        expect(screen.queryByText('Agregar')).toBeNull()
+
+        act(() => {
+          vi.advanceTimersByTime(900)
+        })
+
+        expect(screen.queryByText('Agregado ✓')).toBeNull()
+        expect(screen.getByText('Agregar')).toBeInTheDocument()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('should still call onAddToCart exactly once while showing the transient state', () => {
+      const onAddToCart = vi.fn()
+      render(<ProductCard product={mockProduct} onAddToCart={onAddToCart} onQuickView={() => {}} />)
+
+      fireEvent.click(screen.getByText('Agregar'))
+      expect(onAddToCart).toHaveBeenCalledTimes(1)
+
+      // Clicking the confirmation must not re-add the product
+      fireEvent.click(screen.getByText('Agregado ✓'))
+      expect(onAddToCart).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('Cart-aware stepper (D.6)', () => {
+    it('should render the Agregar CTA when the product is not in the cart', () => {
+      render(
+        <ProductCard
+          product={mockProduct}
+          onAddToCart={() => {}}
+          onQuickView={() => {}}
+          cartQuantity={0}
+          onUpdateQuantity={() => {}}
+        />
+      )
+      expect(screen.getByText('Agregar')).toBeInTheDocument()
+      expect(screen.queryByRole('group', { name: /Cantidad de/i })).toBeNull()
+    })
+
+    it('should swap the CTA for a quantity stepper once the product is in the cart', () => {
+      const { container } = render(
+        <ProductCard
+          product={mockProduct}
+          onAddToCart={() => {}}
+          onQuickView={() => {}}
+          cartQuantity={3}
+          onUpdateQuantity={() => {}}
+        />
+      )
+      expect(screen.queryByText('Agregar')).toBeNull()
+      expect(container.querySelector('.qty-val')).toHaveTextContent('3')
+      expect(screen.getByLabelText(`Disminuir cantidad de ${mockProduct.name}`)).toBeInTheDocument()
+      expect(screen.getByLabelText(`Aumentar cantidad de ${mockProduct.name}`)).toBeInTheDocument()
+    })
+
+    it('should report +/- deltas to onUpdateQuantity and not open the quick view', () => {
+      const onUpdateQuantity = vi.fn()
+      const onQuickView = vi.fn()
+      render(
+        <ProductCard
+          product={mockProduct}
+          onAddToCart={() => {}}
+          onQuickView={onQuickView}
+          cartQuantity={2}
+          onUpdateQuantity={onUpdateQuantity}
+        />
+      )
+
+      fireEvent.click(screen.getByLabelText(`Aumentar cantidad de ${mockProduct.name}`))
+      expect(onUpdateQuantity).toHaveBeenCalledWith(mockProduct.id, 3)
+
+      fireEvent.click(screen.getByLabelText(`Disminuir cantidad de ${mockProduct.name}`))
+      expect(onUpdateQuantity).toHaveBeenCalledWith(mockProduct.id, 1)
+
+      // e.stopPropagation() must keep the card-level quick-view click from firing
+      expect(onQuickView).not.toHaveBeenCalled()
+    })
+
+    it('should disable the increment button at the stock ceiling', () => {
+      render(
+        <ProductCard
+          product={mockProduct}
+          onAddToCart={() => {}}
+          onQuickView={() => {}}
+          cartQuantity={4}
+          onUpdateQuantity={() => {}}
+        />
+      )
+      // mockProduct.stockCount is 4
+      expect(screen.getByLabelText(`Aumentar cantidad de ${mockProduct.name}`)).toBeDisabled()
+    })
+
+    it('should keep the disabled Agotado button for unavailable products regardless of cart quantity', () => {
+      const unavailable = { ...mockProduct, inStock: false, stockCount: 0 }
+      render(
+        <ProductCard
+          product={unavailable}
+          onAddToCart={() => {}}
+          onQuickView={() => {}}
+          cartQuantity={2}
+          onUpdateQuantity={() => {}}
+        />
+      )
+      expect(screen.getByRole('button', { name: `${unavailable.name} agotado` })).toBeDisabled()
+      expect(screen.queryByLabelText(`Aumentar cantidad de ${unavailable.name}`)).toBeNull()
+    })
   })
 })

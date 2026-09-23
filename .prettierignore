@@ -1,0 +1,18 @@
+# Hand-authored prose docs. The AGENTS.md policy files, PRODUCTION_READINESS_TODO.md
+# and the redesign proposal of record are read verbatim by agents; Prettier's
+# Markdown printer would reflow their tables, bullets and emphasis markers.
+*.md
+
+# TEMPORARY CARVE-OUT: the backoffice portal and the serverless functions are
+# excluded while the storefront UI overhaul is in flight, so this pass does not
+# touch trees that are out of scope for it. Remove these lines and run
+# `pnpm format` once the overhaul has landed.
+src/admin/**
+api/**
+admin.html
+
+# Generated / vendored output
+pnpm-lock.yaml
+dist
+coverage
+public

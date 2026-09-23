@@ -20,7 +20,7 @@ This document is the **authoritative domain and technical reference** for the cl
 | [`mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/mercadopago.ts) | Dispatches payment preference creation requests to `/api/create-preference`, obtaining the secure Mercado Pago Checkout Pro redirect URL. | Serverless `/api/create-preference` |
 | [`orderTracking.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/orderTracking.ts) | Client proxy querying `/api/track-order` to retrieve fulfillment progress using Order ID and customer RUT. | Serverless `/api/track-order` |
 | [`transferVoucher.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/transferVoucher.ts) | File validation (PDF, PNG, JPG <= 5MB), Base64 data URL conversion, and dispatch to `/api/upload-voucher`. | Serverless `/api/upload-voucher` |
-| [`whatsapp.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/whatsapp.ts) | Generates pre-formatted WhatsApp clinical quote URLs (`https://wa.me/569...`) with itemized SKU lists and tax breakdowns. | WhatsApp Click-to-Chat API |
+| [`whatsapp.ts`](file:///c:/ecmv2/Documents/PRONTO/src/services/whatsapp.ts) | Generates pre-formatted WhatsApp clinical quote URLs (`https://wa.me/569...`) with itemized SKU lists and tax breakdowns. Reads the number from `import.meta.env.VITE_WHATSAPP_NUMBER` with its own `56912345678` fallback. | WhatsApp Click-to-Chat API |
 
 ---
 
@@ -101,3 +101,30 @@ When the customer returns to the site, `revalidateCartAgainstCatalog(storedItems
    * Stock decrement authority is strictly restricted to serverless webhooks and authenticated admin transactions.
 3. **Zero Card Input Handling (PCI-DSS):**
    * `processMercadoPagoPayment()` in `mercadopago.ts` never accepts or transmits card numbers. It requests a preference URL from `/api/create-preference` and returns the checkout link.
+4. **Commercial contact data lives in [`src/config/contact.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/contact.ts), not in components:**
+   * `WHATSAPP_NUMBER` (digits only, from `VITE_WHATSAPP_NUMBER`), `WHATSAPP_DISPLAY` (derived `+56 9 XXXX XXXX`) and `whatsappLink(text?)` are the single source of truth.
+   * **No component may hardcode a `wa.me` URL or a phone number again.** Previously `Navbar`, `Hero`, `Footer`, `ProductQuickView` and `ErrorBoundary` each embedded `56912345678` literally, so changing `VITE_WHATSAPP_NUMBER` silently left five stale copies behind. All five now import from `contact.ts`.
+   * **`whatsapp.ts` is a deliberate exception and still reads the env var itself:** it keeps its own `import.meta.env.VITE_WHATSAPP_NUMBER || '56912345678'` read, independent of `contact.ts`. Consequence to be aware of: the fallback literal and the env lookup now exist in **two** places, so they can drift — a change to the fallback in one file will not propagate to the other. Consolidating `whatsapp.ts` onto `contact.ts` is intentionally out of scope for this pass; when it is done, `contact.ts` becomes the only place that reads the variable.
+   * **Known outstanding exception in the UI layer:** `OrderTrackingModal.tsx` still builds its support link from a literal `56987654321`, which differs from `WHATSAPP_NUMBER`. See [src/components/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/AGENTS.md) §4.1.2.
+5. **`firebase.ts` calls `getAuth(app)` unguarded at module scope — known, deliberately unfixed:**
+   * The call is evaluated at import time, so a **missing or invalid `VITE_FIREBASE_API_KEY` throws `auth/invalid-api-key` and aborts the entire import graph**. `main.tsx` never runs and `#root` stays empty: the storefront renders a blank page instead of falling back to the documented offline catalog that `fetchProducts()` already implements.
+   * This is *not* worked around, because a properly typed fix makes `auth` nullable, which breaks `src/admin/services/adminApi.ts`, `AdminApp.tsx` and `AdminLogin.tsx` — all out of scope. **Do not narrow `auth` unilaterally.** The client/server/admin read paths must be changed together, as its own reviewed task.
+   * Practical consequence today: the repo **requires** a populated `.env.local` (or the equivalent Vercel env vars) for the storefront to render at all. That is why a fresh `git worktree add` appears to render blank until `.env.local` is copied in.
+
+---
+
+## 🧯 5. Error-Handling Conventions (`catch` clauses)
+
+Every service in this directory degrades gracefully: when a boundary (Firestore, `/api/create-preference`, `/api/track-order`, `/api/upload-voucher`) is unavailable it logs a diagnostic warning and falls back to local simulation or the static catalog. That resilience contract is unchanged — only the *typing* of the caught value was tightened:
+
+* **`catch` parameters are typed `unknown`, never `any`** (`no-explicit-any` is an error). Each site narrows explicitly before reading a message:
+
+  ```ts
+  } catch (err: unknown) {
+    console.warn('Endpoint /api/track-order no disponible, usando fallback:', err instanceof Error ? err.message : err)
+  }
+  ```
+
+* **Why this matters:** the previous `catch (err: any)` form let `err.message` be read on a thrown non-`Error` (a rejected string, a Firestore `FirebaseError` shape change, etc.), which produced `undefined` in the logs and hid the real failure. The `instanceof Error` guard keeps the diagnostic honest.
+* **Applies to:** `api.ts` (`fetchProducts`, `submitOrder`), `firebase.ts` (`seedProductsToFirestore`), `mercadopago.ts`, `orderTracking.ts`, `transferVoucher.ts`.
+* **Do not "simplify" these back to `any`.** If a new boundary needs the original error object, pass it through to `console.warn`/`console.error` as-is (as `firebase.ts` does) rather than widening the type.

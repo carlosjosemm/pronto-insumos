@@ -16,9 +16,18 @@ describe('Navbar component', () => {
     expect(screen.getByText('PRONTO')).toBeInTheDocument()
   })
 
-  it('should render the brand badge "ODONTOLOGÍA"', () => {
+  it('should render the canonical brand descriptor "INSUMOS ODONTOLÓGICOS"', () => {
     render(<Navbar {...defaultProps} />)
-    expect(screen.getByText('ODONTOLOGÍA')).toBeInTheDocument()
+    expect(screen.getByText('INSUMOS ODONTOLÓGICOS')).toBeInTheDocument()
+    // The retired 'ODONTOLOGÍA' sticker must not come back
+    expect(screen.queryByText('ODONTOLOGÍA')).not.toBeInTheDocument()
+  })
+
+  it('should expose the wordmark lockup as a labelled link and not as an image', () => {
+    const { container } = render(<Navbar {...defaultProps} />)
+    expect(screen.getByRole('link', { name: 'PRONTO Insumos Odontológicos' })).toBeInTheDocument()
+    expect(container.querySelector('.brand-underline')).toBeInTheDocument()
+    expect(container.querySelector('.brand-logo img')).toBeNull()
   })
 
   it('should render a desktop search input', () => {
@@ -42,9 +51,23 @@ describe('Navbar component', () => {
     expect(screen.getByText('5')).toBeInTheDocument()
   })
 
-  it('should display "Melipilla & RM" trust badge', () => {
+  it('should display "Melipilla · San Antonio" trust badge', () => {
     render(<Navbar {...defaultProps} />)
-    expect(screen.getByText('Melipilla & RM')).toBeInTheDocument()
+    expect(screen.getByText('Melipilla · San Antonio')).toBeInTheDocument()
+  })
+
+  it('should render the mobile utility row with the phone and tracking actions', () => {
+    const { container } = render(<Navbar {...defaultProps} onOpenTracking={() => {}} />)
+    const row = container.querySelector('.nav-mobile-utility')
+    expect(row).toBeInTheDocument()
+    expect(screen.getByText('Mesa Clínica')).toBeInTheDocument()
+    expect(screen.getByText('Seguimiento')).toBeInTheDocument()
+  })
+
+  it('should omit the mobile tracking action when no tracking handler is provided', () => {
+    render(<Navbar {...defaultProps} />)
+    expect(screen.getByText('Mesa Clínica')).toBeInTheDocument()
+    expect(screen.queryByText('Seguimiento')).not.toBeInTheDocument()
   })
 
   it('should pulse cart badge when count increases', () => {

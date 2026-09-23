@@ -123,6 +123,7 @@ export interface Product {
   specs: string[];               // Technical specifications checklist
   placeholderTheme: string;      // Fallback CSS theme class
   mediaBadge?: string;           // Optional secondary visual badge (absent on imported/legacy catalog docs; UI must guard)
+  unitOfSale?: string;           // Human-readable sales unit, e.g. 'Caja 100 un' — optional; absent on legacy docs
   images?: string[];             // URLs of product photos in Firebase Storage / CDN
   packageContents?: string[];    // Itemized checklist of box contents for clinic
   manufacturer?: string;         // Clinical manufacturer
@@ -147,7 +148,7 @@ export interface OrderStatusHistory {
   actorRole: AuditActorRole;     // Security attribution role
   timestamp: string;             // ISO 8601 timestamp
   reason: string;                // Operational justification
-  metadata?: Record<string, any>;// Carrier, tracking number, payment ID, etc.
+  metadata?: Record<string, unknown>;// Carrier, tracking number, payment ID, etc.
 }
 ```
 
@@ -175,9 +176,43 @@ export interface InventoryAuditLog {
   changedByEmail?: string | null;
   actorRole: AuditActorRole;
   timestamp: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 ```
+
+---
+
+### 2.7 Deliberate Type Escapes & Widened Records (as built)
+
+Two type-surface decisions were made while bringing the repo under ESLint's `no-explicit-any` error rule. Both are intentional — read this before "tidying" them.
+
+#### `Order.createdAt` stays `any` — with an inline suppression
+
+```ts
+export interface Order {
+  orderId: string
+  /**
+   * Firestore order timestamp: written as a `serverTimestamp()` sentinel, read
+   * back as a `Timestamp`, seeded as an ISO string. Deliberately left open —
+   * the admin portal passes this straight to `new Date(...)`, so narrowing it
+   * here breaks `src/admin/components/OrderTable.tsx`. Tighten both sides
+   * together in a dedicated pass.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  createdAt?: any
+}
+```
+
+* **Attempted and reverted:** typing this as `Timestamp | FieldValue | string` (via a type-only `firebase/firestore` import) is the *correct* model, but it breaks compilation in `src/admin/components/OrderTable.tsx`, which does `new Date(order.createdAt)` at three call sites. `new Date()` only accepts `string | number | Date`, so **no** precise union works without also changing the admin portal.
+* **Do not narrow `createdAt` unilaterally.** Narrowing it and the admin read path must happen in the same change, as its own reviewed task. This is the single permitted `any` in the codebase.
+* `serverTimestamp()` is still the correct write value — do not switch order creation to a client `new Date()` just to make the type nicer; that would trade a server-authoritative timestamp for the clinic's device clock.
+
+#### Audit `metadata` is `Record<string, unknown>`, not `Record<string, any>`
+
+`OrderStatusHistory.metadata` and `InventoryAuditLog.metadata` were widened from `any` to `unknown` values. Rationale: these records carry operator- and system-supplied context (carrier, tracking number, payment ID, reason codes) whose *shape is not part of the domain contract*. `unknown` forces any consumer to narrow before use, while `any` silently propagated untyped access through the audit timeline UI.
+
+* **Consumer rule:** cast at the point of use (e.g. `const meta = entry.metadata as { carrier?: string }`) rather than loosening the interface.
+* **Producer rule:** the serverless webhooks and admin endpoints that write these records are unchanged — only the *read* typing tightened.
 
 ---
 

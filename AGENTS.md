@@ -9,9 +9,9 @@ This document is the root-level source of truth for any AI agent or engineer wor
 ## 🎯 1. Project Mission & Context
 
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
-* **Primary Geography:** Melipilla (warehouse & express local delivery) + Región Metropolitana (courier delivery).
-* **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, legal tax invoices (**Factura Electrónica** with 19% IVA), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (343 tests across 54 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
+* **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
+* **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (377 tests across 55 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -53,12 +53,18 @@ Every feature touching currency, identity, or taxation must strictly conform to 
 2. **RUT / RUN Validation (Modulo 11):**
    * All customer and clinic tax IDs must be validated using the official Chilean Modulo 11 check digit algorithm provided in [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts).
    * Store cleaned RUTs (digits + hyphen + check digit e.g., `12345678-5`) and format for display with thousand separators (`12.345.678-5`).
-3. **Tax Invoicing Compliance (SII):**
-   * Transactions must support both:
-     * **Boleta Electrónica:** For individual buyers (RUT + Name).
-     * **Factura Electrónica:** For registered dental clinics claiming tax credit (RUT Empresa, Razón Social, Giro Comercial, and registered fiscal address).
-4. **Delivery Logistics:**
-   * Support: Local Pickup in Melipilla (Av. Ortúzar), Local Urban Delivery, and Regional Shipping (Starken/Chilexpress).
+3. **Tax Invoicing Compliance (SII) — Boleta only, as built:**
+   * The storefront issues **Boleta Electrónica only**. `CheckoutModal.tsx` carries a single `📄 Boleta Electrónica` document card; the Factura path is retained in code but gated behind `const FACTURA_ENABLED = false` (the order schema still carries `documentType` plus the optional Factura fields, so re-enabling is a one-line change).
+   * **Do not advertise "Factura Electrónica Inmediata (19% IVA)"** anywhere on the storefront — that copy was swept to `Boleta Electrónica · IVA 19%`.
+   * Clinics that need a Factura are routed through the WhatsApp quotation path (`¿Necesitas Factura Electrónica para tu clínica? Cotízala por WhatsApp.`), and the Footer carries `Factura para Clínicas — Cotización por WhatsApp`.
+   * The order document still models both: **Boleta Electrónica** (RUT + Name) and **Factura Electrónica** (RUT Empresa, Razón Social, Giro Comercial, registered fiscal address) — see [src/types/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/AGENTS.md).
+4. **Delivery Logistics — Melipilla + San Antonio only, no pickup:**
+   * **Zones:** `Melipilla` (urban delivery, same day for orders confirmed before 16:00) and `San Antonio` (scheduled route). Both live in [`src/config/delivery.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/delivery.ts) as `DELIVERY_ZONES`; checkout exposes them as a `Comuna de Despacho` **select** (default `Melipilla`) instead of a free-text commune field.
+   * **Minimum order:** `MIN_ORDER_OUTSIDE_MELIPILLA = 60000` applies to **San Antonio delivery eligibility only** — `Melipilla` has no minimum. It is the only minimum-sale amount in the system and is enforced at Step 1 → Step 2.
+   * **Free shipping:** `FREE_SHIPPING_THRESHOLD = 150000`, applies to **both** zones.
+   * ❌ **No pickup / retiro as a fulfilment option.** "Retiro Presencial", "retiro express" and similar wording are removed. `Bodega: Av. Ortúzar 750, Melipilla` remains as *corporate/warehouse* information only — it identifies the physical depot, it is not a collection point customers can select.
+   * ❌ **No `RM` delivery copy.** San Antonio is in the Valparaíso region, so coverage copy reads `Melipilla y San Antonio`, never `Melipilla y RM`.
+   * `FREE_SHIPPING_THRESHOLD` and the zone list are imported from `src/config/delivery.ts` — never re-declare them locally (the Footer previously advertised `$100.000` while the cart computed `150000`).
 
 ---
 
@@ -90,6 +96,8 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 | [`src/data/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/data) | Static product catalog definitions, categories, and seed fixtures | [src/data/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/data/AGENTS.md) |
 | [`src/types/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/types) | Central domain models, relational audit history interfaces, and TypeScript contracts | [src/types/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/AGENTS.md) |
 | [`src/utils/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils) | Pure helper functions (RUT Modulo 11 validation, CLP formatting, tax math, schema validators) | [src/utils/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/AGENTS.md) |
+| [`src/config/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/config) | Shared commercial constants: `delivery.ts` (zones, free-shipping and minimum-order thresholds), `contact.ts` (WhatsApp number/display/link), `bankDetails.ts` | — |
+| [`src/hooks/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/hooks) | Reusable React hooks with DOM side effects (`useScrollLock`, `useFocusTrap`). **Not** in `src/utils/` — that directory is contractually pure (no hooks, no DOM, no side effects) | — |
 | [`src/tests/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests) | Vitest test suites maintaining 100% test reliability | [src/tests/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/AGENTS.md) |
 
 ---
@@ -100,11 +108,19 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 54 suites / 343 tests)
+# Run all automated tests (Vitest, 55 suites / 377 tests)
 pnpm test
 
 # Run tests with live file watcher
 pnpm test:watch
+
+# Lint the repo (ESLint flat config, zero errors expected)
+pnpm lint
+pnpm lint:fix
+
+# Check or apply the declared Prettier formatting
+pnpm format:check
+pnpm format
 
 # Build production bundle for Vercel (dist/index.html & dist/admin.html)
 pnpm build
@@ -117,6 +133,9 @@ pnpm run deploy:rules
 
 # Provision an administrator account for the backoffice portal (/admin)
 pnpm run setup:admin tu-email@prontoinsumos.cl TuPasswordSegura123!
+# NOTE: this script initializes its Firebase Auth client with getAuth(app). It must be
+# created from the app instance returned by initializeApp/cert — the script previously
+# referenced a bare `auth` identifier that was never defined and always threw ReferenceError.
 
 # --- Isolated Development / QA Testing Database Operations ---
 pnpm run schema:validate:dev     # Validate isolated dev_* collections against frozen schema
@@ -144,7 +163,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 343+ tests pass
+pnpm test          # Ensure all 377+ tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Deploy a Staging / Preview Release (Generates a unique preview URL)
@@ -157,4 +176,54 @@ pnpm dlx vercel --prod
 ### 🛡️ Deployment Guardrails
 * **Pre-Flight Testing:** Never execute `vercel --prod` without first confirming that `pnpm test` and `pnpm build` succeed without errors.
 * **Environment Variable Sync:** When introducing new environment variables (client or server), add them to `.env.example` and set them in the Vercel Dashboard before running `vercel --prod`.
+* **`public/og-preview.png` is a hard gate for `vercel --prod`:** `index.html` references `https://pronto-insumos.vercel.app/og-preview.png` from `og:image`, `twitter:image` and the JSON-LD `image`. That file is a **human-produced asset** (redesign proposal Appendix B.1) and is currently **absent**, so link previews of the storefront — including the WhatsApp shares that are one of PRONTO's own sales channels — render a broken image. The meta tags ship regardless; ❌ **never generate a substitute image**, and do not promote to production until the real 1200×630 PNG (≤300 KB) has been dropped at `public/og-preview.png`. The favicon, by contrast, has a final turnkey SVG already committed at `public/favicon.svg`.
 
+---
+
+## 🧹 8. Code Style, Formatting & Linting
+
+The repository previously had no declared style. Editors with format-on-save enabled (the repo owner's IDE does) silently rewrote every touched file to Prettier's *defaults* — double quotes, semicolons, 80 columns — which contradicted the single-quote / no-semicolon style that 100% of `src/` already used. A three-line change could land as a 40-line diff.
+
+That is now fixed by declaring the rules in-repo, so format-on-save is a near no-op.
+
+### 8.1 The declared style (`.prettierrc`)
+
+```json
+{ "printWidth": 120, "tabWidth": 2, "semi": false, "singleQuote": true,
+  "jsxSingleQuote": false, "trailingComma": "none", "arrowParens": "always",
+  "bracketSpacing": true, "endOfLine": "lf" }
+```
+
+These values were chosen to **match the style the codebase already used**, not to impose a new one. `.editorconfig` gives non-Prettier editors the same baseline. `pnpm format:check` is the source of truth; it must pass.
+
+### 8.2 Deliberate exclusions (`.prettierignore`)
+
+| Excluded | Why |
+| :--- | :--- |
+| `*.md` | The AGENTS.md policy files, `PRODUCTION_READINESS_TODO.md` and the redesign proposal of record are read **verbatim** by agents. Prettier's Markdown printer reflows tables, rewrites `*` bullets to `-` and `*emphasis*` to `_emphasis_` — a content-level rewrite of documents whose formatting is intentional. |
+| `src/admin/**`, `api/**`, `admin.html` | **Temporary carve-out.** Excluded so the storefront UI overhaul did not touch trees outside its scope. Remove these lines and run `pnpm format` once that work has landed. |
+| `pnpm-lock.yaml`, `dist`, `coverage`, `public` | Generated / vendored. |
+
+### 8.3 ESLint (`eslint.config.js`)
+
+Flat config: `js.configs.recommended` + `typescript-eslint` recommended + `react-hooks` (`recommended-latest`) + `react-refresh`. `pnpm lint` currently reports **zero errors and zero warnings** across 38 files.
+
+* **Scope carve-out:** `src/admin/**` and `api/**` are in the `ignores` list. They carry their own runtime contracts and were outside the scope of the pass that introduced ESLint. Widen `ignores` in a dedicated follow-up.
+* **React Compiler-era rules are enabled and respected.** `react-hooks/set-state-in-effect` and `react-hooks/immutability` are **not** downgraded to warnings. The codebase was refactored to satisfy them — see §8.4. Do not re-introduce synchronous `setState` inside an effect body to "simplify" something; `pnpm lint` will fail.
+* **`no-explicit-any` is an error, with exactly one documented exception:** `Order.createdAt` in `src/types/index.ts`. See [src/types/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/AGENTS.md).
+
+### 8.4 Patterns adopted to satisfy the hooks rules
+
+| Pattern | Where | Contract |
+| :--- | :--- | :--- |
+| `loading` derived from a request key, not `setState` in an effect | `App.tsx` | `loading === (loadedRequestKey !== catalogRequestKey)`. A filter change flips `loading` during render; the fetch only writes `loadedRequestKey` in its `finally`. |
+| URL bootstrap parsed once at module scope, consumed by lazy `useState` initializers | `App.tsx` (`parseUrlBootstrap`) | The mount effect performs **only** external side effects (`clearCartFromStorage`, `history.replaceState`). Never move the payment-return/tracking parsing back into an effect with `setState`. |
+| Cart revalidation runs after the awaited fetch, reading a `cartRef` mirror | `App.tsx` | Keeps `cart` out of the effect's dependency array (which would re-fetch on every cart change) while still satisfying `exhaustive-deps`. |
+| Overlay state scoped by remount instead of a reset effect | `ProductQuickView` (`key={product.id}`), `OrderTrackingModal` (mounted only while open) | Callers **must** keep the `key` / the conditional render. Removing them silently reintroduces stale gallery/quantity/form state. |
+| Every state update in an auto-search effect happens after the `await` | `OrderTrackingModal` | The effect body itself must stay free of synchronous `setState`. |
+
+### 8.5 Working rules for future agents
+
+1. **Never reformat files you did not change.** If a diff shows formatting-only hunks in untouched regions, something is misconfigured — check `.prettierrc` is being picked up.
+2. Run `pnpm lint` and `pnpm format:check` alongside `pnpm test` and `pnpm build` before committing.
+3. `git blame` on the formatting sweep is noise by design — that was a deliberate one-time normalization (`style: apply the declared formatting rules repo-wide`).

@@ -1,5 +1,11 @@
 import { validateRut } from './rut'
-import type { OrderStatus, PaymentMethod, Product, Order, OrderStatusHistory, InventoryAuditLog } from '../types'
+import type { OrderStatus, PaymentMethod } from '../types'
+
+/**
+ * Loose view of an unvalidated Firestore document. Validators receive `unknown`
+ * and narrow through this shape so every field access stays type-checked.
+ */
+type SchemaDoc = Record<string, unknown>
 
 const VALID_ORDER_STATUSES: OrderStatus[] = [
   'PENDIENTE_PAGO_MERCADOPAGO',
@@ -26,12 +32,14 @@ export interface ValidationResult {
 /**
  * Validates that a document strictly conforms to the frozen ProductDocument schema.
  */
-export function validateProductSchema(doc: any): ValidationResult {
+export function validateProductSchema(input: unknown): ValidationResult {
   const errors: string[] = []
 
-  if (!doc || typeof doc !== 'object') {
+  if (!input || typeof input !== 'object') {
     return { valid: false, errors: ['El documento debe ser un objeto válido'] }
   }
+
+  const doc = input as SchemaDoc
 
   if (!doc.id || typeof doc.id !== 'string' || doc.id.trim() === '') {
     errors.push('Campo "id" es requerido y debe ser string no vacío')
@@ -73,6 +81,13 @@ export function validateProductSchema(doc: any): ValidationResult {
     errors.push('Campo "specs" debe ser un arreglo de strings')
   }
 
+  if (
+    doc.unitOfSale !== undefined &&
+    (typeof doc.unitOfSale !== 'string' || doc.unitOfSale.trim() === '' || doc.unitOfSale.length > 60)
+  ) {
+    errors.push('Campo "unitOfSale" debe ser un string no vacío de hasta 60 caracteres si está presente')
+  }
+
   return {
     valid: errors.length === 0,
     errors
@@ -82,18 +97,20 @@ export function validateProductSchema(doc: any): ValidationResult {
 /**
  * Validates that a document strictly conforms to the frozen OrderDocument schema.
  */
-export function validateOrderSchema(doc: any): ValidationResult {
+export function validateOrderSchema(input: unknown): ValidationResult {
   const errors: string[] = []
 
-  if (!doc || typeof doc !== 'object') {
+  if (!input || typeof input !== 'object') {
     return { valid: false, errors: ['El documento debe ser un objeto válido'] }
   }
+
+  const doc = input as SchemaDoc
 
   if (!doc.orderId || typeof doc.orderId !== 'string' || doc.orderId.trim() === '') {
     errors.push('Campo "orderId" es requerido y debe ser string no vacío')
   }
 
-  if (!VALID_ORDER_STATUSES.includes(doc.status)) {
+  if (!VALID_ORDER_STATUSES.includes(doc.status as OrderStatus)) {
     errors.push(`Estado "${doc.status}" no es un OrderStatus válido`)
   }
 
@@ -101,7 +118,7 @@ export function validateOrderSchema(doc: any): ValidationResult {
     errors.push('Campo "totalAmount" debe ser un entero positivo en CLP')
   }
 
-  if (!VALID_PAYMENT_METHODS.includes(doc.paymentMethod)) {
+  if (!VALID_PAYMENT_METHODS.includes(doc.paymentMethod as PaymentMethod)) {
     errors.push(`Método de pago "${doc.paymentMethod}" no es válido`)
   }
 
@@ -109,10 +126,12 @@ export function validateOrderSchema(doc: any): ValidationResult {
   if (!doc.customer || typeof doc.customer !== 'object') {
     errors.push('Campo "customer" es requerido y debe ser un objeto')
   } else {
-    const c = doc.customer
+    const c = doc.customer as SchemaDoc
     if (!c.fullName || typeof c.fullName !== 'string') errors.push('customer.fullName es requerido')
-    if (!c.email || typeof c.email !== 'string' || !c.email.includes('@')) errors.push('customer.email debe ser un correo válido')
-    if (!c.rut || !validateRut(c.rut)) errors.push('customer.rut no es un RUT chileno válido (Módulo 11)')
+    if (!c.email || typeof c.email !== 'string' || !c.email.includes('@'))
+      errors.push('customer.email debe ser un correo válido')
+    if (typeof c.rut !== 'string' || !validateRut(c.rut))
+      errors.push('customer.rut no es un RUT chileno válido (Módulo 11)')
     if (!c.address || typeof c.address !== 'string') errors.push('customer.address es requerido')
     if (!c.city || typeof c.city !== 'string') errors.push('customer.city es requerido')
 
@@ -130,7 +149,7 @@ export function validateOrderSchema(doc: any): ValidationResult {
   if (!Array.isArray(doc.items) || doc.items.length === 0) {
     errors.push('Campo "items" debe ser un arreglo con al menos un producto')
   } else {
-    doc.items.forEach((item: any, idx: number) => {
+    ;(doc.items as SchemaDoc[]).forEach((item, idx: number) => {
       const pid = item.productId || item.id
       if (!pid || typeof pid !== 'string') errors.push(`item[${idx}]: productId es requerido`)
       if (!item.name || typeof item.name !== 'string') errors.push(`item[${idx}]: name es requerido`)
@@ -152,15 +171,18 @@ export function validateOrderSchema(doc: any): ValidationResult {
 /**
  * Validates that an OrderStatusHistory record is complete and valid.
  */
-export function validateOrderStatusHistorySchema(doc: any): ValidationResult {
+export function validateOrderStatusHistorySchema(input: unknown): ValidationResult {
   const errors: string[] = []
 
-  if (!doc || typeof doc !== 'object') {
+  if (!input || typeof input !== 'object') {
     return { valid: false, errors: ['El registro debe ser un objeto válido'] }
   }
 
+  const doc = input as SchemaDoc
+
   if (!doc.orderId || typeof doc.orderId !== 'string') errors.push('orderId es requerido')
-  if (!VALID_ORDER_STATUSES.includes(doc.newStatus)) errors.push(`newStatus "${doc.newStatus}" no es válido`)
+  if (!VALID_ORDER_STATUSES.includes(doc.newStatus as OrderStatus))
+    errors.push(`newStatus "${doc.newStatus}" no es válido`)
   if (!doc.changedBy || typeof doc.changedBy !== 'string') errors.push('changedBy es requerido')
   if (!doc.actorRole || typeof doc.actorRole !== 'string') errors.push('actorRole es requerido')
   if (!doc.timestamp || typeof doc.timestamp !== 'string') errors.push('timestamp ISO es requerido')
@@ -175,12 +197,14 @@ export function validateOrderStatusHistorySchema(doc: any): ValidationResult {
 /**
  * Validates that an InventoryAuditLog record is complete and valid.
  */
-export function validateInventoryAuditLogSchema(doc: any): ValidationResult {
+export function validateInventoryAuditLogSchema(input: unknown): ValidationResult {
   const errors: string[] = []
 
-  if (!doc || typeof doc !== 'object') {
+  if (!input || typeof input !== 'object') {
     return { valid: false, errors: ['El registro debe ser un objeto válido'] }
   }
+
+  const doc = input as SchemaDoc
 
   if (!doc.productId || typeof doc.productId !== 'string') errors.push('productId es requerido')
   if (!doc.changeType || typeof doc.changeType !== 'string') errors.push('changeType es requerido')

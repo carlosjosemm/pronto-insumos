@@ -41,9 +41,46 @@ describe('Firestore Schema Validation Utility (src/utils/schemaValidation.ts)', 
 
       const res = validateProductSchema(invalidProduct)
       expect(res.valid).toBe(false)
-      expect(res.errors.some(e => e.includes('entero positivo en CLP'))).toBe(true)
-      expect(res.errors.some(e => e.includes('mayor o igual a 0'))).toBe(true)
-      expect(res.errors.some(e => e.includes('booleano'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('entero positivo en CLP'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('mayor o igual a 0'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('booleano'))).toBe(true)
+    })
+
+    it('accepts an optional unitOfSale string and omits it from legacy documents', () => {
+      const base = {
+        id: 'odon-003',
+        name: 'Resina Compuesta',
+        category: 'Operatoria',
+        price: 79990,
+        stockCount: 10,
+        inStock: true,
+        prescriptionRequired: false
+      }
+
+      const withUnit = validateProductSchema({ ...base, unitOfSale: 'Caja 100 un' })
+      expect(withUnit.valid).toBe(true)
+
+      // Optional: a document without the field (every legacy doc) stays valid
+      const withoutUnit = validateProductSchema(base)
+      expect(withoutUnit.valid).toBe(true)
+    })
+
+    it('rejects unitOfSale when it is not a non-empty string of at most 60 characters', () => {
+      const base = {
+        id: 'odon-004',
+        name: 'Resina Compuesta',
+        category: 'Operatoria',
+        price: 79990,
+        stockCount: 10,
+        inStock: true,
+        prescriptionRequired: false
+      }
+
+      for (const badUnit of [42, '', '   ', 'x'.repeat(61)]) {
+        const res = validateProductSchema({ ...base, unitOfSale: badUnit })
+        expect(res.valid).toBe(false)
+        expect(res.errors.some((e) => e.includes('unitOfSale'))).toBe(true)
+      }
     })
   })
 
@@ -101,9 +138,9 @@ describe('Firestore Schema Validation Utility (src/utils/schemaValidation.ts)', 
 
       const res = validateOrderSchema(invalidOrder)
       expect(res.valid).toBe(false)
-      expect(res.errors.some(e => e.includes('Módulo 11'))).toBe(true)
-      expect(res.errors.some(e => e.includes('razonSocial'))).toBe(true)
-      expect(res.errors.some(e => e.includes('items'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('Módulo 11'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('razonSocial'))).toBe(true)
+      expect(res.errors.some((e) => e.includes('items'))).toBe(true)
     })
   })
 

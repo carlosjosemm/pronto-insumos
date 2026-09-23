@@ -14,12 +14,12 @@ vi.mock('../../../../api/lib/firebaseAdmin', () => ({
 
 describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
   let mockRes: Partial<VercelResponse>
-  let jsonOutput: any
+  let jsonOutput: Record<string, unknown> = {}
   let statusOutput: number
 
   beforeEach(() => {
     vi.clearAllMocks()
-    jsonOutput = null
+    jsonOutput = {}
     statusOutput = 200
 
     mockRes = {
@@ -28,8 +28,8 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
         statusOutput = code
         return mockRes as VercelResponse
       }),
-      json: vi.fn((data: any) => {
-        jsonOutput = data
+      json: vi.fn((data: unknown) => {
+        jsonOutput = data as Record<string, unknown>
         return mockRes as VercelResponse
       }),
       end: vi.fn()
@@ -66,7 +66,9 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
       batch: vi.fn(() => mockBatch)
     }
 
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = {
       method: 'POST',
@@ -82,14 +84,20 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.stockCount).toBe(12)
-    expect(mockBatch.update).toHaveBeenCalledWith(mockDoc, expect.objectContaining({
-      stockCount: 12,
-      inStock: true
-    }))
-    expect(mockBatch.set).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      changeType: 'STOCK_ADJUSTMENT',
-      reasonCode: 'reposicion'
-    }))
+    expect(mockBatch.update).toHaveBeenCalledWith(
+      mockDoc,
+      expect.objectContaining({
+        stockCount: 12,
+        inStock: true
+      })
+    )
+    expect(mockBatch.set).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        changeType: 'STOCK_ADJUSTMENT',
+        reasonCode: 'reposicion'
+      })
+    )
     expect(jsonOutput.inStock).toBe(true)
   })
 
@@ -110,7 +118,9 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
       batch: vi.fn(() => mockBatch)
     }
 
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = {
       method: 'POST',
@@ -127,9 +137,12 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.stockCount).toBe(25)
     expect(jsonOutput.inStock).toBe(false)
-    expect(mockBatch.update).toHaveBeenCalledWith(mockDoc, expect.objectContaining({
-      stockCount: 25,
-      inStock: false
-    }))
+    expect(mockBatch.update).toHaveBeenCalledWith(
+      mockDoc,
+      expect.objectContaining({
+        stockCount: 25,
+        inStock: false
+      })
+    )
   })
 })

@@ -22,9 +22,7 @@ describe('OrderTrackingModal Component (src/components/OrderTrackingModal)', () 
   })
 
   it('should render nothing when isOpen is false', () => {
-    const { container } = render(
-      <OrderTrackingModal isOpen={false} onClose={() => {}} />
-    )
+    const { container } = render(<OrderTrackingModal isOpen={false} onClose={() => {}} />)
     expect(container.innerHTML).toBe('')
   })
 
@@ -77,19 +75,15 @@ describe('OrderTrackingModal Component (src/components/OrderTrackingModal)', () 
         fulfillment: {
           currentStep: 3,
           statusTitle: 'Preparando en Bodega',
-          statusDescription: 'Tus insumos odontológicos están siendo acondicionados en nuestra bodega central en Melipilla.',
+          statusDescription:
+            'Tus insumos odontológicos están siendo acondicionados en nuestra bodega central en Melipilla.',
           courier: 'Despacho Local Express Melipilla'
         }
       }
     })
 
     render(
-      <OrderTrackingModal
-        isOpen={true}
-        onClose={() => {}}
-        initialOrderId="PRONTO-789012"
-        initialRut="12.345.678-5"
-      />
+      <OrderTrackingModal isOpen={true} onClose={() => {}} initialOrderId="PRONTO-789012" initialRut="12.345.678-5" />
     )
 
     // Form auto-submits on open if valid orderId and RUT are provided
@@ -141,12 +135,7 @@ describe('OrderTrackingModal Component (src/components/OrderTrackingModal)', () 
     })
 
     render(
-      <OrderTrackingModal
-        isOpen={true}
-        onClose={() => {}}
-        initialOrderId="PRONTO-112233"
-        initialRut="12.345.678-5"
-      />
+      <OrderTrackingModal isOpen={true} onClose={() => {}} initialOrderId="PRONTO-112233" initialRut="12.345.678-5" />
     )
 
     await waitFor(() => {

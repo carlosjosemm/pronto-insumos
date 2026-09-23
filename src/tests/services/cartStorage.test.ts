@@ -50,9 +50,7 @@ describe('cartStorage service', () => {
 
   describe('saveCartToStorage & loadCartFromStorage', () => {
     it('should save and load cart items with applied promo correctly', () => {
-      const cartItems: CartItem[] = [
-        { product: MOCK_PRODUCT, quantity: 2 }
-      ]
+      const cartItems: CartItem[] = [{ product: MOCK_PRODUCT, quantity: 2 }]
 
       const success = saveCartToStorage(cartItems, MOCK_PROMO)
       expect(success).toBe(true)
@@ -116,7 +114,7 @@ describe('cartStorage service', () => {
     })
 
     it('should retain entries that are within the 7-day TTL window', () => {
-      const validRecentTimestamp = Date.now() - (24 * 60 * 60 * 1000) // 1 day ago
+      const validRecentTimestamp = Date.now() - 24 * 60 * 60 * 1000 // 1 day ago
       const validData = {
         version: CART_STORAGE_VERSION,
         savedAt: validRecentTimestamp,

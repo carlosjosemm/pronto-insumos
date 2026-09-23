@@ -2,7 +2,17 @@ import { PRODUCTS, MOCK_PROMOS } from '../data/products'
 import { db } from './firebase'
 import { getCollectionName } from './firestoreEnv'
 import { collection, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
-import { BillingInfo, CartItem, CustomerInfo, Order, OrderStatus, PaymentMethod, Product, PromoCode, SanitaryVerification } from '../types'
+import {
+  BillingInfo,
+  CartItem,
+  CustomerInfo,
+  Order,
+  OrderStatus,
+  PaymentMethod,
+  Product,
+  PromoCode,
+  SanitaryVerification
+} from '../types'
 import { calculateTaxBreakdown } from '../utils/tax'
 
 export interface FetchProductsOptions {
@@ -46,12 +56,9 @@ export async function fetchProducts({
   sortBy = 'featured',
   inStockOnly = false
 }: FetchProductsOptions = {}): Promise<Product[]> {
-  let result: Product[] = []
+  let result: Product[]
 
-  const hasFirebaseConfig = Boolean(
-    import.meta.env.VITE_FIREBASE_PROJECT_ID && 
-    import.meta.env.VITE_FIREBASE_API_KEY
-  )
+  const hasFirebaseConfig = Boolean(import.meta.env.VITE_FIREBASE_PROJECT_ID && import.meta.env.VITE_FIREBASE_API_KEY)
 
   if (hasFirebaseConfig) {
     try {
@@ -59,9 +66,7 @@ export async function fetchProducts({
         const productsRef = collection(db, getCollectionName('products'))
         const snapshot = await getDocs(productsRef)
         if (!snapshot.empty) {
-          return snapshot.docs
-            .map(d => ({ id: d.id, ...d.data() }) as Product)
-            .filter(p => p.isActive !== false)
+          return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Product).filter((p) => p.isActive !== false)
         }
         return [...PRODUCTS]
       })()
@@ -71,8 +76,8 @@ export async function fetchProducts({
       )
 
       result = await Promise.race([fetchPromise, timeoutPromise])
-    } catch (err: any) {
-      console.warn('Firestore catalog fallback to local products:', err.message)
+    } catch (err: unknown) {
+      console.warn('Firestore catalog fallback to local products:', err instanceof Error ? err.message : err)
       result = [...PRODUCTS]
     }
   } else {
@@ -82,17 +87,18 @@ export async function fetchProducts({
 
   // Filter by category
   if (category && category !== 'all') {
-    result = result.filter(p => p.category.toLowerCase() === category.toLowerCase())
+    result = result.filter((p) => p.category.toLowerCase() === category.toLowerCase())
   }
 
   // Filter by search term
   if (search.trim()) {
     const q = search.toLowerCase().trim()
-    result = result.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.description.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q) ||
-      p.tag.toLowerCase().includes(q)
+    result = result.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        p.tag.toLowerCase().includes(q)
     )
   }
 
@@ -101,7 +107,7 @@ export async function fetchProducts({
 
   // Filter by stock
   if (inStockOnly) {
-    result = result.filter(p => isAvailableStock(p))
+    result = result.filter((p) => isAvailableStock(p))
   }
 
   // Sort by requested criterion
@@ -116,15 +122,15 @@ export async function fetchProducts({
   }
 
   // Always push out-of-stock products to the bottom so clients see available products first
-  const inStockList = result.filter(p => isAvailableStock(p))
-  const outOfStockList = result.filter(p => !isAvailableStock(p))
+  const inStockList = result.filter((p) => isAvailableStock(p))
+  const outOfStockList = result.filter((p) => !isAvailableStock(p))
   result = [...inStockList, ...outOfStockList]
 
   return result
 }
 
 export async function validatePromo(code: string): Promise<{ success: boolean; promo?: PromoCode; error?: string }> {
-  await new Promise(resolve => setTimeout(resolve, 150))
+  await new Promise((resolve) => setTimeout(resolve, 150))
   const clean = code.trim().toUpperCase()
   if (MOCK_PROMOS[clean]) {
     return { success: true, promo: MOCK_PROMOS[clean] }
@@ -166,7 +172,7 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     customer: orderData.customer,
     billing,
     sanitaryVerification: orderData.sanitaryVerification || orderData.customer.sanitaryVerification,
-    items: orderData.items.map(item => ({
+    items: orderData.items.map((item) => ({
       productId: item.product.id,
       name: item.product.name,
       quantity: item.quantity,
@@ -177,8 +183,8 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
   try {
     const orderDocRef = doc(db, getCollectionName('orders'), orderId)
     await setDoc(orderDocRef, payload)
-  } catch (err: any) {
-    console.warn('Firestore order submit notice:', err.message)
+  } catch (err: unknown) {
+    console.warn('Firestore order submit notice:', err instanceof Error ? err.message : err)
   }
 
   return {

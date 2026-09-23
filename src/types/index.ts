@@ -6,10 +6,7 @@ export type ChileanDentalCategory =
   | 'INSTRUMENTAL Y ACCESORIOS'
   | 'OPERATORIA'
 
-export type ProductCategory =
-  | 'all'
-  | ChileanDentalCategory
-  | (string & {})
+export type ProductCategory = 'all' | ChileanDentalCategory | (string & {})
 
 export interface Category {
   id: ProductCategory
@@ -38,6 +35,7 @@ export interface Product {
   specs: string[]
   placeholderTheme: string
   mediaBadge?: string
+  unitOfSale?: string // Human-readable sales unit, e.g. 'Caja 100 un' — optional; absent on legacy docs
   images?: string[]
   packageContents?: string[]
   manufacturer?: string
@@ -109,6 +107,14 @@ export type OrderStatus =
 
 export interface Order {
   orderId: string
+  /**
+   * Firestore order timestamp: written as a `serverTimestamp()` sentinel, read
+   * back as a `Timestamp`, seeded as an ISO string. Deliberately left open —
+   * the admin portal passes this straight to `new Date(...)`, so narrowing it
+   * here breaks `src/admin/components/OrderTable.tsx`. Tighten both sides
+   * together in a dedicated pass.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createdAt?: any
   updatedAt?: string
   paymentMethod: PaymentMethod
@@ -222,15 +228,11 @@ export interface OrderStatusHistory {
   actorRole: AuditActorRole
   timestamp: string
   reason: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export type InventoryChangeType =
-  | 'STOCK_ADJUSTMENT'
-  | 'ORDER_FULFILLMENT_DEDUCTION'
-  | 'METADATA_UPDATE'
-  | 'VISIBILITY_TOGGLE'
-  | 'CATALOG_SEED'
+  'STOCK_ADJUSTMENT' | 'ORDER_FULFILLMENT_DEDUCTION' | 'METADATA_UPDATE' | 'VISIBILITY_TOGGLE' | 'CATALOG_SEED'
 
 export interface InventoryAuditLog {
   id: string
@@ -247,6 +249,5 @@ export interface InventoryAuditLog {
   changedByEmail?: string | null
   actorRole: AuditActorRole
   timestamp: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
-

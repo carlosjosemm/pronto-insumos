@@ -12,8 +12,8 @@ const mockProduct: Product = {
   name: 'Fotocurador Clínico LED Spectrum',
   category: 'Diagnostics',
   manufacturer: 'Woodpecker',
-  price: 150.00,
-  originalPrice: 190.00,
+  price: 150.0,
+  originalPrice: 190.0,
   rating: 4.9,
   reviewsCount: 38,
   inStock: true,
@@ -28,29 +28,38 @@ const mockProduct: Product = {
 
 describe('Clinical Storefront UI/UX Enhancement Tests', () => {
   describe('Navbar & Top Commercial Utility Bar', () => {
-    it('should display the top utility bar announcements for Melipilla and SII Factura', () => {
-      render(
-        <Navbar
-          search=""
-          setSearch={() => {}}
-          cartCount={2}
-          onOpenCart={() => {}}
-        />
-      )
-      expect(screen.getByText(/Despacho prioritario en Melipilla/i)).toBeInTheDocument()
-      expect(screen.getByText(/Factura Electrónica Inmediata \(19% IVA\)/i)).toBeInTheDocument()
+    it('should announce the Melipilla + San Antonio zone and the Boleta document', () => {
+      render(<Navbar search="" setSearch={() => {}} cartCount={2} onOpenCart={() => {}} />)
+      expect(screen.getByText('Despacho a clínicas en Melipilla y San Antonio')).toBeInTheDocument()
+      expect(screen.getByText('Boleta Electrónica · IVA 19%')).toBeInTheDocument()
       expect(screen.getByText(/Mesa Clínica: \+56 9 1234 5678/i)).toBeInTheDocument()
+      // The retired pickup wording and Factura advertising must not come back
+      expect(screen.queryByText(/Retiro en Av\. Ortúzar/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Factura Electrónica Inmediata/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/rutas RM/i)).not.toBeInTheDocument()
     })
   })
 
   describe('Hero Commercial Guarantee Card', () => {
-    it('should render authentic B2B commercial guarantees instead of fake SaaS telemetry', () => {
+    it('should render the final hero copy and the quiet inline trust row', () => {
       render(<Hero onExploreClick={() => {}} />)
-      expect(screen.getByText('Garantías Comerciales B2B')).toBeInTheDocument()
-      expect(screen.getByText(/Factura Electrónica Inmediata \(19% IVA\)/i)).toBeInTheDocument()
-      expect(screen.getByText(/Despacho Local y Retiro en Av\. Ortúzar/i)).toBeInTheDocument()
-      expect(screen.getByText(/Insumos Certificados y Homologados/i)).toBeInTheDocument()
-      expect(screen.getByText(/Mesa Técnica Directa WhatsApp/i)).toBeInTheDocument()
+      expect(screen.getByText('Depósito Dental · Melipilla')).toBeInTheDocument()
+      expect(screen.getByText(/El depósito dental que despacha/i)).toBeInTheDocument()
+      expect(screen.getByText('el mismo día')).toBeInTheDocument()
+      expect(screen.getByText('Boleta Electrónica · IVA 19%')).toBeInTheDocument()
+      expect(screen.getByText('Despacho el mismo día')).toBeInTheDocument()
+      expect(screen.getByText('Insumos Certificados ISP')).toBeInTheDocument()
+      expect(screen.getByText('Mesa Técnica WhatsApp')).toBeInTheDocument()
+      // The retired pill chrome and Factura advertising must not come back
+      expect(screen.queryByText('Garantías Comerciales B2B')).not.toBeInTheDocument()
+      expect(screen.queryByText('VALIDEZ SII')).not.toBeInTheDocument()
+      expect(screen.queryByText(/Factura Electrónica Inmediata/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Retiro en Av\. Ortúzar/i)).not.toBeInTheDocument()
+    })
+
+    it('should render the hand-drawn underline motif on the hero keyword', () => {
+      const { container } = render(<Hero onExploreClick={() => {}} />)
+      expect(container.querySelector('.hero-title-underline')).toBeInTheDocument()
     })
 
     it('should call onExploreClick when "Explorar Catálogo de Insumos" is clicked', () => {
@@ -63,32 +72,26 @@ describe('Clinical Storefront UI/UX Enhancement Tests', () => {
 
   describe('ProductCard Clinical Specifications', () => {
     it('should render formatted technical SKU REF code and NOT expose internal warehouse stock counts', () => {
-      render(
-        <ProductCard
-          product={mockProduct}
-          onAddToCart={() => {}}
-          onQuickView={() => {}}
-        />
-      )
+      render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
       expect(screen.getByText('REF: OD-TEST-500')).toBeInTheDocument()
       expect(screen.queryByText(/Bodega Melipilla/i)).not.toBeInTheDocument()
       expect(screen.queryByText(/12 en Bodega/i)).not.toBeInTheDocument()
     })
 
     it('should specify that the price includes IVA with simple wording', () => {
-      render(
-        <ProductCard
-          product={mockProduct}
-          onAddToCart={() => {}}
-          onQuickView={() => {}}
-        />
-      )
+      render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
       expect(screen.getByText(/IVA incluido/i)).toBeInTheDocument()
       expect(screen.queryByText(/Facturado/i)).not.toBeInTheDocument()
     })
   })
 
   describe('Footer B2B Grounding & Security', () => {
+    it('should render the canonical brand lockup with the INSUMOS ODONTOLÓGICOS descriptor', () => {
+      render(<Footer />)
+      expect(screen.getByText('INSUMOS ODONTOLÓGICOS')).toBeInTheDocument()
+      expect(screen.queryByText('PRONTO ODONTOLOGÍA')).not.toBeInTheDocument()
+    })
+
     it('should render corporate tax identification, physical warehouse, and operating hours', () => {
       render(<Footer />)
       expect(screen.getByText(/77\.892\.410-K/i)).toBeInTheDocument()

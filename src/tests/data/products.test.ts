@@ -7,21 +7,41 @@ describe('PRODUCTS catalog data integrity', () => {
   })
 
   it('should contain items flagged with prescriptionRequired for ISP compliance', () => {
-    const controlledItems = PRODUCTS.filter(p => p.prescriptionRequired)
+    const controlledItems = PRODUCTS.filter((p) => p.prescriptionRequired)
     expect(controlledItems.length).toBeGreaterThanOrEqual(1)
   })
 
   it('every product should have all required fields', () => {
     const requiredFields = [
-      'id', 'name', 'category', 'price', 'rating',
-      'reviewsCount', 'inStock', 'stockCount', 'prescriptionRequired',
-      'tag', 'description', 'specs', 'placeholderTheme', 'mediaBadge'
+      'id',
+      'name',
+      'category',
+      'price',
+      'rating',
+      'reviewsCount',
+      'inStock',
+      'stockCount',
+      'prescriptionRequired',
+      'tag',
+      'description',
+      'specs',
+      'placeholderTheme',
+      'mediaBadge',
+      'unitOfSale'
     ]
 
     for (const product of PRODUCTS) {
       for (const field of requiredFields) {
         expect(product).toHaveProperty(field)
       }
+    }
+  })
+
+  it('every product should carry a non-empty unitOfSale of at most 60 characters (D.5)', () => {
+    for (const product of PRODUCTS) {
+      expect(typeof product.unitOfSale).toBe('string')
+      expect(product.unitOfSale?.trim().length).toBeGreaterThan(0)
+      expect(product.unitOfSale?.length).toBeLessThanOrEqual(60)
     }
   })
 
@@ -55,15 +75,13 @@ describe('PRODUCTS catalog data integrity', () => {
   })
 
   it('should have no duplicate product IDs', () => {
-    const ids = PRODUCTS.map(p => p.id)
+    const ids = PRODUCTS.map((p) => p.id)
     const uniqueIds = new Set(ids)
     expect(uniqueIds.size).toBe(ids.length)
   })
 
   it('every product category should be one of the defined categories', () => {
-    const validCategories = CATEGORIES
-      .filter(c => c.id !== 'all')
-      .map(c => c.id as string)
+    const validCategories = CATEGORIES.filter((c) => c.id !== 'all').map((c) => c.id as string)
 
     for (const product of PRODUCTS) {
       expect(validCategories).toContain(product.category)
@@ -71,7 +89,7 @@ describe('PRODUCTS catalog data integrity', () => {
   })
 
   it('every defined category (except "all") should have at least one product', () => {
-    const productCategories = new Set(PRODUCTS.map(p => p.category))
+    const productCategories = new Set(PRODUCTS.map((p) => p.category))
     for (const cat of CATEGORIES) {
       if (cat.id !== 'all') {
         expect(productCategories.has(cat.id)).toBe(true)
@@ -90,7 +108,7 @@ describe('PRODUCTS catalog data integrity', () => {
 
 describe('CATEGORIES data integrity', () => {
   it('should include an "all" category', () => {
-    const allCat = CATEGORIES.find(c => c.id === 'all')
+    const allCat = CATEGORIES.find((c) => c.id === 'all')
     expect(allCat).toBeDefined()
   })
 

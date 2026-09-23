@@ -12,6 +12,7 @@ This document is the **authoritative algorithmic and technical guide** for the p
   - ❌ Zero network calls or asynchronous promises.
   - ❌ Zero React hooks (`useState`, `useEffect`).
   - Given identical input arguments, they must always return identical outputs.
+* **Where hooks live:** anything that needs React state or a DOM side effect belongs in [`src/hooks/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/hooks) (e.g. `useScrollLock`, `useFocusTrap`), **not** here. That directory exists precisely to keep this purity contract intact.
 * **Zero External Dependencies:** No `lodash`, `moment.js`, or external math libraries. Built entirely with modern ECMAScript standards and native `Intl` formatters.
 
 ---
@@ -83,27 +84,34 @@ Validates the mandatory attributes required by the SII before a Factura Electró
 
 To prevent data drift and ensure that all Firestore documents strictly satisfy domain rules before writing or migrating, `src/utils/schemaValidation.ts` implements pure, deterministic schema validators:
 
-#### 1. `validateProductSchema(doc: any): ValidationResult`
+> **Input contract (as built):** every validator takes `input: unknown`, not `doc: any`. They reject non-objects up front, then narrow through a module-local `type SchemaDoc = Record<string, unknown>` view before reading any field. This is deliberate: the validators exist precisely to inspect *untrusted* documents (CLI migrations, `scripts/manage-firestore-schema.ts`), so the parameter must not promise a shape. **Do not widen these back to `any`** — `no-explicit-any` is an error.
+>
+> **`as OrderStatus` / `as PaymentMethod` casts** on the two `VALID_*` membership checks are required because `Array.prototype.includes` is invariant; they are safe because the check is exactly what validates the value.
+>
+> **Behaviour change worth knowing:** the `customer.rut` check now reads `typeof c.rut !== 'string' || !validateRut(c.rut)`. Previously a non-string RUT was passed straight into `validateRut()`, which calls `rut.replace(...)` and would have thrown instead of reporting a validation error.
+
+#### 1. `validateProductSchema(input: unknown): ValidationResult`
 * Enforces required string `id`, `name`, and `category`.
 * Validates `price`: Must be a positive integer in CLP (zero decimals, no floating points).
 * Validates `stockCount`: Must be a non-negative integer (`>= 0`).
 * Validates boolean flags: `inStock`, `prescriptionRequired`, and optional `isActive`.
 * Asserts that array attributes (`specs`, `images`) are valid arrays.
+* Validates optional `unitOfSale`: when present it must be a **non-empty string of at most 60 characters** (`typeof !== 'string'`, `trim() === ''` or `length > 60` is an error). Absent on every legacy document — the field is optional, so no migration is needed and `pronto-*` / `odon-*` docs stay valid. `scripts/import-catalog-csv.ts` writes it only when the CSV carries a `unit_of_sale` column.
 
-#### 2. `validateOrderSchema(doc: any): ValidationResult`
+#### 2. `validateOrderSchema(input: unknown): ValidationResult`
 * Validates canonical `orderId` (`PRONTO-XXXXXX`).
 * Enforces membership in `VALID_ORDER_STATUSES`.
 * Validates `totalAmount`: Must be a positive integer in CLP.
-* Enforces Chilean Modulo 11 RUT validation on `customer.rut`.
+* Enforces Chilean Modulo 11 RUT validation on `customer.rut` (string-guarded, see above).
 * If `customer.documentType === 'factura'`, enforces non-empty `razonSocial`, `giroComercial`, and valid company tax attributes.
-* Verifies item line integrity: ensures each item contains integer `price` and quantity `>= 1`.
+* Verifies item line integrity: ensures each item contains integer `price` and quantity `>= 1`. Items are read through a `SchemaDoc[]` view, not `any[]`.
 
-#### 3. `validateOrderStatusHistorySchema(doc: any): ValidationResult`
+#### 3. `validateOrderStatusHistorySchema(input: unknown): ValidationResult`
 * Enforces relational foreign key `orderId`.
 * Validates `actorRole`: Must belong to `'ADMIN' | 'CUSTOMER' | 'SYSTEM_WEBHOOK' | 'SYSTEM_SEED' | 'SYSTEM_CRON'`.
 * Asserts valid ISO 8601 `timestamp` and non-empty `reason`.
 
-#### 4. `validateInventoryAuditLogSchema(doc: any): ValidationResult`
+#### 4. `validateInventoryAuditLogSchema(input: unknown): ValidationResult`
 * Enforces relational foreign key `productId`.
 * Validates `changeType`: Must belong to `'STOCK_ADJUSTMENT' | 'ORDER_FULFILLMENT_DEDUCTION' | 'METADATA_UPDATE' | 'VISIBILITY_TOGGLE' | 'CATALOG_SEED'`.
 * Asserts integer deltas and valid ISO 8601 `timestamp`.

@@ -14,12 +14,12 @@ vi.mock('../../../../api/lib/firebaseAdmin', () => ({
 
 describe('Serverless Admin Order History (/api/admin/order-history)', () => {
   let mockRes: Partial<VercelResponse>
-  let jsonOutput: any
+  let jsonOutput: Record<string, unknown> = {}
   let statusOutput: number
 
   beforeEach(() => {
     vi.clearAllMocks()
-    jsonOutput = null
+    jsonOutput = {}
     statusOutput = 200
 
     mockRes = {
@@ -28,8 +28,8 @@ describe('Serverless Admin Order History (/api/admin/order-history)', () => {
         statusOutput = code
         return mockRes
       }),
-      json: vi.fn().mockImplementation((data: any) => {
-        jsonOutput = data
+      json: vi.fn().mockImplementation((data: unknown) => {
+        jsonOutput = data as Record<string, unknown>
         return mockRes
       }),
       end: vi.fn().mockImplementation(() => mockRes)
@@ -89,7 +89,9 @@ describe('Serverless Admin Order History (/api/admin/order-history)', () => {
         })
       })
     }
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = {
       method: 'GET',
@@ -99,9 +101,10 @@ describe('Serverless Admin Order History (/api/admin/order-history)', () => {
     await handler(req, mockRes as VercelResponse)
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
-    expect(jsonOutput.history).toHaveLength(2)
+    const history = jsonOutput.history as Array<Record<string, unknown>>
+    expect(history).toHaveLength(2)
     // Verify sorted chronologically
-    expect(jsonOutput.history[0].id).toBe('ev-1')
-    expect(jsonOutput.history[1].id).toBe('ev-2')
+    expect(history[0].id).toBe('ev-1')
+    expect(history[1].id).toBe('ev-2')
   })
 })

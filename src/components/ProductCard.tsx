@@ -12,6 +12,8 @@ import {
   Wrench,
   Sparkles,
   Layers,
+  Minus,
+  Plus,
   LucideIcon
 } from 'lucide-react'
 import { formatCLP } from '../utils/currency'
@@ -20,10 +22,10 @@ import { formatCategoryDisplayName } from '../utils/categoryAlias'
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   'INSTRUMENTAL Y ACCESORIOS': Scissors,
   'DESECHABLES, ESTERILIZACION Y DESINFECCION': ShieldCheck,
-  'OPERATORIA': Wrench,
-  'ENDODONCIA': Activity,
+  OPERATORIA: Wrench,
+  ENDODONCIA: Activity,
   'HIGIENE BUCAL': Sparkles,
-  'IMPRESION': Layers,
+  IMPRESION: Layers,
   // Legacy & fallback category keys
   Diagnostics: Activity,
   Instruments: Home,
@@ -35,22 +37,34 @@ export interface ProductCardProps {
   product: Product
   onAddToCart: (product: Product) => void
   onQuickView: (product: Product) => void
+  /** Units of this product already in the cart — swaps the CTA for a stepper when > 0. */
+  cartQuantity?: number
+  onUpdateQuantity?: (productId: string, qty: number) => void
 }
 
-export default function ProductCard({ product, onAddToCart, onQuickView }: ProductCardProps) {
+export default function ProductCard({
+  product,
+  onAddToCart,
+  onQuickView,
+  cartQuantity = 0,
+  onUpdateQuantity
+}: ProductCardProps) {
   const CategoryIcon = ICON_BY_CATEGORY[product.category] || Activity
 
   // Defensive stock check
   const isAvailable = product.inStock && (product.stockCount === undefined || product.stockCount > 0)
   const isLowStock = isAvailable && product.stockCount !== undefined && product.stockCount <= 5
+  const maxStock = product.stockCount && product.stockCount > 0 ? product.stockCount : 99
 
   // Featured card accent strip
-  const isFeatured = product.tag === 'Más Vendido' || product.tag === 'Recomendado' || product.tag === 'Recomendado Melipilla'
+  const isFeatured =
+    product.tag === 'Más Vendido' || product.tag === 'Recomendado' || product.tag === 'Recomendado Melipilla'
 
   // Discount percentage (show only when >= 5%)
-  const discountPercent = (product.originalPrice && product.originalPrice > product.price)
-    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
-    : 0
+  const discountPercent =
+    product.originalPrice && product.originalPrice > product.price
+      ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+      : 0
   const showDiscount = discountPercent >= 5
 
   // Formatted SKU code (e.g. REF: OD-101)
@@ -60,6 +74,16 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
   const [imgError, setImgError] = React.useState<boolean>(false)
   const hasPhoto = Boolean(product.images && product.images.length > 0 && !imgError)
+
+  // Transient confirmation shown on the CTA right after the first add, before the
+  // stepper takes over (redesign proposal §10.7 / C.9).
+  const [justAdded, setJustAdded] = React.useState<boolean>(false)
+
+  React.useEffect(() => {
+    if (!justAdded) return
+    const timer = setTimeout(() => setJustAdded(false), 900)
+    return () => clearTimeout(timer)
+  }, [justAdded])
 
   const handleOpenDetail = () => {
     onQuickView(product)
@@ -82,24 +106,25 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
       role="article"
       title={`Ver detalles de ${product.name}`}
     >
-      {/* Technical Header */}
-      <div className="product-card-tech-header">
-        <span className="product-ref-badge">REF: {skuRef}</span>
-        {!isAvailable ? (
-          <span className="product-stock-status stock-danger" style={{ color: 'var(--danger)' }}>
-            <span className="product-stock-dot" style={{ background: 'var(--danger)' }} />
-            <span>Sin Stock</span>
-          </span>
-        ) : isLowStock ? (
-          <span className="product-stock-status stock-warning" style={{ color: 'var(--accent-warm)' }}>
-            <span className="product-stock-dot" style={{ background: 'var(--accent-warm)' }} />
-            <span>Últimas {product.stockCount} unid.</span>
-          </span>
-        ) : null}
-      </div>
+      {/* Technical Header — stock state only; REF now lives in the card body */}
+      {!isAvailable || isLowStock ? (
+        <div className="product-card-tech-header">
+          {!isAvailable ? (
+            <span className="product-stock-status stock-danger" style={{ color: 'var(--danger)' }}>
+              <span className="product-stock-dot" style={{ background: 'var(--danger)' }} />
+              <span>Sin stock</span>
+            </span>
+          ) : (
+            <span className="product-stock-status stock-warning" style={{ color: 'var(--signal)' }}>
+              <span className="product-stock-dot" style={{ background: 'var(--signal)' }} />
+              <span>Últimas unidades</span>
+            </span>
+          )}
+        </div>
+      ) : null}
 
       {/* Media Presentation Box (Sterile Clinical Frame with Textured Dot-Grid) */}
-      <div className={`media-placeholder-box ${product.placeholderTheme}`}>
+      <div className={`media-placeholder-box ${hasPhoto ? 'media-placeholder-box--photo' : ''}`}>
         {hasPhoto ? (
           <img
             src={product.images![0]}
@@ -113,37 +138,31 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
             <div className="placeholder-icon-frame">
               <CategoryIcon size={34} strokeWidth={1.75} />
             </div>
-            <span className="placeholder-product-label">{product.name}</span>
           </div>
         )}
 
-        {/* Media Badge (Only render when mediaBadge is provided and non-empty) */}
-        {product.mediaBadge && product.mediaBadge.trim() && (
+        {/* Badge diet: at most ONE media badge, by priority discount > Rx > mediaBadge */}
+        {showDiscount ? (
+          <div className="discount-badge">-{discountPercent}%</div>
+        ) : product.prescriptionRequired ? (
+          <div className="rx-badge">Uso Profesional</div>
+        ) : product.mediaBadge && product.mediaBadge.trim() ? (
           <div className="placeholder-badge">
             <ShieldCheck size={12} />
             <span>{product.mediaBadge}</span>
           </div>
-        )}
-
-        {/* Discount Badge */}
-        {showDiscount && (
-          <div className="discount-badge">-{discountPercent}%</div>
-        )}
-
-        {/* Rx Badge */}
-        {product.prescriptionRequired && (
-          <div className="rx-badge">Uso Profesional</div>
-        )}
+        ) : null}
       </div>
 
       {/* Product Content Body */}
       <div className="product-card-body">
+        {/* REF-first procurement hierarchy (§8.3): REF → unit of sale → price */}
+        <span className="product-card-ref">REF: {skuRef}</span>
+
         {/* Badges Row (Dedicated top row for marketing & regulatory pills) */}
         {Boolean((product.tag && product.tag.trim()) || product.prescriptionRequired) && (
           <div className="product-badges-row">
-            {product.tag && product.tag.trim() && (
-              <span className="product-tag-chip">{product.tag}</span>
-            )}
+            {product.tag && product.tag.trim() && <span className="product-tag-chip">{product.tag}</span>}
             {product.prescriptionRequired && (
               <span
                 className="product-regulated-chip"
@@ -157,19 +176,16 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
 
         {/* Category & Brand Attribution Line (Cleanly positioned below badges) */}
         <div className="product-taxonomy-header">
-          <span className="product-category-tag">
-            {formatCategoryDisplayName(product.category)}
-          </span>
-          {product.manufacturer && (
-            <span className="product-brand-tag">
-              · {product.manufacturer}
-            </span>
-          )}
+          <span className="product-category-tag">{formatCategoryDisplayName(product.category)}</span>
+          {product.manufacturer && <span className="product-brand-tag">· {product.manufacturer}</span>}
         </div>
 
         <h3 className="product-title" id={`product-title-${product.id}`}>
           {product.name}
         </h3>
+
+        {/* Sales unit — the presentation clinics actually procure in (Appendix D.5) */}
+        {product.unitOfSale && <span className="product-unit-sale">{product.unitOfSale}</span>}
 
         {/* Rating Stars (Only rendered when verified reviews exist) */}
         {product.reviewsCount !== undefined && product.reviewsCount > 0 ? (
@@ -180,11 +196,11 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
                   key={i}
                   size={13}
                   className={i < Math.floor(product.rating) ? 'star-filled' : ''}
-                  style={{ color: i < Math.floor(product.rating) ? '#f59e0b' : '#cbd5e1' }}
+                  style={{ color: i < Math.floor(product.rating) ? 'var(--warning)' : 'var(--border-strong)' }}
                 />
               ))}
             </div>
-            <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
+            <span style={{ fontWeight: '700', color: 'var(--ink-800)' }}>{product.rating}</span>
             <span>({product.reviewsCount})</span>
           </div>
         ) : null}
@@ -195,28 +211,82 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
         <div className="product-card-pricing-row">
           <div className="price-primary-row">
             <span className="current-price">{formatCLP(product.price)}</span>
-            {product.originalPrice && (
-              <span className="original-price">{formatCLP(product.originalPrice)}</span>
-            )}
+            {product.originalPrice && <span className="original-price">{formatCLP(product.originalPrice)}</span>}
           </div>
           <span className="tax-breakdown-label">IVA incluido</span>
         </div>
 
-        {/* Action Button Row (Full Width Agregar CTA) */}
+        {/* Action Row — cart-aware: a stepper replaces the CTA once the product is in the cart */}
         <div className="product-card-footer">
-          <button
-            className="btn-add-cart"
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddToCart(product)
-            }}
-            disabled={!isAvailable}
-            aria-label={`Agregar ${product.name} al carro`}
-            title={isAvailable ? 'Agregar al carro' : 'Sin stock disponible en bodega'}
-          >
-            <ShoppingBag size={15} />
-            <span>{isAvailable ? 'Agregar' : 'Agotado'}</span>
-          </button>
+          {!isAvailable ? (
+            <button
+              className="btn-add-cart"
+              disabled
+              aria-label={`${product.name} agotado`}
+              title="Sin stock disponible en bodega"
+            >
+              <ShoppingBag size={15} />
+              <span>Agotado</span>
+            </button>
+          ) : justAdded ? (
+            <button
+              type="button"
+              className="btn-add-cart btn-add-cart--added"
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`${product.name} agregado al carro`}
+            >
+              <ShoppingBag size={15} />
+              <span>Agregado ✓</span>
+            </button>
+          ) : cartQuantity > 0 ? (
+            <div className="quantity-controls" role="group" aria-label={`Cantidad de ${product.name} en el carro`}>
+              <button
+                type="button"
+                className="qty-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onUpdateQuantity?.(product.id, cartQuantity - 1)
+                }}
+                aria-label={`Disminuir cantidad de ${product.name}`}
+              >
+                <Minus size={14} />
+              </button>
+              <span className="qty-val" aria-live="polite">
+                {cartQuantity}
+              </span>
+              <button
+                type="button"
+                className="qty-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onUpdateQuantity?.(product.id, cartQuantity + 1)
+                }}
+                disabled={cartQuantity >= maxStock}
+                aria-label={`Aumentar cantidad de ${product.name}`}
+                title={
+                  cartQuantity >= maxStock
+                    ? 'Has alcanzado el stock máximo disponible de este producto'
+                    : `Aumentar cantidad de ${product.name}`
+                }
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn-add-cart"
+              onClick={(e) => {
+                e.stopPropagation()
+                onAddToCart(product)
+                setJustAdded(true)
+              }}
+              aria-label={`Agregar ${product.name} al carro`}
+              title="Agregar al carro"
+            >
+              <ShoppingBag size={15} />
+              <span>Agregar</span>
+            </button>
+          )}
         </div>
       </div>
     </article>

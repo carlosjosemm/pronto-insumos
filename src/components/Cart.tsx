@@ -1,8 +1,32 @@
 import React, { useState, useEffect } from 'react'
 import { CartItem, PromoCode } from '../types'
-import { X, ShoppingBag, Plus, Minus, Trash2, Tag, Lock, ArrowRight, ShieldCheck, Activity, Heart, Home, ShieldAlert, AlertTriangle, LucideIcon } from 'lucide-react'
+import {
+  X,
+  ShoppingBag,
+  Plus,
+  Minus,
+  Trash2,
+  Tag,
+  Lock,
+  ArrowRight,
+  ShieldCheck,
+  Activity,
+  Heart,
+  Home,
+  ShieldAlert,
+  AlertTriangle,
+  LucideIcon
+} from 'lucide-react'
 import { validatePromo } from '../services/api'
 import { formatCLP, calculateIVA } from '../utils/currency'
+import {
+  FREE_SHIPPING_THRESHOLD,
+  DELIVERY_ZONES,
+  MIN_ORDER_OUTSIDE_MELIPILLA,
+  MIN_ORDER_ZONE
+} from '../config/delivery'
+import { useScrollLock } from '../hooks/useScrollLock'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   Diagnostics: Activity,
@@ -10,8 +34,6 @@ const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   Materials: Heart,
   Sterilization: ShieldAlert
 }
-
-const FREE_SHIPPING_THRESHOLD = 150000
 
 export interface CartProps {
   isOpen: boolean
@@ -37,6 +59,10 @@ export default function Cart({
   const [promoInput, setPromoInput] = useState<string>('')
   const [promoError, setPromoError] = useState<string>('')
 
+  // Freeze the page behind the drawer
+  useScrollLock(isOpen)
+  const drawerRef = useFocusTrap<HTMLElement>(isOpen)
+
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -58,10 +84,12 @@ export default function Cart({
 
   const progressPercent = Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100)
   const remainingForFreeShipping = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal)
-  const hasRegulatedItems = items.some(item => item.product.prescriptionRequired)
+  const hasRegulatedItems = items.some((item) => item.product.prescriptionRequired)
   const hasStockIssues = items.some((item) => {
-    const isOutOfStock = !item.product.inStock || (typeof item.product.stockCount === 'number' && item.product.stockCount <= 0)
-    const maxStock = (typeof item.product.stockCount === 'number' && item.product.stockCount > 0) ? item.product.stockCount : 99
+    const isOutOfStock =
+      !item.product.inStock || (typeof item.product.stockCount === 'number' && item.product.stockCount <= 0)
+    const maxStock =
+      typeof item.product.stockCount === 'number' && item.product.stockCount > 0 ? item.product.stockCount : 99
     return isOutOfStock || item.quantity > maxStock
   })
 
@@ -80,14 +108,19 @@ export default function Cart({
   return (
     <>
       <div className="cart-drawer-overlay" onClick={onClose}></div>
-      <aside className="cart-drawer" aria-label="Carro de compras">
+      <aside ref={drawerRef} className="cart-drawer" role="dialog" aria-modal="true" aria-label="Carro de compras">
         {/* Header */}
         <div className="cart-drawer-header">
           <div className="cart-drawer-title">
-            <ShoppingBag size={20} style={{ color: 'var(--teal-600)' }} />
+            <ShoppingBag size={20} style={{ color: 'var(--ink-800)' }} />
             <span>Carro Odontológico ({items.reduce((acc, i) => acc + i.quantity, 0)})</span>
           </div>
-          <button className="modal-close-btn" style={{ position: 'static' }} onClick={onClose} aria-label="Cerrar carro">
+          <button
+            className="modal-close-btn"
+            style={{ position: 'static' }}
+            onClick={onClose}
+            aria-label="Cerrar carro"
+          >
             <X size={18} />
           </button>
         </div>
@@ -97,14 +130,18 @@ export default function Cart({
           <div className="free-shipping-text">
             <span>
               {remainingForFreeShipping > 0
-                ? `Agrega ${formatCLP(remainingForFreeShipping)} más para Despacho GRATIS Melipilla & RM`
-                : '✓ Despacho prioritario sin costo a tu Clínica'}
+                ? `Agrega ${formatCLP(remainingForFreeShipping)} más para Despacho GRATIS`
+                : `✓ Despacho sin costo — superaste los ${formatCLP(FREE_SHIPPING_THRESHOLD)}`}
             </span>
             <span>{Math.round(progressPercent)}%</span>
           </div>
           <div className="progress-track">
             <div className="progress-fill" style={{ width: `${progressPercent}%` }}></div>
           </div>
+          <p className="free-shipping-zone-note">
+            Despacho a {DELIVERY_ZONES.join(' y ')} · Compra mínima {MIN_ORDER_ZONE}:{' '}
+            {formatCLP(MIN_ORDER_OUTSIDE_MELIPILLA)}
+          </p>
         </div>
 
         {/* ISP Sanitary Notice when cart contains prescriptionRequired items */}
@@ -112,20 +149,21 @@ export default function Cart({
           <div
             className="cart-regulated-alert"
             style={{
-              background: '#fffbeb',
-              borderBottom: '1px solid #fde68a',
+              background: 'var(--signal-soft)',
+              borderBottom: '1px solid var(--signal-border)',
               padding: '0.65rem 1.25rem',
               fontSize: '0.775rem',
-              color: '#92400e',
+              color: 'var(--warning)',
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
               lineHeight: '1.3'
             }}
           >
-            <ShieldAlert size={18} style={{ color: '#d97706', flexShrink: 0 }} />
+            <ShieldAlert size={18} style={{ color: 'var(--warning)', flexShrink: 0 }} />
             <span>
-              <strong>Insumos Regulados ISP:</strong> Tu carro incluye productos de venta controlada. Se solicitará tu N° de Registro SIS en el checkout.
+              <strong>Insumos Regulados ISP:</strong> Tu carro incluye productos de venta controlada. Se solicitará tu
+              N° de Registro SIS en el checkout.
             </span>
           </div>
         )}
@@ -134,8 +172,8 @@ export default function Cart({
         <div className="cart-items-scroll">
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3.5rem 1.5rem', color: 'var(--text-muted)' }}>
-              <ShoppingBag size={44} style={{ margin: '0 auto 1rem', opacity: 0.35, color: 'var(--navy-900)' }} />
-              <p style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--navy-900)', marginBottom: '0.35rem' }}>
+              <ShoppingBag size={44} style={{ margin: '0 auto 1rem', opacity: 0.35, color: 'var(--ink-800)' }} />
+              <p style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--ink-800)', marginBottom: '0.35rem' }}>
                 Tu carro está vacío
               </p>
               <p style={{ fontSize: '0.85rem' }}>
@@ -145,8 +183,12 @@ export default function Cart({
           ) : (
             items.map((item) => {
               const ItemCategoryIcon = ICON_BY_CATEGORY[item.product.category] || ShoppingBag
-              const isOutOfStock = !item.product.inStock || (typeof item.product.stockCount === 'number' && item.product.stockCount <= 0)
-              const maxStock = (typeof item.product.stockCount === 'number' && item.product.stockCount > 0) ? item.product.stockCount : 99
+              const isOutOfStock =
+                !item.product.inStock || (typeof item.product.stockCount === 'number' && item.product.stockCount <= 0)
+              const maxStock =
+                typeof item.product.stockCount === 'number' && item.product.stockCount > 0
+                  ? item.product.stockCount
+                  : 99
               const isMaxStock = !isOutOfStock && item.quantity >= maxStock
               const isOverStock = !isOutOfStock && item.quantity > maxStock
 
@@ -156,20 +198,29 @@ export default function Cart({
                   className={`cart-item-row ${isOutOfStock || isOverStock ? 'cart-item-row--stock-error' : ''}`}
                 >
                   <div className="cart-item-thumb">
-                    <ItemCategoryIcon size={20} style={{ color: 'var(--teal-600)' }} />
+                    <ItemCategoryIcon size={20} style={{ color: 'var(--ink-800)' }} />
                   </div>
 
                   <div className="cart-item-info">
                     <div className="cart-item-title">{item.product.name}</div>
                     {item.product.prescriptionRequired && (
-                      <span style={{ fontSize: '0.65rem', color: '#b45309', background: '#fef3c7', padding: '0.1rem 0.35rem', borderRadius: 'var(--radius-xs)', display: 'inline-block', marginBottom: '0.2rem', fontWeight: '700' }}>
+                      <span
+                        style={{
+                          fontSize: '0.65rem',
+                          color: 'var(--warning)',
+                          background: 'var(--signal-soft)',
+                          padding: '0.1rem 0.35rem',
+                          borderRadius: 'var(--radius-xs)',
+                          display: 'inline-block',
+                          marginBottom: '0.2rem',
+                          fontWeight: '700'
+                        }}
+                      >
                         ⚕️ Requiere SIS (ISP)
                       </span>
                     )}
                     {isOutOfStock ? (
-                      <span className="cart-stock-cue cart-stock-cue--danger">
-                        Sin stock disponible
-                      </span>
+                      <span className="cart-stock-cue cart-stock-cue--danger">Sin stock disponible</span>
                     ) : isOverStock ? (
                       <span className="cart-stock-cue cart-stock-cue--danger">
                         Excede stock ({maxStock} unid. disp.)
@@ -182,45 +233,48 @@ export default function Cart({
                     <div className="cart-item-price">{formatCLP(item.product.price * item.quantity)}</div>
                   </div>
 
-                {/* Quantity Controls */}
-                <div className="quantity-controls">
+                  {/* Quantity Controls */}
+                  <div className="quantity-controls">
+                    <button
+                      className="qty-btn"
+                      onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)}
+                      aria-label={`Reducir cantidad de ${item.product.name}`}
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <span className="qty-val" aria-live="polite">
+                      {item.quantity}
+                    </span>
+                    <button
+                      className="qty-btn"
+                      onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
+                      disabled={item.quantity >= maxStock || isOutOfStock}
+                      aria-label={`Aumentar cantidad de ${item.product.name}`}
+                      title={
+                        isOutOfStock
+                          ? 'Sin stock disponible'
+                          : item.quantity >= maxStock
+                            ? 'Has alcanzado el stock máximo disponible de este producto'
+                            : `Aumentar cantidad de ${item.product.name}`
+                      }
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+
+                  {/* Delete Button */}
                   <button
-                    className="qty-btn"
-                    onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)}
-                    aria-label={`Reducir cantidad de ${item.product.name}`}
+                    onClick={() => onRemoveItem(item.product.id)}
+                    style={{ color: 'var(--text-muted)', padding: '0.4rem', borderRadius: 'var(--radius-xs)' }}
+                    title="Eliminar producto"
+                    aria-label={`Eliminar ${item.product.name} del carro`}
                   >
-                    <Minus size={12} />
-                  </button>
-                  <span className="qty-val">{item.quantity}</span>
-                  <button
-                    className="qty-btn"
-                    onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
-                    disabled={item.quantity >= maxStock || isOutOfStock}
-                    aria-label={`Aumentar cantidad de ${item.product.name}`}
-                    title={
-                      isOutOfStock
-                        ? 'Sin stock disponible'
-                        : item.quantity >= maxStock
-                        ? 'Has alcanzado el stock máximo disponible de este producto'
-                        : `Aumentar cantidad de ${item.product.name}`
-                    }
-                  >
-                    <Plus size={12} />
+                    <Trash2 size={16} />
                   </button>
                 </div>
-
-                {/* Delete Button */}
-                <button
-                  onClick={() => onRemoveItem(item.product.id)}
-                  style={{ color: 'var(--text-muted)', padding: '0.4rem', borderRadius: 'var(--radius-xs)' }}
-                  title="Eliminar producto"
-                  aria-label={`Eliminar ${item.product.name} del carro`}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            )
-          }))}
+              )
+            })
+          )}
         </div>
 
         {/* Cart Drawer Footer */}
@@ -247,28 +301,32 @@ export default function Cart({
             </div>
 
             {promoError && (
-              <div style={{ color: '#dc2626', fontSize: '0.75rem', marginBottom: '0.5rem', fontWeight: '600' }}>
+              <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginBottom: '0.5rem', fontWeight: '600' }}>
                 {promoError}
               </div>
             )}
 
             {appliedPromo && (
-              <div style={{
-                background: 'var(--teal-50)',
-                color: 'var(--teal-700)',
-                border: '1px solid var(--teal-100)',
-                padding: '0.45rem 0.75rem',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '0.8rem',
-                fontWeight: '700',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '0.75rem'
-              }}>
+              <div
+                style={{
+                  background: 'var(--accent-soft)',
+                  color: 'var(--ink-700)',
+                  border: '1px solid var(--accent-border)',
+                  padding: '0.45rem 0.75rem',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '0.75rem'
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   <Tag size={14} />
-                  <span>{appliedPromo.label} ({appliedPromo.code})</span>
+                  <span>
+                    {appliedPromo.label} ({appliedPromo.code})
+                  </span>
                 </div>
                 <span>{formatCLP(-discountAmount)}</span>
               </div>
@@ -281,7 +339,7 @@ export default function Cart({
             </div>
 
             {appliedPromo && (
-              <div className="cart-summary-line" style={{ color: 'var(--teal-700)', fontWeight: '600' }}>
+              <div className="cart-summary-line" style={{ color: 'var(--ink-700)', fontWeight: '600' }}>
                 <span>Descuento ({appliedPromo.discountPercent}%)</span>
                 <span>{formatCLP(-discountAmount)}</span>
               </div>
@@ -293,14 +351,17 @@ export default function Cart({
             </div>
 
             <div className="cart-summary-total">
-              <span>Total Facturado</span>
+              <span>Total a Pagar</span>
               <span>{formatCLP(total)}</span>
             </div>
 
             {hasStockIssues && (
               <div className="cart-stock-warning-banner" role="alert">
                 <AlertTriangle size={15} style={{ flexShrink: 0 }} />
-                <span>Atención: Uno o más productos superan el stock disponible o están agotados. Ajusta las cantidades para continuar con el pago.</span>
+                <span>
+                  Atención: Uno o más productos superan el stock disponible o están agotados. Ajusta las cantidades para
+                  continuar con el pago.
+                </span>
               </div>
             )}
 
@@ -316,7 +377,7 @@ export default function Cart({
             </button>
 
             <div className="cart-checkout-trust">
-              <ShieldCheck size={13} style={{ color: 'var(--teal-600)' }} />
+              <ShieldCheck size={13} style={{ color: 'var(--ink-800)' }} />
               <span>Transacción Segura · Factura Electrónica B2B</span>
             </div>
           </div>

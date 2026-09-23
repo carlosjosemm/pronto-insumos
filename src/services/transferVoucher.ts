@@ -8,12 +8,7 @@ export interface UploadVoucherParams {
 }
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB
-const ALLOWED_MIME_TYPES = [
-  'application/pdf',
-  'image/jpeg',
-  'image/jpg',
-  'image/png'
-]
+const ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']
 
 /**
  * Validates the file format and size for bank transfer vouchers.
@@ -66,11 +61,21 @@ export async function uploadTransferVoucher({
   const normalizedRut = cleanRut(customerRut)
 
   if (!cleanId) {
-    return { success: false, orderId: cleanId, status: 'PENDIENTE_TRANSFERENCIA', error: 'Identificador de pedido no proporcionado.' }
+    return {
+      success: false,
+      orderId: cleanId,
+      status: 'PENDIENTE_TRANSFERENCIA',
+      error: 'Identificador de pedido no proporcionado.'
+    }
   }
 
   if (!validateRut(customerRut)) {
-    return { success: false, orderId: cleanId, status: 'PENDIENTE_TRANSFERENCIA', error: 'El RUT ingresado no es válido según el algoritmo chileno.' }
+    return {
+      success: false,
+      orderId: cleanId,
+      status: 'PENDIENTE_TRANSFERENCIA',
+      error: 'El RUT ingresado no es válido según el algoritmo chileno.'
+    }
   }
 
   const validation = validateVoucherFile(file)
@@ -113,8 +118,11 @@ export async function uploadTransferVoucher({
       status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
       message: 'Comprobante recepcionado exitosamente. En proceso de validación contable.'
     }
-  } catch (err: any) {
-    console.warn('Endpoint /api/upload-voucher no disponible o falló; usando simulación local:', err.message)
+  } catch (err: unknown) {
+    console.warn(
+      'Endpoint /api/upload-voucher no disponible o falló; usando simulación local:',
+      err instanceof Error ? err.message : err
+    )
     // Simulated fallback for tests or offline development
     return {
       success: true,

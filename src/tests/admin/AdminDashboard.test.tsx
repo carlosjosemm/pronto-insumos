@@ -19,12 +19,7 @@ describe('AdminDashboard Component', () => {
 
     vi.spyOn(adminApi, 'fetchAdminProducts').mockResolvedValue([])
 
-    render(
-      <AdminDashboard
-        onNavigateToOrders={vi.fn()}
-        onNavigateToInventory={vi.fn()}
-      />
-    )
+    render(<AdminDashboard onNavigateToOrders={vi.fn()} onNavigateToInventory={vi.fn()} />)
 
     await waitFor(() => {
       expect(screen.getByText('Ventas Hoy')).toBeInTheDocument()

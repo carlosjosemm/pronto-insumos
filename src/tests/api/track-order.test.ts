@@ -16,7 +16,11 @@ function createMockRes() {
     json: vi.fn().mockReturnThis(),
     end: vi.fn().mockReturnThis()
   }
-  return res as VercelResponse & { status: ReturnType<typeof vi.fn>; json: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> }
+  return res as VercelResponse & {
+    status: ReturnType<typeof vi.fn>
+    json: ReturnType<typeof vi.fn>
+    end: ReturnType<typeof vi.fn>
+  }
 }
 
 describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
@@ -52,7 +56,9 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
     await handler(req, res)
 
     expect(res.status).toHaveBeenCalledWith(400)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('Faltan parámetros') }))
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('Faltan parámetros') })
+    )
   })
 
   it('should return 404 when order is not found in Firestore', async () => {
@@ -65,7 +71,7 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
         })
       })
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -96,7 +102,7 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
         })
       })
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',
@@ -139,7 +145,7 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
         })
       })
     }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as any)
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
       method: 'POST',

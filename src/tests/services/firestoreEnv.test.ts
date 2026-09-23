@@ -1,14 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { getFirestoreEnv, getCollectionName } from '../../services/firestoreEnv'
 
+/** Writable view of the Vite env so individual keys can be deleted per test. */
+const mutableEnv = import.meta.env as unknown as Record<string, unknown>
+
 describe('Client Firestore Environment Resolver (src/services/firestoreEnv.ts)', () => {
   const originalEnv = { ...import.meta.env }
 
   beforeEach(() => {
     vi.resetModules()
-    delete (import.meta.env as any).VITE_FIRESTORE_ENV
-    delete (import.meta.env as any).FIRESTORE_ENV
-    delete (import.meta.env as any).VITE_VERCEL_ENV
+    delete mutableEnv.VITE_FIRESTORE_ENV
+    delete mutableEnv.FIRESTORE_ENV
+    delete mutableEnv.VITE_VERCEL_ENV
   })
 
   afterEach(() => {
@@ -50,15 +53,15 @@ describe('Client Firestore Environment Resolver (src/services/firestoreEnv.ts)',
   it('resolves VITE_VERCEL_ENV="preview" to development environment when mode is not test', () => {
     import.meta.env.VITE_FIRESTORE_ENV = undefined
     const prevMode = import.meta.env.MODE
-    delete (import.meta.env as any).MODE
-    ;(import.meta.env as any).VITE_VERCEL_ENV = 'preview'
+    delete mutableEnv.MODE
+    mutableEnv.VITE_VERCEL_ENV = 'preview'
 
     expect(getFirestoreEnv()).toBe('development')
     expect(getCollectionName('products')).toBe('dev_products')
 
     // Restore
     import.meta.env.MODE = prevMode
-    delete (import.meta.env as any).VITE_VERCEL_ENV
+    delete mutableEnv.VITE_VERCEL_ENV
   })
 
   it('guarantees idempotency by not double-prefixing if string already starts with dev_', () => {

@@ -7,7 +7,7 @@ This document is the **authoritative domain and technical reference** for the us
 ## 🏥 1. Business Context & Clinical Domain Architecture
 
 ### 1.1 The Chilean Dental Supplies Market & PRONTO's Role
-PRONTO Insumos Odontológicos operates as a specialized **depósito dental** (dental supply distributor) physically based in **Melipilla, Chile** (warehouse and local pickup point at **Av. Ortúzar 750**). 
+PRONTO Insumos Odontológicos operates as a specialized **depósito dental** (dental supply distributor) physically based in **Melipilla, Chile** (warehouse and dispatch depot at **Av. Ortúzar 750** — corporate information only; there is **no** customer pickup, see root [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md) §3.4). 
 
 The customer base is primarily **B2B (Business-to-Business)**:
 1. **Private Dental Clinics (Sociedades Odontológicas):** SpA, EIRL, or Sociedades de Profesionales that purchase consumables, impression materials, and handpieces as operational expenses.
@@ -38,34 +38,103 @@ Under Chilean law (**Código Sanitario DFL 725** and **Decreto Supremo 466 del M
 
 ---
 
-## 🎨 2. Design Philosophy: "Clinical Precision & Local Trust"
+## 🎨 2. Design Philosophy: "Quiet Clinical Confidence"
 
-The storefront UI conveys the clean, sterile, and highly dependable nature of a dental operating depot:
-* **Palette (Brand Manual, Section 3 of the redesign proposal):**
-  - **Intense Blue (`#102748`, `var(--brand-blue)`):** Primary brand foundation for structure, headers, add-to-cart actions, and trust anchors. Legacy `--navy-*` / `--teal-*` tokens alias onto this family.
-  - **Cayenne Red-Orange (`#C84B31`, `var(--brand-cayenne)`):** Energetic warm accent for hero title span, cart count badge, product tag chips, and promotional urgency.
-  - **Limonade Cream / Accent Green (`#ECEFBE` / `#CAE400`, `var(--brand-limonade)` / `var(--brand-accent-green)`):** CTA fills and pill highlights; always paired with dark green text (`--brand-accent-green-text: #3D4A00`).
-  - **Almond Cream / Frozen Water (`#FDF8F3` / `#F0F4F8`, `var(--brand-cream)` / `var(--brand-frozen)`):** Warm page background and cool card/input surfaces.
-  - **Slate Neutral (`#334155`, `var(--text-secondary)`):** Balanced readability for technical specifications.
-  - **Focus indicators (`--border-focus`):** Always `var(--brand-blue)` — accent green fails WCAG 1.4.11 (≥3:1) on light surfaces, so it is reserved for fills only.
-* **Typography:** Brand manual dual-face system — `Baloo Da 2` (`--font-display`) for the wordmark and headings, `Syne` (`--font-sans` / `--font-body`) for body and CTA copy, `JetBrains Mono` for REF codes and prices.
+The storefront UI conveys the clean, sterile, and highly dependable nature of a dental operating depot. One ink, one accent (with a dark-surface variant), unified cool neutrals, real typography, near-zero decorative chrome.
+* **Palette (as built — canonical tokens in [src/index.css](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css)):**
+  * **Ink ramp (`--ink-900 #0b1a33`, `--ink-800 #102748`, `--ink-700 #1a3a6a`, `--ink-600 #2a4a7f`):** The anchor. `--ink-900` for footer/utility-bar surfaces, `--ink-800` for headings and primary buttons, `--ink-700` for hover, `--ink-600` for borders on dark.
+  * **Single brand accent (`--accent #0e7490`, `--accent-strong #0c6379`, `--accent-soft #e6f4f7`, `--accent-border #b7dee6`, `--accent-on-dark #67e8f9`):** Links, active states, icons, CTA fills on light surfaces (~5.3:1 on white). `--accent-on-dark` is the **only** accent permitted on `--ink-*` surfaces (~8:1 on `--ink-800`) — `--accent` itself fails contrast there (~2.8:1) and must never be used on dark.
+  * **Warm semantic (`--signal #c24a32`, `--signal-soft #fbefea`, `--signal-border #efc9be`):** Commercial urgency only — discounts, low-stock cues, cart count badge, featured card strip. Never headings or taglines.
+  * **Cool-neutral surfaces (`--surface-bg #f5f7f9`, `--surface-card #ffffff`, `--surface-muted #eef2f5`, `--surface-hover #e7edf2`, `--border-subtle #e4e9ee`, `--border-strong #c9d2db`):** One temperature — the warm/cool clash is gone.
+  * **Text ramp (`--text-primary #0f1e33`, `--text-secondary #44536a`, `--text-muted #6b7a8f`, `--text-inverse #ffffff`).**
+  * **On-dark text ramp (`--text-on-dark-muted rgba(255,255,255,0.62)`, `--text-on-dark-body rgba(255,255,255,0.82)`):** Navy surfaces only (top utility bar, footer). Derived from the surface with alpha so the ramp introduces no new hue and stays above the 4.5:1 floor at the 0.775–0.825rem sizes those bars use. The old slate literals (`#94a3b8` / `#cbd5e1`) must not come back — `--text-muted` is **not** a substitute here, it only reaches ~3.9:1 on `--ink-900`.
+  * **Status (`--success`, `--warning`, `--danger`):** Quarantined to functional states only. The palette deliberately has **no** soft status fills: warm notice surfaces (warning/error boxes) reuse `--signal-soft` + `--signal-border` with `--warning`/`--danger` in the foreground; cool notice surfaces (success/info boxes) reuse `--accent-soft` + `--accent-border` with `--success`/`--accent` in the foreground.
+  * **No raw color values in components.** Every `style={{ … }}` colour is a `var(--token)`. The Phase 6 inline-style migration swept all 150 hardcoded hexes out of `CheckoutModal`, `OrderTrackingModal`, `ProductQuickView`, `Footer`, `PaymentReturnModal`, `ErrorBoundary`, `Cart`, `Navbar` and `ProductCard`; do not reintroduce a hex literal in a component style object.
+  * **Spacing (`--space-1 … --space-16`)** and **geometry (`--radius-sm 6px`, `--radius-md 10px`, `--radius-lg 14px`, `--radius-full 999px`)**.
+  * **Focus indicators (`--border-focus: var(--ink-800)`):** WCAG 1.4.11 compliant (≥3:1) on light surfaces.
+  * **Retired:** lime/limonade/olive (`--brand-limonade`, `--brand-accent-green`, `--brand-accent-green-text`) and cayenne-as-heading-color.
+  * **The deprecated alias block is gone (Phase 10).** All 160 storefront references were migrated to canonical tokens and the 36 `--brand-*` / `--navy-*` / `--teal-*` / `--slate-*` / `--emerald*` / `--cyan` / `--accent-warm*` / `--bg-main` definitions were deleted from `:root`. **Never reintroduce an alias** — if you need a new value, add a canonical token next to its siblings in `src/index.css`. Two references that were already dead (`--teal-200`, `--teal-900` in `OrderTrackingModal` — never defined anywhere, so their `border` shorthand and `color` silently fell through) were resolved to `--accent-border` and `--text-primary` in the same pass.
+  * **Every storefront `var()` must resolve.** `src/admin/admin.css` carries its own independent `:root` (that is why the admin portal was unaffected by the deletion and is not part of this migration), but nothing else defines fallbacks: a `var(--typo)` with no fallback silently drops the whole declaration. Validate before committing a token change — collect `^\s*(--[a-z0-9-]+)\s*:` from `src/index.css` and confirm every `var(--…)` in the storefront resolves against it.
+* **Typography (as built):** `Fraunces` (`--font-display`, 500–700, optical size) for the wordmark and headings — an editorial serif that reads "established firm"; `Inter` (`--font-sans` / `--font-body`, 400–600) for body and CTA copy; `JetBrains Mono` for REF codes and prices. Type scale: `--fs-display` (`clamp(2.5rem, 4vw, 3.5rem)`), `--fs-h2`, `--fs-h3`, `--fs-body`, `--fs-small`, `--fs-micro`. **No italics anywhere.**
 * **Strict Aesthetic Guardrails:**
-  - Zero fluorescent neon halos or glowing futuristic borders.
-  - Zero fake SaaS dashboard widgets.
-  - Authentic Chilean currency formatting (`$189.990 CLP`) with zero decimal cents.
-  - Transparent Chilean consumer pricing: All customer prices explicitly state `IVA incluido` per **SERNAC** consumer protection rules.
+  * Zero fluorescent neon halos or glowing futuristic borders.
+  * Zero fake SaaS dashboard widgets.
+  * Authentic Chilean currency formatting (`$189.990 CLP`) with zero decimal cents.
+  * Transparent Chilean consumer pricing: All customer prices explicitly state `IVA incluido` per **SERNAC** consumer protection rules.
 
 ### 2.1 Storefront Landing Composition (`App.tsx`)
 
-The landing page composes the brand experience in a fixed narrative order:
+The landing page composes the brand experience in a fixed narrative order. **`Hero` renders outside `<main className="main-content">`** because it is a full-bleed navy band; the rest of the page lives inside the 1280px content container.
 
-1. [`Hero.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Hero.tsx): editorial headline + CTA, compact inline B2B trust strip, and the right-column lifestyle photography panel (with `imgError` state fallback).
-2. [`PromoStrip.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/PromoStrip.tsx): slim value-proposition band (slogan, express delivery, SII invoicing).
-3. [`CategoryFilter.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryFilter.tsx): category pills, result count, stock toggle, and sort selector (`#catalog-section` scroll anchor).
-4. [`CategoryShowcase.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryShowcase.tsx): 4-card specialty hub when viewing `all`, or a contextual banner for the active category. Cards are native `<button>` elements (keyboard accessible); categories without a banner render nothing.
-5. [`ProductList.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductList.tsx): catalog grid.
+1. [`Hero.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/Hero.tsx): full-bleed `--ink-800` band — pill tag, display headline with the hand-drawn underline, description, one accent CTA plus a WhatsApp quote CTA, a quiet inline trust row (icons in `--accent-on-dark`, **no pill chrome**), and the right-column photography panel with a soft left-edge mask and `imgError` fallback.
+2. [`CategoryFilter.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryFilter.tsx): category pills, result count, stock toggle, and sort selector (`#catalog-section` scroll anchor). Icons are `--text-muted`; the active pill is navy text with an `--accent` underline.
+3. [`CategoryShowcase.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CategoryShowcase.tsx): **unboxed** 4-card specialty hub (heading + open grid, no border card, no per-card tag-pill overlay) when viewing `all`, or a contextual banner for the active category. Cards are native `<button>` elements (keyboard accessible); categories without a banner render nothing. Its banner copy/photography data lives in [`categoryBanners.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/categoryBanners.ts) — **not** in the component module, so `CategoryShowcase.tsx` exports components only (React Fast Refresh). Do not move `CATEGORY_BANNERS` back into the component file.
+4. [`ProductList.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/ProductList.tsx): catalog grid.
+
+**`PromoStrip` was deleted** (redesign proposal §10.4, decision 3). Its unique value messages were folded into the hero trust row; `PromoStrip.tsx`, `PromoStrip.test.tsx`, its CSS and `public/assets/promo-strip-bg.jpg` are all gone. Do not reintroduce a second stacked band between the hero and the catalog — the hero already carries the delivery, invoicing and ISP claims.
 
 > **Category display labels:** Internal Firestore keys (e.g. `DESECHABLES, ESTERILIZACION Y DESINFECCION`) are never shown raw. Always render through `formatCategoryDisplayName()` from [src/utils/categoryAlias.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/categoryAlias.ts), which is the single source of truth for storefront naming (also consumed by `CATEGORIES` in `src/data/products.ts`).
+
+#### `App.tsx` state contracts (do not regress these)
+
+`App.tsx` was refactored to satisfy the React Compiler-era `react-hooks` rules (see root [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md) §8.4). The following are load-bearing contracts, not incidental implementation details:
+
+* **Catalog `loading` is derived, never stored.** `loading === (loadedRequestKey !== catalogRequestKey)`, where `catalogRequestKey` is `${selectedCategory}|${search}|${sortBy}|${inStockOnly}`. The fetch effect writes `loadedRequestKey` only in its `finally`. A filter change therefore flips `loading` to `true` during render — do **not** reintroduce `setLoading(true)` at the top of an effect.
+* **Mercado Pago return / tracking query parameters are parsed once, at module scope,** by `parseUrlBootstrap()`, and consumed through lazy `useState` initializers (`paymentReturn`, `isTrackingOpen`, `trackingInitialOrderId`, `trackingInitialRut`, and the approved-return cart reset). The mount effect performs **only** external side effects: `clearCartFromStorage()` and `history.replaceState()`. Moving this parsing back into a state-setting effect will fail `pnpm lint` and reintroduce a cascading render.
+* **Cart revalidation happens after the awaited fetch,** reading `cartRef.current` rather than `cart`. This keeps `cart` out of the effect's dependency array (which would trigger a re-fetch on every cart mutation) while still satisfying `exhaustive-deps`. `cartRef` is kept in sync by a dedicated effect.
+* **Overlay state is scoped by remount, not by reset effects:**
+  * `ProductQuickView` is rendered with `key={quickViewProduct.id}`, so its quantity, gallery index and failed-image state reset per product. Removing the `key` silently reintroduces stale state when switching products.
+  * `OrderTrackingModal` is rendered only while `isTrackingOpen` is true (`{isTrackingOpen && …}`), so its form state initializes from `initialOrderId` / `initialRut` on every open. Removing the conditional render reintroduces the prop→state sync effect that the hooks rules forbid.
+* **`addToast` is wrapped in `useCallback`** because it is a dependency of the catalog effect.
+
+### 2.2 Brand Lockup & Canonical Naming
+
+The brand mark is **type, not an image** — it renders as crisp text at any zoom and stays accessible. There is no icon mark of any kind.
+
+* **Lockup structure** (`Navbar.tsx`, `Footer.tsx`): a `.brand-lockup` wrapper containing
+  * `.brand-wordmark` — `PRONTO`, `Fraunces` 600, `1.375rem` in the navbar / `1.25rem` in the footer; `var(--ink-800)` on light surfaces, `var(--text-inverse)` on navy.
+  * `.brand-descriptor` — `INSUMOS ODONTOLÓGICOS`, `Inter` 600, `0.5625rem`, uppercase, `letter-spacing: 0.14em`; `var(--text-muted)` on light, `var(--accent-on-dark)` on navy.
+  * `.brand-underline` — the single bespoke detail: a hand-drawn SVG stroke (`path d="M2 4 Q 25 7 50 4 T 98 4"`) in `var(--signal)`, `stroke-width: 3`, `stroke-linecap: round`, absolutely positioned to span ~70% of the wordmark width. **The same motif is the favicon mark** (`public/favicon.svg`). Do not add any other texture or decoration.
+  * The footer uses the `brand-lockup--inverse` modifier for the navy surface.
+* **Retired:** the Lucide `Activity` icon-in-a-square, the `ODONTOLOGÍA` sticker badge, and the `PRONTO ODONTOLOGÍA` footer lockup. `Navbar.test.tsx` and `ClinicalStorefront.test.tsx` assert these do not come back.
+* **Canonical naming rule:**
+  * Storefront lockup: `PRONTO` + `INSUMOS ODONTOLÓGICOS` descriptor.
+  * `<title>` and meta: `PRONTO Insumos Odontológicos — Depósito Dental en Melipilla`.
+  * Legal line: `PRONTO INSUMOS ODONTOLÓGICOS SPA` (unchanged).
+* **Favicon:** `public/favicon.svg`, wired via `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />` in `index.html`.
+* **`og-preview.png`:** `index.html` references `https://pronto-insumos.vercel.app/og-preview.png` in `og:image`, `twitter:image` and the JSON-LD `image`. The file is produced by a human (redesign proposal Appendix B.1) and dropped at `public/og-preview.png`; the meta tags ship regardless. **Do not generate a substitute image.** `vercel --prod` is blocked until the real file exists.
+
+### 2.3 Mobile Behaviour (≤768px)
+
+The storefront is browsed between patients, so the ≤768px breakpoint in `src/index.css` is a designed surface, not a fallback:
+
+* **Product grid stays 2 columns.** `.products-grid` is `repeat(2, minmax(0, 1fr))` with a tightened `0.85rem` gap at ≤768px; it must not collapse to a single column.
+* **`.nav-mobile-utility`** restores the `Mesa Clínica` + `Seguimiento` actions that hiding `.top-utility-bar` takes away — see §7.1.
+* **`.category-pills`** carries a visible thin scrollbar (`scrollbar-width: thin` + a 4px `::-webkit-scrollbar`) so the horizontal overflow is discoverable without JS. It previously hid the scrollbar entirely.
+* **Sticky action bar.** `.detail-modal-footer` is `position: sticky; bottom: 0` inside the scrolling `.product-detail-modal-body`, so the `Agregar al Carro` action stays reachable at every viewport; do not "fix" it to mobile-only.
+* **Keyboard hints.** Phone is `type="tel" inputmode="tel"`, email is `type="email"`, postal code is `inputmode="numeric"`. **RUT and the SIS registry number stay `inputmode="text"`** — a numeric keypad cannot produce the `K` check digit. `CheckoutModal.test.tsx` asserts all four.
+
+### 2.4 Motion & Accessibility Contract
+
+**Motion.** 150–250 ms on `cubic-bezier(0.4, 0, 0.2, 1)`, expressed through the declared tokens rather than re-typed curves: entrance animations use `var(--transition-fast)` / `var(--transition-base)`, and hover/state transitions use `var(--transition-fast)`. Exactly these animate — add-to-cart, drawer/modal entrance, image fade-in, card hover lift, badge pulse — and nothing else. `@media (prefers-reduced-motion: reduce)` suppresses **every** one of them (`.product-card-entrance`, `.cart-count-badge--pulse`, `.toast-progress`, `.skeleton-block`, `.product-card-img`, `.modal-overlay`, `.modal-card`, `.cart-drawer-overlay`, `.cart-drawer`, `.toast-item`) plus the hover transforms and button transitions. If you add an animation, add it to that block in the same change.
+
+**Focus trap.** `src/hooks/useFocusTrap.ts` (D.4) is attached to the element carrying `role="dialog"` in all five overlay surfaces: `CheckoutModal`, `OrderTrackingModal`, `PaymentReturnModal`, `ProductQuickView`, and the `Cart` drawer. The drawer gained `role="dialog" aria-modal="true"` in Phase 8 precisely so it has a trap target. The hook moves initial focus to the first focusable element, wraps Tab/Shift+Tab, and restores focus to the previously focused element on unmount. `src/tests/hooks/useFocusTrap.test.tsx` covers all four behaviours; `Cart.test.tsx` asserts the drawer's dialog role. There is **no** third-party focus-trap dependency — do not add one.
+
+**Loading state.** `ProductList` renders 8 `.skeleton-card`s inside `.products-grid` with `aria-busy="true"` and a `.visually-hidden` `Cargando catálogo` label; the old `⏳` emoji loader and its undefined `animation: spin` reference are gone. The shimmer is `@keyframes skeleton-shimmer` and is disabled under reduced motion.
+
+**Transient add confirmation.** `ProductCard` shows `Agregado ✓` on the CTA for 900 ms after the first add, then the stepper takes over (D.6). It is driven by a `justAdded` state plus a `setTimeout` in an effect — the same shape as the navbar badge pulse, which keeps `react-hooks/set-state-in-effect` satisfied. Clicking the confirmation must not re-add the product.
+
+**Live regions.** `aria-live="polite"` is on the navbar cart-count badge and on the `.qty-val` of the `ProductCard` stepper, the `Cart` drawer and `ProductQuickView`, so quantity changes are announced. The toast container remains the only other live region.
+
+### 2.5 Unresolved copy — deliberate, do not invent replacements
+
+Three strings still advertise Factura or use pre-sweep wording, and **none of them appears in the redesign proposal's Appendix C copy deck**. Because that deck is the only sanctioned source of `es-CL` storefront copy, there is no verbatim replacement to apply — and inventing one is explicitly forbidden. They are recorded here so a future agent recognises them as a known gap instead of "fixing" them with new copy:
+
+* `Cart.tsx` — `Transacción Segura · Factura Electrónica B2B` (cart trust strip). Contradicts the boleta-only reality; needs an owner-approved string.
+* `CheckoutModal.tsx` — step label `Despacho & Facturación` (Step 1 header). The Factura half is stale for the same reason.
+* `CheckoutModal.tsx` — pro-forma letterhead `Distribuidora Dental • Melipilla, Región Metropolitana`. Arguably correct as a *corporate* address rather than a delivery zone (the retired `RM` copy was about coverage), but it sits next to the zone rules and is easy to misread.
+
+Changing any of them requires an Appendix C entry first. The same rule applies to the `OrderTrackingModal` support number in §4.1.2.
 
 ---
 
@@ -95,16 +164,16 @@ graph TD
 
 | Form Field Name | State Property | UI Label | Purpose & Clinical Business Context | Validation Rule |
 | :--- | :--- | :--- | :--- | :--- |
-| **Tipo de Documento** | `formData.documentType` | `📄 Boleta Electrónica` / `🏢 Factura Electrónica` | Determines the fiscal document issued through the Chilean SII. Clinics must select Factura to claim the 19% IVA tax credit in their monthly F29 declaration. | Required toggle (`'boleta'` \| `'factura'`). Defaults to `'boleta'`. |
+| **Tipo de Documento** | `formData.documentType` | `📄 Boleta Electrónica` | The fiscal document issued through the Chilean SII. **Boleta only, as built** — the Factura card is removed behind `const FACTURA_ENABLED = false`. The Factura branch (corporate RUT + Razón Social + Giro) still exists in code and in the order schema, so re-enabling is a one-line change; until then clinics are routed to the WhatsApp quotation path via the note under the card. | Required (`'boleta'` \| `'factura'`). Defaults to `'boleta'`. |
 | **Nombre del Profesional** | `formData.fullName` | *Nombre del Profesional o Representante Legal* | Identifies the ordering dentist or the clinic's legal representative. Used for package labeling, reception desk delivery signing, and customer care. | Required string. Trimmed of whitespace. |
-| **RUT del Comprador** | `formData.rut` | *RUT Personal (RUN)* (Boleta) / *RUT Empresa / Sociedad* (Factura) | Chilean national identity tax number. For Boleta, represents the individual practitioner. For Factura, represents the incorporated dental practice (Sociedad Odontológica). | Must satisfy official Chilean **Modulo 11 check digit** via `validateRut()` in [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts). Formats dynamically as `12.345.678-K`. |
+| **RUT del Comprador** | `formData.rut` | *RUT Personal (RUN)* (Boleta) / *RUT Empresa / Sociedad* (Factura) | Chilean national identity tax number. For Boleta, represents the individual practitioner. For Factura, represents the incorporated dental practice (Sociedad Odontológica). | Must satisfy official Chilean **Modulo 11 check digit** via `validateRut()` in [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts). Formats dynamically as `12.345.678-K`. Deliberately keeps `inputmode="text"` — a numeric keypad cannot produce the `K` check digit. |
 | **Email para Documento SII** | `formData.email` | *Email para Documento SII* | **Critical Chilean Fiscal Field:** Electronic tax documents (DTEs) issued through electronic invoicing providers connected to the SII must be dispatched to a formal electronic mailbox. In dental clinics, this email is often monitored by the clinic's accountant or administrator (`facturacion@clinica.cl`), ensuring tax documents are not lost in personal dentist inboxes. For Boleta, receives the purchase confirmation and Boleta PDF. | Required standard email format (`type="email"`). |
 | **Razón Social** | `formData.razonSocial` | *Razón Social (según SII) \** | **Factura Only:** The official registered legal entity name of the clinic or dental society (e.g., *"Centro Odontológico Melipilla SpA"*). The SII rejects invoices where the Razón Social does not match the company RUT in the tax registry. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
 | **Giro Comercial** | `formData.giroComercial` | *Giro Comercial Registrado \** | **Factura Only:** The registered economic activity code and description recognized by the SII (e.g., *"Servicios odontológicos"*, *"Atención médica y dental"*). Invoices lacking a valid economic activity are legally rejected for tax credit. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
-| **Teléfono Móvil** | `formData.phone` | *Teléfono Móvil* | Direct telephone and WhatsApp contact for courier logistics. Crucial for Melipilla urban delivery and regional couriers to confirm clinic reception hours before dispatching packages. | Required string. |
+| **Teléfono Móvil** | `formData.phone` | *Teléfono Móvil* | Direct telephone and WhatsApp contact for delivery coordination. Crucial for the Melipilla urban route and the scheduled San Antonio route to confirm clinic reception hours before dispatching. | Required string. Rendered as `type="tel" inputmode="tel"` so mobile devices open the phone keypad. |
 | **Dirección de Entrega / Fiscal** | `formData.address` | *Dirección de Entrega / Fiscal \** | Dual-purpose field: Specifies the street, building, office number (e.g., *"Av. Ortúzar 750, Of. 302"*), and acts as the fiscal address registered on the electronic tax invoice. | Mandatory. Validated via `validateFacturaFields` when Factura is selected. |
-| **Ciudad / Comuna Fiscal** | `formData.city` | *Ciudad / Comuna Fiscal \** | Commune designation (e.g., *"Melipilla"*, *"Talagante"*, *"Providencia"*). Determines the logistics zone, freight calculation, and complies with SII DTE address requirements. | Mandatory. |
-| **Código Postal / Región** | `formData.zip` | *Código Postal / Región* | Chilean postal district code (e.g., *"9500000"* for Melipilla) or regional identifier for courier sorting hubs (Chilexpress/Starken). | Required string. |
+| **Comuna de Despacho** | `formData.city` | *Comuna de Despacho \** | **A `<select>`, not free text.** Only the two real delivery zones are offered — `Melipilla` (default) and `San Antonio` — sourced from `DELIVERY_ZONES` in [src/config/delivery.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/delivery.ts). It determines logistics eligibility (the San Antonio minimum order) and satisfies the SII DTE address requirement. | Mandatory. Defaults to `DEFAULT_DELIVERY_ZONE` (`Melipilla`). |
+| **Código Postal / Región** | `formData.zip` | *Código Postal / Región* | Chilean postal district code (e.g., *"9500000"* for Melipilla) or regional identifier. Carries `inputmode="numeric"`. | Required string. |
 | **N° Registro SIS** | `sisRegistryNumber` | *N° Registro SIS (Superintendencia) \** | **Sanitary Verification Field:** Mandatory only when cart contains regulated clinical supplies (`prescriptionRequired === true`). Represents the practitioner's official registration in the Superintendencia de Salud's RNPI. | Required if `hasRegulatedItems`. Minimum 4 numeric/alphanumeric characters. |
 | **Credencial / Receta** | `credentialFileName` | *Credencial Profesional o Receta (Opcional)* | Allows uploading an image or PDF of the professional credential or prescription authorizing controlled supply acquisition. | Optional file attachment (`.pdf`, `.jpg`, `.png`). |
 
@@ -118,6 +187,24 @@ const stockIssueItem = cartItems.find(item => {
 ```
 If an item has depleted or the requested quantity exceeds physical stock, the transition is halted and an amber alert banner displays:
 > *"El producto '[Nombre]' supera el stock disponible (X solicitados, Y disponibles). Por favor ajusta la cantidad en el carro."*
+
+### 3.2.1 Delivery-Zone Minimum Order in Step 1
+
+Immediately after the stock check, `handleNextStep()` enforces the only minimum-sale rule in the system:
+
+```typescript
+const productSubtotal = cartItems.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
+const deliveryZone = (formData.city || DEFAULT_DELIVERY_ZONE) as DeliveryZone
+if (isBelowMinimumOrder(deliveryZone, productSubtotal)) {
+  setSubmitError(`La compra mínima para despacho a ${MIN_ORDER_ZONE} es de ${formatCLP(MIN_ORDER_OUTSIDE_MELIPILLA)}`)
+  return
+}
+```
+
+* `isBelowMinimumOrder()` returns true only for `zone === 'San Antonio' && subtotal < 60000`. **Melipilla has no minimum.**
+* The subtotal is the pre-tax product sum, matching the figure the Cart drawer shows — not `totalAmount`, which includes IVA.
+* The select also renders a proactive muted hint under it when `San Antonio` is chosen: `Compra mínima para despacho a San Antonio: $60.000`.
+* The same rule is surfaced in the Cart drawer, so the shopper learns it before reaching checkout. Both read the constants from `src/config/delivery.ts`.
 
 ### 3.3 Step 2: Payment Pathways
 Presents 3 distinct payment pathways tailored to Chilean healthcare purchasing habits:
@@ -153,6 +240,29 @@ Under [`firestore.rules`](file:///c:/Users/ecmv2/Documents/PRONTO/firestore.rule
   2. **Customer / Clinic Tax ID:** Validated Chilean RUT (Modulo 11) matching the order.
 * **Serverless Proxy:** The modal queries [`/api/track-order`](file:///c:/Users/ecmv2/Documents/PRONTO/api/track-order.ts), which uses `firebase-admin` to fetch the order and returns a sanitized `OrderTrackingInfo` model without exposing internal tokens, server secrets, or database timestamps.
 
+### 4.1.1 Lifecycle Contract — mount-while-open, auto-search after the await
+
+The modal is **mounted only while open** (`{isTrackingOpen && <OrderTrackingModal … />}` in `App.tsx`). Its form state (`orderId`, `rut`, error and voucher fields) therefore initializes from the `initialOrderId` / `initialRut` props at mount, and there is **no prop→state synchronisation effect**. Removing the conditional render in `App.tsx` reintroduces the stale-state bug this replaced.
+
+Auto-search behaviour when the caller prefills valid credentials:
+
+* `autoSearchOnMount = Boolean(initialOrderId && initialRut && validateRut(initialRut))` also seeds the `loading` initializer, so the spinner is already on for the first paint.
+* The auto-search effect performs its state updates **after** the awaited `fetchOrderTracking()` call. The effect body itself must stay free of synchronous `setState` — this is what `react-hooks/set-state-in-effect` enforces, and `pnpm lint` will fail otherwise.
+* `performSearch()` remains the manual path used by the form's *Consultar* button and by the voucher re-fetch; it is a plain function, not a hook.
+
+### 4.1.2 Known deviation — the support link hardcodes its own number
+
+`getWhatsAppSupportUrl()` in this component builds its `wa.me` URL from a **literal**, and that literal is **not** the storefront's configured number:
+
+```ts
+// src/components/OrderTrackingModal.tsx
+return `https://wa.me/56987654321?text=${encodeURIComponent(msg)}`
+```
+
+* **As built:** every other customer-facing entry point (Navbar, Hero, Footer, ProductQuickView, ErrorBoundary) resolves its number and link through [src/config/contact.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/contact.ts) — see §7.1 and [src/services/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/AGENTS.md) §4.4. This modal is the **last storefront component that still embeds a `wa.me` URL**, and the digits differ from `WHATSAPP_NUMBER` (`56912345678` fallback), so its *Consultar* chat currently reaches a different placeholder line than the rest of the store.
+* **Invariant it breaks:** "no component may hardcode a phone number or a `wa.me` URL". Any change to `VITE_WHATSAPP_NUMBER` updates five surfaces and silently misses this one.
+* **Do not fix it by inventing a number.** The correct end state is `whatsappLink('Hola PRONTO Insumos, necesito asistencia con el estado de mi pedido ' + cleanId)` — i.e. the same helper as the other consumers, with no literal.
+
 ### 4.2 The 5-Stage Fulfillment Timeline
 
 ```mermaid
@@ -160,7 +270,7 @@ stateDiagram-v2
     [*] --> Registrado: Pedido Ingresado
     Registrado --> ComprobantePago: Pago Confirmado / Comprobante Subido
     ComprobantePago --> PreparacionBodega: Factura Emitida & Empaque en Bodega Melipilla
-    PreparacionBodega --> EnRuta: Despachado (Ruta Urbana / Starken / Chilexpress)
+    PreparacionBodega --> EnRuta: Despachado (Ruta Melipilla / Ruta Programada San Antonio)
     EnRuta --> Entregado: Entregado en Clínica Dental
     Entregado --> [*]
 ```
@@ -189,28 +299,50 @@ To avoid customer frustration during checkout, the cart actively monitors invent
 * **Sticky Alert Banner & Locked CTA:** When any item exceeds stock, a persistent alert banner appears in the cart footer and the checkout button is disabled with the label `"Insumos sin Stock Suficiente"`.
 
 ### 5.2 Chilean Shipping Progress Tracker
-* Free shipping threshold is standardized at **$150.000 CLP** (or free for local Melipilla pickup).
-* Renders a live progress bar showing the remaining amount to reach free shipping (`"¡Te faltan $X para despacho gratis en Melipilla y RM!"`).
+
+* Free-shipping threshold is **`FREE_SHIPPING_THRESHOLD = 150000`**, imported from [src/config/delivery.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/delivery.ts) (the Cart previously declared its own `150000` while the Footer advertised `$100.000`). It applies to **both** delivery zones.
+* Renders a live progress bar with the final copy deck strings:
+  * still short → `Agrega {formatCLP(remaining)} más para Despacho GRATIS`
+  * reached → `✓ Despacho sin costo — superaste los {formatCLP(150000)}`
+* A muted zone line sits under the bar: `Despacho a Melipilla y San Antonio · Compra mínima San Antonio: $60.000` — the same rule checkout enforces, surfaced proactively.
+* **No pickup wording.** The old `despacho gratis en Melipilla y RM` / "retiro" copy is retired; see root [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md) §3.4.
 
 ### 5.3 Tax & Discount Breakdown
+
 * Calculates itemized subtotal, promotional discount, and isolates the 19% IVA using Chilean rounding rules (`calculateTaxBreakdown` in [src/utils/tax.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/tax.ts)).
 * Ensures every total sent to checkout is a whole Chilean Peso integer without decimal cents.
+
+### 5.4 Overlay Scroll Lock
+
+The Cart drawer is one of five surfaces that call `useScrollLock(...)` from [src/hooks/useScrollLock.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/hooks/useScrollLock.ts), which freezes `document.body.style.overflow` while open and restores the previous value on unmount. The other four are `ProductQuickView`, `CheckoutModal`, `OrderTrackingModal` and `PaymentReturnModal`. Any new overlay must adopt it — without it the page scrolls behind the overlay, which was a long-standing bug.
 
 ---
 
 ## 📦 6. Catalog Components Reference
 
 ### 6.1 `ProductCard.tsx`
-* **Confidential Stock Defense:** Warehouse inventory counts (`stockCount`) are **never rendered** to public users to prevent competitors from scraping inventory levels. Displays clean status cues (`En Stock`, `Pocas unidades`, `Sin Stock`).
-* **Technical REF SKU Header:** Features canonical REF codes (e.g. `REF: OD-101`) familiar to dental procurement staff.
+* **Confidential Stock Defense:** Warehouse inventory counts (`stockCount`) are **never rendered** to public users to prevent competitors from scraping inventory levels. The low-stock cue is the fixed string **`Últimas unidades`** (it used to interpolate the count as `Últimas N unid.` — never reintroduce that), the out-of-stock cue is **`Sin stock`**, and the add button reads `Agregar` / `Agotado`. `stockCount` still drives *whether* the cue shows (`<= 5`) and still caps steppers; only the number is withheld.
+* **Media contract (Phase 9):** `.media-placeholder-box` is a fixed **4:3** area, so a delivered photo never changes a card's height. Two treatments:
+  * *No photo* (all current catalog items have `images: []`) → the icon-on-dot-grid placeholder, which is now **category icon only** — the repeated product name was removed because it duplicated the card title. One neutral treatment; the eight `gradient-*` theme rules were collapsed, so `placeholderTheme` no longer changes the look.
+  * *Photo present* → the `.media-placeholder-box--photo` modifier: `var(--surface-card)` background, uniform `var(--space-4)` padding, and `object-fit: contain` on `.product-card-img`. `cover` on a fixed-height box cropped real photos — do not put it back.
+* **Badge diet — at most ONE media badge**, by priority **discount > Rx > mediaBadge**. The media area renders the discount pill, else the `Uso Profesional` Rx pill, else `mediaBadge`; never two at once. The `.discount-badge + .rx-badge` stacking rule was removed with it. `.product-card--featured` uses a `var(--signal)` top strip.
+* **REF-first procurement hierarchy (§8.3):** REF (e.g. `REF: OD-101`) is a muted mono line — `.product-card-ref` — at the **top of the card body**, not in the tech header. `unitOfSale` renders immediately under the title in `.product-unit-sale`, then price, then stock. The tech header now carries the stock cue only and is not rendered at all for a healthy product.
+* **`unitOfSale` (D.5):** optional string ≤60 chars describing the presentation clinics procure in (`Caja 100 un`, `Bolsa 500 g`, `Kit 8 jeringas × 4 g`…). Rendered raw under the title — **no `Venta:` prefix** — and omitted entirely when absent, so legacy documents are unaffected. Admin create/edit does not expose it yet; the field is optional by design.
 * **Sanitary Badging:** Displays `⚕️ Uso Profesional` or `⚕️ Requiere SIS` when `prescriptionRequired === true`.
-* **Pricing Standard:** Renders whole Chilean Peso amounts with `IVA incluido` tag.
+* **Cart-aware stepper (D.6):** the footer renders, in order of precedence —
+  * `!isAvailable` → a disabled `Agotado` button;
+  * `justAdded` → the transient **`Agregado ✓`** confirmation (`.btn-add-cart--added`, 900 ms, then it reverts);
+  * `cartQuantity > 0` → a `.quantity-controls` stepper (`−` / qty / `+`) that calls `onUpdateQuantity(product.id, cartQuantity ± 1)`; `+` is disabled at `stockCount`, and stepping down to 0 reverts to `Agregar`. Both buttons `e.stopPropagation()` so the card-level quick-view click does not fire.
+  * `cartQuantity === 0` → the `Agregar` CTA calling `onAddToCart(product)` and arming `justAdded`.
+  * Props are threaded `App (cartQuantityById via useMemo) → ProductList → ProductCard`. `ProductQuickView` receives `cartQuantity` too and seeds its local stepper from it (`Math.max(1, cartQuantity)`).
+* **Pricing Standard:** Renders whole Chilean Peso amounts with `IVA incluido` tag. Ratings and strikethrough prices render only when the data actually exists (fixtures now carry `rating: 0` / `reviewsCount: 0`, and only one fixture carries an `originalPrice`).
 
 ### 6.2 `ProductQuickView.tsx`
 Vertical 1-column Product Detail Modal:
 * **Multi-Photo Gallery:** Thumbnail strip, next/prev navigation buttons, and keyboard arrow controls.
 * **Clinical Checklists:** Technical specifications checklist (`specs`) and itemized packaging contents (`packageContents` e.g., *"1x Turbina LED, 1x Llave de desarme, 1x Manual técnico"*).
 * **Sanitary Notice:** Detailed citation of ISP compliance and autoclave sterilization parameters (134°C).
+* **Per-product state via remount:** `App.tsx` renders this component with `key={quickViewProduct.id}`. Quantity, active gallery index and failed-image state are therefore scoped to a single product and reset by remounting — there is deliberately **no** "reset when `product` changes" effect (it would be a synchronous `setState` inside an effect, which `pnpm lint` rejects). Keep the `key`.
 
 ### 6.3 `CategoryFilter.tsx`
 Clinical category tabs (Instrumental, Materiales Restauradores, Equipamiento, Desechables, Endodoncia, Ortodoncia, Periodoncia) with accessible ARIA roles, instant stock toggle (`Solo productos en stock`), and price/rating sort dropdown.
@@ -220,16 +352,22 @@ Clinical category tabs (Instrumental, Materiales Restauradores, Equipamiento, De
 ## 🌐 7. Navigation, Layout & Utility Components
 
 ### 7.1 `Navbar.tsx`
-* **Top Commercial Utility Bar:** Displays Melipilla express delivery notices, warehouse pickup address (Av. Ortúzar 750), Factura Electrónica SII compliance, and the direct "Seguimiento de Pedido" action button.
-* **Technical Search:** Debounced keyword search matching product names, clinical descriptions, categories, and SKU REF codes.
+* **Brand Lockup:** the code-rendered `PRONTO` / `INSUMOS ODONTOLÓGICOS` wordmark with the `--signal` underline motif — see §2.2. The link carries `aria-label="PRONTO Insumos Odontológicos"`.
+* **Top Commercial Utility Bar:** left side carries `Despacho a clínicas en Melipilla y San Antonio`; right side carries the `Seguimiento de Pedido` button (only when `onOpenTracking` is passed), `Boleta Electrónica · IVA 19%`, and `Mesa Clínica: {WHATSAPP_DISPLAY}`. It no longer advertises Factura, pickup, or the warehouse address. It is an `--ink-900` surface, so its icons use `var(--accent-on-dark)`, never `var(--accent)`.
+* **Mobile utility row (`.nav-mobile-utility`):** the utility bar is `display: none` ≤768px, which took the phone and tracking actions with it. This row — rendered inside `<header className="navbar">` right after `.nav-search-mobile` — restores them: a `Mesa Clínica` link to `whatsappLink()` plus a `Seguimiento` button (again gated on `onOpenTracking`). It is `display: none` above 768px and only becomes a flex row in the ≤768px block. `Navbar.test.tsx` covers both the rendered row and the handler-gated omission.
+* **Technical Search:** Debounced keyword search matching product names, clinical descriptions, categories, and SKU REF codes. Two inputs exist — `.nav-search` (desktop) and `.nav-search-mobile` — with the latter shown ≤768px.
 * **Dynamic Cart Badge:** Visual item counter with micro-animation upon addition.
+* **Contact data:** the "Mesa Clínica" phone and its `wa.me` link come from `src/config/contact.ts` (`WHATSAPP_DISPLAY`, `whatsappLink()`), never from a literal.
 
 ### 7.2 `Footer.tsx`
+* **Brand Lockup:** the same wordmark as the navbar, in its `brand-lockup--inverse` (navy-surface) variant — see §2.2.
 * Grounded 4-column B2B distributor layout:
   1. *Identidad Corporativa:* Corporate details, Av. Ortúzar 750 warehouse location, Melipilla, Chile.
   2. *Catálogo Clínico:* Quick links to primary dental categories.
-  3. *Logística y Seguimiento:* Tracking modal trigger, shipping routes (Melipilla, RM, Regiones vía Starken/Chilexpress), and withdrawal policies.
-  4. *Contacto y Certificaciones:* Factura Electrónica SII notice, ISP sanitary compliance statement, and technical WhatsApp hotline.
+  3. *Logística Regional:* Tracking modal trigger plus the delivery facts — `Despacho Express Clínicas Melipilla`, `Despacho Programado San Antonio`, `Compra mínima San Antonio: $60.000`, `Despacho Gratuito sobre $150.000`. There are **no** RM/Starken/Chilexpress routes and **no** withdrawal policy, because there is no pickup.
+  4. *Contacto y Formas de Pago:* `Boleta Electrónica Inmediata (19% IVA)`, `Factura para Clínicas — Cotización por WhatsApp`, the ISP homologation statement, and the technical WhatsApp hotline.
+* **Free-shipping figure must match the cart:** the logistics list advertises `Despacho Gratuito sobre $150.000`. It previously said `$100.000` while the cart computed against `150000`, so the storefront contradicted itself. Treat the cart constant as authoritative.
+* **Contact icons use `var(--accent-on-dark)`** — the footer is an `--ink-900` surface, where `--accent` fails contrast. The retired `--brand-accent-green` token must not reappear.
 * **Zero Prototype Buttons:** Administrative wipe/seed buttons are strictly eliminated from public view.
 
 ### 7.3 `PaymentReturnModal.tsx`

@@ -31,7 +31,7 @@ describe('Serverless Admin Auth Middleware (api/lib/adminAuth.ts)', () => {
   })
 
   it('rejects when user does not have admin: true custom claim', async () => {
-    const mockApp = {} as any
+    const mockApp = {} as unknown as ReturnType<typeof firebaseAdminLib.getAdminApp>
     vi.mocked(firebaseAdminLib.getAdminApp).mockReturnValue(mockApp)
     const mockVerify = vi.fn().mockResolvedValue({
       uid: 'user-regular-123',
@@ -40,7 +40,7 @@ describe('Serverless Admin Auth Middleware (api/lib/adminAuth.ts)', () => {
     })
     vi.mocked(firebaseAuthAdmin.getAuth).mockReturnValue({
       verifyIdToken: mockVerify
-    } as any)
+    } as unknown as ReturnType<typeof firebaseAuthAdmin.getAuth>)
 
     const req = { headers: { authorization: 'Bearer token-regular' } } as VercelRequest
     const result = await verifyAdminToken(req)
@@ -50,7 +50,7 @@ describe('Serverless Admin Auth Middleware (api/lib/adminAuth.ts)', () => {
   })
 
   it('authenticates valid admin user with admin: true custom claim', async () => {
-    const mockApp = {} as any
+    const mockApp = {} as unknown as ReturnType<typeof firebaseAdminLib.getAdminApp>
     vi.mocked(firebaseAdminLib.getAdminApp).mockReturnValue(mockApp)
     const mockVerify = vi.fn().mockResolvedValue({
       uid: 'admin-uid-999',
@@ -59,7 +59,7 @@ describe('Serverless Admin Auth Middleware (api/lib/adminAuth.ts)', () => {
     })
     vi.mocked(firebaseAuthAdmin.getAuth).mockReturnValue({
       verifyIdToken: mockVerify
-    } as any)
+    } as unknown as ReturnType<typeof firebaseAuthAdmin.getAuth>)
 
     const req = { headers: { authorization: 'Bearer token-admin-valid' } } as VercelRequest
     const result = await verifyAdminToken(req)

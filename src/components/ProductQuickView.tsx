@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { Product } from '../types'
 import { formatCLP } from '../utils/currency'
 import { formatCategoryDisplayName } from '../utils/categoryAlias'
+import { whatsappLink } from '../config/contact'
+import { useScrollLock } from '../hooks/useScrollLock'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 import {
   X,
   Star,
@@ -34,19 +37,21 @@ export interface ProductQuickViewProps {
   product: Product | null
   onClose: () => void
   onAddToCart: (product: Product, quantity?: number) => void
+  /** Units of this product already in the cart — seeds the local stepper (min 1). */
+  cartQuantity?: number
 }
 
-export default function ProductQuickView({ product, onClose, onAddToCart }: ProductQuickViewProps) {
-  const [quantity, setQuantity] = useState<number>(1)
+export default function ProductQuickView({ product, onClose, onAddToCart, cartQuantity = 0 }: ProductQuickViewProps) {
+  // Quantity, gallery index and failed-image state are scoped to a single
+  // product: the caller keys this component by product id, so switching
+  // products remounts it and resets everything without a sync effect.
+  const [quantity, setQuantity] = useState<number>(() => Math.max(1, cartQuantity))
   const [activeImgIndex, setActiveImgIndex] = useState<number>(0)
   const [failedImages, setFailedImages] = useState<Record<number, boolean>>({})
 
-  // Reset states when product changes
-  useEffect(() => {
-    setQuantity(1)
-    setActiveImgIndex(0)
-    setFailedImages({})
-  }, [product])
+  // Freeze the page behind the modal
+  useScrollLock(Boolean(product))
+  const dialogRef = useFocusTrap<HTMLDivElement>(Boolean(product))
 
   const photos = product?.images && product.images.length > 0 ? product.images : []
   const hasMultiplePhotos = photos.length > 1
@@ -88,9 +93,10 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
   const isCurrentImgFailed = failedImages[activeImgIndex]
   const currentPhotoUrl = photos[activeImgIndex]
 
-  const discountPercent = (product.originalPrice && product.originalPrice > product.price)
-    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
-    : 0
+  const discountPercent =
+    product.originalPrice && product.originalPrice > product.price
+      ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+      : 0
   const showDiscount = discountPercent >= 5
 
   const handlePrevPhoto = (e: React.MouseEvent) => {
@@ -108,12 +114,19 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
   }
 
   // Generate pre-filled WhatsApp link for inquiries
-  const whatsappUrl = `https://wa.me/56912345678?text=${encodeURIComponent(
+  const whatsappUrl = whatsappLink(
     `Hola PRONTO Insumos, quisiera consultar sobre el producto: ${product.name} (REF: ${skuRef}).`
-  )}`
+  )
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-product-title">
+    <div
+      ref={dialogRef}
+      className="modal-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-product-title"
+    >
       <div className="modal-card modal-card-vertical" onClick={(e) => e.stopPropagation()}>
         {/* Modal Close Button */}
         <button className="modal-close-btn" onClick={onClose} aria-label="Cerrar ventana">
@@ -139,7 +152,6 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
                   <div className="placeholder-icon-frame">
                     <CategoryIcon size={44} strokeWidth={1.75} />
                   </div>
-                  <span className="gallery-placeholder-text">{product.name}</span>
                 </div>
               )}
 
@@ -149,13 +161,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
                 <span>{product.mediaBadge}</span>
               </div>
 
-              {showDiscount && (
-                <div className="discount-badge">-{discountPercent}%</div>
-              )}
+              {showDiscount && <div className="discount-badge">-{discountPercent}%</div>}
 
-              {product.prescriptionRequired && (
-                <div className="rx-badge">Uso Profesional</div>
-              )}
+              {product.prescriptionRequired && <div className="rx-badge">Uso Profesional</div>}
 
               {/* Photo Counter Pill */}
               {hasMultiplePhotos && (
@@ -231,17 +239,15 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             <div className="detail-meta-header">
               <span className="product-category-tag">{formatCategoryDisplayName(product.category)}</span>
               <span className="product-ref-badge">REF: {skuRef}</span>
-              {product.tag && product.tag.trim() && (
-                <span className="product-tag-chip">{product.tag}</span>
-              )}
+              {product.tag && product.tag.trim() && <span className="product-tag-chip">{product.tag}</span>}
               {product.prescriptionRequired && (
                 <span
                   style={{
                     fontSize: '0.7rem',
                     fontWeight: '800',
-                    color: '#b45309',
-                    background: '#fef3c7',
-                    border: '1px solid #fde68a',
+                    color: 'var(--warning)',
+                    background: 'var(--signal-soft)',
+                    border: '1px solid var(--signal-border)',
                     borderRadius: 'var(--radius-xs)',
                     padding: '0.15rem 0.5rem',
                     display: 'inline-flex',
@@ -266,6 +272,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               {product.name}
             </h2>
 
+            {/* Sales unit — same line as the card (Appendix D.5) */}
+            {product.unitOfSale && <span className="product-unit-sale">{product.unitOfSale}</span>}
+
             {/* Clinical Rating (Optional - hidden when zero reviews) */}
             {product.reviewsCount !== undefined && product.reviewsCount > 0 && (
               <div className="product-rating detail-rating-row">
@@ -275,11 +284,11 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
                       key={i}
                       size={14}
                       className={i < Math.floor(product.rating) ? 'star-filled' : ''}
-                      style={{ color: i < Math.floor(product.rating) ? '#f59e0b' : '#cbd5e1' }}
+                      style={{ color: i < Math.floor(product.rating) ? 'var(--warning)' : 'var(--border-strong)' }}
                     />
                   ))}
                 </div>
-                <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
+                <span style={{ fontWeight: '700', color: 'var(--ink-800)' }}>{product.rating}</span>
                 <span>({product.reviewsCount} reseñas clínicas verificadas)</span>
               </div>
             )}
@@ -303,10 +312,18 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               <div className="detail-stock-indicator">
                 <span
                   className="product-stock-dot"
-                  style={{ background: isAvailable ? '#059669' : '#dc2626' }}
+                  style={{ background: isAvailable ? 'var(--success)' : 'var(--danger)' }}
                 />
-                <span style={{ color: isAvailable ? '#059669' : '#dc2626', fontWeight: '600', fontSize: '0.8rem' }}>
-                  {isAvailable ? 'Disponible para despacho y retiro en Melipilla' : 'Sin stock inmediato en bodega'}
+                <span
+                  style={{
+                    color: isAvailable ? 'var(--success)' : 'var(--danger)',
+                    fontWeight: '600',
+                    fontSize: '0.8rem'
+                  }}
+                >
+                  {isAvailable
+                    ? 'Disponible para despacho en Melipilla y San Antonio'
+                    : 'Sin stock inmediato en bodega'}
                 </span>
               </div>
             </div>
@@ -314,17 +331,19 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             {product.prescriptionRequired && (
               <div
                 style={{
-                  background: '#fffbeb',
-                  border: '1px solid #fef3c7',
-                  borderLeft: '3px solid #f59e0b',
+                  background: 'var(--signal-soft)',
+                  border: '1px solid var(--signal-border)',
+                  borderLeft: '3px solid var(--warning)',
                   borderRadius: 'var(--radius-xs)',
                   padding: '0.65rem 0.85rem',
                   fontSize: '0.775rem',
-                  color: '#92400e',
+                  color: 'var(--warning)',
                   lineHeight: '1.4'
                 }}
               >
-                <strong>⚠️ Dispositivo / Fármaco Regulado por ISP Chile:</strong> Para la adquisición y despacho de este insumo se solicitará acreditación profesional (N° de Registro SIS - Superintendencia de Salud) durante el checkout.
+                <strong>⚠️ Dispositivo / Fármaco Regulado por ISP Chile:</strong> Para la adquisición y despacho de este
+                insumo se solicitará acreditación profesional (N° de Registro SIS - Superintendencia de Salud) durante
+                el checkout.
               </div>
             )}
 
@@ -335,7 +354,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             {product.specs && product.specs.length > 0 && (
               <div className="detail-section-block">
                 <div className="detail-section-heading">
-                  <FileText size={15} style={{ color: 'var(--brand-blue)' }} />
+                  <FileText size={15} style={{ color: 'var(--ink-800)' }} />
                   <span>Especificaciones Técnicas</span>
                 </div>
                 <ul className="detail-specs-list">
@@ -353,7 +372,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
             {product.packageContents && product.packageContents.length > 0 && (
               <div className="detail-section-block">
                 <div className="detail-section-heading">
-                  <Package size={15} style={{ color: 'var(--brand-blue)' }} />
+                  <Package size={15} style={{ color: 'var(--ink-800)' }} />
                   <span>Contenido del Empaque</span>
                 </div>
                 <div className="package-contents-box">
@@ -383,7 +402,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               <span className="divider">•</span>
               <span>Garantía Legal SERNAC 6 meses</span>
               <span className="divider">•</span>
-              <span>Factura Electrónica Inmediata (19% IVA)</span>
+              <span>Boleta Electrónica · IVA 19%</span>
             </div>
           </div>
 
@@ -400,7 +419,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               >
                 <Minus size={14} />
               </button>
-              <span className="qty-val">{quantity}</span>
+              <span className="qty-val" aria-live="polite">
+                {quantity}
+              </span>
               <button
                 className="qty-btn"
                 onClick={() => setQuantity(Math.min(maxStock, quantity + 1))}
@@ -418,9 +439,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart }: Prod
               title={isAvailable ? 'Agregar insumo al carro' : 'Sin stock disponible'}
             >
               <ShoppingBag size={17} />
-              <span>
-                {isAvailable ? `Agregar al Carro • ${formatCLP(totalPrice)}` : 'Sin Stock Inmediato'}
-              </span>
+              <span>{isAvailable ? `Agregar al Carro • ${formatCLP(totalPrice)}` : 'Sin Stock Inmediato'}</span>
             </button>
 
             <a

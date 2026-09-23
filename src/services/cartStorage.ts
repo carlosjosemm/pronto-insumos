@@ -29,7 +29,7 @@ export function saveCartToStorage(items: CartItem[], appliedPromo: PromoCode | n
 
   try {
     const safeItems = Array.isArray(items)
-      ? items.filter(i => i && i.product && typeof i.product.id === 'string' && typeof i.quantity === 'number')
+      ? items.filter((i) => i && i.product && typeof i.product.id === 'string' && typeof i.quantity === 'number')
       : []
 
     if (safeItems.length === 0 && !appliedPromo) {
@@ -40,15 +40,17 @@ export function saveCartToStorage(items: CartItem[], appliedPromo: PromoCode | n
     const payload: StoredCartData = {
       version: CART_STORAGE_VERSION,
       savedAt: Date.now(),
-      items: safeItems.map(item => ({
+      items: safeItems.map((item) => ({
         product: item.product,
         quantity: Math.max(1, Math.floor(item.quantity || 1))
       })),
-      appliedPromo: appliedPromo ? {
-        code: appliedPromo.code,
-        discountPercent: appliedPromo.discountPercent,
-        label: appliedPromo.label
-      } : null
+      appliedPromo: appliedPromo
+        ? {
+            code: appliedPromo.code,
+            discountPercent: appliedPromo.discountPercent,
+            label: appliedPromo.label
+          }
+        : null
     }
 
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(payload))
@@ -77,7 +79,12 @@ export function loadCartFromStorage(): { items: CartItem[]; appliedPromo: PromoC
     const data = JSON.parse(raw) as StoredCartData
 
     // Check schema integrity
-    if (!data || typeof data !== 'object' || data.version !== CART_STORAGE_VERSION || typeof data.savedAt !== 'number') {
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      data.version !== CART_STORAGE_VERSION ||
+      typeof data.savedAt !== 'number'
+    ) {
       window.localStorage.removeItem(CART_STORAGE_KEY)
       return null
     }
@@ -95,7 +102,7 @@ export function loadCartFromStorage(): { items: CartItem[]; appliedPromo: PromoC
     }
 
     const validItems: CartItem[] = data.items.filter(
-      item =>
+      (item) =>
         item &&
         item.product &&
         typeof item.product.id === 'string' &&
@@ -165,10 +172,7 @@ export function clearCartFromStorage(): void {
  * - Clamps quantities that exceed live inventory stock.
  * - Synchronizes product metadata (live prices, manufacturer, ISP requirements).
  */
-export function revalidateCartAgainstCatalog(
-  storedItems: CartItem[],
-  catalog: Product[]
-): CartRevalidationResult {
+export function revalidateCartAgainstCatalog(storedItems: CartItem[], catalog: Product[]): CartRevalidationResult {
   if (!catalog || catalog.length === 0 || !storedItems || storedItems.length === 0) {
     return {
       items: storedItems || [],
@@ -178,7 +182,7 @@ export function revalidateCartAgainstCatalog(
     }
   }
 
-  const catalogMap = new Map<string, Product>(catalog.map(p => [p.id, p]))
+  const catalogMap = new Map<string, Product>(catalog.map((p) => [p.id, p]))
   let removedCount = 0
   let adjustedCount = 0
   let hasChanges = false
@@ -189,18 +193,21 @@ export function revalidateCartAgainstCatalog(
     const liveProduct = catalogMap.get(item.product.id)
 
     // Discontinued, out of stock, or non-positive stock
-    if (!liveProduct || !liveProduct.inStock || (typeof liveProduct.stockCount === 'number' && liveProduct.stockCount <= 0)) {
+    if (
+      !liveProduct ||
+      !liveProduct.inStock ||
+      (typeof liveProduct.stockCount === 'number' && liveProduct.stockCount <= 0)
+    ) {
       removedCount++
       hasChanges = true
       continue
     }
 
     // Determine current max stock boundary
-    const maxStock = typeof liveProduct.stockCount === 'number' && liveProduct.stockCount > 0
-      ? liveProduct.stockCount
-      : 99
+    const maxStock =
+      typeof liveProduct.stockCount === 'number' && liveProduct.stockCount > 0 ? liveProduct.stockCount : 99
 
-    let finalQuantity = Math.max(1, Math.min(item.quantity, maxStock))
+    const finalQuantity = Math.max(1, Math.min(item.quantity, maxStock))
     if (finalQuantity !== item.quantity) {
       adjustedCount++
       hasChanges = true

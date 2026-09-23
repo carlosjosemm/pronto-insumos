@@ -14,12 +14,12 @@ vi.mock('../../../../api/lib/firebaseAdmin', () => ({
 
 describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () => {
   let mockRes: Partial<VercelResponse>
-  let jsonOutput: any
+  let jsonOutput: Record<string, unknown> = {}
   let statusOutput: number
 
   beforeEach(() => {
     vi.clearAllMocks()
-    jsonOutput = null
+    jsonOutput = {}
     statusOutput = 200
 
     mockRes = {
@@ -28,8 +28,8 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
         statusOutput = code
         return mockRes as VercelResponse
       }),
-      json: vi.fn((data: any) => {
-        jsonOutput = data
+      json: vi.fn((data: unknown) => {
+        jsonOutput = data as Record<string, unknown>
         return mockRes as VercelResponse
       }),
       end: vi.fn()
@@ -78,7 +78,7 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
     const mockAuditRef = { id: 'audit-123' }
     const mockHistoryRef = { id: 'osh-123' }
 
-    let updateMock: any
+    let updateMock: ReturnType<typeof vi.fn> | undefined
 
     const mockDb = {
       collection: vi.fn((name: string) => {
@@ -106,7 +106,7 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
       runTransaction: vi.fn(async (callback) => {
         updateMock = vi.fn()
         const mockTransaction = {
-          get: vi.fn(async (ref: any) => {
+          get: vi.fn(async (ref: unknown) => {
             if (ref === mockOrderRef) {
               return { exists: true, data: () => mockOrderData }
             }
@@ -122,7 +122,9 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
       })
     }
 
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = { method: 'POST', body: { orderId: 'PRONTO-123' } } as VercelRequest
 
@@ -154,7 +156,7 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
       get: vi.fn().mockResolvedValue({ exists: true })
     }
     const mockProductRef = {}
-    let capturedProductUpdate: any = null
+    const capturedProductUpdate: { current: Record<string, unknown> | null } = { current: null }
 
     const mockDb = {
       collection: vi.fn((name: string) => {
@@ -164,14 +166,14 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
       }),
       runTransaction: vi.fn(async (callback) => {
         const mockTransaction = {
-          get: vi.fn(async (ref: any) => {
+          get: vi.fn(async (ref: unknown) => {
             if (ref === mockOrderRef) return { exists: true, data: () => mockOrderData }
             if (ref === mockProductRef) return { exists: true, data: () => mockProductData }
             return { exists: false }
           }),
           update: vi.fn((ref, data) => {
             if (ref === mockProductRef) {
-              capturedProductUpdate = data
+              capturedProductUpdate.current = data
             }
           }),
           set: vi.fn()
@@ -180,7 +182,9 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
       })
     }
 
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = { method: 'POST', body: { orderId: 'PRONTO-DUPLICATE' } } as VercelRequest
 
@@ -189,8 +193,8 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
     // Initial 10 stock minus (2 + 3) = 5
-    expect(capturedProductUpdate).not.toBeNull()
-    expect(capturedProductUpdate.stockCount).toBe(5)
+    expect(capturedProductUpdate.current).not.toBeNull()
+    expect(capturedProductUpdate.current?.stockCount).toBe(5)
   })
 
   it('falls back to query by orderId if direct doc lookup returns exists: false', async () => {
@@ -214,7 +218,7 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
         if (name === 'orders') {
           return {
             doc: vi.fn(() => directDocRef),
-            where: vi.fn((field, op, val) => ({
+            where: vi.fn(() => ({
               limit: vi.fn(() => ({
                 get: vi.fn().mockResolvedValue({
                   empty: false,
@@ -228,7 +232,7 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
       }),
       runTransaction: vi.fn(async (callback) => {
         const mockTransaction = {
-          get: vi.fn(async (ref: any) => {
+          get: vi.fn(async (ref: unknown) => {
             if (ref === queriedDocRef) return { exists: true, data: () => mockOrderData }
             return { exists: true, data: () => ({ stockCount: 5, inStock: true }) }
           }),
@@ -239,7 +243,9 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
       })
     }
 
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = { method: 'POST', body: { orderId: 'PRONTO-FALLBACK' } } as VercelRequest
 

@@ -30,9 +30,9 @@ describe('Chilean Currency Utility (formatCLP, calculateIVA, parseCLP)', () => {
 
     it('should handle NaN, null, and undefined gracefully by returning $0', () => {
       expect(formatCLP(NaN)).toBe('$0')
-      // @ts-ignore
+      // @ts-expect-error deliberate invalid input to assert runtime resilience
       expect(formatCLP(null)).toBe('$0')
-      // @ts-ignore
+      // @ts-expect-error deliberate invalid input to assert runtime resilience
       expect(formatCLP(undefined)).toBe('$0')
     })
   })
@@ -68,7 +68,7 @@ describe('Chilean Currency Utility (formatCLP, calculateIVA, parseCLP)', () => {
     it('should return 0 for invalid or empty strings', () => {
       expect(parseCLP('')).toBe(0)
       expect(parseCLP('abc')).toBe(0)
-      // @ts-ignore
+      // @ts-expect-error deliberate invalid input to assert runtime resilience
       expect(parseCLP(null)).toBe(0)
     })
   })

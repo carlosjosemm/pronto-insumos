@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import {
-  validateVoucherFile,
-  fileToDataUrl,
-  uploadTransferVoucher
-} from '../../services/transferVoucher'
+import { validateVoucherFile, fileToDataUrl, uploadTransferVoucher } from '../../services/transferVoucher'
 
 describe('Transfer Voucher Service (src/services/transferVoucher)', () => {
   beforeEach(() => {

@@ -14,12 +14,12 @@ vi.mock('../../../../api/lib/firebaseAdmin', () => ({
 
 describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
   let mockRes: Partial<VercelResponse>
-  let jsonOutput: any
+  let jsonOutput: Record<string, unknown> = {}
   let statusOutput: number
 
   beforeEach(() => {
     vi.clearAllMocks()
-    jsonOutput = null
+    jsonOutput = {}
     statusOutput = 200
 
     mockRes = {
@@ -28,8 +28,8 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
         statusOutput = code
         return mockRes as VercelResponse
       }),
-      json: vi.fn((data: any) => {
-        jsonOutput = data
+      json: vi.fn((data: unknown) => {
+        jsonOutput = data as Record<string, unknown>
         return mockRes as VercelResponse
       }),
       end: vi.fn()
@@ -55,7 +55,9 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
       batch: vi.fn(() => mockBatch)
     }
 
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = {
       method: 'POST',
@@ -71,15 +73,21 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.status).toBe('DESPACHADO')
-    expect(mockBatch.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      status: 'DESPACHADO',
-      courier: 'starken',
-      trackingNumber: 'STK-998877'
-    }))
-    expect(mockBatch.set).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      newStatus: 'DESPACHADO',
-      actorRole: 'ADMIN'
-    }))
+    expect(mockBatch.update).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: 'DESPACHADO',
+        courier: 'starken',
+        trackingNumber: 'STK-998877'
+      })
+    )
+    expect(mockBatch.set).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        newStatus: 'DESPACHADO',
+        actorRole: 'ADMIN'
+      })
+    )
   })
 
   it('falls back to query by orderId if direct doc lookup is not found', async () => {
@@ -99,7 +107,7 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
     }
 
     const mockDb = {
-      collection: vi.fn((name: string) => ({
+      collection: vi.fn(() => ({
         doc: vi.fn(() => directDoc),
         where: vi.fn(() => ({
           limit: vi.fn(() => ({
@@ -110,7 +118,9 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
       batch: vi.fn(() => mockBatch)
     }
 
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = {
       method: 'POST',

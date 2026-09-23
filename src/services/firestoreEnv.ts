@@ -1,8 +1,4 @@
-export type FirestoreCollectionKey =
-  | 'products'
-  | 'orders'
-  | 'order_status_history'
-  | 'inventory_audit_logs'
+export type FirestoreCollectionKey = 'products' | 'orders' | 'order_status_history' | 'inventory_audit_logs'
 
 export type FirestoreEnvironment = 'production' | 'development' | 'test'
 

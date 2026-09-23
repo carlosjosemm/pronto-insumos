@@ -8,32 +8,51 @@ export interface ProductListProps {
   loading: boolean
   onAddToCart: (product: Product) => void
   onQuickView: (product: Product) => void
+  /** Map of productId → units already in the cart, threaded to the cards. */
+  cartQuantityById?: Record<string, number>
+  onUpdateQuantity?: (productId: string, qty: number) => void
 }
 
-export default function ProductList({ products, loading, onAddToCart, onQuickView }: ProductListProps) {
+export default function ProductList({
+  products,
+  loading,
+  onAddToCart,
+  onQuickView,
+  cartQuantityById,
+  onUpdateQuantity
+}: ProductListProps) {
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--slate-600)' }}>
-        <div className="brand-icon-wrapper" style={{ margin: '0 auto 1rem', animation: 'spin 1s linear infinite' }}>
-          ⏳
-        </div>
-        <p style={{ fontWeight: '600' }}>Cargando catálogo de insumos odontológicos...</p>
+      <div className="products-grid" aria-busy="true">
+        <span className="visually-hidden">Cargando catálogo</span>
+        {[...Array(8)].map((_, i) => (
+          <div className="skeleton-card" key={i} aria-hidden="true">
+            <div className="skeleton-block skeleton-media" />
+            <div className="skeleton-block skeleton-line skeleton-line--medium" />
+            <div className="skeleton-block skeleton-line skeleton-line--wide" />
+            <div className="skeleton-block skeleton-line skeleton-line--short" />
+          </div>
+        ))}
       </div>
     )
   }
 
   if (products.length === 0) {
     return (
-      <div style={{
-        background: 'white',
-        borderRadius: 'var(--radius-lg)',
-        padding: '3.5rem 1.5rem',
-        textAlign: 'center',
-        border: '1px solid var(--slate-200)'
-      }}>
-        <AlertCircle size={48} style={{ color: 'var(--slate-400)', marginBottom: '1rem' }} />
-        <h3 style={{ fontSize: '1.25rem', fontWeight: '800', marginBottom: '0.5rem' }}>No se encontraron insumos odontológicos</h3>
-        <p style={{ color: 'var(--slate-600)', maxWidth: '420px', margin: '0 auto' }}>
+      <div
+        style={{
+          background: 'white',
+          borderRadius: 'var(--radius-lg)',
+          padding: '3.5rem 1.5rem',
+          textAlign: 'center',
+          border: '1px solid var(--border-subtle)'
+        }}
+      >
+        <AlertCircle size={48} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
+        <h3 style={{ fontSize: '1.25rem', fontWeight: '800', marginBottom: '0.5rem' }}>
+          No se encontraron insumos odontológicos
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', maxWidth: '420px', margin: '0 auto' }}>
           Intenta cambiar el término de búsqueda o selecciona otra categoría odontológica.
         </p>
       </div>
@@ -43,15 +62,13 @@ export default function ProductList({ products, loading, onAddToCart, onQuickVie
   return (
     <div className="products-grid">
       {products.map((product, index) => (
-        <div
-          key={product.id}
-          className="product-card-entrance"
-          style={{ animationDelay: `${(index % 4) * 60}ms` }}
-        >
+        <div key={product.id} className="product-card-entrance" style={{ animationDelay: `${(index % 4) * 60}ms` }}>
           <ProductCard
             product={product}
             onAddToCart={onAddToCart}
             onQuickView={onQuickView}
+            cartQuantity={cartQuantityById?.[product.id] ?? 0}
+            onUpdateQuantity={onUpdateQuantity}
           />
         </div>
       ))}

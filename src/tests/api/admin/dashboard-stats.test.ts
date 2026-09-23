@@ -14,12 +14,12 @@ vi.mock('../../../../api/lib/firebaseAdmin', () => ({
 
 describe('Serverless Admin Dashboard Stats (/api/admin/dashboard-stats)', () => {
   let mockRes: Partial<VercelResponse>
-  let jsonOutput: any
+  let jsonOutput: Record<string, unknown> = {}
   let statusOutput: number
 
   beforeEach(() => {
     vi.clearAllMocks()
-    jsonOutput = null
+    jsonOutput = {}
     statusOutput = 200
 
     mockRes = {
@@ -28,8 +28,8 @@ describe('Serverless Admin Dashboard Stats (/api/admin/dashboard-stats)', () => 
         statusOutput = code
         return mockRes as VercelResponse
       }),
-      json: vi.fn((data: any) => {
-        jsonOutput = data
+      json: vi.fn((data: unknown) => {
+        jsonOutput = data as Record<string, unknown>
         return mockRes as VercelResponse
       }),
       end: vi.fn()
@@ -88,7 +88,7 @@ describe('Serverless Admin Dashboard Stats (/api/admin/dashboard-stats)', () => 
     const mockDb = {
       collection: vi.fn((name: string) => ({
         get: vi.fn().mockResolvedValue({
-          forEach: (cb: any) => {
+          forEach: (cb: (doc: unknown) => void) => {
             if (name === 'orders') mockOrders.forEach(cb)
             if (name === 'products') mockProducts.forEach(cb)
           }
@@ -96,7 +96,9 @@ describe('Serverless Admin Dashboard Stats (/api/admin/dashboard-stats)', () => 
       }))
     }
 
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = { method: 'GET' } as VercelRequest
 
@@ -104,9 +106,10 @@ describe('Serverless Admin Dashboard Stats (/api/admin/dashboard-stats)', () => 
 
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
-    expect(jsonOutput.stats.salesToday).toBe(150000)
-    expect(jsonOutput.stats.pendingOrders).toBe(1)
-    expect(jsonOutput.stats.lowStockProducts).toBe(1)
-    expect(jsonOutput.stats.ordersThisMonth).toBe(2)
+    const stats = jsonOutput.stats as Record<string, unknown>
+    expect(stats.salesToday).toBe(150000)
+    expect(stats.pendingOrders).toBe(1)
+    expect(stats.lowStockProducts).toBe(1)
+    expect(stats.ordersThisMonth).toBe(2)
   })
 })

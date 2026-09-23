@@ -27,9 +27,7 @@ const mockOrder: Order = {
       regulatoryNote: 'Registro SIS verificado'
     }
   },
-  items: [
-    { productId: 'odon-101', name: 'Turbina LED Push Button', quantity: 1, price: 189990 }
-  ],
+  items: [{ productId: 'odon-101', name: 'Turbina LED Push Button', quantity: 1, price: 189990 }],
   voucherUrl: 'https://example.com/receipt.pdf'
 }
 
@@ -39,13 +37,7 @@ describe('OrderDetailPanel Component', () => {
     const handleClose = vi.fn()
     const handleUpdated = vi.fn()
 
-    render(
-      <OrderDetailPanel
-        order={mockOrder}
-        onClose={handleClose}
-        onOrderUpdated={handleUpdated}
-      />
-    )
+    render(<OrderDetailPanel order={mockOrder} onClose={handleClose} onOrderUpdated={handleUpdated} />)
 
     expect(screen.getByText('PRONTO-998811')).toBeInTheDocument()
     expect(screen.getByText('Dra. Andrea Morales')).toBeInTheDocument()

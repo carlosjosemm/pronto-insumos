@@ -14,12 +14,12 @@ vi.mock('../../../../api/lib/firebaseAdmin', () => ({
 
 describe('Serverless Admin Update Product (/api/admin/update-product)', () => {
   let mockRes: Partial<VercelResponse>
-  let jsonOutput: any
+  let jsonOutput: Record<string, unknown> = {}
   let statusOutput: number
 
   beforeEach(() => {
     vi.clearAllMocks()
-    jsonOutput = null
+    jsonOutput = {}
     statusOutput = 200
 
     mockRes = {
@@ -28,8 +28,8 @@ describe('Serverless Admin Update Product (/api/admin/update-product)', () => {
         statusOutput = code
         return mockRes as VercelResponse
       }),
-      json: vi.fn((data: any) => {
-        jsonOutput = data
+      json: vi.fn((data: unknown) => {
+        jsonOutput = data as Record<string, unknown>
         return mockRes as VercelResponse
       }),
       end: vi.fn()
@@ -66,7 +66,9 @@ describe('Serverless Admin Update Product (/api/admin/update-product)', () => {
       batch: vi.fn(() => mockBatch)
     }
 
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(mockDb as any)
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
 
     const req = {
       method: 'POST',
@@ -80,11 +82,15 @@ describe('Serverless Admin Update Product (/api/admin/update-product)', () => {
 
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
-    expect(jsonOutput.updates.price).toBe(238000)
-    expect(jsonOutput.updates.priceNeto).toBe(200000)
-    expect(mockBatch.update).toHaveBeenCalledWith(mockDoc, expect.objectContaining({
-      price: 238000,
-      priceNeto: 200000
-    }))
+    const updates = jsonOutput.updates as Record<string, unknown>
+    expect(updates.price).toBe(238000)
+    expect(updates.priceNeto).toBe(200000)
+    expect(mockBatch.update).toHaveBeenCalledWith(
+      mockDoc,
+      expect.objectContaining({
+        price: 238000,
+        priceNeto: 200000
+      })
+    )
   })
 })

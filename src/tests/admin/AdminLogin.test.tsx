@@ -17,7 +17,7 @@ describe('AdminLogin Component', () => {
     }
     vi.mocked(firebaseAuth.signInWithEmailAndPassword).mockResolvedValue({
       user: mockUser
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof firebaseAuth.signInWithEmailAndPassword>>)
 
     render(<AdminLogin onLoginSuccess={handleSuccess} />)
 
@@ -46,7 +46,7 @@ describe('AdminLogin Component', () => {
     }
     vi.mocked(firebaseAuth.signInWithEmailAndPassword).mockResolvedValue({
       user: mockUser
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof firebaseAuth.signInWithEmailAndPassword>>)
 
     render(<AdminLogin onLoginSuccess={handleSuccess} />)
 
@@ -61,7 +61,9 @@ describe('AdminLogin Component', () => {
 
     await waitFor(() => {
       expect(firebaseAuth.signOut).toHaveBeenCalledTimes(1)
-      expect(screen.getByText(/Acceso denegado: esta cuenta no cuenta con permisos administrativos/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/Acceso denegado: esta cuenta no cuenta con permisos administrativos/i)
+      ).toBeInTheDocument()
       expect(handleSuccess).not.toHaveBeenCalled()
     })
   })

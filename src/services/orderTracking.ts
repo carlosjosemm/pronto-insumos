@@ -53,8 +53,8 @@ export async function fetchOrderTracking({
 
     const data: OrderTrackingInfo = await response.json()
     return { success: true, data }
-  } catch (err: any) {
-    console.warn('Endpoint /api/track-order no disponible, usando fallback:', err.message)
+  } catch (err: unknown) {
+    console.warn('Endpoint /api/track-order no disponible, usando fallback:', err instanceof Error ? err.message : err)
     // Simulated fallback for test/dev environments
     return {
       success: true,
