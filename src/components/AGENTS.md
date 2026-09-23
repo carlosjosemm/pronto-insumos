@@ -82,6 +82,23 @@ The landing page composes the brand experience in a fixed narrative order:
   - `OrderTrackingModal` is rendered only while `isTrackingOpen` is true (`{isTrackingOpen && …}`), so its form state initializes from `initialOrderId` / `initialRut` on every open. Removing the conditional render reintroduces the prop→state sync effect that the hooks rules forbid.
 * **`addToast` is wrapped in `useCallback`** because it is a dependency of the catalog effect.
 
+### 2.2 Brand Lockup & Canonical Naming
+
+The brand mark is **type, not an image** — it renders as crisp text at any zoom and stays accessible. There is no icon mark of any kind.
+
+* **Lockup structure** (`Navbar.tsx`, `Footer.tsx`): a `.brand-lockup` wrapper containing
+  * `.brand-wordmark` — `PRONTO`, `Fraunces` 600, `1.375rem` in the navbar / `1.25rem` in the footer; `var(--ink-800)` on light surfaces, `var(--text-inverse)` on navy.
+  * `.brand-descriptor` — `INSUMOS ODONTOLÓGICOS`, `Inter` 600, `0.5625rem`, uppercase, `letter-spacing: 0.14em`; `var(--text-muted)` on light, `var(--accent-on-dark)` on navy.
+  * `.brand-underline` — the single bespoke detail: a hand-drawn SVG stroke (`path d="M2 4 Q 25 7 50 4 T 98 4"`) in `var(--signal)`, `stroke-width: 3`, `stroke-linecap: round`, absolutely positioned to span ~70% of the wordmark width. **The same motif is the favicon mark** (`public/favicon.svg`). Do not add any other texture or decoration.
+  * The footer uses the `brand-lockup--inverse` modifier for the navy surface.
+* **Retired:** the Lucide `Activity` icon-in-a-square, the `ODONTOLOGÍA` sticker badge, and the `PRONTO ODONTOLOGÍA` footer lockup. `Navbar.test.tsx` and `ClinicalStorefront.test.tsx` assert these do not come back.
+* **Canonical naming rule:**
+  * Storefront lockup: `PRONTO` + `INSUMOS ODONTOLÓGICOS` descriptor.
+  * `<title>` and meta: `PRONTO Insumos Odontológicos — Depósito Dental en Melipilla`.
+  * Legal line: `PRONTO INSUMOS ODONTOLÓGICOS SPA` (unchanged).
+* **Favicon:** `public/favicon.svg`, wired via `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />` in `index.html`.
+* **`og-preview.png`:** `index.html` references `https://pronto-insumos.vercel.app/og-preview.png` in `og:image`, `twitter:image` and the JSON-LD `image`. The file is produced by a human (redesign proposal Appendix B.1) and dropped at `public/og-preview.png`; the meta tags ship regardless. **Do not generate a substitute image.** `vercel --prod` is blocked until the real file exists.
+
 ---
 
 ## 🛒 3. Deep Dive: Checkout Modal (`CheckoutModal.tsx`)
@@ -247,11 +264,14 @@ Clinical category tabs (Instrumental, Materiales Restauradores, Equipamiento, De
 ## 🌐 7. Navigation, Layout & Utility Components
 
 ### 7.1 `Navbar.tsx`
+* **Brand Lockup:** the code-rendered `PRONTO` / `INSUMOS ODONTOLÓGICOS` wordmark with the `--signal` underline motif — see §2.2. The link carries `aria-label="PRONTO Insumos Odontológicos"`.
 * **Top Commercial Utility Bar:** Displays Melipilla express delivery notices, warehouse pickup address (Av. Ortúzar 750), Factura Electrónica SII compliance, and the direct "Seguimiento de Pedido" action button.
 * **Technical Search:** Debounced keyword search matching product names, clinical descriptions, categories, and SKU REF codes.
 * **Dynamic Cart Badge:** Visual item counter with micro-animation upon addition.
+* **Contact data:** the "Mesa Clínica" phone and its `wa.me` link come from `src/config/contact.ts` (`WHATSAPP_DISPLAY`, `whatsappLink()`), never from a literal.
 
 ### 7.2 `Footer.tsx`
+* **Brand Lockup:** the same wordmark as the navbar, in its `brand-lockup--inverse` (navy-surface) variant — see §2.2.
 * Grounded 4-column B2B distributor layout:
   1. *Identidad Corporativa:* Corporate details, Av. Ortúzar 750 warehouse location, Melipilla, Chile.
   2. *Catálogo Clínico:* Quick links to primary dental categories.

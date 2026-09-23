@@ -1,5 +1,5 @@
 import React from 'react'
-import { Activity, Search, ShoppingBag, MapPin, FileCheck, Phone, Truck } from 'lucide-react'
+import { Search, ShoppingBag, MapPin, FileCheck, Phone, Truck } from 'lucide-react'
 import { WHATSAPP_DISPLAY, whatsappLink } from '../config/contact'
 
 export interface NavbarProps {
@@ -75,15 +75,23 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
       {/* Main Navbar */}
       <header className="navbar">
         <div className="nav-container">
-          {/* Brand Identity */}
-          <a href="#" className="brand-logo">
-            <div className="brand-icon-wrapper">
-              <Activity size={22} />
-            </div>
-            <div className="brand-text-group">
-              <div className="brand-name">PRONTO</div>
-              <div className="brand-badge">ODONTOLOGÍA</div>
-            </div>
+          {/* Brand Identity — code-rendered wordmark lockup (§10.3) */}
+          <a href="#" className="brand-logo" aria-label="PRONTO Insumos Odontológicos">
+            <span className="brand-lockup">
+              <span className="brand-wordmark">
+                PRONTO
+                <svg
+                  className="brand-underline"
+                  viewBox="0 0 100 8"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="M2 4 Q 25 7 50 4 T 98 4" />
+                </svg>
+              </span>
+              <span className="brand-descriptor">INSUMOS ODONTOLÓGICOS</span>
+            </span>
           </a>
 
           {/* Desktop Search Bar */}

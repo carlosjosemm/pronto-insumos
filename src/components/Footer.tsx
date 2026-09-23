@@ -57,21 +57,20 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
         <div className="footer-grid-4col">
           {/* Column 1: Corporate Identity & Local Presence */}
           <div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.65rem',
-                fontWeight: '800',
-                fontSize: '1.25rem',
-                color: '#ffffff',
-                marginBottom: '0.75rem'
-              }}
-            >
-              <div className="brand-icon-wrapper" style={{ width: '32px', height: '32px' }}>
-                <Activity size={20} />
-              </div>
-              <span>PRONTO ODONTOLOGÍA</span>
+            <div className="brand-lockup brand-lockup--inverse" style={{ marginBottom: '0.75rem' }}>
+              <span className="brand-wordmark">
+                PRONTO
+                <svg
+                  className="brand-underline"
+                  viewBox="0 0 100 8"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="M2 4 Q 25 7 50 4 T 98 4" />
+                </svg>
+              </span>
+              <span className="brand-descriptor">INSUMOS ODONTOLÓGICOS</span>
             </div>
             <p style={{ color: '#94a3b8', fontSize: '0.825rem', lineHeight: '1.6', marginBottom: '1rem' }}>
               Distribuidor especializado en insumos y equipamiento odontológico para gabinetes, clínicas dentales y

@@ -16,9 +16,18 @@ describe('Navbar component', () => {
     expect(screen.getByText('PRONTO')).toBeInTheDocument()
   })
 
-  it('should render the brand badge "ODONTOLOGÍA"', () => {
+  it('should render the canonical brand descriptor "INSUMOS ODONTOLÓGICOS"', () => {
     render(<Navbar {...defaultProps} />)
-    expect(screen.getByText('ODONTOLOGÍA')).toBeInTheDocument()
+    expect(screen.getByText('INSUMOS ODONTOLÓGICOS')).toBeInTheDocument()
+    // The retired 'ODONTOLOGÍA' sticker must not come back
+    expect(screen.queryByText('ODONTOLOGÍA')).not.toBeInTheDocument()
+  })
+
+  it('should expose the wordmark lockup as a labelled link and not as an image', () => {
+    const { container } = render(<Navbar {...defaultProps} />)
+    expect(screen.getByRole('link', { name: 'PRONTO Insumos Odontológicos' })).toBeInTheDocument()
+    expect(container.querySelector('.brand-underline')).toBeInTheDocument()
+    expect(container.querySelector('.brand-logo img')).toBeNull()
   })
 
   it('should render a desktop search input', () => {

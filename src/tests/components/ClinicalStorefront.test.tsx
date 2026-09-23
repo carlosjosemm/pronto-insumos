@@ -70,6 +70,12 @@ describe('Clinical Storefront UI/UX Enhancement Tests', () => {
   })
 
   describe('Footer B2B Grounding & Security', () => {
+    it('should render the canonical brand lockup with the INSUMOS ODONTOLÓGICOS descriptor', () => {
+      render(<Footer />)
+      expect(screen.getByText('INSUMOS ODONTOLÓGICOS')).toBeInTheDocument()
+      expect(screen.queryByText('PRONTO ODONTOLOGÍA')).not.toBeInTheDocument()
+    })
+
     it('should render corporate tax identification, physical warehouse, and operating hours', () => {
       render(<Footer />)
       expect(screen.getByText(/77\.892\.410-K/i)).toBeInTheDocument()

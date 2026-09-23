@@ -272,11 +272,10 @@ textarea {
 }
 
 .brand-logo {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.75rem;
   text-decoration: none;
-  color: var(--brand-blue);
+  color: inherit;
 }
 
 .brand-icon-wrapper {
@@ -291,32 +290,61 @@ textarea {
   border: 1px solid var(--brand-blue-light);
 }
 
-.brand-text-group {
+/* ==========================================================================
+   BRAND LOCKUP — wordmark + descriptor (redesign proposal §10.3)
+   The mark is type, not an image, so it stays crisp and accessible.
+   ========================================================================== */
+.brand-lockup {
   display: flex;
   flex-direction: column;
+  gap: 0.2rem;
 }
 
-.brand-name {
+.brand-wordmark {
+  position: relative;
+  display: inline-block;
   font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 1.6rem;
-  letter-spacing: -0.01em;
-  color: var(--brand-blue);
+  font-weight: 600;
+  font-size: 1.375rem;
   line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink-800);
 }
 
-.brand-badge {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border: 1px solid var(--accent-border);
-  font-family: var(--font-display);
-  font-size: 0.65rem;
-  font-weight: 700;
-  padding: 0.1rem 0.45rem;
-  border-radius: var(--radius-xs);
+/* Hand-drawn underline motif — the one bespoke detail, shared with the favicon */
+.brand-underline {
+  position: absolute;
+  left: 15%;
+  bottom: -0.3rem;
+  width: 70%;
+  height: 8px;
+  overflow: visible;
+}
+
+.brand-underline path {
+  fill: none;
+  stroke: var(--signal);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.brand-descriptor {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.5625rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 2px;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+}
+
+/* Navy-surface variant (footer) */
+.brand-lockup--inverse .brand-wordmark {
+  font-size: 1.25rem;
+  color: var(--text-inverse);
+}
+
+.brand-lockup--inverse .brand-descriptor {
+  color: var(--accent-on-dark);
 }
 
 /* Search Input */
@@ -2728,7 +2756,7 @@ textarea {
   .navbar {
     padding: 0.75rem 1rem;
   }
-  .brand-name {
+  .brand-wordmark {
     font-size: 1.15rem;
   }
   .brand-icon-wrapper {
