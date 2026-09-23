@@ -358,11 +358,16 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
   - Configure DNS records on Vercel with automatic TLS/SSL renewal.
   - Replace all occurrences of `pronto-insumos.vercel.app` with the production domain.
 
-- [ ] **7.3. Upload Brand Assets, Favicon, and OpenGraph Image**
-  - **Current Issue:** `index.html` references `og-preview.png` for link previews in WhatsApp and social media, but no `public/` folder or image asset exists in the repository.
-  - **Required Action:**
-    - Create the `public/` directory.
-    - Place `favicon.ico`, `apple-touch-icon.png`, and `og-preview.png` (1200x630 px featuring company logo and Melipilla delivery badge).
+- [ ] **7.3. Upload Brand Assets, Favicon, and OpenGraph Image** _(partially delivered — favicon shipped; `og-preview.png` still missing and still gates `vercel --prod`)_
+  - **Current Issue:** `index.html` references `https://pronto-insumos.vercel.app/og-preview.png` from `og:image`, `twitter:image` and the JSON-LD `image`, but the file has never existed — so link previews, including PRONTO's own WhatsApp shares, render broken.
+  - **⚠️ Governing spec (this entry corrected):** the wording below previously asked for `favicon.ico` / `apple-touch-icon.png` and an OG image "featuring company logo and Melipilla delivery badge". That is **superseded** by [UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md](file:///c:/Users/ecmv2/Documents/PRONTO/UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md) **Appendix B**, which is the asset spec of record — cited as such by root `AGENTS.md` §7 and `src/components/AGENTS.md` §2.2. Use **Appendix B.1** (its exact generation prompt, plus the no-text Figma/Canva overlay fallback). There is no "delivery badge": the approved composition carries a `Depósito dental · Melipilla y San Antonio` text line instead.
+  - **Already delivered — do not redo:**
+    - `public/` exists (holds `favicon.svg` and `assets/`).
+    - `public/favicon.svg` — Appendix B.2's turnkey SVG, committed and wired via `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />`. ❌ No `favicon.ico` and ❌ no `apple-touch-icon.png` are used by the as-built markup.
+  - **Still required (human-produced — an agent must never generate a substitute):**
+    - `public/og-preview.png` — Appendix B.1, **1200×630 PNG ≤300 KB**. ❌ **Blocks `vercel --prod`** (root `AGENTS.md` §7).
+    - `public/assets/delivery-routes.png` — Appendix B.3, 1200×675 PNG ≤250 KB (checkout Step 1 figure). Permitted fallback if absent: omit the `<figure>` entirely.
+    - `public/assets/bodega-ortuzar.jpg` — Appendix B.4, 1600×1067 JPG ≤400 KB, **real photo, never generated**. Permitted fallback if absent: omit the `<figure>` entirely.
 
 ---
 
