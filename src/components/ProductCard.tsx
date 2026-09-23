@@ -119,19 +119,17 @@ export default function ProductCard({ product, onAddToCart, onQuickView }: Produ
           </div>
         )}
 
-        {/* Media Badge (Only render when mediaBadge is provided and non-empty) */}
-        {product.mediaBadge && product.mediaBadge.trim() && (
+        {/* Badge diet: at most ONE media badge, by priority discount > Rx > mediaBadge */}
+        {showDiscount ? (
+          <div className="discount-badge">-{discountPercent}%</div>
+        ) : product.prescriptionRequired ? (
+          <div className="rx-badge">Uso Profesional</div>
+        ) : product.mediaBadge && product.mediaBadge.trim() ? (
           <div className="placeholder-badge">
             <ShieldCheck size={12} />
             <span>{product.mediaBadge}</span>
           </div>
-        )}
-
-        {/* Discount Badge */}
-        {showDiscount && <div className="discount-badge">-{discountPercent}%</div>}
-
-        {/* Rx Badge */}
-        {product.prescriptionRequired && <div className="rx-badge">Uso Profesional</div>}
+        ) : null}
       </div>
 
       {/* Product Content Body */}

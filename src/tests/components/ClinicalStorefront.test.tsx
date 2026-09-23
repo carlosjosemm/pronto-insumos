@@ -37,13 +37,25 @@ describe('Clinical Storefront UI/UX Enhancement Tests', () => {
   })
 
   describe('Hero Commercial Guarantee Card', () => {
-    it('should render authentic B2B commercial guarantees instead of fake SaaS telemetry', () => {
+    it('should render the final hero copy and the quiet inline trust row', () => {
       render(<Hero onExploreClick={() => {}} />)
-      expect(screen.getByText('Garantías Comerciales B2B')).toBeInTheDocument()
-      expect(screen.getByText(/Factura Electrónica Inmediata \(19% IVA\)/i)).toBeInTheDocument()
-      expect(screen.getByText(/Despacho Local y Retiro en Av\. Ortúzar/i)).toBeInTheDocument()
-      expect(screen.getByText(/Insumos Certificados y Homologados/i)).toBeInTheDocument()
-      expect(screen.getByText(/Mesa Técnica Directa WhatsApp/i)).toBeInTheDocument()
+      expect(screen.getByText('Depósito Dental · Melipilla')).toBeInTheDocument()
+      expect(screen.getByText(/El depósito dental que despacha/i)).toBeInTheDocument()
+      expect(screen.getByText('el mismo día')).toBeInTheDocument()
+      expect(screen.getByText('Boleta Electrónica · IVA 19%')).toBeInTheDocument()
+      expect(screen.getByText('Despacho el mismo día')).toBeInTheDocument()
+      expect(screen.getByText('Insumos Certificados ISP')).toBeInTheDocument()
+      expect(screen.getByText('Mesa Técnica WhatsApp')).toBeInTheDocument()
+      // The retired pill chrome and Factura advertising must not come back
+      expect(screen.queryByText('Garantías Comerciales B2B')).not.toBeInTheDocument()
+      expect(screen.queryByText('VALIDEZ SII')).not.toBeInTheDocument()
+      expect(screen.queryByText(/Factura Electrónica Inmediata/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Retiro en Av\. Ortúzar/i)).not.toBeInTheDocument()
+    })
+
+    it('should render the hand-drawn underline motif on the hero keyword', () => {
+      const { container } = render(<Hero onExploreClick={() => {}} />)
+      expect(container.querySelector('.hero-title-underline')).toBeInTheDocument()
     })
 
     it('should call onExploreClick when "Explorar Catálogo de Insumos" is clicked', () => {

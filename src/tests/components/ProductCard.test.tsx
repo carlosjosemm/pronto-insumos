@@ -79,9 +79,25 @@ describe('ProductCard component', () => {
     expect(ratingElements.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('should display the media badge text', () => {
-    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+  it('should show at most ONE media badge, preferring the discount over the mediaBadge', () => {
+    const { container } = render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+    expect(container.querySelector('.discount-badge')).toBeInTheDocument()
+    expect(container.querySelector('.placeholder-badge')).toBeNull()
+    expect(container.querySelector('.rx-badge')).toBeNull()
+  })
+
+  it('should fall back to the mediaBadge when there is no discount and no Rx flag', () => {
+    const plain = { ...mockProduct, originalPrice: undefined }
+    render(<ProductCard product={plain} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.getByText('Clase B Vacío')).toBeInTheDocument()
+  })
+
+  it('should prefer the Rx badge over the mediaBadge for regulated products', () => {
+    const regulated = { ...mockProduct, originalPrice: undefined, prescriptionRequired: true }
+    const { container } = render(<ProductCard product={regulated} onAddToCart={() => {}} onQuickView={() => {}} />)
+    expect(container.querySelector('.rx-badge')).toBeInTheDocument()
+    expect(container.querySelector('.placeholder-badge')).toBeNull()
+    expect(container.querySelector('.discount-badge')).toBeNull()
   })
 
   it('should NOT render rating or placeholder when product has zero reviews', () => {

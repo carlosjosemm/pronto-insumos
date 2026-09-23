@@ -58,7 +58,6 @@ export default function CategoryShowcase({ selectedCategory, onSelectCategory }:
           >
             <div className="category-card-media-wrap">
               <img src={banner.image} alt={banner.title} className="category-card-img" loading="lazy" />
-              <span className="category-card-tag-pill">{banner.tag}</span>
             </div>
             <div className="category-card-info">
               <span className="category-card-title">{banner.title}</span>

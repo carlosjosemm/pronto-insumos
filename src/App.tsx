@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
-import PromoStrip from './components/PromoStrip'
 import CategoryFilter from './components/CategoryFilter'
 import CategoryShowcase from './components/CategoryShowcase'
 import ProductList from './components/ProductList'
@@ -292,14 +291,11 @@ export default function App() {
         onOpenTracking={() => handleOpenTracking()}
       />
 
+      {/* Landing Hero — full-bleed navy band, so it sits outside the content container */}
+      <Hero onExploreClick={scrollToCatalog} />
+
       {/* Main Container */}
       <main className="main-content">
-        {/* Landing Hero */}
-        <Hero onExploreClick={scrollToCatalog} />
-
-        {/* Promotional Value Strip */}
-        <PromoStrip />
-
         {/* Category & Controls Bar */}
         <CategoryFilter
           selectedCategory={selectedCategory}

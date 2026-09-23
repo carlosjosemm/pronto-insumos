@@ -200,7 +200,7 @@ textarea {
   flex: 1;
   max-width: 1280px;
   margin: 0 auto;
-  padding: 2rem 1.5rem;
+  padding: var(--space-12) 1.5rem;
   width: 100%;
 }
 
@@ -476,25 +476,24 @@ textarea {
 /* ==========================================================================
    HERO SECTION: THE DENTAL DEPOT FOR YOUR PRACTICE
    ========================================================================== */
+/* Full-bleed navy band (redesign proposal §10.4) */
 .hero-section {
   position: relative;
-  background: linear-gradient(135deg, #ffffff 0%, var(--brand-frozen) 50%, var(--brand-almond) 100%);
-  color: var(--text-primary);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  padding: 3rem 2.5rem;
-  margin-bottom: 2.5rem;
-  box-shadow: var(--shadow-sm);
+  background: var(--ink-800);
+  color: var(--text-inverse);
+  padding: var(--space-16) 1.5rem;
+  margin-bottom: var(--space-12);
 }
 
-.hero-glow {
-  display: none; /* Eliminated radioactive neon orb */
+.hero-inner {
+  max-width: 1280px;
+  margin: 0 auto;
 }
 
 .hero-content-grid {
   display: grid;
-  grid-template-columns: 1.25fr 0.95fr;
-  gap: 2.5rem;
+  grid-template-columns: 1.4fr 0.8fr;
+  gap: var(--space-12);
   align-items: stretch;
 }
 
@@ -508,14 +507,14 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-border);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--accent-on-dark);
   padding: 0.35rem 0.75rem;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-full);
   font-size: 0.8rem;
-  font-weight: 700;
-  margin-bottom: 1rem;
+  font-weight: 600;
+  margin-bottom: var(--space-6);
   width: fit-content;
 }
 
@@ -523,22 +522,66 @@ textarea {
   font-family: var(--font-display);
   font-size: var(--fs-display);
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.15;
   letter-spacing: -0.02em;
-  color: var(--brand-blue);
-  margin-bottom: 1rem;
+  color: var(--text-inverse);
+  margin-bottom: var(--space-6);
 }
 
-.hero-title span {
-  color: var(--brand-cayenne);
+.hero-title-accent {
+  position: relative;
+  display: inline-block;
+  color: var(--accent-on-dark);
+}
+
+/* The one bespoke detail — hand-drawn stroke under the hero keyword */
+.hero-title-underline {
+  position: absolute;
+  left: 0;
+  bottom: -0.35rem;
+  width: 100%;
+  height: 8px;
+  overflow: visible;
+}
+
+.hero-title-underline path {
+  fill: none;
+  stroke: var(--signal);
+  stroke-width: 3;
+  stroke-linecap: round;
 }
 
 .hero-description {
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.78);
   font-size: 1rem;
-  line-height: 1.6;
-  margin-bottom: 2rem;
+  line-height: 1.65;
+  margin-bottom: var(--space-8);
   max-width: 580px;
+}
+
+/* Single accent CTA on the navy band: white fill, accent-on-dark on hover */
+.hero-cta-primary {
+  background: var(--text-inverse);
+  color: var(--ink-800);
+  border-color: var(--text-inverse);
+}
+
+.hero-cta-primary:hover {
+  background: var(--accent-on-dark);
+  color: var(--ink-900);
+  border-color: var(--accent-on-dark);
+}
+
+.hero-cta-secondary {
+  background: transparent;
+  color: var(--text-inverse);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.hero-cta-secondary:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--accent-on-dark);
+  border-color: var(--accent-on-dark);
 }
 
 .hero-cta-group {
@@ -596,13 +639,14 @@ textarea {
   width: 100%;
   height: 100%;
   min-height: 400px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   overflow: hidden;
   position: relative;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border-subtle);
-  background: var(--brand-frozen);
+  background: var(--ink-700);
   display: flex;
+  /* Soft mask: the photo dissolves into the navy band instead of sitting on it */
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 18%, #000 100%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 18%, #000 100%);
 }
 
 .hero-lifestyle-img {
@@ -624,7 +668,7 @@ textarea {
   left: 0;
   right: 0;
   height: 50%;
-  background: linear-gradient(to top, rgba(16, 39, 72, 0.45), transparent);
+  background: linear-gradient(to top, rgba(11, 26, 51, 0.75), transparent);
   pointer-events: none;
 }
 
@@ -643,16 +687,15 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  background: rgba(16, 39, 72, 0.88);
+  background: rgba(11, 26, 51, 0.88);
   backdrop-filter: blur(8px);
-  color: #ffffff;
+  color: var(--text-inverse);
   padding: 0.4rem 0.85rem;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-full);
   font-size: 0.775rem;
-  font-weight: 700;
+  font-weight: 600;
   border: 1px solid rgba(255, 255, 255, 0.2);
   letter-spacing: 0.02em;
-  box-shadow: var(--shadow-sm);
 }
 
 .hero-image-caption-pill svg {
@@ -670,48 +713,22 @@ textarea {
   gap: 1rem;
   padding: 2rem;
   text-align: center;
-  background: var(--brand-frozen);
-  color: var(--brand-blue);
-  font-weight: 700;
+  background: var(--ink-700);
+  color: var(--accent-on-dark);
+  font-weight: 600;
 }
 
-/* Compact B2B Guarantee & Trust Strip (Left Column) */
+/* Quiet inline trust row — icons only, no pill chrome */
 .hero-trust-strip {
-  margin-top: 1.75rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.hero-trust-badge-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.85rem;
-}
-
-.guarantee-title {
-  font-size: 0.85rem;
-  font-weight: 800;
-  color: var(--navy-900);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.guarantee-badge {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 0.675rem;
-  font-weight: 800;
-  padding: 0.15rem 0.45rem;
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--accent-border);
-  letter-spacing: 0.04em;
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .hero-trust-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 0.75rem 1.25rem;
+  gap: var(--space-4) var(--space-6);
 }
 
 .hero-trust-item {
@@ -721,7 +738,7 @@ textarea {
 }
 
 .hero-trust-icon {
-  color: var(--brand-blue);
+  color: var(--accent-on-dark);
   margin-top: 2px;
   flex-shrink: 0;
 }
@@ -734,79 +751,15 @@ textarea {
 
 .hero-trust-text strong {
   font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--navy-900);
+  font-weight: 600;
+  color: var(--text-inverse);
   line-height: 1.25;
 }
 
 .hero-trust-text span {
   font-size: 0.725rem;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.62);
   line-height: 1.3;
-}
-
-/* Promotional Value Strip (Between Hero and Categories) */
-.promo-strip {
-  background: var(--brand-blue);
-  color: #ffffff;
-  padding: 0.85rem 1.5rem;
-  border-radius: var(--radius-sm);
-  margin-bottom: 2rem;
-  position: relative;
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--brand-blue-muted);
-}
-
-.promo-strip::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image: url('/assets/promo-strip-bg.jpg');
-  background-size: cover;
-  background-position: center;
-  mix-blend-mode: overlay;
-  opacity: 0.3;
-  pointer-events: none;
-}
-
-.promo-strip-content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 1.25rem 2rem;
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-align: center;
-}
-
-.promo-strip-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  white-space: nowrap;
-}
-
-.promo-strip-highlight {
-  color: #ffffff;
-  font-weight: 700;
-}
-
-.promo-strip-icon {
-  color: var(--accent-on-dark);
-  flex-shrink: 0;
-}
-
-.promo-strip-divider {
-  color: rgba(255, 255, 255, 0.3);
-  font-size: 0.9rem;
 }
 
 /* ==========================================================================
@@ -815,8 +768,8 @@ textarea {
 .controls-bar {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  margin-bottom: 2rem;
+  gap: var(--space-4);
+  margin-bottom: var(--space-12);
 }
 
 .category-pills {
@@ -852,18 +805,27 @@ textarea {
   transition: var(--transition-fast);
 }
 
+/* Icons stay quiet; the active state is navy text + an accent underline */
+.category-pill-btn svg {
+  color: var(--text-muted);
+}
+
 .category-pill-btn:hover {
-  color: var(--brand-blue);
-  background: var(--brand-almond);
+  color: var(--ink-800);
+  background: var(--surface-hover);
 }
 
 .category-pill-btn.active {
-  background: #ffffff;
-  color: var(--brand-blue);
+  background: var(--surface-card);
+  color: var(--ink-800);
   border-color: var(--border-subtle);
   box-shadow: var(--shadow-sm);
   font-weight: 700;
   position: relative;
+}
+
+.category-pill-btn.active svg {
+  color: var(--ink-800);
 }
 
 .category-pill-btn.active::after {
@@ -913,12 +875,6 @@ textarea {
   color: var(--text-secondary);
 }
 
-.results-slogan-tagline {
-  color: var(--brand-cayenne);
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
 .filter-options {
   display: flex;
   align-items: center;
@@ -964,13 +920,9 @@ textarea {
 /* ==========================================================================
    CATEGORY SHOWCASE & CONTEXTUAL BANNERS (SECTION 5.4)
    ========================================================================== */
+/* Unboxed hub — heading + open grid, no border card (§10.4) */
 .category-showcase-hub {
-  margin-bottom: 2.5rem;
-  background: #ffffff;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 1.5rem;
-  box-shadow: var(--shadow-xs);
+  margin-bottom: var(--space-12);
 }
 
 .category-showcase-header {
@@ -979,9 +931,7 @@ textarea {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.5rem 1rem;
-  margin-bottom: 1.25rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-6);
 }
 
 .category-showcase-title-row {
@@ -1061,21 +1011,6 @@ textarea {
 
 .category-showcase-card:hover .category-card-img {
   transform: scale(1.05);
-}
-
-.category-card-tag-pill {
-  position: absolute;
-  top: 0.5rem;
-  left: 0.5rem;
-  background: rgba(16, 39, 72, 0.88);
-  backdrop-filter: blur(6px);
-  color: #ffffff;
-  font-size: 0.65rem;
-  font-weight: 700;
-  padding: 0.15rem 0.45rem;
-  border-radius: var(--radius-xs);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  letter-spacing: 0.03em;
 }
 
 .category-card-info {
@@ -1276,9 +1211,9 @@ textarea {
   outline-offset: 2px;
 }
 
-/* Featured product card warm top accent strip */
+/* Featured product card commercial accent strip (§10.4 / D.7) */
 .product-card--featured {
-  border-top: 3px solid var(--accent-warm);
+  border-top: 3px solid var(--signal);
 }
 
 /* Technical Card Header */
@@ -1311,11 +1246,11 @@ textarea {
 }
 
 .product-stock-status.stock-warning {
-  color: var(--accent-warm);
+  color: var(--signal);
 }
 
 .product-stock-status.stock-warning .product-stock-dot {
-  background: var(--accent-warm);
+  background: var(--signal);
 }
 
 .product-stock-status.stock-danger {
@@ -1462,19 +1397,15 @@ textarea {
   position: absolute;
   top: 0.65rem;
   right: 0.65rem;
-  background: var(--accent-warm-bg);
-  color: var(--accent-warm);
-  border: 1px solid var(--accent-warm-border);
+  background: var(--signal-soft);
+  color: var(--signal);
+  border: 1px solid var(--signal-border);
   font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 700;
   padding: 0.15rem 0.45rem;
   border-radius: var(--radius-xs);
   z-index: 2;
-}
-
-.discount-badge + .rx-badge {
-  top: 2.25rem;
 }
 
 .placeholder-icon-symbol {
@@ -2371,9 +2302,9 @@ textarea {
 }
 
 .cart-stock-cue--warning {
-  background: var(--accent-warm-bg, #fffbeb);
-  color: var(--accent-warm, #b45309);
-  border: 1px solid var(--accent-warm-border, #fde68a);
+  background: var(--signal-soft);
+  color: var(--signal);
+  border: 1px solid var(--signal-border);
 }
 
 .cart-stock-cue--danger {
@@ -2735,17 +2666,6 @@ textarea {
   .hero-trust-grid {
     grid-template-columns: 1fr;
     gap: 0.65rem;
-  }
-  .promo-strip {
-    padding: 0.75rem 1rem;
-    margin-bottom: 1.5rem;
-  }
-  .promo-strip-content {
-    flex-direction: column;
-    gap: 0.55rem;
-  }
-  .promo-strip-divider {
-    display: none;
   }
 }
 
