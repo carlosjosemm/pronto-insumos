@@ -288,7 +288,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
                     />
                   ))}
                 </div>
-                <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
+                <span style={{ fontWeight: '700', color: 'var(--ink-800)' }}>{product.rating}</span>
                 <span>({product.reviewsCount} reseñas clínicas verificadas)</span>
               </div>
             )}
@@ -354,7 +354,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
             {product.specs && product.specs.length > 0 && (
               <div className="detail-section-block">
                 <div className="detail-section-heading">
-                  <FileText size={15} style={{ color: 'var(--brand-blue)' }} />
+                  <FileText size={15} style={{ color: 'var(--ink-800)' }} />
                   <span>Especificaciones Técnicas</span>
                 </div>
                 <ul className="detail-specs-list">
@@ -372,7 +372,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
             {product.packageContents && product.packageContents.length > 0 && (
               <div className="detail-section-block">
                 <div className="detail-section-heading">
-                  <Package size={15} style={{ color: 'var(--brand-blue)' }} />
+                  <Package size={15} style={{ color: 'var(--ink-800)' }} />
                   <span>Contenido del Empaque</span>
                 </div>
                 <div className="package-contents-box">

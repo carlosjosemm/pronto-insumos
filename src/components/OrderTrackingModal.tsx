@@ -195,8 +195,8 @@ export default function OrderTrackingModal({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <Truck size={22} style={{ color: 'var(--teal-600)' }} />
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--navy-900)', margin: 0 }}>
+            <Truck size={22} style={{ color: 'var(--ink-800)' }} />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--ink-800)', margin: 0 }}>
               Seguimiento de Pedido en Línea
             </h2>
           </div>
@@ -227,7 +227,7 @@ export default function OrderTrackingModal({
                     display: 'block',
                     fontSize: '0.75rem',
                     fontWeight: '700',
-                    color: 'var(--navy-900)',
+                    color: 'var(--ink-800)',
                     marginBottom: '0.25rem'
                   }}
                 >
@@ -258,7 +258,7 @@ export default function OrderTrackingModal({
                     display: 'block',
                     fontSize: '0.75rem',
                     fontWeight: '700',
-                    color: 'var(--navy-900)',
+                    color: 'var(--ink-800)',
                     marginBottom: '0.25rem'
                   }}
                 >
@@ -323,7 +323,7 @@ export default function OrderTrackingModal({
 
           {/* Loading Indicator */}
           {loading && (
-            <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--teal-700)' }}>
+            <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--ink-700)' }}>
               <Clock size={32} style={{ margin: '0 auto 0.5rem', animation: 'spin 2s linear infinite' }} />
               <p style={{ fontSize: '0.85rem', fontWeight: '600' }}>Consultando estado en sistema PRONTO...</p>
             </div>
@@ -335,8 +335,8 @@ export default function OrderTrackingModal({
               {/* Status Header Badge Card */}
               <div
                 style={{
-                  background: 'var(--teal-50)',
-                  border: '1px solid var(--teal-200)',
+                  background: 'var(--accent-soft)',
+                  border: '1px solid var(--accent-border)',
                   borderRadius: 'var(--radius-sm)',
                   padding: '1rem 1.25rem'
                 }}
@@ -355,7 +355,7 @@ export default function OrderTrackingModal({
                       style={{
                         fontSize: '0.75rem',
                         fontWeight: '700',
-                        color: 'var(--teal-800)',
+                        color: 'var(--ink-900)',
                         textTransform: 'uppercase',
                         letterSpacing: '0.05em'
                       }}
@@ -366,13 +366,13 @@ export default function OrderTrackingModal({
                       style={{
                         fontSize: '1.15rem',
                         fontWeight: '800',
-                        color: 'var(--navy-900)',
+                        color: 'var(--ink-800)',
                         margin: '0.2rem 0 0.35rem'
                       }}
                     >
                       {trackingData.fulfillment.statusTitle}
                     </h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--teal-900)', margin: 0 }}>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-primary)', margin: 0 }}>
                       {trackingData.fulfillment.statusDescription}
                     </p>
                   </div>
@@ -383,7 +383,7 @@ export default function OrderTrackingModal({
                         fontSize: '0.95rem',
                         fontWeight: '800',
                         fontFamily: 'monospace',
-                        color: 'var(--navy-900)'
+                        color: 'var(--ink-800)'
                       }}
                     >
                       {trackingData.orderId}
@@ -423,7 +423,7 @@ export default function OrderTrackingModal({
                       left: '20px',
                       width: `${((trackingData.fulfillment.currentStep - 1) / (STEPS.length - 1)) * 100}%`,
                       height: '3px',
-                      background: 'var(--teal-600)',
+                      background: 'var(--ink-800)',
                       transition: 'width 0.4s ease',
                       zIndex: 0
                     }}
@@ -449,8 +449,8 @@ export default function OrderTrackingModal({
                             width: '30px',
                             height: '30px',
                             borderRadius: '50%',
-                            background: isCompleted || isCurrent ? 'var(--teal-600)' : 'var(--surface-card)',
-                            border: `2px solid ${isCompleted || isCurrent ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
+                            background: isCompleted || isCurrent ? 'var(--ink-800)' : 'var(--surface-card)',
+                            border: `2px solid ${isCompleted || isCurrent ? 'var(--ink-800)' : 'var(--border-subtle)'}`,
                             color: isCompleted || isCurrent ? 'var(--text-inverse)' : 'var(--text-muted)',
                             display: 'flex',
                             alignItems: 'center',
@@ -465,7 +465,7 @@ export default function OrderTrackingModal({
                           style={{
                             fontSize: '0.675rem',
                             fontWeight: isCurrent ? '800' : '600',
-                            color: isCurrent ? 'var(--navy-900)' : 'var(--text-secondary)',
+                            color: isCurrent ? 'var(--ink-800)' : 'var(--text-secondary)',
                             marginTop: '0.4rem',
                             textAlign: 'center'
                           }}
@@ -582,7 +582,7 @@ export default function OrderTrackingModal({
                     padding: '0.85rem'
                   }}
                 >
-                  <div style={{ fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.35rem' }}>
+                  <div style={{ fontWeight: '700', color: 'var(--ink-800)', marginBottom: '0.35rem' }}>
                     Datos de Entrega
                   </div>
                   <div>
@@ -607,7 +607,7 @@ export default function OrderTrackingModal({
                     padding: '0.85rem'
                   }}
                 >
-                  <div style={{ fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.35rem' }}>
+                  <div style={{ fontWeight: '700', color: 'var(--ink-800)', marginBottom: '0.35rem' }}>
                     Logística & Despacho
                   </div>
                   <div>
@@ -631,9 +631,7 @@ export default function OrderTrackingModal({
                   padding: '0.85rem'
                 }}
               >
-                <div
-                  style={{ fontWeight: '700', fontSize: '0.8rem', color: 'var(--navy-900)', marginBottom: '0.5rem' }}
-                >
+                <div style={{ fontWeight: '700', fontSize: '0.8rem', color: 'var(--ink-800)', marginBottom: '0.5rem' }}>
                   Insumos Incluidos
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>

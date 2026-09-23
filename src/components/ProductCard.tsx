@@ -115,8 +115,8 @@ export default function ProductCard({
               <span>Sin stock</span>
             </span>
           ) : (
-            <span className="product-stock-status stock-warning" style={{ color: 'var(--accent-warm)' }}>
-              <span className="product-stock-dot" style={{ background: 'var(--accent-warm)' }} />
+            <span className="product-stock-status stock-warning" style={{ color: 'var(--signal)' }}>
+              <span className="product-stock-dot" style={{ background: 'var(--signal)' }} />
               <span>Últimas unidades</span>
             </span>
           )}
@@ -200,7 +200,7 @@ export default function ProductCard({
                 />
               ))}
             </div>
-            <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{product.rating}</span>
+            <span style={{ fontWeight: '700', color: 'var(--ink-800)' }}>{product.rating}</span>
             <span>({product.reviewsCount})</span>
           </div>
         ) : null}

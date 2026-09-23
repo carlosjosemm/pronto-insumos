@@ -373,8 +373,8 @@ export default function CheckoutModal({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
-            <ShieldCheck size={22} style={{ color: 'var(--teal-600)' }} />
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--navy-900)' }}>
+            <ShieldCheck size={22} style={{ color: 'var(--ink-800)' }} />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--ink-800)' }}>
               {step === 3 ? 'Pedido Registrado' : 'Gestión de Pedido y Pago'}
             </h2>
           </div>
@@ -389,7 +389,7 @@ export default function CheckoutModal({
                   gap: '0.45rem',
                   fontSize: '0.85rem',
                   fontWeight: '700',
-                  color: step >= 1 ? 'var(--navy-900)' : 'var(--text-muted)'
+                  color: step >= 1 ? 'var(--ink-800)' : 'var(--text-muted)'
                 }}
               >
                 <span
@@ -397,7 +397,7 @@ export default function CheckoutModal({
                     width: '24px',
                     height: '24px',
                     borderRadius: 'var(--radius-xs)',
-                    background: step >= 1 ? 'var(--teal-600)' : 'var(--border-subtle)',
+                    background: step >= 1 ? 'var(--ink-800)' : 'var(--border-subtle)',
                     color: 'var(--text-inverse)',
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -416,7 +416,7 @@ export default function CheckoutModal({
                   gap: '0.45rem',
                   fontSize: '0.85rem',
                   fontWeight: '700',
-                  color: step >= 2 ? 'var(--navy-900)' : 'var(--text-muted)'
+                  color: step >= 2 ? 'var(--ink-800)' : 'var(--text-muted)'
                 }}
               >
                 <span
@@ -424,7 +424,7 @@ export default function CheckoutModal({
                     width: '24px',
                     height: '24px',
                     borderRadius: 'var(--radius-xs)',
-                    background: step >= 2 ? 'var(--teal-600)' : 'var(--border-subtle)',
+                    background: step >= 2 ? 'var(--ink-800)' : 'var(--border-subtle)',
                     color: 'var(--text-inverse)',
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -451,7 +451,7 @@ export default function CheckoutModal({
                     display: 'block',
                     fontSize: '0.825rem',
                     fontWeight: '700',
-                    color: 'var(--navy-900)',
+                    color: 'var(--ink-800)',
                     marginBottom: '0.4rem'
                   }}
                 >
@@ -467,12 +467,12 @@ export default function CheckoutModal({
                       style={{
                         padding: '0.65rem',
                         borderRadius: 'var(--radius-sm)',
-                        border: `2px solid ${formData.documentType === 'factura' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                        background: formData.documentType === 'factura' ? 'var(--teal-50)' : 'var(--surface-card)',
+                        border: `2px solid ${formData.documentType === 'factura' ? 'var(--ink-800)' : 'var(--border-subtle)'}`,
+                        background: formData.documentType === 'factura' ? 'var(--accent-soft)' : 'var(--surface-card)',
                         fontWeight: '700',
                         fontSize: '0.85rem',
                         cursor: 'pointer',
-                        color: formData.documentType === 'factura' ? 'var(--teal-700)' : 'var(--text-secondary)',
+                        color: formData.documentType === 'factura' ? 'var(--ink-700)' : 'var(--text-secondary)',
                         transition: 'var(--transition-fast)'
                       }}
                     >
@@ -485,12 +485,12 @@ export default function CheckoutModal({
                     style={{
                       padding: '0.65rem',
                       borderRadius: 'var(--radius-sm)',
-                      border: `2px solid ${formData.documentType === 'boleta' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                      background: formData.documentType === 'boleta' ? 'var(--teal-50)' : 'var(--surface-card)',
+                      border: `2px solid ${formData.documentType === 'boleta' ? 'var(--ink-800)' : 'var(--border-subtle)'}`,
+                      background: formData.documentType === 'boleta' ? 'var(--accent-soft)' : 'var(--surface-card)',
                       fontWeight: '700',
                       fontSize: '0.85rem',
                       cursor: 'pointer',
-                      color: formData.documentType === 'boleta' ? 'var(--teal-700)' : 'var(--text-secondary)',
+                      color: formData.documentType === 'boleta' ? 'var(--ink-700)' : 'var(--text-secondary)',
                       transition: 'var(--transition-fast)'
                     }}
                   >
@@ -520,7 +520,7 @@ export default function CheckoutModal({
                     display: 'block',
                     fontSize: '0.8rem',
                     fontWeight: '700',
-                    color: 'var(--navy-900)',
+                    color: 'var(--ink-800)',
                     marginBottom: '0.25rem'
                   }}
                 >
@@ -552,7 +552,7 @@ export default function CheckoutModal({
                       display: 'block',
                       fontSize: '0.8rem',
                       fontWeight: '700',
-                      color: 'var(--navy-900)',
+                      color: 'var(--ink-800)',
                       marginBottom: '0.25rem'
                     }}
                   >
@@ -593,7 +593,7 @@ export default function CheckoutModal({
                       display: 'block',
                       fontSize: '0.8rem',
                       fontWeight: '700',
-                      color: 'var(--navy-900)',
+                      color: 'var(--ink-800)',
                       marginBottom: '0.25rem'
                     }}
                   >
@@ -631,7 +631,7 @@ export default function CheckoutModal({
                     style={{
                       fontSize: '0.8rem',
                       fontWeight: '700',
-                      color: 'var(--teal-800)',
+                      color: 'var(--ink-900)',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.35rem'
@@ -647,7 +647,7 @@ export default function CheckoutModal({
                           display: 'block',
                           fontSize: '0.775rem',
                           fontWeight: '700',
-                          color: 'var(--navy-900)',
+                          color: 'var(--ink-800)',
                           marginBottom: '0.25rem'
                         }}
                       >
@@ -689,7 +689,7 @@ export default function CheckoutModal({
                           display: 'block',
                           fontSize: '0.775rem',
                           fontWeight: '700',
-                          color: 'var(--navy-900)',
+                          color: 'var(--ink-800)',
                           marginBottom: '0.25rem'
                         }}
                       >
@@ -736,7 +736,7 @@ export default function CheckoutModal({
                       display: 'block',
                       fontSize: '0.8rem',
                       fontWeight: '700',
-                      color: 'var(--navy-900)',
+                      color: 'var(--ink-800)',
                       marginBottom: '0.25rem'
                     }}
                   >
@@ -763,7 +763,7 @@ export default function CheckoutModal({
                       display: 'block',
                       fontSize: '0.8rem',
                       fontWeight: '700',
-                      color: 'var(--navy-900)',
+                      color: 'var(--ink-800)',
                       marginBottom: '0.25rem'
                     }}
                   >
@@ -808,7 +808,7 @@ export default function CheckoutModal({
                       display: 'block',
                       fontSize: '0.8rem',
                       fontWeight: '700',
-                      color: 'var(--navy-900)',
+                      color: 'var(--ink-800)',
                       marginBottom: '0.25rem'
                     }}
                   >
@@ -861,7 +861,7 @@ export default function CheckoutModal({
                       display: 'block',
                       fontSize: '0.8rem',
                       fontWeight: '700',
-                      color: 'var(--navy-900)',
+                      color: 'var(--ink-800)',
                       marginBottom: '0.25rem'
                     }}
                   >
@@ -1057,7 +1057,7 @@ export default function CheckoutModal({
                 }}
               >
                 <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Total a Pagar:</span>
-                <span style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--navy-900)' }}>
+                <span style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--ink-800)' }}>
                   {formatCLP(totalAmount)}
                 </span>
               </div>
@@ -1069,7 +1069,7 @@ export default function CheckoutModal({
                     display: 'block',
                     fontSize: '0.85rem',
                     fontWeight: '700',
-                    color: 'var(--navy-900)',
+                    color: 'var(--ink-800)',
                     marginBottom: '0.65rem'
                   }}
                 >
@@ -1085,8 +1085,8 @@ export default function CheckoutModal({
                       gap: '0.75rem',
                       padding: '0.85rem 1rem',
                       borderRadius: 'var(--radius-sm)',
-                      border: `2px solid ${paymentMethod === 'transferencia' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                      background: paymentMethod === 'transferencia' ? 'var(--teal-50)' : 'var(--surface-card)',
+                      border: `2px solid ${paymentMethod === 'transferencia' ? 'var(--ink-800)' : 'var(--border-subtle)'}`,
+                      background: paymentMethod === 'transferencia' ? 'var(--accent-soft)' : 'var(--surface-card)',
                       cursor: 'pointer',
                       transition: 'var(--transition-fast)'
                     }}
@@ -1098,9 +1098,9 @@ export default function CheckoutModal({
                       checked={paymentMethod === 'transferencia'}
                       onChange={() => setPaymentMethod('transferencia')}
                     />
-                    <Building2 size={20} style={{ color: 'var(--teal-700)' }} />
+                    <Building2 size={20} style={{ color: 'var(--ink-700)' }} />
                     <div>
-                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--navy-900)' }}>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--ink-800)' }}>
                         Transferencia Bancaria Directa (Banco de Chile)
                       </div>
                       <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>
@@ -1117,8 +1117,8 @@ export default function CheckoutModal({
                       gap: '0.75rem',
                       padding: '0.85rem 1rem',
                       borderRadius: 'var(--radius-sm)',
-                      border: `2px solid ${paymentMethod === 'whatsapp' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                      background: paymentMethod === 'whatsapp' ? 'var(--teal-50)' : 'var(--surface-card)',
+                      border: `2px solid ${paymentMethod === 'whatsapp' ? 'var(--ink-800)' : 'var(--border-subtle)'}`,
+                      background: paymentMethod === 'whatsapp' ? 'var(--accent-soft)' : 'var(--surface-card)',
                       cursor: 'pointer',
                       transition: 'var(--transition-fast)'
                     }}
@@ -1132,7 +1132,7 @@ export default function CheckoutModal({
                     />
                     <MessageSquare size={20} style={{ color: 'var(--success)' }} />
                     <div>
-                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--navy-900)' }}>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--ink-800)' }}>
                         Cotización Formal Asistida por WhatsApp
                       </div>
                       <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>
@@ -1149,8 +1149,8 @@ export default function CheckoutModal({
                       gap: '0.75rem',
                       padding: '0.85rem 1rem',
                       borderRadius: 'var(--radius-sm)',
-                      border: `2px solid ${paymentMethod === 'mercadopago' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                      background: paymentMethod === 'mercadopago' ? 'var(--teal-50)' : 'var(--surface-card)',
+                      border: `2px solid ${paymentMethod === 'mercadopago' ? 'var(--ink-800)' : 'var(--border-subtle)'}`,
+                      background: paymentMethod === 'mercadopago' ? 'var(--accent-soft)' : 'var(--surface-card)',
                       cursor: 'pointer',
                       transition: 'var(--transition-fast)'
                     }}
@@ -1164,7 +1164,7 @@ export default function CheckoutModal({
                     />
                     <CreditCard size={20} style={{ color: 'var(--accent)' }} />
                     <div>
-                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--navy-900)' }}>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--ink-800)' }}>
                         Pago Inmediato Mercado Pago Chile / Webpay
                       </div>
                       <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)' }}>
@@ -1186,7 +1186,7 @@ export default function CheckoutModal({
                     fontSize: '0.825rem'
                   }}
                 >
-                  <div style={{ fontWeight: '700', color: 'var(--navy-900)', marginBottom: '0.5rem' }}>
+                  <div style={{ fontWeight: '700', color: 'var(--ink-800)', marginBottom: '0.5rem' }}>
                     Datos Bancarios Oficiales:
                   </div>
                   <div>
@@ -1210,12 +1210,12 @@ export default function CheckoutModal({
               {paymentMethod === 'whatsapp' && (
                 <div
                   style={{
-                    background: 'var(--teal-50)',
-                    color: 'var(--teal-700)',
+                    background: 'var(--accent-soft)',
+                    color: 'var(--ink-700)',
                     padding: '0.85rem',
                     borderRadius: 'var(--radius-sm)',
                     fontSize: '0.825rem',
-                    border: '1px solid var(--teal-100)'
+                    border: '1px solid var(--accent-border)'
                   }}
                 >
                   💡 Se generará el enlace directo con el desglose del pedido para gestionar la cotización y coordinar
@@ -1287,8 +1287,8 @@ export default function CheckoutModal({
 
           {step === 3 && orderDetails && (
             <div style={{ textAlign: 'center', padding: '1rem 0' }}>
-              <CheckCircle size={52} style={{ color: 'var(--teal-600)', margin: '0 auto 1rem' }} />
-              <h3 style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.25rem' }}>
+              <CheckCircle size={52} style={{ color: 'var(--ink-800)', margin: '0 auto 1rem' }} />
+              <h3 style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--ink-800)', marginBottom: '0.25rem' }}>
                 {paymentMethod === 'whatsapp' ? '¡Cotización Generada!' : '¡Pedido Registrado con Éxito!'}
               </h3>
 
@@ -1311,7 +1311,7 @@ export default function CheckoutModal({
                   }}
                 >
                   <span style={{ color: 'var(--text-muted)' }}>Código de Pedido:</span>
-                  <span style={{ fontWeight: '800', color: 'var(--navy-900)', fontFamily: 'monospace' }}>
+                  <span style={{ fontWeight: '800', color: 'var(--ink-800)', fontFamily: 'monospace' }}>
                     {orderDetails.orderId}
                   </span>
                 </div>
@@ -1324,7 +1324,7 @@ export default function CheckoutModal({
                   }}
                 >
                   <span style={{ color: 'var(--text-muted)' }}>Total a Pagar:</span>
-                  <span style={{ fontWeight: '800', color: 'var(--navy-900)' }}>{formatCLP(totalAmount)}</span>
+                  <span style={{ fontWeight: '800', color: 'var(--ink-800)' }}>{formatCLP(totalAmount)}</span>
                 </div>
                 <div
                   style={{
@@ -1335,7 +1335,7 @@ export default function CheckoutModal({
                   }}
                 >
                   <span style={{ color: 'var(--text-muted)' }}>Documento Tributario:</span>
-                  <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>
+                  <span style={{ fontWeight: '700', color: 'var(--ink-800)' }}>
                     {formData.documentType === 'factura' ? 'Factura Electrónica (Clínica)' : 'Boleta Electrónica'}
                   </span>
                 </div>
@@ -1349,14 +1349,12 @@ export default function CheckoutModal({
                     }}
                   >
                     <span style={{ color: 'var(--text-muted)' }}>Registro Sanitario SIS:</span>
-                    <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>
-                      {sisRegistryNumber} (Acreditado)
-                    </span>
+                    <span style={{ fontWeight: '700', color: 'var(--ink-800)' }}>{sisRegistryNumber} (Acreditado)</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Método Seleccionado:</span>
-                  <span style={{ fontWeight: '700', color: 'var(--navy-900)', textTransform: 'capitalize' }}>
+                  <span style={{ fontWeight: '700', color: 'var(--ink-800)', textTransform: 'capitalize' }}>
                     {paymentMethod}
                   </span>
                 </div>
@@ -1398,7 +1396,7 @@ export default function CheckoutModal({
                       }}
                     >
                       <div>
-                        <div style={{ fontWeight: '800', fontSize: '1rem', color: 'var(--navy-900)' }}>
+                        <div style={{ fontWeight: '800', fontSize: '1rem', color: 'var(--ink-800)' }}>
                           PRONTO INSUMOS ODONTOLÓGICOS
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
@@ -1414,8 +1412,9 @@ export default function CheckoutModal({
                             display: 'inline-block',
                             padding: '0.2rem 0.5rem',
                             borderRadius: 'var(--radius-xs)',
-                            background: formData.documentType === 'factura' ? 'var(--teal-50)' : 'var(--surface-muted)',
-                            color: formData.documentType === 'factura' ? 'var(--teal-800)' : 'var(--navy-900)',
+                            background:
+                              formData.documentType === 'factura' ? 'var(--accent-soft)' : 'var(--surface-muted)',
+                            color: formData.documentType === 'factura' ? 'var(--ink-900)' : 'var(--ink-800)',
                             fontWeight: '800',
                             fontSize: '0.75rem',
                             border: '1px solid var(--border-subtle)'
@@ -1501,7 +1500,7 @@ export default function CheckoutModal({
                             padding: '0.2rem 0'
                           }}
                         >
-                          <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{item.quantity}x</span>
+                          <span style={{ fontWeight: '700', color: 'var(--ink-800)' }}>{item.quantity}x</span>
                           <span style={{ color: 'var(--text-secondary)' }}>{item.product.name}</span>
                           <span style={{ fontWeight: '600' }}>{formatCLP(item.product.price * item.quantity)}</span>
                         </div>
@@ -1540,7 +1539,7 @@ export default function CheckoutModal({
                               display: 'flex',
                               justifyContent: 'space-between',
                               fontWeight: '800',
-                              color: 'var(--navy-900)',
+                              color: 'var(--ink-800)',
                               fontSize: '0.9rem'
                             }}
                           >
@@ -1731,7 +1730,7 @@ export default function CheckoutModal({
                     fontWeight: '700'
                   }}
                 >
-                  <Truck size={17} style={{ color: 'var(--teal-600)' }} />
+                  <Truck size={17} style={{ color: 'var(--ink-800)' }} />
                   <span>Seguir Estado de mi Pedido en Línea</span>
                 </button>
               )}

@@ -109,7 +109,7 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
           {/* Action Controls */}
           <div className="nav-actions">
             <div className="trust-badge-item desktop-only-trust">
-              <MapPin size={16} style={{ color: 'var(--brand-blue)' }} />
+              <MapPin size={16} style={{ color: 'var(--ink-800)' }} />
               <span>Melipilla · San Antonio</span>
             </div>
 

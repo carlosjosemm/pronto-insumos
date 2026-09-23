@@ -388,7 +388,7 @@ export default function App() {
       <div className="toast-container" role="status" aria-live="polite">
         {toasts.map((toast) => (
           <div key={toast.id} className="toast-item">
-            <CheckCircle2 size={18} style={{ color: 'var(--teal-600)' }} />
+            <CheckCircle2 size={18} style={{ color: 'var(--ink-800)' }} />
             <span>{toast.message}</span>
             <div className="toast-progress" />
           </div>

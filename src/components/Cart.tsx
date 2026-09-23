@@ -112,7 +112,7 @@ export default function Cart({
         {/* Header */}
         <div className="cart-drawer-header">
           <div className="cart-drawer-title">
-            <ShoppingBag size={20} style={{ color: 'var(--teal-600)' }} />
+            <ShoppingBag size={20} style={{ color: 'var(--ink-800)' }} />
             <span>Carro Odontológico ({items.reduce((acc, i) => acc + i.quantity, 0)})</span>
           </div>
           <button
@@ -172,8 +172,8 @@ export default function Cart({
         <div className="cart-items-scroll">
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3.5rem 1.5rem', color: 'var(--text-muted)' }}>
-              <ShoppingBag size={44} style={{ margin: '0 auto 1rem', opacity: 0.35, color: 'var(--navy-900)' }} />
-              <p style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--navy-900)', marginBottom: '0.35rem' }}>
+              <ShoppingBag size={44} style={{ margin: '0 auto 1rem', opacity: 0.35, color: 'var(--ink-800)' }} />
+              <p style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--ink-800)', marginBottom: '0.35rem' }}>
                 Tu carro está vacío
               </p>
               <p style={{ fontSize: '0.85rem' }}>
@@ -198,7 +198,7 @@ export default function Cart({
                   className={`cart-item-row ${isOutOfStock || isOverStock ? 'cart-item-row--stock-error' : ''}`}
                 >
                   <div className="cart-item-thumb">
-                    <ItemCategoryIcon size={20} style={{ color: 'var(--teal-600)' }} />
+                    <ItemCategoryIcon size={20} style={{ color: 'var(--ink-800)' }} />
                   </div>
 
                   <div className="cart-item-info">
@@ -309,9 +309,9 @@ export default function Cart({
             {appliedPromo && (
               <div
                 style={{
-                  background: 'var(--teal-50)',
-                  color: 'var(--teal-700)',
-                  border: '1px solid var(--teal-100)',
+                  background: 'var(--accent-soft)',
+                  color: 'var(--ink-700)',
+                  border: '1px solid var(--accent-border)',
                   padding: '0.45rem 0.75rem',
                   borderRadius: 'var(--radius-sm)',
                   fontSize: '0.8rem',
@@ -339,7 +339,7 @@ export default function Cart({
             </div>
 
             {appliedPromo && (
-              <div className="cart-summary-line" style={{ color: 'var(--teal-700)', fontWeight: '600' }}>
+              <div className="cart-summary-line" style={{ color: 'var(--ink-700)', fontWeight: '600' }}>
                 <span>Descuento ({appliedPromo.discountPercent}%)</span>
                 <span>{formatCLP(-discountAmount)}</span>
               </div>
@@ -377,7 +377,7 @@ export default function Cart({
             </button>
 
             <div className="cart-checkout-trust">
-              <ShieldCheck size={13} style={{ color: 'var(--teal-600)' }} />
+              <ShieldCheck size={13} style={{ color: 'var(--ink-800)' }} />
               <span>Transacción Segura · Factura Electrónica B2B</span>
             </div>
           </div>

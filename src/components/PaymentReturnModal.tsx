@@ -67,8 +67,8 @@ export default function PaymentReturnModal({
                 width: '64px',
                 height: '64px',
                 borderRadius: '50%',
-                background: 'var(--teal-50)',
-                color: 'var(--teal-600)',
+                background: 'var(--accent-soft)',
+                color: 'var(--ink-800)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -80,7 +80,7 @@ export default function PaymentReturnModal({
 
             <h2
               id="payment-return-title"
-              style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.35rem' }}
+              style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--ink-800)', marginBottom: '0.35rem' }}
             >
               ¡Pago Confirmado Exitosamente!
             </h2>
@@ -105,9 +105,7 @@ export default function PaymentReturnModal({
               {orderId && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Código de Pedido:</span>
-                  <span style={{ fontWeight: '800', color: 'var(--navy-900)', fontFamily: 'monospace' }}>
-                    {orderId}
-                  </span>
+                  <span style={{ fontWeight: '800', color: 'var(--ink-800)', fontFamily: 'monospace' }}>{orderId}</span>
                 </div>
               )}
               {paymentId && (
@@ -120,7 +118,7 @@ export default function PaymentReturnModal({
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Estado:</span>
-                <span style={{ fontWeight: '700', color: 'var(--teal-700)' }}>● Pago Acreditado (PAGADO)</span>
+                <span style={{ fontWeight: '700', color: 'var(--ink-700)' }}>● Pago Acreditado (PAGADO)</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Fulfillment:</span>
@@ -137,7 +135,7 @@ export default function PaymentReturnModal({
                 borderRadius: 'var(--radius-xs)',
                 padding: '0.75rem',
                 fontSize: '0.775rem',
-                color: 'var(--teal-800)',
+                color: 'var(--ink-900)',
                 textAlign: 'left',
                 marginBottom: '1.5rem',
                 lineHeight: '1.4'
@@ -187,7 +185,7 @@ export default function PaymentReturnModal({
 
             <h2
               id="payment-return-title"
-              style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.35rem' }}
+              style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--ink-800)', marginBottom: '0.35rem' }}
             >
               Pago No Completado o Rechazado
             </h2>
@@ -258,7 +256,7 @@ export default function PaymentReturnModal({
 
             <h2
               id="payment-return-title"
-              style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--navy-900)', marginBottom: '0.35rem' }}
+              style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--ink-800)', marginBottom: '0.35rem' }}
             >
               Pago en Proceso de Validación
             </h2>
@@ -280,7 +278,7 @@ export default function PaymentReturnModal({
                 }}
               >
                 <span style={{ color: 'var(--text-muted)' }}>Código de Pedido:</span>
-                <span style={{ fontWeight: '800', color: 'var(--navy-900)', fontFamily: 'monospace' }}>{orderId}</span>
+                <span style={{ fontWeight: '800', color: 'var(--ink-800)', fontFamily: 'monospace' }}>{orderId}</span>
               </div>
             )}
 

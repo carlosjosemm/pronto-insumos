@@ -45,14 +45,14 @@ export default function ProductList({
           borderRadius: 'var(--radius-lg)',
           padding: '3.5rem 1.5rem',
           textAlign: 'center',
-          border: '1px solid var(--slate-200)'
+          border: '1px solid var(--border-subtle)'
         }}
       >
-        <AlertCircle size={48} style={{ color: 'var(--slate-400)', marginBottom: '1rem' }} />
+        <AlertCircle size={48} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
         <h3 style={{ fontSize: '1.25rem', fontWeight: '800', marginBottom: '0.5rem' }}>
           No se encontraron insumos odontológicos
         </h3>
-        <p style={{ color: 'var(--slate-600)', maxWidth: '420px', margin: '0 auto' }}>
+        <p style={{ color: 'var(--text-secondary)', maxWidth: '420px', margin: '0 auto' }}>
           Intenta cambiar el término de búsqueda o selecciona otra categoría odontológica.
         </p>
       </div>
