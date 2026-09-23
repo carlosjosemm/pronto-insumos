@@ -379,6 +379,27 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
   - Integrate **Sentry for React** to capture unhandled client runtime errors across mobile devices and browsers.
   - Set up Google Analytics 4 (GA4) with e-commerce events (`view_item`, `add_to_cart`, `begin_checkout`, `purchase`) to analyze dental clinic purchasing behavior in Melipilla and RM.
 
+- [ ] **8.6. Consolidate `api/` Endpoints Below the Vercel Hobby Function Cap** 🔴 **BLOCKS EVERY DEPLOYMENT**
+  - **Current Issue:** Every deployment — preview *and* production — is rejected at the output stage, after the build has already succeeded:
+
+    ```
+    Error: No more than 12 Serverless Functions can be added to a Deployment
+    on the Hobby plan. Create a team (Pro plan) to deploy more.
+    ```
+
+    `api/` currently exposes **15** serverless functions — `api/admin/*` (11), `create-preference`, `track-order`, `upload-voucher`, `webhooks/mercadopago` — against a **Hobby-plan ceiling of 12**. The build completes (`Build Completed in /vercel/output`); it is the *deployment* that is refused.
+  - **How it broke:** the admin portal endpoints landed on 2026-09-17 (`f23a868`, `c836962`, `5782be6`), taking `api/` from 4 → 15 files. The last successful deployment predates that (`vercel project ls` reports the project as last updated ~9 days prior), so **no deployment has succeeded since 2026-09-17**. This is entirely independent of the pnpm/lockfile regression fixed in PR #10 — that fix was necessary but not sufficient.
+  - **Required Action (pick one; do not mix):**
+    1. **Consolidate into fewer functions — no cost, preferred.** Collapse the 11 `api/admin/*` endpoints behind a single routed entry point (e.g. `api/admin/[action].ts` or `api/admin/[...route].ts`) that dispatches on the path. That alone takes 15 → 5 and restores headroom. A plain `switch` on the route is sufficient.
+    2. **Upgrade the Vercel project to Pro.** Removes the cap, costs money, requires no repo change.
+  - **Acceptance Criteria:**
+    - [ ] `pnpm dlx vercel@latest deploy` produces a Preview URL that reaches `● Ready`.
+    - [ ] `pnpm dlx vercel@latest deploy --prod` succeeds once the `og-preview.png` gate (§7.3 and root `AGENTS.md` §7) is also satisfied.
+    - [ ] Every suite under `src/tests/api/**` still passes **unchanged** — the admin client adapter `src/admin/services/adminApi.ts` must keep calling the same public URLs, or be updated in the same change.
+    - [ ] Security behaviour is unchanged: every admin route still requires `Authorization: Bearer <ID_TOKEN>` plus `decodedToken.admin === true` via `api/lib/adminAuth.ts`, and `firestore.rules` is untouched.
+  - **⚠️ Guardrail tension — resolve before writing code:** root `AGENTS.md` §2.2 mandates *"single-purpose Vercel Serverless Functions"* and forbids monolithic backend frameworks. A routed `api/admin/*` entry point is a deliberate, documented exception to that rule, so get it agreed first and record the decision in root `AGENTS.md` §2/§7 and `api/AGENTS.md` when it lands. **Do not** introduce Express, NestJS, Koa or Fastify to achieve it.
+  - **Also stale, worth fixing in the same pass:** `api/AGENTS.md` claims *"All 11 serverless functions in `api/`"* — the real count is 15, and that number is now load-bearing because of the cap. Its §5.2 endpoint table also predates `create-product`, `update-product` and `toggle-visibility`.
+
 ---
 
 ## Prioritization Matrix & Effort Estimation
@@ -403,6 +424,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 | **1.2. Automated electronic invoicing with SII (OpenFactura/LibreDTE)** | **P2** | Tax / B2B | 2 - 3 days | No (Can invoice manually at start) |
 | **6.1. High-resolution dental product photography & datasheets** | **P2** | Commercial | Variable | No (Initial catalog can launch lean) |
 | **8.1 - 8.5. Bundle optimization, Sentry, CI/CD, and GA4 tracking** | **P3** | DevOps | 1 day | No (Immediate post-launch) |
+| **8.6. Consolidate `api/` endpoints below the Vercel Hobby function cap** | **P0** | Critical | 3 - 4 hours | **YES** |
 
 ---
 
