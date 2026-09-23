@@ -29,6 +29,13 @@ delete process.env.VITE_FIRESTORE_ENV
 delete mutableEnv.FIRESTORE_ENV
 delete mutableEnv.VITE_FIRESTORE_ENV
 
+// The spread above lets a developer's .env.local win over the placeholders. That is desirable for
+// the Firebase keys, but UI-affecting values must stay deterministic or the assertions on the
+// rendered phone number break on any machine with a real .env.local. Re-pin them explicitly.
+Object.assign(mutableEnv, {
+  VITE_WHATSAPP_NUMBER: '56912345678'
+})
+
 // Clean in-memory Storage implementation for test environment (fixes Node 22 jsdom limitation)
 class LocalStorageMock implements Storage {
   private store: Record<string, string> = {}
