@@ -91,18 +91,31 @@ vi.mocked(firebaseAuth.onAuthStateChanged).mockImplementation((_auth, callback: 
 
 ### 5.2 Captured responses and payloads
 
-* `mockRes.json` captures into `Record<string, unknown>` (`let jsonOutput: Record<string, unknown> = {}`), and `json: vi.fn((data: unknown) => …)`.
-* **Nested reads need a local cast**, because `Record<string, unknown>` values are `unknown`:
-  ```ts
-  const product = jsonOutput.product as Record<string, unknown>
-  expect(product.priceNeto).toBe(7555)
-  ```
-* **Callbacks that mutate a captured variable must use an object holder.** TypeScript's control-flow analysis does not track assignments made inside a closure, so a plain `let captured: Record<string, unknown> | null = null` narrows to `null` (and then to `never`) at the assertion site. Use:
-  ```ts
-  const capturedProductUpdate: { current: Record<string, unknown> | null } = { current: null }
-  // …inside the mock: capturedProductUpdate.current = data
-  expect(capturedProductUpdate.current?.stockCount).toBe(5)
-  ```
+`mockRes.json` captures into `Record<string, unknown>`, and the mock is typed to match:
+
+```ts
+let jsonOutput: Record<string, unknown> = {}
+
+json: vi.fn((data: unknown) => {
+  jsonOutput = data as Record<string, unknown>
+  return mockRes as VercelResponse
+})
+```
+
+**Nested reads need a local cast**, because every value in a `Record<string, unknown>` is `unknown`:
+
+```ts
+const product = jsonOutput.product as Record<string, unknown>
+expect(product.priceNeto).toBe(7555)
+```
+
+**Callbacks that mutate a captured variable must use an object holder.** TypeScript's control-flow analysis does not track assignments made inside a closure, so a plain `let captured: Record<string, unknown> | null = null` narrows to `null` (and then to `never`) at the assertion site:
+
+```ts
+const capturedProductUpdate: { current: Record<string, unknown> | null } = { current: null }
+// …inside the mock: capturedProductUpdate.current = data
+expect(capturedProductUpdate.current?.stockCount).toBe(5)
+```
 
 ### 5.3 Deliberately invalid input
 
