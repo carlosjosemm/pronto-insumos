@@ -16,6 +16,7 @@ import {
   Truck
 } from 'lucide-react'
 import { submitOrder, generateOrderId } from '../services/api'
+import { sendOrderConfirmationEmail } from '../services/orderConfirmation'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
 import { processMercadoPagoPayment } from '../services/mercadopago'
 import { validateRut, formatRut } from '../utils/rut'
@@ -305,6 +306,12 @@ export default function CheckoutModal({
       setSubmitError('No fue posible registrar el pedido en el sistema. Por favor reintenta o comunícate vía WhatsApp.')
       setIsSubmitting(false)
       return
+    }
+
+    // Fire-and-forget transactional "order received" email for methods without a
+    // server-side payment touchpoint (Mercado Pago confirmations come from the webhook).
+    if (paymentMethod === 'transferencia' || paymentMethod === 'whatsapp') {
+      void sendOrderConfirmationEmail(canonicalOrderId, sanitizedCustomer.rut)
     }
 
     // 2. Initiate Mercado Pago Online Payment Processing if selected

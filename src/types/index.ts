@@ -138,6 +138,7 @@ export interface Order {
   paidAt?: string
   approvedAt?: string
   approvedBy?: string
+  confirmationEmailSentAt?: string
   dispatch?: {
     carrier: 'starken' | 'chilexpress' | 'blue_express' | 'despacho_local_melipilla' | string
     trackingCode?: string
