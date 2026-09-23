@@ -126,6 +126,16 @@ The storefront is browsed between patients, so the ≤768px breakpoint in `src/i
 
 **Live regions.** `aria-live="polite"` is on the navbar cart-count badge and on the `.qty-val` of the `ProductCard` stepper, the `Cart` drawer and `ProductQuickView`, so quantity changes are announced. The toast container remains the only other live region.
 
+### 2.5 Unresolved copy — deliberate, do not invent replacements
+
+Three strings still advertise Factura or use pre-sweep wording, and **none of them appears in the redesign proposal's Appendix C copy deck**. Because that deck is the only sanctioned source of `es-CL` storefront copy, there is no verbatim replacement to apply — and inventing one is explicitly forbidden. They are recorded here so a future agent recognises them as a known gap instead of "fixing" them with new copy:
+
+* `Cart.tsx` — `Transacción Segura · Factura Electrónica B2B` (cart trust strip). Contradicts the boleta-only reality; needs an owner-approved string.
+* `CheckoutModal.tsx` — step label `Despacho & Facturación` (Step 1 header). The Factura half is stale for the same reason.
+* `CheckoutModal.tsx` — pro-forma letterhead `Distribuidora Dental • Melipilla, Región Metropolitana`. Arguably correct as a *corporate* address rather than a delivery zone (the retired `RM` copy was about coverage), but it sits next to the zone rules and is easy to misread.
+
+Changing any of them requires an Appendix C entry first. The same rule applies to the `OrderTrackingModal` support number in §4.1.2.
+
 ---
 
 ## 🛒 3. Deep Dive: Checkout Modal (`CheckoutModal.tsx`)
