@@ -52,11 +52,12 @@ pnpm test:coverage
 ```
 
 ### Writing New Tests Checklist:
-- [ ] Place test file mirroring the source file path (e.g., `src/utils/currency.ts` -> `src/tests/utils/currency.test.ts`).
-- [ ] Test standard happy path.
-- [ ] Test edge cases (invalid inputs, network error responses, empty arrays).
-- [ ] Run `pnpm test` to verify zero regression across all test suites.
-- [ ] Run `pnpm lint` — test files are **inside** the lint scope (see §5).
+
+* [ ] Place test file mirroring the source file path (e.g., `src/utils/currency.ts` -> `src/tests/utils/currency.test.ts`).
+* [ ] Test standard happy path.
+* [ ] Test edge cases (invalid inputs, network error responses, empty arrays).
+* [ ] Run `pnpm test` to verify zero regression across all test suites.
+* [ ] Run `pnpm lint` — test files are **inside** the lint scope (see §5).
 
 ---
 
