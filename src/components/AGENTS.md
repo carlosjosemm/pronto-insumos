@@ -38,22 +38,25 @@ Under Chilean law (**Código Sanitario DFL 725** and **Decreto Supremo 466 del M
 
 ---
 
-## 🎨 2. Design Philosophy: "Clinical Precision & Local Trust"
+## 🎨 2. Design Philosophy: "Quiet Clinical Confidence"
 
-The storefront UI conveys the clean, sterile, and highly dependable nature of a dental operating depot:
-* **Palette (Brand Manual, Section 3 of the redesign proposal):**
-  - **Intense Blue (`#102748`, `var(--brand-blue)`):** Primary brand foundation for structure, headers, add-to-cart actions, and trust anchors. Legacy `--navy-*` / `--teal-*` tokens alias onto this family.
-  - **Cayenne Red-Orange (`#C84B31`, `var(--brand-cayenne)`):** Energetic warm accent for hero title span, cart count badge, product tag chips, and promotional urgency.
-  - **Limonade Cream / Accent Green (`#ECEFBE` / `#CAE400`, `var(--brand-limonade)` / `var(--brand-accent-green)`):** CTA fills and pill highlights; always paired with dark green text (`--brand-accent-green-text: #3D4A00`).
-  - **Almond Cream / Frozen Water (`#FDF8F3` / `#F0F4F8`, `var(--brand-cream)` / `var(--brand-frozen)`):** Warm page background and cool card/input surfaces.
-  - **Slate Neutral (`#334155`, `var(--text-secondary)`):** Balanced readability for technical specifications.
-  - **Focus indicators (`--border-focus`):** Always `var(--brand-blue)` — accent green fails WCAG 1.4.11 (≥3:1) on light surfaces, so it is reserved for fills only.
-* **Typography:** Brand manual dual-face system — `Baloo Da 2` (`--font-display`) for the wordmark and headings, `Syne` (`--font-sans` / `--font-body`) for body and CTA copy, `JetBrains Mono` for REF codes and prices.
+The storefront UI conveys the clean, sterile, and highly dependable nature of a dental operating depot. One ink, one accent (with a dark-surface variant), unified cool neutrals, real typography, near-zero decorative chrome.
+* **Palette (as built — canonical tokens in [src/index.css](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css)):**
+  * **Ink ramp (`--ink-900 #0b1a33`, `--ink-800 #102748`, `--ink-700 #1a3a6a`, `--ink-600 #2a4a7f`):** The anchor. `--ink-900` for footer/utility-bar surfaces, `--ink-800` for headings and primary buttons, `--ink-700` for hover, `--ink-600` for borders on dark.
+  * **Single brand accent (`--accent #0e7490`, `--accent-strong #0c6379`, `--accent-soft #e6f4f7`, `--accent-border #b7dee6`, `--accent-on-dark #67e8f9`):** Links, active states, icons, CTA fills on light surfaces (~5.3:1 on white). `--accent-on-dark` is the **only** accent permitted on `--ink-*` surfaces (~8:1 on `--ink-800`) — `--accent` itself fails contrast there (~2.8:1) and must never be used on dark.
+  * **Warm semantic (`--signal #c24a32`, `--signal-soft #fbefea`, `--signal-border #efc9be`):** Commercial urgency only — discounts, low-stock cues, cart count badge, featured card strip. Never headings or taglines.
+  * **Cool-neutral surfaces (`--surface-bg #f5f7f9`, `--surface-card #ffffff`, `--surface-muted #eef2f5`, `--surface-hover #e7edf2`, `--border-subtle #e4e9ee`, `--border-strong #c9d2db`):** One temperature — the warm/cool clash is gone.
+  * **Text ramp (`--text-primary #0f1e33`, `--text-secondary #44536a`, `--text-muted #6b7a8f`, `--text-inverse #ffffff`).**
+  * **Status (`--success`, `--warning`, `--danger`):** Quarantined to functional states only.
+  * **Spacing (`--space-1 … --space-16`)** and **geometry (`--radius-sm 6px`, `--radius-md 10px`, `--radius-lg 14px`, `--radius-full 999px`)**.
+  * **Focus indicators (`--border-focus: var(--ink-800)`):** WCAG 1.4.11 compliant (≥3:1) on light surfaces.
+  * **Retired:** lime/limonade/olive (`--brand-limonade`, `--brand-accent-green`, `--brand-accent-green-text`) and cayenne-as-heading-color. The `--brand-*`, `--navy-*`, `--teal-*`, `--slate-*`, `--emerald`, `--cyan`, `--accent-warm` tokens survive only as deprecated aliases.
+* **Typography (as built):** `Fraunces` (`--font-display`, 500–700, optical size) for the wordmark and headings — an editorial serif that reads "established firm"; `Inter` (`--font-sans` / `--font-body`, 400–600) for body and CTA copy; `JetBrains Mono` for REF codes and prices. Type scale: `--fs-display` (`clamp(2.5rem, 4vw, 3.5rem)`), `--fs-h2`, `--fs-h3`, `--fs-body`, `--fs-small`, `--fs-micro`. **No italics anywhere.**
 * **Strict Aesthetic Guardrails:**
-  - Zero fluorescent neon halos or glowing futuristic borders.
-  - Zero fake SaaS dashboard widgets.
-  - Authentic Chilean currency formatting (`$189.990 CLP`) with zero decimal cents.
-  - Transparent Chilean consumer pricing: All customer prices explicitly state `IVA incluido` per **SERNAC** consumer protection rules.
+  * Zero fluorescent neon halos or glowing futuristic borders.
+  * Zero fake SaaS dashboard widgets.
+  * Authentic Chilean currency formatting (`$189.990 CLP`) with zero decimal cents.
+  * Transparent Chilean consumer pricing: All customer prices explicitly state `IVA incluido` per **SERNAC** consumer protection rules.
 
 ### 2.1 Storefront Landing Composition (`App.tsx`)
 
