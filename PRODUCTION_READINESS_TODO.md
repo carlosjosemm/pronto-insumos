@@ -426,6 +426,26 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
   - **🔴 Runtime Blocker B — `jwks-rsa` CJS requiring ESM-only `jose` (pre-existing, fixed):** `firebase-admin` → `jwks-rsa@4` is CommonJS and calls `require('jose')` at module load, while `jose@6` is ESM-only — so *merely importing `firebase-admin/auth`* crashed with `ERR_REQUIRE_ESM`, taking down every admin route (the core of this task). Known upstream: [auth0/node-jwks-rsa#507](https://github.com/auth0/node-jwks-rsa/issues/507) / [firebase/firebase-admin-node#3181](https://github.com/firebase/firebase-admin-node/issues/3181); the fix ([PR #508](https://github.com/auth0/node-jwks-rsa/pull/508)) is merged but **unreleased** (`jwks-rsa` latest is still `4.1.0`). Worked around with `pnpm.overrides` pinning `jose` to `^5.10.0` — the last dual CJS/ESM major, and `jwks-rsa` only uses `jose.importJWK`/`exportSPKI`, which are API-identical across jose 4/5/6. **Trade-off accepted:** jose v5 is EOL per its own `SECURITY.md`; the CVE that motivated the v6 bump (CVE-2025-45767) is *disputed by the maintainer* and specific to v6.0.10. **Removal condition:** drop the override once `jwks-rsa` > `4.1.0` ships, then re-verify `firebase-admin/auth` on a preview deploy. Documented in `api/AGENTS.md` §1.3 and root `AGENTS.md` §7.
   - **Note for future local deploys:** running `vercel build` creates a gitignored `.vercel/output` tree that `pnpm lint` previously swept up (2800 errors from build artifacts). `.vercel/**` was added to `eslint.config.js` `ignores`, alongside the existing `dist/**` / `coverage/**` / `public/**` entries.
 
+- [ ] **8.7. Progressive Catalog Rendering (Lazy Product Cards / "Load More")**
+  - **Current Issue:** `ProductList.tsx` renders the entire catalog in a single pass — `products.map(...)` with no windowing or pagination — and `fetchProducts()` in `src/services/api.ts` issues an un-limited `getDocs(collection(db, getCollectionName('products')))`. The production catalog is **75 active `pronto-*` items** (`pronto-001`…`pronto-075`, ingested by `scripts/import-catalog-csv.ts`; the 11 `odon-*` fixtures are `isActive: false` and never render). So the storefront mounts all 75 product cards — each with imagery, badges, price block and a cart stepper — in one very long column. The storefront is browsed between patients on a phone, so the scroll length and first-paint cost are a genuine UX problem, not a cosmetic one.
+  - **Required Action:**
+    - Add **progressive disclosure on the client** — do not introduce a new data layer or change the fetch. Reveal a first page (12–16 cards), then a single accessible `<button>` at the bottom of the grid to reveal the next page, with a live count (e.g. `Mostrando 16 de 75`).
+    - **Reset to page 1 whenever any catalog control changes** — category pill, search term, `inStockOnly` toggle, or sort option. Otherwise the revealed slice silently misrepresents the filtered result set.
+    - _(Optional enhancement)_ An `IntersectionObserver` sentinel may auto-reveal on scroll, but the button must remain the primary **keyboard-reachable** control — never replace it with scroll-only loading.
+  - **Explicitly NOT required (Anti-Overshooting Principle):** do **not** add a virtualization/windowing library (`react-window`, `@tanstack/react-virtual`) or a query library (TanStack Query, React Query). 75 nodes is comfortably inside what a plain incremental reveal handles; true windowing would fight the CSS grid, the entrance animation and the sticky chrome for no measurable gain at this catalog size. If the catalog ever grows into the thousands, revisit with measurements rather than assumptions.
+  - **Constraints & placement:**
+    - Any new DOM-side-effect hook belongs in `src/hooks/` (e.g. `useIncrementalReveal`). ❌ Not `src/utils/` — that directory is contractually pure (no hooks, no DOM, no side effects).
+    - `ProductList.tsx` currently staggers the `product-card-entrance` animation by `(index % 4) * 60ms`. A growing list must **not** re-trigger that entrance animation on already-revealed cards — the animation should run once per card, keyed by product id.
+    - Honour `prefers-reduced-motion`, and announce each reveal through an `aria-live="polite"` region so screen-reader users know more items arrived.
+    - Chilean storefront copy only (`Cargar más insumos`, `Mostrando N de M`). No English UI strings.
+  - **Acceptance Criteria:**
+    - [ ] Only the first page of cards is mounted on initial render (assert the rendered card count in `src/tests/components/ProductList.test.tsx`).
+    - [ ] `Cargar más` reveals exactly one additional page, and the button disappears once the end of the list is reached.
+    - [ ] Changing category, search, `inStockOnly`, or sort resets the list to page 1.
+    - [ ] Empty-state copy, `loading` skeletons, and the in-stock-first partition ordering are unchanged.
+    - [ ] No new runtime dependency is added to `package.json`.
+    - [ ] `pnpm test`, `pnpm build`, `pnpm lint` and `pnpm format:check` stay green (zero regressions).
+
 ---
 
 ## Prioritization Matrix & Effort Estimation
@@ -451,6 +471,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 | **6.1. High-resolution dental product photography & datasheets** | **P2** | Commercial | Variable | No (Initial catalog can launch lean) |
 | **8.1 - 8.5. Bundle optimization, Sentry, CI/CD, and GA4 tracking** | **P3** | DevOps | 1 day | No (Immediate post-launch) |
 | **8.6. Consolidate `api/` endpoints below the Vercel Hobby function cap** | **P0** | Critical | 3 - 4 hours | **YES** |
+| **8.7. Progressive catalog rendering (lazy product cards / "load more")** | **P3** | UX / Performance | 2 - 3 hours | No (Immediate post-launch) |
 
 ---
 
