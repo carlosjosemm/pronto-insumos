@@ -189,7 +189,7 @@ export default function OrderTrackingModal({
           style={{
             padding: '1.5rem 1.75rem 1rem',
             borderBottom: '1px solid var(--border-subtle)',
-            background: '#ffffff'
+            background: 'var(--surface-card)'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -272,13 +272,13 @@ export default function OrderTrackingModal({
                   style={{
                     width: '100%',
                     padding: '0.55rem 0.75rem',
-                    border: `1px solid ${rutError ? '#dc2626' : 'var(--border-subtle)'}`,
+                    border: `1px solid ${rutError ? 'var(--danger)' : 'var(--border-subtle)'}`,
                     borderRadius: 'var(--radius-sm)',
                     fontWeight: '600'
                   }}
                 />
                 {rutError && (
-                  <span style={{ fontSize: '0.7rem', color: '#dc2626', display: 'block', marginTop: '0.2rem' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--danger)', display: 'block', marginTop: '0.2rem' }}>
                     {rutError}
                   </span>
                 )}
@@ -305,9 +305,9 @@ export default function OrderTrackingModal({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                background: '#fef2f2',
-                border: '1px solid #fecdd3',
-                color: '#dc2626',
+                background: 'var(--signal-soft)',
+                border: '1px solid var(--signal-border)',
+                color: 'var(--danger)',
                 padding: '0.75rem 1rem',
                 borderRadius: 'var(--radius-sm)',
                 fontSize: '0.825rem',
@@ -447,9 +447,9 @@ export default function OrderTrackingModal({
                             width: '30px',
                             height: '30px',
                             borderRadius: '50%',
-                            background: isCompleted || isCurrent ? 'var(--teal-600)' : '#ffffff',
+                            background: isCompleted || isCurrent ? 'var(--teal-600)' : 'var(--surface-card)',
                             border: `2px solid ${isCompleted || isCurrent ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                            color: isCompleted || isCurrent ? '#ffffff' : 'var(--text-muted)',
+                            color: isCompleted || isCurrent ? 'var(--text-inverse)' : 'var(--text-muted)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -480,8 +480,8 @@ export default function OrderTrackingModal({
               {trackingData.status === 'PENDIENTE_TRANSFERENCIA' && (
                 <div
                   style={{
-                    background: '#fffbeb',
-                    border: '1.5px solid #fde68a',
+                    background: 'var(--signal-soft)',
+                    border: '1.5px solid var(--signal-border)',
                     borderRadius: 'var(--radius-sm)',
                     padding: '1.15rem'
                   }}
@@ -492,16 +492,18 @@ export default function OrderTrackingModal({
                       alignItems: 'center',
                       gap: '0.5rem',
                       marginBottom: '0.5rem',
-                      color: '#92400e',
+                      color: 'var(--warning)',
                       fontWeight: '800',
                       fontSize: '0.875rem'
                     }}
                   >
-                    <Building2 size={18} style={{ color: '#d97706' }} />
+                    <Building2 size={18} style={{ color: 'var(--warning)' }} />
                     <span>Pendiente de Comprobante de Transferencia Bancaria</span>
                   </div>
 
-                  <p style={{ margin: '0 0 0.75rem', fontSize: '0.775rem', color: '#78350f', lineHeight: '1.4' }}>
+                  <p
+                    style={{ margin: '0 0 0.75rem', fontSize: '0.775rem', color: 'var(--warning)', lineHeight: '1.4' }}
+                  >
                     Para procesar el despacho de tu pedido, realiza la transferencia a nuestra cuenta de{' '}
                     <strong>{BANK_DETAILS.bankName}</strong> ({BANK_DETAILS.accountType} N° {BANK_DETAILS.accountNumber}
                     , RUT {BANK_DETAILS.rut}) y adjunta aquí tu comprobante.
@@ -521,9 +523,9 @@ export default function OrderTrackingModal({
                       style={{
                         padding: '0.45rem',
                         fontSize: '0.75rem',
-                        border: '1px dashed #d97706',
+                        border: '1px dashed var(--warning)',
                         borderRadius: 'var(--radius-sm)',
-                        background: '#ffffff',
+                        background: 'var(--surface-card)',
                         cursor: 'pointer'
                       }}
                     />
@@ -537,7 +539,7 @@ export default function OrderTrackingModal({
                           gap: '0.5rem'
                         }}
                       >
-                        <span style={{ fontSize: '0.75rem', color: '#78350f', fontWeight: '600' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--warning)', fontWeight: '600' }}>
                           Archivo: {voucherFile.name} ({(voucherFile.size / 1024).toFixed(0)} KB)
                         </span>
                         <button
@@ -545,7 +547,7 @@ export default function OrderTrackingModal({
                           className="btn-primary"
                           onClick={handleUploadVoucher}
                           disabled={voucherUploading}
-                          style={{ padding: '0.4rem 0.85rem', fontSize: '0.75rem', background: '#d97706' }}
+                          style={{ padding: '0.4rem 0.85rem', fontSize: '0.75rem', background: 'var(--warning)' }}
                         >
                           <Upload size={14} />
                           <span>{voucherUploading ? 'Subiendo...' : 'Enviar Comprobante'}</span>
@@ -554,13 +556,15 @@ export default function OrderTrackingModal({
                     )}
 
                     {voucherSuccess && (
-                      <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: '700' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: '700' }}>
                         ✓ {voucherSuccess}
                       </span>
                     )}
 
                     {voucherError && (
-                      <span style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: '600' }}>{voucherError}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: '600' }}>
+                        {voucherError}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -570,7 +574,7 @@ export default function OrderTrackingModal({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem', fontSize: '0.8rem' }}>
                 <div
                   style={{
-                    background: '#ffffff',
+                    background: 'var(--surface-card)',
                     border: '1px solid var(--border-subtle)',
                     borderRadius: 'var(--radius-sm)',
                     padding: '0.85rem'
@@ -595,7 +599,7 @@ export default function OrderTrackingModal({
 
                 <div
                   style={{
-                    background: '#ffffff',
+                    background: 'var(--surface-card)',
                     border: '1px solid var(--border-subtle)',
                     borderRadius: 'var(--radius-sm)',
                     padding: '0.85rem'
@@ -619,7 +623,7 @@ export default function OrderTrackingModal({
               {/* Items Table */}
               <div
                 style={{
-                  background: '#ffffff',
+                  background: 'var(--surface-card)',
                   border: '1px solid var(--border-subtle)',
                   borderRadius: 'var(--radius-sm)',
                   padding: '0.85rem'
@@ -661,9 +665,9 @@ export default function OrderTrackingModal({
                   justifyContent: 'center',
                   gap: '0.5rem',
                   textDecoration: 'none',
-                  color: '#059669',
-                  borderColor: '#a7f3d0',
-                  background: '#ecfdf5'
+                  color: 'var(--success)',
+                  borderColor: 'var(--accent-border)',
+                  background: 'var(--accent-soft)'
                 }}
               >
                 <MessageSquare size={17} />

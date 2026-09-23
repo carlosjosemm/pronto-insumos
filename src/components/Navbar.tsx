@@ -30,7 +30,7 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
         <div className="top-utility-container">
           <div className="top-utility-left">
             <span className="top-utility-link">
-              <MapPin size={13} style={{ color: '#38bdf8' }} />
+              <MapPin size={13} style={{ color: 'var(--accent-on-dark)' }} />
               <span>Despacho a clínicas en Melipilla y San Antonio</span>
             </span>
           </div>
@@ -53,19 +53,19 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
                   }}
                   aria-label="Abrir Seguimiento de Pedido"
                 >
-                  <Truck size={13} style={{ color: '#38bdf8' }} />
+                  <Truck size={13} style={{ color: 'var(--accent-on-dark)' }} />
                   <span>Seguimiento de Pedido</span>
                 </button>
                 <span className="top-utility-divider">|</span>
               </>
             )}
             <span className="top-utility-link">
-              <FileCheck size={13} style={{ color: '#34d399' }} />
+              <FileCheck size={13} style={{ color: 'var(--accent-on-dark)' }} />
               <span>Boleta Electrónica · IVA 19%</span>
             </span>
             <span className="top-utility-divider">|</span>
             <a href={whatsappLink()} className="top-utility-link" target="_blank" rel="noopener noreferrer">
-              <Phone size={13} style={{ color: '#38bdf8' }} />
+              <Phone size={13} style={{ color: 'var(--accent-on-dark)' }} />
               <span>Mesa Clínica: {WHATSAPP_DISPLAY}</span>
             </a>
           </div>

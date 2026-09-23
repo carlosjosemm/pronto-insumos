@@ -147,18 +147,18 @@ export default function Cart({
           <div
             className="cart-regulated-alert"
             style={{
-              background: '#fffbeb',
-              borderBottom: '1px solid #fde68a',
+              background: 'var(--signal-soft)',
+              borderBottom: '1px solid var(--signal-border)',
               padding: '0.65rem 1.25rem',
               fontSize: '0.775rem',
-              color: '#92400e',
+              color: 'var(--warning)',
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
               lineHeight: '1.3'
             }}
           >
-            <ShieldAlert size={18} style={{ color: '#d97706', flexShrink: 0 }} />
+            <ShieldAlert size={18} style={{ color: 'var(--warning)', flexShrink: 0 }} />
             <span>
               <strong>Insumos Regulados ISP:</strong> Tu carro incluye productos de venta controlada. Se solicitará tu
               N° de Registro SIS en el checkout.
@@ -205,8 +205,8 @@ export default function Cart({
                       <span
                         style={{
                           fontSize: '0.65rem',
-                          color: '#b45309',
-                          background: '#fef3c7',
+                          color: 'var(--warning)',
+                          background: 'var(--signal-soft)',
                           padding: '0.1rem 0.35rem',
                           borderRadius: 'var(--radius-xs)',
                           display: 'inline-block',
@@ -297,7 +297,7 @@ export default function Cart({
             </div>
 
             {promoError && (
-              <div style={{ color: '#dc2626', fontSize: '0.75rem', marginBottom: '0.5rem', fontWeight: '600' }}>
+              <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginBottom: '0.5rem', fontWeight: '600' }}>
                 {promoError}
               </div>
             )}

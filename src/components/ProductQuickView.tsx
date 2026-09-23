@@ -243,9 +243,9 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
                   style={{
                     fontSize: '0.7rem',
                     fontWeight: '800',
-                    color: '#b45309',
-                    background: '#fef3c7',
-                    border: '1px solid #fde68a',
+                    color: 'var(--warning)',
+                    background: 'var(--signal-soft)',
+                    border: '1px solid var(--signal-border)',
                     borderRadius: 'var(--radius-xs)',
                     padding: '0.15rem 0.5rem',
                     display: 'inline-flex',
@@ -279,7 +279,7 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
                       key={i}
                       size={14}
                       className={i < Math.floor(product.rating) ? 'star-filled' : ''}
-                      style={{ color: i < Math.floor(product.rating) ? '#f59e0b' : '#cbd5e1' }}
+                      style={{ color: i < Math.floor(product.rating) ? 'var(--warning)' : 'var(--border-strong)' }}
                     />
                   ))}
                 </div>
@@ -305,8 +305,17 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
               </div>
 
               <div className="detail-stock-indicator">
-                <span className="product-stock-dot" style={{ background: isAvailable ? '#059669' : '#dc2626' }} />
-                <span style={{ color: isAvailable ? '#059669' : '#dc2626', fontWeight: '600', fontSize: '0.8rem' }}>
+                <span
+                  className="product-stock-dot"
+                  style={{ background: isAvailable ? 'var(--success)' : 'var(--danger)' }}
+                />
+                <span
+                  style={{
+                    color: isAvailable ? 'var(--success)' : 'var(--danger)',
+                    fontWeight: '600',
+                    fontSize: '0.8rem'
+                  }}
+                >
                   {isAvailable
                     ? 'Disponible para despacho en Melipilla y San Antonio'
                     : 'Sin stock inmediato en bodega'}
@@ -317,13 +326,13 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
             {product.prescriptionRequired && (
               <div
                 style={{
-                  background: '#fffbeb',
-                  border: '1px solid #fef3c7',
-                  borderLeft: '3px solid #f59e0b',
+                  background: 'var(--signal-soft)',
+                  border: '1px solid var(--signal-border)',
+                  borderLeft: '3px solid var(--warning)',
                   borderRadius: 'var(--radius-xs)',
                   padding: '0.65rem 0.85rem',
                   fontSize: '0.775rem',
-                  color: '#92400e',
+                  color: 'var(--warning)',
                   lineHeight: '1.4'
                 }}
               >

@@ -50,6 +50,12 @@
   --text-muted: #6b7a8f;
   --text-inverse: #ffffff;
 
+  /* On-dark text ramp — navy surfaces only (utility bar, footer). Derived from
+     the surface with alpha so the ramp introduces no new hue and stays above
+     the 4.5:1 floor at the small sizes these bars use. */
+  --text-on-dark-muted: rgba(255, 255, 255, 0.62);
+  --text-on-dark-body: rgba(255, 255, 255, 0.82);
+
   /* Spacing scale — 4px base */
   --space-1: 4px;
   --space-2: 8px;

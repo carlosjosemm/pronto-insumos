@@ -180,7 +180,7 @@ export default function ProductCard({
                   key={i}
                   size={13}
                   className={i < Math.floor(product.rating) ? 'star-filled' : ''}
-                  style={{ color: i < Math.floor(product.rating) ? '#f59e0b' : '#cbd5e1' }}
+                  style={{ color: i < Math.floor(product.rating) ? 'var(--warning)' : 'var(--border-strong)' }}
                 />
               ))}
             </div>

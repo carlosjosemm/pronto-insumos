@@ -17,8 +17,12 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               <ShieldCheck size={24} />
             </div>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Registro ISP Chile</div>
-              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Insumos Médicos Certificados</div>
+              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: 'var(--text-inverse)' }}>
+                Registro ISP Chile
+              </div>
+              <div style={{ fontSize: '0.775rem', color: 'var(--text-on-dark-muted)' }}>
+                Insumos Médicos Certificados
+              </div>
             </div>
           </div>
 
@@ -27,8 +31,12 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               <MapPin size={24} />
             </div>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Bodega Melipilla</div>
-              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Despacho local directo a clínicas</div>
+              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: 'var(--text-inverse)' }}>
+                Bodega Melipilla
+              </div>
+              <div style={{ fontSize: '0.775rem', color: 'var(--text-on-dark-muted)' }}>
+                Despacho local directo a clínicas
+              </div>
             </div>
           </div>
 
@@ -37,8 +45,12 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               <Truck size={24} />
             </div>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Despacho San Antonio</div>
-              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Ruta programada a clínicas de la zona</div>
+              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: 'var(--text-inverse)' }}>
+                Despacho San Antonio
+              </div>
+              <div style={{ fontSize: '0.775rem', color: 'var(--text-on-dark-muted)' }}>
+                Ruta programada a clínicas de la zona
+              </div>
             </div>
           </div>
 
@@ -47,8 +59,12 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               <RefreshCw size={24} />
             </div>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: '#ffffff' }}>Garantía SERNAC 6 Meses</div>
-              <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>Respaldo Técnico en Instrumental</div>
+              <div style={{ fontWeight: '700', fontSize: '0.925rem', color: 'var(--text-inverse)' }}>
+                Garantía SERNAC 6 Meses
+              </div>
+              <div style={{ fontSize: '0.775rem', color: 'var(--text-on-dark-muted)' }}>
+                Respaldo Técnico en Instrumental
+              </div>
             </div>
           </div>
         </div>
@@ -72,12 +88,25 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               </span>
               <span className="brand-descriptor">INSUMOS ODONTOLÓGICOS</span>
             </div>
-            <p style={{ color: '#94a3b8', fontSize: '0.825rem', lineHeight: '1.6', marginBottom: '1rem' }}>
+            <p
+              style={{
+                color: 'var(--text-on-dark-muted)',
+                fontSize: '0.825rem',
+                lineHeight: '1.6',
+                marginBottom: '1rem'
+              }}
+            >
               Distribuidor especializado en insumos y equipamiento odontológico para gabinetes, clínicas dentales y
               laboratorios en Melipilla y San Antonio.
             </p>
             <div
-              style={{ fontSize: '0.8rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}
+              style={{
+                fontSize: '0.8rem',
+                color: 'var(--text-on-dark-body)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.35rem'
+              }}
             >
               <div>
                 <strong>RUT Empresa:</strong> 77.892.410-K
@@ -110,7 +139,7 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: '#38bdf8',
+                      color: 'var(--accent-on-dark)',
                       cursor: 'pointer',
                       padding: 0,
                       font: 'inherit',
@@ -140,13 +169,20 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
           {/* Column 4: Customer Care & Payment Pathways */}
           <div>
             <h4 className="footer-heading">Contacto y Formas de Pago</h4>
-            <p style={{ color: '#94a3b8', fontSize: '0.8rem', lineHeight: '1.5', marginBottom: '0.85rem' }}>
+            <p
+              style={{
+                color: 'var(--text-on-dark-muted)',
+                fontSize: '0.8rem',
+                lineHeight: '1.5',
+                marginBottom: '0.85rem'
+              }}
+            >
               Atención directa para presupuestos de insumos y equipamiento clínico.
             </p>
             <div
               style={{
                 fontSize: '0.825rem',
-                color: '#cbd5e1',
+                color: 'var(--text-on-dark-body)',
                 marginBottom: '1rem',
                 display: 'flex',
                 flexDirection: 'column',

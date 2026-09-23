@@ -39,7 +39,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'var(--slate-50, #f8fafc)',
+            background: 'var(--surface-bg)',
             padding: '1.5rem',
             fontFamily: 'inherit'
           }}
@@ -48,11 +48,11 @@ export default class ErrorBoundary extends Component<Props, State> {
             style={{
               maxWidth: '480px',
               width: '100%',
-              background: 'white',
+              background: 'var(--surface-card)',
               borderRadius: '16px',
               padding: '2rem',
               boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
-              border: '1px solid var(--slate-200, #e2e8f0)',
+              border: '1px solid var(--border-subtle)',
               textAlign: 'center'
             }}
           >
@@ -61,12 +61,12 @@ export default class ErrorBoundary extends Component<Props, State> {
                 width: '64px',
                 height: '64px',
                 borderRadius: '50%',
-                background: '#fef2f2',
+                background: 'var(--signal-soft)',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: '1rem',
-                color: '#ef4444'
+                color: 'var(--danger)'
               }}
             >
               <AlertTriangle size={32} />
@@ -76,7 +76,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               style={{
                 fontSize: '1.25rem',
                 fontWeight: '800',
-                color: 'var(--slate-900, #0f172a)',
+                color: 'var(--text-primary)',
                 marginBottom: '0.5rem'
               }}
             >
@@ -86,7 +86,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             <p
               style={{
                 fontSize: '0.875rem',
-                color: 'var(--slate-600, #475569)',
+                color: 'var(--text-secondary)',
                 lineHeight: '1.5',
                 marginBottom: '1.5rem'
               }}
@@ -104,8 +104,8 @@ export default class ErrorBoundary extends Component<Props, State> {
                   justifyContent: 'center',
                   gap: '0.5rem',
                   padding: '0.75rem 1.25rem',
-                  background: 'var(--emerald, #0284c7)',
-                  color: 'white',
+                  background: 'var(--ink-800)',
+                  color: 'var(--text-inverse)',
                   fontWeight: '700',
                   borderRadius: '8px',
                   border: 'none',
@@ -127,16 +127,16 @@ export default class ErrorBoundary extends Component<Props, State> {
                   justifyContent: 'center',
                   gap: '0.5rem',
                   padding: '0.75rem 1.25rem',
-                  background: 'white',
-                  color: 'var(--slate-700, #334155)',
+                  background: 'var(--surface-card)',
+                  color: 'var(--text-secondary)',
                   fontWeight: '600',
                   borderRadius: '8px',
-                  border: '1px solid var(--slate-200, #e2e8f0)',
+                  border: '1px solid var(--border-subtle)',
                   textDecoration: 'none',
                   fontSize: '0.85rem'
                 }}
               >
-                <MessageSquare size={16} style={{ color: '#22c55e' }} />
+                <MessageSquare size={16} style={{ color: 'var(--success)' }} />
                 <span>Soporte Directo por WhatsApp</span>
               </a>
             </div>

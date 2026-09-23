@@ -367,7 +367,7 @@ export default function CheckoutModal({
           style={{
             padding: '1.5rem 1.75rem 1rem',
             borderBottom: '1px solid var(--border-subtle)',
-            background: '#ffffff'
+            background: 'var(--surface-card)'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
@@ -396,7 +396,7 @@ export default function CheckoutModal({
                     height: '24px',
                     borderRadius: 'var(--radius-xs)',
                     background: step >= 1 ? 'var(--teal-600)' : 'var(--border-subtle)',
-                    color: '#ffffff',
+                    color: 'var(--text-inverse)',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -423,7 +423,7 @@ export default function CheckoutModal({
                     height: '24px',
                     borderRadius: 'var(--radius-xs)',
                     background: step >= 2 ? 'var(--teal-600)' : 'var(--border-subtle)',
-                    color: '#ffffff',
+                    color: 'var(--text-inverse)',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -466,7 +466,7 @@ export default function CheckoutModal({
                         padding: '0.65rem',
                         borderRadius: 'var(--radius-sm)',
                         border: `2px solid ${formData.documentType === 'factura' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                        background: formData.documentType === 'factura' ? 'var(--teal-50)' : '#ffffff',
+                        background: formData.documentType === 'factura' ? 'var(--teal-50)' : 'var(--surface-card)',
                         fontWeight: '700',
                         fontSize: '0.85rem',
                         cursor: 'pointer',
@@ -484,7 +484,7 @@ export default function CheckoutModal({
                       padding: '0.65rem',
                       borderRadius: 'var(--radius-sm)',
                       border: `2px solid ${formData.documentType === 'boleta' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                      background: formData.documentType === 'boleta' ? 'var(--teal-50)' : '#ffffff',
+                      background: formData.documentType === 'boleta' ? 'var(--teal-50)' : 'var(--surface-card)',
                       fontWeight: '700',
                       fontSize: '0.85rem',
                       cursor: 'pointer',
@@ -565,16 +565,16 @@ export default function CheckoutModal({
                     style={{
                       width: '100%',
                       padding: '0.6rem 0.85rem',
-                      border: `1px solid ${rutError ? '#dc2626' : 'var(--border-subtle)'}`,
+                      border: `1px solid ${rutError ? 'var(--danger)' : 'var(--border-subtle)'}`,
                       borderRadius: 'var(--radius-sm)',
-                      outlineColor: rutError ? '#dc2626' : undefined
+                      outlineColor: rutError ? 'var(--danger)' : undefined
                     }}
                   />
                   {rutError && (
                     <span
                       style={{
                         fontSize: '0.75rem',
-                        color: '#dc2626',
+                        color: 'var(--danger)',
                         fontWeight: '600',
                         marginTop: '0.25rem',
                         display: 'block'
@@ -661,16 +661,16 @@ export default function CheckoutModal({
                         style={{
                           width: '100%',
                           padding: '0.55rem 0.75rem',
-                          border: `1px solid ${facturaErrors.razonSocial ? '#dc2626' : 'var(--border-subtle)'}`,
+                          border: `1px solid ${facturaErrors.razonSocial ? 'var(--danger)' : 'var(--border-subtle)'}`,
                           borderRadius: 'var(--radius-sm)',
-                          background: '#ffffff'
+                          background: 'var(--surface-card)'
                         }}
                       />
                       {facturaErrors.razonSocial && (
                         <span
                           style={{
                             fontSize: '0.725rem',
-                            color: '#dc2626',
+                            color: 'var(--danger)',
                             fontWeight: '600',
                             marginTop: '0.25rem',
                             display: 'block'
@@ -703,16 +703,16 @@ export default function CheckoutModal({
                         style={{
                           width: '100%',
                           padding: '0.55rem 0.75rem',
-                          border: `1px solid ${facturaErrors.giroComercial ? '#dc2626' : 'var(--border-subtle)'}`,
+                          border: `1px solid ${facturaErrors.giroComercial ? 'var(--danger)' : 'var(--border-subtle)'}`,
                           borderRadius: 'var(--radius-sm)',
-                          background: '#ffffff'
+                          background: 'var(--surface-card)'
                         }}
                       />
                       {facturaErrors.giroComercial && (
                         <span
                           style={{
                             fontSize: '0.725rem',
-                            color: '#dc2626',
+                            color: 'var(--danger)',
                             fontWeight: '600',
                             marginTop: '0.25rem',
                             display: 'block'
@@ -777,7 +777,7 @@ export default function CheckoutModal({
                     style={{
                       width: '100%',
                       padding: '0.6rem 0.85rem',
-                      border: `1px solid ${facturaErrors.address ? '#dc2626' : 'var(--border-subtle)'}`,
+                      border: `1px solid ${facturaErrors.address ? 'var(--danger)' : 'var(--border-subtle)'}`,
                       borderRadius: 'var(--radius-sm)'
                     }}
                   />
@@ -785,7 +785,7 @@ export default function CheckoutModal({
                     <span
                       style={{
                         fontSize: '0.725rem',
-                        color: '#dc2626',
+                        color: 'var(--danger)',
                         fontWeight: '600',
                         marginTop: '0.25rem',
                         display: 'block'
@@ -821,9 +821,9 @@ export default function CheckoutModal({
                     style={{
                       width: '100%',
                       padding: '0.6rem 0.85rem',
-                      border: `1px solid ${facturaErrors.city ? '#dc2626' : 'var(--border-subtle)'}`,
+                      border: `1px solid ${facturaErrors.city ? 'var(--danger)' : 'var(--border-subtle)'}`,
                       borderRadius: 'var(--radius-sm)',
-                      background: '#ffffff'
+                      background: 'var(--surface-card)'
                     }}
                   >
                     {DELIVERY_ZONES.map((zone) => (
@@ -841,7 +841,7 @@ export default function CheckoutModal({
                     <span
                       style={{
                         fontSize: '0.725rem',
-                        color: '#dc2626',
+                        color: 'var(--danger)',
                         fontWeight: '600',
                         marginTop: '0.25rem',
                         display: 'block'
@@ -883,8 +883,8 @@ export default function CheckoutModal({
               {hasRegulatedItems && (
                 <div
                   style={{
-                    background: '#fffbeb',
-                    border: '1.5px solid #fde68a',
+                    background: 'var(--signal-soft)',
+                    border: '1.5px solid var(--signal-border)',
                     borderRadius: 'var(--radius-sm)',
                     padding: '1rem',
                     display: 'flex',
@@ -897,16 +897,16 @@ export default function CheckoutModal({
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.5rem',
-                      color: '#92400e',
+                      color: 'var(--warning)',
                       fontWeight: '800',
                       fontSize: '0.85rem'
                     }}
                   >
-                    <ShieldAlert size={18} style={{ color: '#d97706', flexShrink: 0 }} />
+                    <ShieldAlert size={18} style={{ color: 'var(--warning)', flexShrink: 0 }} />
                     <span>Validación Sanitaria Requerida (ISP / Superintendencia de Salud)</span>
                   </div>
 
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#78350f', lineHeight: '1.4' }}>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--warning)', lineHeight: '1.4' }}>
                     Tu carro contiene insumos de expendio controlado (anestésicos o instrumental quirúrgico regulado por
                     el ISP bajo DFL 725 y Decreto 466). De acuerdo a la normativa sanitaria chilena, debes ingresar tu
                     N° de Registro en la Superintendencia de Salud (SIS) para autorizar el despacho.
@@ -920,7 +920,7 @@ export default function CheckoutModal({
                           display: 'block',
                           fontSize: '0.775rem',
                           fontWeight: '700',
-                          color: '#78350f',
+                          color: 'var(--warning)',
                           marginBottom: '0.25rem'
                         }}
                       >
@@ -938,9 +938,9 @@ export default function CheckoutModal({
                         style={{
                           width: '100%',
                           padding: '0.55rem 0.75rem',
-                          border: `1px solid ${sisError ? '#dc2626' : '#fcd34d'}`,
+                          border: `1px solid ${sisError ? 'var(--danger)' : 'var(--signal-border)'}`,
                           borderRadius: 'var(--radius-sm)',
-                          background: '#ffffff',
+                          background: 'var(--surface-card)',
                           fontWeight: '600'
                         }}
                       />
@@ -948,7 +948,7 @@ export default function CheckoutModal({
                         <span
                           style={{
                             fontSize: '0.725rem',
-                            color: '#dc2626',
+                            color: 'var(--danger)',
                             fontWeight: '600',
                             marginTop: '0.25rem',
                             display: 'block'
@@ -966,7 +966,7 @@ export default function CheckoutModal({
                           display: 'block',
                           fontSize: '0.775rem',
                           fontWeight: '700',
-                          color: '#78350f',
+                          color: 'var(--warning)',
                           marginBottom: '0.25rem'
                         }}
                       >
@@ -984,9 +984,9 @@ export default function CheckoutModal({
                         style={{
                           width: '100%',
                           padding: '0.45rem 0.5rem',
-                          border: '1px dashed #d97706',
+                          border: '1px dashed var(--warning)',
                           borderRadius: 'var(--radius-sm)',
-                          background: '#ffffff',
+                          background: 'var(--surface-card)',
                           fontSize: '0.75rem',
                           cursor: 'pointer'
                         }}
@@ -995,7 +995,7 @@ export default function CheckoutModal({
                         <span
                           style={{
                             fontSize: '0.725rem',
-                            color: '#059669',
+                            color: 'var(--success)',
                             fontWeight: '600',
                             marginTop: '0.25rem',
                             display: 'block'
@@ -1007,7 +1007,7 @@ export default function CheckoutModal({
                     </div>
                   </div>
 
-                  <div style={{ fontSize: '0.7rem', color: '#92400e', fontStyle: 'italic' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--warning)', fontStyle: 'italic' }}>
                     * PRONTO verifica el N° SIS ante el Registro Nacional de Prestadores Individuales de Salud antes del
                     despacho.
                   </div>
@@ -1017,9 +1017,9 @@ export default function CheckoutModal({
               {submitError && (
                 <div
                   style={{
-                    color: '#dc2626',
-                    background: '#fef2f2',
-                    border: '1px solid #fecdd3',
+                    color: 'var(--danger)',
+                    background: 'var(--signal-soft)',
+                    border: '1px solid var(--signal-border)',
                     padding: '0.65rem 0.85rem',
                     borderRadius: 'var(--radius-sm)',
                     fontSize: '0.8rem',
@@ -1080,7 +1080,7 @@ export default function CheckoutModal({
                       padding: '0.85rem 1rem',
                       borderRadius: 'var(--radius-sm)',
                       border: `2px solid ${paymentMethod === 'transferencia' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                      background: paymentMethod === 'transferencia' ? 'var(--teal-50)' : '#ffffff',
+                      background: paymentMethod === 'transferencia' ? 'var(--teal-50)' : 'var(--surface-card)',
                       cursor: 'pointer',
                       transition: 'var(--transition-fast)'
                     }}
@@ -1112,7 +1112,7 @@ export default function CheckoutModal({
                       padding: '0.85rem 1rem',
                       borderRadius: 'var(--radius-sm)',
                       border: `2px solid ${paymentMethod === 'whatsapp' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                      background: paymentMethod === 'whatsapp' ? 'var(--teal-50)' : '#ffffff',
+                      background: paymentMethod === 'whatsapp' ? 'var(--teal-50)' : 'var(--surface-card)',
                       cursor: 'pointer',
                       transition: 'var(--transition-fast)'
                     }}
@@ -1124,7 +1124,7 @@ export default function CheckoutModal({
                       checked={paymentMethod === 'whatsapp'}
                       onChange={() => setPaymentMethod('whatsapp')}
                     />
-                    <MessageSquare size={20} style={{ color: '#059669' }} />
+                    <MessageSquare size={20} style={{ color: 'var(--success)' }} />
                     <div>
                       <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--navy-900)' }}>
                         Cotización Formal Asistida por WhatsApp
@@ -1144,7 +1144,7 @@ export default function CheckoutModal({
                       padding: '0.85rem 1rem',
                       borderRadius: 'var(--radius-sm)',
                       border: `2px solid ${paymentMethod === 'mercadopago' ? 'var(--teal-600)' : 'var(--border-subtle)'}`,
-                      background: paymentMethod === 'mercadopago' ? 'var(--teal-50)' : '#ffffff',
+                      background: paymentMethod === 'mercadopago' ? 'var(--teal-50)' : 'var(--surface-card)',
                       cursor: 'pointer',
                       transition: 'var(--transition-fast)'
                     }}
@@ -1156,7 +1156,7 @@ export default function CheckoutModal({
                       checked={paymentMethod === 'mercadopago'}
                       onChange={() => setPaymentMethod('mercadopago')}
                     />
-                    <CreditCard size={20} style={{ color: '#0284c7' }} />
+                    <CreditCard size={20} style={{ color: 'var(--accent)' }} />
                     <div>
                       <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--navy-900)' }}>
                         Pago Inmediato Mercado Pago Chile / Webpay
@@ -1220,12 +1220,12 @@ export default function CheckoutModal({
               {paymentMethod === 'mercadopago' && (
                 <div
                   style={{
-                    background: '#e0f2fe',
-                    color: '#0369a1',
+                    background: 'var(--accent-soft)',
+                    color: 'var(--accent)',
                     padding: '0.85rem',
                     borderRadius: 'var(--radius-sm)',
                     fontSize: '0.825rem',
-                    border: '1px solid #bae6fd'
+                    border: '1px solid var(--accent-border)'
                   }}
                 >
                   🔒 Pago seguro sin manipulación de datos de tarjeta en el sitio. Serás dirigido a la pasarela bancaria
@@ -1236,9 +1236,9 @@ export default function CheckoutModal({
               {submitError && (
                 <div
                   style={{
-                    color: '#dc2626',
-                    background: '#fef2f2',
-                    border: '1px solid #fecdd3',
+                    color: 'var(--danger)',
+                    background: 'var(--signal-soft)',
+                    border: '1px solid var(--signal-border)',
                     padding: '0.65rem 0.85rem',
                     borderRadius: 'var(--radius-sm)',
                     fontSize: '0.8rem',
@@ -1372,7 +1372,7 @@ export default function CheckoutModal({
                   <div
                     id="pronto-purchase-voucher"
                     style={{
-                      background: '#ffffff',
+                      background: 'var(--surface-card)',
                       border: '2px solid var(--border-subtle)',
                       borderRadius: 'var(--radius-sm)',
                       padding: '1.25rem',
@@ -1408,7 +1408,7 @@ export default function CheckoutModal({
                             display: 'inline-block',
                             padding: '0.2rem 0.5rem',
                             borderRadius: 'var(--radius-xs)',
-                            background: formData.documentType === 'factura' ? 'var(--teal-50)' : '#f1f5f9',
+                            background: formData.documentType === 'factura' ? 'var(--teal-50)' : 'var(--surface-muted)',
                             color: formData.documentType === 'factura' ? 'var(--teal-800)' : 'var(--navy-900)',
                             fontWeight: '800',
                             fontSize: '0.75rem',
@@ -1578,8 +1578,8 @@ export default function CheckoutModal({
               {paymentMethod === 'transferencia' && (
                 <div
                   style={{
-                    background: '#fffbeb',
-                    border: '1.5px solid #fde68a',
+                    background: 'var(--signal-soft)',
+                    border: '1.5px solid var(--signal-border)',
                     borderRadius: 'var(--radius-sm)',
                     padding: '1.15rem',
                     textAlign: 'left',
@@ -1592,16 +1592,18 @@ export default function CheckoutModal({
                       alignItems: 'center',
                       gap: '0.5rem',
                       marginBottom: '0.5rem',
-                      color: '#92400e',
+                      color: 'var(--warning)',
                       fontWeight: '800',
                       fontSize: '0.875rem'
                     }}
                   >
-                    <Building2 size={18} style={{ color: '#d97706' }} />
+                    <Building2 size={18} style={{ color: 'var(--warning)' }} />
                     <span>Instrucciones de Transferencia Bancaria Directa</span>
                   </div>
 
-                  <div style={{ fontSize: '0.8rem', color: '#78350f', marginBottom: '0.85rem', lineHeight: '1.4' }}>
+                  <div
+                    style={{ fontSize: '0.8rem', color: 'var(--warning)', marginBottom: '0.85rem', lineHeight: '1.4' }}
+                  >
                     <div>
                       • <strong>Banco:</strong> {BANK_DETAILS.bankName}
                     </div>
@@ -1623,14 +1625,14 @@ export default function CheckoutModal({
                   </div>
 
                   {/* Voucher Upload Box */}
-                  <div style={{ borderTop: '1px dashed #fcd34d', paddingTop: '0.85rem' }}>
+                  <div style={{ borderTop: '1px dashed var(--signal-border)', paddingTop: '0.85rem' }}>
                     <label
                       htmlFor="checkout-voucher-file"
                       style={{
                         display: 'block',
                         fontSize: '0.775rem',
                         fontWeight: '700',
-                        color: '#78350f',
+                        color: 'var(--warning)',
                         marginBottom: '0.35rem'
                       }}
                     >
@@ -1640,9 +1642,9 @@ export default function CheckoutModal({
                     {voucherUploaded ? (
                       <div
                         style={{
-                          background: '#ecfdf5',
-                          border: '1px solid #a7f3d0',
-                          color: '#065f46',
+                          background: 'var(--accent-soft)',
+                          border: '1px solid var(--accent-border)',
+                          color: 'var(--success)',
                           padding: '0.65rem 0.85rem',
                           borderRadius: 'var(--radius-xs)',
                           fontSize: '0.8rem',
@@ -1670,16 +1672,16 @@ export default function CheckoutModal({
                           style={{
                             padding: '0.45rem',
                             fontSize: '0.75rem',
-                            border: '1px dashed #d97706',
+                            border: '1px dashed var(--warning)',
                             borderRadius: 'var(--radius-xs)',
-                            background: '#ffffff',
+                            background: 'var(--surface-card)',
                             cursor: 'pointer'
                           }}
                         />
 
                         {voucherFile && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.75rem', color: '#78350f', fontWeight: '600' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--warning)', fontWeight: '600' }}>
                               Seleccionado: {voucherFile.name}
                             </span>
                             <button
@@ -1687,7 +1689,7 @@ export default function CheckoutModal({
                               className="btn-primary"
                               onClick={handleUploadVoucher}
                               disabled={voucherUploading}
-                              style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', background: '#d97706' }}
+                              style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', background: 'var(--warning)' }}
                             >
                               <Upload size={14} />
                               <span>{voucherUploading ? 'Subiendo...' : 'Enviar Comprobante'}</span>
@@ -1696,7 +1698,7 @@ export default function CheckoutModal({
                         )}
 
                         {voucherError && (
-                          <span style={{ fontSize: '0.725rem', color: '#dc2626', fontWeight: '600' }}>
+                          <span style={{ fontSize: '0.725rem', color: 'var(--danger)', fontWeight: '600' }}>
                             {voucherError}
                           </span>
                         )}
@@ -1735,7 +1737,7 @@ export default function CheckoutModal({
                   rel="noopener noreferrer"
                   className="btn-primary"
                   style={{
-                    background: '#059669',
+                    background: 'var(--success)',
                     width: '100%',
                     justifyContent: 'center',
                     marginBottom: '1rem',

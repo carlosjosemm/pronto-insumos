@@ -129,8 +129,8 @@ export default function PaymentReturnModal({
 
             <div
               style={{
-                background: '#f0fdfa',
-                border: '1px solid #ccfbf1',
+                background: 'var(--accent-soft)',
+                border: '1px solid var(--accent-border)',
                 borderRadius: 'var(--radius-xs)',
                 padding: '0.75rem',
                 fontSize: '0.775rem',
@@ -150,7 +150,7 @@ export default function PaymentReturnModal({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-primary"
-                style={{ background: '#059669', justifyContent: 'center', textDecoration: 'none' }}
+                style={{ background: 'var(--success)', justifyContent: 'center', textDecoration: 'none' }}
               >
                 <MessageSquare size={17} />
                 <span>Coordinar Despacho por WhatsApp</span>
@@ -171,8 +171,8 @@ export default function PaymentReturnModal({
                 width: '64px',
                 height: '64px',
                 borderRadius: '50%',
-                background: '#fef2f2',
-                color: '#dc2626',
+                background: 'var(--signal-soft)',
+                color: 'var(--danger)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -194,12 +194,12 @@ export default function PaymentReturnModal({
 
             <div
               style={{
-                background: '#fffbeb',
-                border: '1px solid #fde68a',
+                background: 'var(--signal-soft)',
+                border: '1px solid var(--signal-border)',
                 borderRadius: 'var(--radius-sm)',
                 padding: '1rem',
                 fontSize: '0.8rem',
-                color: '#92400e',
+                color: 'var(--warning)',
                 textAlign: 'left',
                 marginBottom: '1.5rem',
                 lineHeight: '1.45'
@@ -242,8 +242,8 @@ export default function PaymentReturnModal({
                 width: '64px',
                 height: '64px',
                 borderRadius: '50%',
-                background: '#eff6ff',
-                color: '#2563eb',
+                background: 'var(--accent-soft)',
+                color: 'var(--accent)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
