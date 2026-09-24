@@ -2659,6 +2659,47 @@ textarea {
   }
 }
 
+/* Progressive catalog reveal ("Cargar más insumos") */
+.load-more-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6) 0 var(--space-8);
+}
+
+.load-more-sentinel {
+  width: 100%;
+  height: 1px;
+}
+
+.btn-load-more {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6);
+  background: var(--surface-card);
+  color: var(--ink-800);
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.btn-load-more:hover {
+  border-color: var(--ink-800);
+  background: var(--surface-hover);
+}
+
+.load-more-count {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
+}
+
 @media (min-width: 993px) {
   .footer-grid-4col > div:not(:last-child) {
     border-right: 1px solid rgba(255, 255, 255, 0.08);
@@ -2756,6 +2797,14 @@ textarea {
   .hero-trust-grid {
     grid-template-columns: 1fr;
     gap: 0.65rem;
+  }
+}
+
+@media (max-width: 560px) {
+  /* Small phones: one card per row — the 2-column layout wraps the card
+     details too aggressively to read comfortably. */
+  .products-grid {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -16,3 +16,6 @@ dist
 # Raw Data Imports (Do not commit price lists)
 *.csv
 .env*
+
+# Local agent working notes (never committed)
+walkthrough.md
