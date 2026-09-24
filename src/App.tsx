@@ -292,6 +292,7 @@ export default function App() {
         cartCount={totalCartCount}
         onOpenCart={() => setIsCartOpen(true)}
         onOpenTracking={() => handleOpenTracking()}
+        onSearchSubmit={scrollToCatalog}
       />
 
       {/* Landing Hero — full-bleed navy band, so it sits outside the content container */}

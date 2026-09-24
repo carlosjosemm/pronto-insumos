@@ -32,6 +32,7 @@ In Chile, all commercial sales are strictly governed by the **Servicio de Impues
 
 ### 1.3 Sanitary Regulations (ISP Chile & Superintendencia de Salud)
 Under Chilean law (**Código Sanitario DFL 725** and **Decreto Supremo 466 del Ministerio de Salud**), medical and dental devices are classified by risk:
+
 * Class I & II: Standard consumables (examination mirrors, bibs, cotton rolls, mixing bowls, micro-applicators). Available for open professional supply.
 * Regulated / Prescription Products: Dental local anesthetics (Lidocaína, Mepivacaína, Articaína con epinefrina), pharmaceuticals, surgical scalpels, and specialized etching agents.
 * **Legal Obligation:** Depósitos dentales cannot dispense regulated pharmaceuticals or controlled surgical products without recording the professional clinician's registration in the **Registro Nacional de Prestadores Individuales de Salud (RNPI)** managed by the **Superintendencia de Salud (SIS)**. PRONTO enforces this compliance guard directly in checkout.
@@ -133,7 +134,7 @@ The storefront is browsed between patients, so the ≤768px breakpoint in `src/i
 Three strings still advertise Factura or use pre-sweep wording, and **none of them appears in the redesign proposal's Appendix C copy deck**. Because that deck is the only sanctioned source of `es-CL` storefront copy, there is no verbatim replacement to apply — and inventing one is explicitly forbidden. They are recorded here so a future agent recognises them as a known gap instead of "fixing" them with new copy:
 
 * `Cart.tsx` — `Transacción Segura · Factura Electrónica B2B` (cart trust strip). Contradicts the boleta-only reality; needs an owner-approved string.
-* `CheckoutModal.tsx` — step label `Despacho & Facturación` (Step 1 header). The Factura half is stale for the same reason.
+* ~~`CheckoutModal.tsx` — step label `Despacho & Facturación`~~ **Superseded (Task 2.6, 2026-09-24):** the wholesale stepper redesign mandated by TODO 2.6 replaced the label set with `Contacto → Despacho → Documento → Pago`; the stale Factura half no longer exists anywhere in the component.
 * `CheckoutModal.tsx` — pro-forma letterhead `Distribuidora Dental • Melipilla, Región Metropolitana`. Arguably correct as a *corporate* address rather than a delivery zone (the retired `RM` copy was about coverage), but it sits next to the zone rules and is easy to misread.
 
 Changing any of them requires an Appendix C entry first. The same rule applies to the `OrderTrackingModal` support number in §4.1.2.
@@ -142,45 +143,52 @@ Changing any of them requires an Appendix C entry first. The same rule applies t
 
 ## 🛒 3. Deep Dive: Checkout Modal (`CheckoutModal.tsx`)
 
-The [`CheckoutModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CheckoutModal.tsx) component is the commercial nucleus of PRONTO. It executes a **3-step linear state machine** guiding the dental practitioner through identity verification, tax document selection, pre-flight inventory confirmation, payment gateway delegation, and voucher collection.
+The [`CheckoutModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/CheckoutModal.tsx) component is the commercial nucleus of PRONTO. As of **Task 2.6 (2026-09-24)** it executes a **5-step guided state machine** — four focused data steps plus a confirmation step — replacing the former single-wall form. The order payload, `PENDIENTE_*` statuses, and every serverless/API contract are unchanged: this was a presentation-layer refactor only.
 
 ```mermaid
 graph TD
-    A[Cart: Click Finalizar Compra] --> B[Step 1: Despacho y Datos Clínicos]
-    B --> C{Pre-flight Stock Check}
-    C -- Stock Depleted or Exceeded --> B1[Display Stock Alert Banner & Block Progression]
-    C -- Stock Valid --> D{Document Type Selected?}
-    D -- Boleta Electrónica --> E1[Validate Personal RUN Modulo 11]
-    D -- Factura Electrónica --> E2[Validate Corporate RUT, Razón Social, Giro, Dirección]
-    E1 & E2 --> F{Regulated Supplies in Cart?}
-    F -- Yes: prescriptionRequired --> G[Validate SIS Registry Number >= 4 digits]
-    F -- No --> H[Step 2: Selección de Método de Pago]
-    G --> H
-    H --> I{Payment Option Chosen}
-    I -- Mercado Pago --> J[Delegate to /api/create-preference & Redirect to Checkout Pro]
-    I -- Transferencia Bancaria --> K[Step 3: Transfer Instructions & Voucher Upload]
-    I -- Cotización WhatsApp --> L[Open Pre-Formatted WhatsApp B2B Chat]
+    A[Cart: Click Finalizar Compra] --> B[Step 1: Contacto — Nombre, Email, Teléfono]
+    B --> C[Step 2: Despacho — Dirección, Comuna select, Código postal, + SIS block when regulated]
+    C --> D{Gate on Continuar}
+    D -- Pre-flight Stock Check fails --> D1[Stock alert banner & block]
+    D -- San Antonio subtotal < $60.000 --> D2[Minimum-order error & block]
+    D -- Regulated items & SIS < 4 digits --> D3[SIS error & block]
+    D -- Valid --> E[Step 3: Documento — Boleta card, RUT, WhatsApp-factura note]
+    E --> F{Gate on Continuar}
+    F -- RUT fails Modulo 11 --> F1[RUT error & block]
+    F -- Valid --> G[Step 4: Pago — order summary Neto/IVA/Total + 3 method cards]
+    G --> H{Gate on Confirmar}
+    H -- Final stock re-check fails --> H1[Stock alert & block]
+    H -- Valid --> I[submitOrder with PENDIENTE_* status]
+    I --> J[Step 5: Confirmación — voucher, transfer instructions, tracking, WhatsApp]
 ```
+
+**Stepper contract:** `.checkout-stepper` renders the four labels with `checkout-step--active` / `--done` states (`aria-current="step"` on the active one, a check icon on done steps) and is hidden on step 5, where the header swaps `Finalizar Pedido` → `Pedido Registrado`. Each step renders inside a `key={step}` `.checkout-panel` that replays a fade/slide entrance (disabled under `prefers-reduced-motion`), and a DOM-only effect scrolls `.modal-card` back to the top on every step change. `Volver` walks back exactly one step (steps 2–4) and clears `submitError`; there is no click-to-jump stepper navigation.
+
+**Gate placement (as built — two deliberate deviations from the TODO's literal wording):**
+* The **stock check** and the **San Antonio minimum-order** gates fire when leaving **Despacho** (Step 2 → 3) — the delivery-data step, matching the TODO's intent ("Step 1 → 2" under the old 2-step numbering).
+* The **SIS validation** fires at the same Despacho → Documento gate, *before* the **RUT Modulo 11** check, which now guards Documento → Pago. Today's order was stock → min-order → RUT → SIS; the reorder is deliberate (a shopper missing both sees the SIS error first — both still block).
+* The **final stock re-check** still runs inside `handleCompleteOrder()` before `submitOrder`.
 
 ### 3.1 Field-by-Field Reference & Business Rationale
 
-| Form Field Name | State Property | UI Label | Purpose & Clinical Business Context | Validation Rule |
+| Form Field Name | State Property | Step / UI Label | Purpose & Clinical Business Context | Validation Rule |
 | :--- | :--- | :--- | :--- | :--- |
-| **Tipo de Documento** | `formData.documentType` | `📄 Boleta Electrónica` | The fiscal document issued through the Chilean SII. **Boleta only, as built** — the Factura card is removed behind `const FACTURA_ENABLED = false`. The Factura branch (corporate RUT + Razón Social + Giro) still exists in code and in the order schema, so re-enabling is a one-line change; until then clinics are routed to the WhatsApp quotation path via the note under the card. | Required (`'boleta'` \| `'factura'`). Defaults to `'boleta'`. |
-| **Nombre del Profesional** | `formData.fullName` | *Nombre del Profesional o Representante Legal* | Identifies the ordering dentist or the clinic's legal representative. Used for package labeling, reception desk delivery signing, and customer care. | Required string. Trimmed of whitespace. |
-| **RUT del Comprador** | `formData.rut` | *RUT Personal (RUN)* (Boleta) / *RUT Empresa / Sociedad* (Factura) | Chilean national identity tax number. For Boleta, represents the individual practitioner. For Factura, represents the incorporated dental practice (Sociedad Odontológica). | Must satisfy official Chilean **Modulo 11 check digit** via `validateRut()` in [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts). Formats dynamically as `12.345.678-K`. Deliberately keeps `inputmode="text"` — a numeric keypad cannot produce the `K` check digit. |
-| **Email para Documento SII** | `formData.email` | *Email para Documento SII* | **Critical Chilean Fiscal Field:** Electronic tax documents (DTEs) issued through electronic invoicing providers connected to the SII must be dispatched to a formal electronic mailbox. In dental clinics, this email is often monitored by the clinic's accountant or administrator (`facturacion@clinica.cl`), ensuring tax documents are not lost in personal dentist inboxes. For Boleta, receives the purchase confirmation and Boleta PDF. | Required standard email format (`type="email"`). |
-| **Razón Social** | `formData.razonSocial` | *Razón Social (según SII) \** | **Factura Only:** The official registered legal entity name of the clinic or dental society (e.g., *"Centro Odontológico Melipilla SpA"*). The SII rejects invoices where the Razón Social does not match the company RUT in the tax registry. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
-| **Giro Comercial** | `formData.giroComercial` | *Giro Comercial Registrado \** | **Factura Only:** The registered economic activity code and description recognized by the SII (e.g., *"Servicios odontológicos"*, *"Atención médica y dental"*). Invoices lacking a valid economic activity are legally rejected for tax credit. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
-| **Teléfono Móvil** | `formData.phone` | *Teléfono Móvil* | Direct telephone and WhatsApp contact for delivery coordination. Crucial for the Melipilla urban route and the scheduled San Antonio route to confirm clinic reception hours before dispatching. | Required string. Rendered as `type="tel" inputmode="tel"` so mobile devices open the phone keypad. |
-| **Dirección de Entrega / Fiscal** | `formData.address` | *Dirección de Entrega / Fiscal \** | Dual-purpose field: Specifies the street, building, office number (e.g., *"Av. Ortúzar 750, Of. 302"*), and acts as the fiscal address registered on the electronic tax invoice. | Mandatory. Validated via `validateFacturaFields` when Factura is selected. |
-| **Comuna de Despacho** | `formData.city` | *Comuna de Despacho \** | **A `<select>`, not free text.** Only the two real delivery zones are offered — `Melipilla` (default) and `San Antonio` — sourced from `DELIVERY_ZONES` in [src/config/delivery.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/delivery.ts). It determines logistics eligibility (the San Antonio minimum order) and satisfies the SII DTE address requirement. | Mandatory. Defaults to `DEFAULT_DELIVERY_ZONE` (`Melipilla`). |
-| **Código Postal / Región** | `formData.zip` | *Código Postal / Región* | Chilean postal district code (e.g., *"9500000"* for Melipilla) or regional identifier. Carries `inputmode="numeric"`. | Required string. |
-| **N° Registro SIS** | `sisRegistryNumber` | *N° Registro SIS (Superintendencia) \** | **Sanitary Verification Field:** Mandatory only when cart contains regulated clinical supplies (`prescriptionRequired === true`). Represents the practitioner's official registration in the Superintendencia de Salud's RNPI. | Required if `hasRegulatedItems`. Minimum 4 numeric/alphanumeric characters. |
-| **Credencial / Receta** | `credentialFileName` | *Credencial Profesional o Receta (Opcional)* | Allows uploading an image or PDF of the professional credential or prescription authorizing controlled supply acquisition. | Optional file attachment (`.pdf`, `.jpg`, `.png`). |
+| **Nombre completo** | `formData.fullName` | 1 · Contacto | Identifies the ordering dentist or the clinic's legal representative. Used for package labeling, reception desk delivery signing, and customer care. | Required string. Trimmed of whitespace. |
+| **Email** | `formData.email` | 1 · Contacto | **Critical Chilean Fiscal Field:** Electronic tax documents (DTEs) issued through electronic invoicing providers connected to the SII must be dispatched to a formal electronic mailbox. In dental clinics, this email is often monitored by the clinic's accountant or administrator (`facturacion@clinica.cl`), ensuring tax documents are not lost in personal dentist inboxes. For Boleta, receives the purchase confirmation and Boleta PDF. | Required standard email format (`type="email"`). |
+| **Teléfono** | `formData.phone` | 1 · Contacto | Direct telephone and WhatsApp contact for delivery coordination. Crucial for the Melipilla urban route and the scheduled San Antonio route to confirm clinic reception hours before dispatching. | Required string. Rendered as `type="tel" inputmode="tel"` so mobile devices open the phone keypad. |
+| **Dirección de despacho** | `formData.address` | 2 · Despacho | Dual-purpose field: Specifies the street, building, office number (e.g., *"Av. Ortúzar 750, Of. 302"*), and acts as the fiscal address registered on the electronic tax invoice. | Mandatory. Validated via `validateFacturaFields` when Factura is (re-)enabled. |
+| **Comuna** | `formData.city` | 2 · Despacho · `aria-label="Comuna de Despacho"` | **A `<select>`, not free text.** Only the two real delivery zones are offered — `Melipilla` (default) and `San Antonio` — sourced from `DELIVERY_ZONES` in [src/config/delivery.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/delivery.ts). It determines logistics eligibility (the San Antonio minimum order) and satisfies the SII DTE address requirement. | Mandatory. Defaults to `DEFAULT_DELIVERY_ZONE` (`Melipilla`). |
+| **Código postal** | `formData.zip` | 2 · Despacho | Chilean postal district code (e.g., *"9500000"* for Melipilla) or regional identifier. Carries `inputmode="numeric"`. | Required string. |
+| **N° Registro SIS** | `sisRegistryNumber` | 2 · Despacho (conditional) · *N° Registro SIS (Superintendencia) \** | **Sanitary Verification Field:** Rendered only when cart contains regulated clinical supplies (`prescriptionRequired === true`). Represents the practitioner's official registration in the Superintendencia de Salud's RNPI. | Required if `hasRegulatedItems`. Minimum 4 numeric/alphanumeric characters. |
+| **Credencial / Receta** | `credentialFileName` | 2 · Despacho (conditional) · *Credencial Profesional o Receta (Opcional)* | Allows uploading an image or PDF of the professional credential or prescription authorizing controlled supply acquisition. ⚠️ Because step panels remount via `key={step}`, navigating back to Despacho clears the chosen file from the DOM input while the `✓ Adjunto:` chip (state) persists — cosmetic only, since only the *name* reaches the payload. | Optional file attachment (`.pdf`, `.jpg`, `.png`). |
+| **Tipo de Documento** | `formData.documentType` | 3 · Documento · `📄 Boleta Electrónica` | The fiscal document issued through the Chilean SII. **Boleta only, as built** — the Factura card is removed behind `const FACTURA_ENABLED = false`. The Factura branch (corporate RUT + Razón Social + Giro) still exists in code and in the order schema, so re-enabling is a one-line change; until then clinics are routed to the WhatsApp quotation path via the note under the card. | Required (`'boleta'` \| `'factura'`). Defaults to `'boleta'`. |
+| **RUT** | `formData.rut` | 3 · Documento | Chilean national identity tax number. For Boleta, represents the individual practitioner; for a (dormant) Factura, the incorporated dental practice. | Must satisfy official Chilean **Modulo 11 check digit** via `validateRut()` in [src/utils/rut.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/utils/rut.ts). Formats dynamically as `12.345.678-K`. Deliberately keeps `inputmode="text"` — a numeric keypad cannot produce the `K` check digit. |
+| **Razón Social** | `formData.razonSocial` | 3 · Documento (dormant) · *Razón Social (según SII) \** | **Factura Only:** The official registered legal entity name of the clinic or dental society (e.g., *"Centro Odontológico Melipilla SpA"*). The SII rejects invoices where the Razón Social does not match the company RUT in the tax registry. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
+| **Giro Comercial** | `formData.giroComercial` | 3 · Documento (dormant) · *Giro Comercial Registrado \** | **Factura Only:** The registered economic activity code and description recognized by the SII (e.g., *"Servicios odontológicos"*, *"Atención médica y dental"*). Invoices lacking a valid economic activity are legally rejected for tax credit. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
 
-### 3.2 Pre-Flight Stock Validation in Step 1
-Before allowing the customer to proceed from Step 1 to Step 2, `handleNextStep()` iterates through every cart line item against current inventory:
+### 3.2 Pre-Flight Stock Validation at the Despacho Gate
+Before allowing the customer to proceed from Step 2 (Despacho) to Step 3 (Documento), `handleNextStep()` iterates through every cart line item against current inventory:
 ```typescript
 const stockIssueItem = cartItems.find(item => {
   const stock = typeof item.product.stockCount === 'number' ? item.product.stockCount : 0
@@ -190,7 +198,9 @@ const stockIssueItem = cartItems.find(item => {
 If an item has depleted or the requested quantity exceeds physical stock, the transition is halted and an amber alert banner displays:
 > *"El producto '[Nombre]' supera el stock disponible (X solicitados, Y disponibles). Por favor ajusta la cantidad en el carro."*
 
-### 3.2.1 Delivery-Zone Minimum Order in Step 1
+The same check runs a second time inside `handleCompleteOrder()` immediately before `submitOrder`, so inventory that depletes while the shopper sits on the Pago step is still caught.
+
+### 3.2.1 Delivery-Zone Minimum Order at the Despacho Gate
 
 Immediately after the stock check, `handleNextStep()` enforces the only minimum-sale rule in the system:
 
@@ -208,12 +218,12 @@ if (isBelowMinimumOrder(deliveryZone, productSubtotal)) {
 * The select also renders a proactive muted hint under it when `San Antonio` is chosen: `Compra mínima para despacho a San Antonio: $60.000`.
 * The same rule is surfaced in the Cart drawer, so the shopper learns it before reaching checkout. Both read the constants from `src/config/delivery.ts`.
 
-### 3.3 Step 2: Payment Pathways
-Presents 3 distinct payment pathways tailored to Chilean healthcare purchasing habits:
+### 3.3 Step 4: Payment Pathways
+The Pago step opens with a **compact order summary** (`.checkout-summary`): scrollable item lines (`qty × name — subtotal`) plus the Neto / IVA (19%) / Total rows computed by `calculateTaxBreakdown`. Below it, 3 distinct payment pathways tailored to Chilean healthcare purchasing habits:
 1. **Transferencia Bancaria Directa (Banco de Chile):**
    - The preferred B2B method for dental clinics managing monthly account balances.
    - Bank details are externalized in [`src/config/bankDetails.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/bankDetails.ts) (**Banco de Chile, Cuenta Corriente 849-01284-01, RUT 77.892.410-2, pagos@prontoinsumos.cl**).
-   - Advances to Step 3 where the customer receives transfer instructions and can upload their bank receipt directly.
+   - Advances to Step 5 where the customer receives transfer instructions and can upload their bank receipt directly.
 2. **Pago Inmediato Mercado Pago Chile (Webpay Plus / Redcompra):**
    - Instant digital settlement via credit/debit card.
    - **PCI-DSS Compliance:** Zero card fields exist in state or DOM. Processing delegates to `/api/create-preference` which generates an official Checkout Pro URL.
@@ -221,13 +231,17 @@ Presents 3 distinct payment pathways tailored to Chilean healthcare purchasing h
    - Designed for municipal procurement, university clinics, or custom high-volume orders.
    - Formats a comprehensive Markdown quote with itemized SKUs and tax breakdowns, opening `https://wa.me/...`.
 
-### 3.4 Step 3: Order Confirmation & Transfer Voucher Intake
+The method cards use `.checkout-pay-option` (with `--selected`, `:hover` and `:focus-within` states — hover/focus affordances were impossible under the old inline styles). The submit label stays `Confirmar Pedido` (or `Generar Cotización` for WhatsApp).
+
+### 3.4 Step 5: Order Confirmation & Transfer Voucher Intake
 When Transferencia Bancaria is confirmed:
 * Generates a canonical Order ID (`PRONTO-XXXXXX`).
 * Displays the complete Banco de Chile transfer specifications.
 * Renders an **embedded voucher upload widget** allowing immediate attachment of receipts (`.pdf`, `.png`, `.jpg` <= 5MB).
 * Submitting the voucher invokes `/api/upload-voucher`, advancing the order status to `'TRANSFERENCIA_COMPROBANTE_SUBIDO'`.
 * Provides direct navigation to [`OrderTrackingModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/OrderTrackingModal.tsx) for live fulfillment tracking.
+
+Closing the modal on step 5 (`handleClose` — overlay click, ✕ button, Escape, or `Volver a la Tienda`) resets the whole form via `resetForm()`; the gate is `step === 5`.
 
 ---
 
@@ -357,7 +371,7 @@ Clinical category tabs (Instrumental, Materiales Restauradores, Equipamiento, De
 * **Brand Lockup:** the code-rendered `PRONTO` / `INSUMOS ODONTOLÓGICOS` wordmark with the `--signal` underline motif — see §2.2. The link carries `aria-label="PRONTO Insumos Odontológicos"`.
 * **Top Commercial Utility Bar:** left side carries `Despacho a clínicas en Melipilla y San Antonio`; right side carries the `Seguimiento de Pedido` button (only when `onOpenTracking` is passed), `Boleta Electrónica · IVA 19%`, and `Mesa Clínica: {WHATSAPP_DISPLAY}`. It no longer advertises Factura, pickup, or the warehouse address. It is an `--ink-900` surface, so its icons use `var(--accent-on-dark)`, never `var(--accent)`.
 * **Mobile utility row (`.nav-mobile-utility`):** the utility bar is `display: none` ≤768px, which took the phone and tracking actions with it. This row — rendered inside `<header className="navbar">` right after `.nav-search-mobile` — restores them: a `Mesa Clínica` link to `whatsappLink()` plus a `Seguimiento` button (again gated on `onOpenTracking`). It is `display: none` above 768px and only becomes a flex row in the ≤768px block. `Navbar.test.tsx` covers both the rendered row and the handler-gated omission.
-* **Technical Search:** Debounced keyword search matching product names, clinical descriptions, categories, and SKU REF codes. Two inputs exist — `.nav-search` (desktop) and `.nav-search-mobile` — with the latter shown ≤768px.
+* **Technical Search:** Debounced keyword search matching product names, clinical descriptions, categories, and SKU REF codes. Two inputs exist — `.nav-search` (desktop) and `.nav-search-mobile` — with the latter shown ≤768px. As of **Task 2.7 (2026-09-24)** each bar is a `<form role="search" onSubmit={handleSearchSubmit}>`: submit blurs the input (dismisses the mobile keyboard) and calls the optional `onSearchSubmit` prop (`App.tsx` passes `scrollToCatalog`, so Enter/button scrolls to `#catalog-section` — there is **no** separate results page; filtering stays live via `search` → `catalogRequestKey`). A right-side `.nav-search-actions` cluster adds a **clear ✕ button** (`aria-label="Limpiar búsqueda"`, only when `search !== ''`, refocuses the input via a per-form ref) and a **submit button** (`aria-label="Buscar"` — new tests must query it with the exact string, since a regex would also match the inputs' longer labels). Inputs carry `enterKeyHint="search"`; `type="text"` is kept (native `type="search"` decorations vary by browser). No state is written on submit, so nothing can double-fetch against the derived `catalogRequestKey` loading model.
 * **Dynamic Cart Badge:** Visual item counter with micro-animation upon addition.
 * **Contact data:** the "Mesa Clínica" phone and its `wa.me` link come from `src/config/contact.ts` (`WHATSAPP_DISPLAY`, `whatsappLink()`), never from a literal.
 

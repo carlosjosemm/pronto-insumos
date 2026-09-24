@@ -1,78 +1,122 @@
-# Task 8.7: Progressive Catalog Rendering (Lazy Product Cards / "Load More")
+# Tasks 2.6 & 2.7: Checkout Modal UX Overhaul + Storefront Search Submit Fix
 
-**Branch:** `feat/task-8.7-lazy-product-cards` (created from `origin/main` @ `e0b11f6` — `main` itself is checked out in another worktree, so the branch was cut directly from the remote ref)
+**Branch:** `feat/task-2.6-2.7-checkout-search-ux` (cut from `main` @ `56265ba`, up to date with `origin/main`)
 **Status:** Awaiting user approval — no source code changes until approved.
+
+> ⚠️ **Workflow note:** `production-readiness-workflow` prescribes one task per cycle, but the user explicitly requested both 2.6 and 2.7 in a single branch. They are bundled here with clearly separated change sets, tests, and roadmap checkboxes.
+
+---
 
 ## 1. Context & Problem Statement
 
-Reference: `PRODUCTION_READINESS_TODO.md` → **8.7. Progressive Catalog Rendering (Lazy Product Cards / "Load More")**.
+References: `PRODUCTION_READINESS_TODO.md` → **2.6. Checkout Modal UX Overhaul** and **2.7. Fix Storefront Search Input**.
 
-`ProductList.tsx` renders the entire filtered catalog in a single pass (`products.map(...)`), and `fetchProducts()` already returns the full result set. With the production catalog at **75 active `pronto-*` items**, the storefront mounts all 75 product cards — imagery, badges, price block, cart stepper each — in one very long column on first paint. The storefront is browsed between patients **on a phone**, so scroll length and first-paint cost are a genuine UX problem.
+### 2.6 — CheckoutModal (1,774 lines, one dense wall of form)
 
-**Required capability:** progressive disclosure on the client only — no new data layer, no change to the fetch, no virtualization library (explicitly forbidden by the task's Anti-Overshooting clause). Reveal a first page of cards, then a single accessible `<button>` (plus an optional IntersectionObserver sentinel, **approved by the user: include it**) to reveal further pages, with a live `Mostrando N de M` count.
+`CheckoutModal.tsx` presents all customer data capture as a single long form inside Step 1: document card, name, RUT, email, phone, address, comuna select, zip, plus the conditional ISP/SIS block — roughly 600 lines of JSX in one scrollable column, every element carrying a 6–10-property inline style object. The owner's assessment (per the TODO): clumsy, verbose, not modern.
+
+### 2.7 — Search inputs
+
+`Navbar.tsx` renders two bare controlled `<input type="text">` elements (`.nav-search` desktop, `.nav-search-mobile`). No `<form>`, no submit path, no button, no clear affordance — Enter visibly does nothing and mobile keyboards show a generic "return" key. Filtering only happens live while typing (`search` → `catalogRequestKey` → `fetchProducts`), so the submit affordance looks broken.
+
+---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-**None.** This task is purely client-side rendering logic:
+**None.** Both tasks are pure presentation-layer work:
 
-- No new credentials, secrets, or environment variables.
-- No new runtime dependency (acceptance criterion; the hook uses the platform `IntersectionObserver` API).
-- No human-produced assets.
+- No new credentials, secrets, env vars, or `.env.example` changes.
+- No new dependencies (icons come from `lucide-react`, already in use).
+- No human-produced assets. (`delivery-routes.png` — Appendix B.3's optional figure under the zone select — was never delivered to `public/assets/`, so per the proposal rule the `<figure>` is omitted entirely.)
 
-`.env.example` is untouched.
+---
 
 ## 3. Proposed Changes
 
-Page size: **16** (matches the TODO's own example, `Mostrando 16 de 75`; 4 rows of the desktop grid).
+### 3.A Task 2.6 — CheckoutModal redesign
 
-- **[NEW] `src/hooks/useIncrementalReveal.ts`** — DOM-side-effect hook in `src/hooks/` (per the TODO's placement constraint; never `src/utils/`). API:
-  - `useIncrementalReveal(total: number, resetKey: string)` → `{ visibleCount, hasMore, revealMore, sentinelRef }`.
-  - State: `visibleCount`, initialized to `PAGE_SIZE` (16), clamped to `[PAGE_SIZE, total]`.
-  - `revealMore()` advances one page; `hasMore = visibleCount < total`.
-  - **Reset:** an effect keyed on `resetKey` (the App's `catalogRequestKey` = `${category}|${search}|${sortBy}|${inStockOnly}`) resets to page 1 whenever any catalog control changes. Also clamps down if `total` shrinks below the current count.
-  - **Sentinel:** a `sentinelRef` attached to a bottom-of-grid sentinel `<div>`; an `IntersectionObserver` (rootMargin ~`200px`, created only when `hasMore` and only if `typeof IntersectionObserver !== 'undefined'` — jsdom/test guard) calls `revealMore()` when the sentinel enters the viewport. The **button remains the primary keyboard-reachable control**; the observer only auto-reveals, it never replaces the button. Observer is disconnected on unmount / when `hasMore` flips false.
-- **[MODIFY] `src/components/ProductList.tsx`** —
-  - New optional prop `resetKey?: string` threaded from App.
-  - Slice: `products.slice(0, visibleCount)` drives the grid; each card keeps `key={product.id}` and the existing `(index % 4) * 60ms` stagger — because cards are keyed by product id, already-revealed cards keep their DOM nodes and the `product-card-entrance` animation **runs once per card** (React does not remount them on reveal; the requirement is already satisfied by the existing keying, now made explicit with a test).
-  - Below the grid, only when `hasMore`: a `.load-more-row` containing
-    - the sentinel `<div ref={sentinelRef} aria-hidden="true" />`,
-    - `<button className="btn-load-more">Cargar más insumos</button>`,
-    - `<p className="load-more-count" aria-live="polite">Mostrando {visibleCount} de {products.length}</p>` — the live region announces each reveal to screen readers.
-  - Loading skeletons, empty state, and props are unchanged.
-- **[MODIFY] `src/App.tsx`** — pass `resetKey={catalogRequestKey}` to `<ProductList />` (one line).
-- **[MODIFY] `src/index.css`** — small `.load-more-row` / `.btn-load-more` / sentinel block next to the product-grid section, using existing tokens only (`--ink-800`, `--border-subtle`, `--radius-md`, spacing scale). No new colors; no raw hex. **Plus (approved AC addition): a new `@media (max-width: 560px)` rule collapsing `.products-grid` to a single column** — the 2-column phone layout wraps card details excessively and is hard to read; 561–768px keeps its 2 columns.
+**New guided flow — 4 focused steps + confirmation** (executor's chosen breakdown, per the TODO's delegation):
 
-**Explicitly NOT done (Anti-Overshooting):** no `react-window`/`@tanstack/react-virtual`, no TanStack Query, no change to `fetchProducts()`, no URL/state persistence of the page number.
+| Step | Label | Contents | Gate on "Continuar" |
+| :--- | :--- | :--- | :--- |
+| 1 | **Contacto** | Nombre completo, Email, Teléfono | native `required` only |
+| 2 | **Despacho** | Dirección, Comuna (select), Código postal, **+ SIS block when `hasRegulatedItems`** | stock check → San Antonio min-order → SIS (today's stock → min-order order preserved; SIS now precedes RUT — see gate-order note below) |
+| 3 | **Documento** | Boleta card (single, `FACTURA_ENABLED = false` gating untouched) + RUT + WhatsApp-factura note (+ dormant factura block) | RUT Modulo 11 (+ `validateFacturaFields` if ever re-enabled) |
+| 4 | **Pago** | Compact order summary (item lines in a scrollable region + Neto/IVA/Total), 3 payment option cards, method detail callout | final stock re-check → `submitOrder` (unchanged) |
+| 5 | **Confirmación** | existing Step-3 content verbatim: success header, order summary box, pro-forma voucher, transfer instructions + upload, tracking button, WhatsApp quote button, `Volver a la Tienda` | — |
+
+This keeps the hard constraints satisfied: the San Antonio minimum and stock guards still fire when leaving the delivery-data step, RUT/SII checks still fire before payment, and the pre-submit stock re-check is untouched. Two deliberate deviations, both to be recorded in the as-built docs:
+
+- **Gate-order reorder:** today the single Step-1 exit validates stock → min-order → **RUT → SIS**. The new flow validates SIS at Despacho→Documento and RUT at Documento→Pago, so **SIS now precedes RUT** — a user with both an invalid RUT and a missing SIS number sees the SIS error first. Both still block progression; this is a deliberate UX simplification, not a preserved order.
+- **TODO 2.6 wording deviation:** the TODO's hard constraint says the San Antonio minimum fires "at Step 1 → Step 2"; as built it fires at the Step 2 → 3 boundary (leaving the delivery-data step). Same intent, different step numbers under the new 5-step machine — recorded as an explicit deviation, not silently.
+
+**Presentation work (`[MODIFY] src/components/CheckoutModal.tsx`):**
+
+- `step` state becomes 1–5; `handleNextStep` gains per-step gates (`step===2` → stock/min-order/SIS; `step===3` → RUT/factura; `step===4` → `handleCompleteOrder`). `handleUploadVoucher`, `resetForm`, all payload assembly (`sanitizedCustomer`, `billing`, `sanitaryVerification`), and the `PENDIENTE_*` contract are **unchanged** — with two mandatory retargets under the new numbering:
+  - `handleCompleteOrder`'s terminal `setStep(3)` (l.340) becomes `setStep(5)`, or the confirmation step never renders.
+  - `handleClose` (l.138) — not previously mentioned in this plan — gates `if (step === 3) resetForm()`; that gate becomes `step === 5`, so closing after a completed order still resets the form.
+- **Stepper:** numbered circles + connectors + labels (`Contacto → Despacho → Documento → Pago`), states active/done/upcoming (check icon on done), `aria-current="step"`; hidden on step 5 (mirrors today). Header title becomes `Finalizar Pedido` (steps 1–4) / `Pedido Registrado` (step 5).
+  - 📌 **Deliberate:** this retires the stale `Despacho & Facturación` step label flagged in `src/components/AGENTS.md` §2.5 — the mandated stepper redesign replaces the label set wholesale rather than inventing a one-off string.
+- **Back navigation:** `Volver` secondary button on steps 2–4 (clears `submitError`, steps down). No click-to-jump stepper navigation (anti-overshooting).
+- **Shorter labels:** `Nombre completo`, `Email`, `Teléfono`, `Dirección de despacho`, `Comuna` (select keeps `aria-label="Comuna de Despacho"` — test/a11y contract), `Código postal`, `Documento tributario`, `Método de pago`. Placeholders unchanged (`Dra. Camila Fuentes`, `12.345.678-K`, `contacto@clinica.cl`, `+56 9 1234 5678`, `Av. Ortúzar`, `Ej: 9500000`) — tests query them. Compliance strings kept verbatim (`Validación Sanitaria Requerida`, `N° Registro SIS`, `La compra mínima para despacho a San Antonio es de $60.000`, RUT error text) — only surrounding prose is trimmed.
+- **Step transitions:** each step renders as a `key={step}` panel with a subtle fade/slide-in; an effect scrolls the `.modal-card` to top on step change (DOM side effect only — `react-hooks/set-state-in-effect` safe).
+- **Pago step order summary:** scrollable item list (`qty × name — subtotal`) + Neto/IVA/Total rows via `calculateTaxBreakdown`, plus the existing method cards/detail callouts (labels kept: `Transferencia Bancaria Directa`, `Cotización Formal Asistida por WhatsApp`, `Pago Inmediato Mercado Pago Chile` — queried by `getByLabelText`).
+
+**Styles (`[MODIFY] src/index.css`):** new `.checkout-*` block next to the modal section — `.checkout-stepper`, `.checkout-step{,--active,--done}`, `.checkout-step-connector`, `.checkout-panel` (animation + `prefers-reduced-motion` entry), `.checkout-fields` (responsive 2-col grid collapsing ≤560px), `.checkout-label`, `.checkout-input{,--error}`, `.checkout-error`, `.checkout-doc-card`, `.checkout-pay-option{,--selected}` (enables `:hover`/`:focus-within` — impossible with today's inline styles), `.checkout-summary`, `.checkout-note`, `.checkout-actions`. Canonical tokens only; zero hex literals (the §2 inline-style migration rule is honored — new markup is styled by classes, not new `style={{…}}` blocks; step-5 voucher keeps its existing inline styles untouched to minimize churn).
+
+**Explicitly NOT done:** no new step libraries, no form libraries (react-hook-form et al.), no schema/payload changes, no `FACTURA_ENABLED` flip, no changes to `submitOrder`/MP/whatsapp services, no pickup/RM copy, `delivery-routes.png` figure omitted (asset absent).
+
+### 3.B Task 2.7 — Search submit fix
+
+**`[MODIFY] src/components/Navbar.tsx`:**
+
+- Both search containers become `<form role="search" onSubmit={handleSearchSubmit}>` (keeping `.nav-search` / `.nav-search-mobile` classes and inner markup order).
+- New optional prop `onSearchSubmit?: () => void`.
+- `handleSearchSubmit(e)`: `preventDefault` → blur the input (dismisses the mobile keyboard) → `onSearchSubmit?.()`. No state write — `search` is already synced by `onChange`, so nothing can double-fetch or fight `catalogRequestKey`.
+- Inside each bar, a right-side `.nav-search-actions` cluster: **clear ✕ button** (`type="button"`, `aria-label="Limpiar búsqueda"`, rendered only when `search !== ''`, calls `setSearch('')` and refocuses the input via a per-form ref — desktop and mobile each hold their own) and **submit button** (`type="submit"`, `aria-label="Buscar"`, `Search` lucide icon). Left decorative `Search` icon stays. ⚠️ New tests must query the submit button with **exact-string** `getByLabelText('Buscar')` — a regex like `/Buscar/i` would also match the inputs' `Buscar en el catálogo` / `Buscar insumos y equipos dentales` labels.
+- Inputs gain `enterKeyHint="search"` (mobile keyboard shows "Buscar"); `type="text"` stays (deterministic clear — native `type="search"` decorations vary by browser).
+
+**`[MODIFY] src/App.tsx`:** one line — `onSearchSubmit={scrollToCatalog}` (reuses the existing `#catalog-section` smooth-scroll helper; guarded by `getElementById`, safe when catalog is absent).
+
+**`[MODIFY] src/index.css`:** `.nav-search-actions` (absolute right cluster), `.nav-search-clear`, `.nav-search-submit` (30px icon buttons, `--text-muted` → `--ink-800` hover, `:focus-visible` ring), input `padding-right` widened for the cluster, same rules applied to `.nav-search-mobile input`. Existing tokens only.
+
+---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-**[MODIFY] `src/tests/components/ProductList.test.tsx`** — keep the 3 existing tests green, add a new describe block using a `makeProducts(n)` factory:
+**`[MODIFY] src/tests/components/CheckoutModal.test.tsx`** — adapt to the new step machine; **all 26 existing `it` blocks preserved**, re-targeted:
 
-1. **Initial page:** render 40 products → exactly 16 `.product-card-entrance` wrappers mounted; `Mostrando 16 de 40` visible.
-2. **Reveal one page:** click `Cargar más insumos` → 32 cards mounted, count reads `Mostrando 32 de 40`, button still present.
-3. **End of list:** reveal twice (or render 20 products and click once) → all cards mounted, count `Mostrando 40 de 40`, **button gone**.
-4. **Short catalog:** render 10 products → no button, no sentinel, no count row (everything already visible).
-5. **Reset on filter change:** reveal to page 2, `rerender` with the same products but a changed `resetKey` → back to 16 cards and `Mostrando 16 de 40`.
-6. **Shrinking result set:** reveal to page 3, rerender with fewer products than `visibleCount` → clamped, no crash, button hidden.
-7. **Animation-once guarantee:** after clicking reveal, assert the first-page card wrappers are the *same DOM nodes* (e.g. capture element references before/after and assert identity) — proves no remount / no re-triggered entrance animation.
-8. **Loading & empty states unchanged** (covered by existing tests; re-assert the button never renders during `loading`).
+- New helpers: `fillContactStep()`, `fillDespatchStep()` (+`selectZone`), `fillDocumentStep()`, `advance()` (clicks `Continuar`), `completeDataEntry()` (walks steps 1→4). Same placeholder queries, so field fills are unchanged.
+- Re-targeted: RUT-invalid blocks at Documento→Pago; min-order/SIS/stock errors block at Despacho→Documento; boleta-only assertions on the Documento step; `Volver` walks back one step at a time; all `submitOrder` payload, MP delegation, billing, voucher, tracking, and email assertions identical (driven through the new step path).
+- **Anchor changes (old strings no longer exist):** the reset test's `Gestión de Pedido y Pago` assertion (l.271) becomes `Pedido Registrado` (the new step-5 header), and the stock-block tests' `Seleccionar Método de Pago / Cotización` "still on step 1" anchor (l.185) becomes a stepper/`Continuar`-visible assertion.
+- **New tests:** stepper renders the 4 labels with correct active/done states; back-navigation preserves entered field values; Pago step shows the order summary (item line + `Total`); Enter submits each step's form (each step is a real `<form>`); confirmation header swaps stepper for success state.
 
-**[NEW] `src/tests/hooks/useIncrementalReveal.test.tsx`** — hook-level coverage via `renderHook`:
+**`[MODIFY] src/tests/components/Navbar.test.tsx`** — new describe block (~7 tests):
 
-- `visibleCount` starts at 16 and `hasMore` is true for `total > 16`, false for `total <= 16`.
-- `revealMore()` advances by exactly one page and clamps at `total`.
-- `resetKey` change resets to 16; `total` shrink clamps.
-- **Sentinel:** mock a minimal `IntersectionObserver` class (capture the callback, expose `trigger(isIntersecting)`), assert an observer is instantiated only while `hasMore`, that an intersecting sentinel calls reveal, a non-intersecting one does not, and it disconnects when the list is exhausted. Also assert the hook no-ops safely when `IntersectionObserver` is `undefined` (delete from `globalThis` for one test).
-- `prefers-reduced-motion` needs no JS: the suppression already exists in `src/index.css` (`@media (prefers-reduced-motion: reduce)` → `animation: none !important` on `.product-card-entrance`); no new animation is introduced.
-- **Single-column mobile grid (approved AC addition):** jsdom cannot evaluate media queries, so a small file-content guard suite (`src/tests/styles/storefrontCss.test.ts`, mirroring the `readFileSync` pattern of `firestore-rules.test.ts`) asserts that `src/index.css` contains a `@media (max-width: 560px)` block collapsing `.products-grid` to `1fr`, and that the 561–768px 2-column rule is still present.
+1. Desktop input lives inside a `form[role="search"]`; `fireEvent.submit` calls `onSearchSubmit` once and blurs the input.
+2. Submit button click (`aria-label="Buscar"`) does the same.
+3. Clear button absent when `search === ''`; present when non-empty.
+4. Clear click calls `setSearch('')` and returns focus to the input.
+5. Mobile form submits identically.
+6. Typing still calls `setSearch` (live filter preserved — no double path).
+7. Submit with empty search still calls `onSearchSubmit` (scroll-to-catalog is harmless).
 
-**Mocking strategy:** no network, no Firebase — `ProductList` receives plain arrays. The only new boundary is `IntersectionObserver`, mocked per-suite (setup.ts currently provides **no** global IO mock — verified — so the hook must guard for its absence and tests provide their own double).
+**Mocking:** no network/Firebase — `CheckoutModal` service mocks stay exactly as they are; `Navbar` gets plain props. `scrollIntoView` isn't reached in jsdom (Navbar only calls the prop; App's guard is untested DOM plumbing).
 
-**Zero regressions:** full suite (429 tests / 59 suites on main) plus the new tests must stay green, and `pnpm test`, `pnpm build`, `pnpm lint`, `pnpm format:check` must all pass.
+**Zero regressions:** `pnpm test` (448 tests / 61 suites on main + new), `pnpm build`, `pnpm lint`, `pnpm format:check` all green.
+
+---
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-- **`src/components/AGENTS.md`** — document the progressive-reveal contract in the `ProductList.tsx` section: page size 16, `resetKey` contract with `App`'s `catalogRequestKey`, button-primary/sentinel-secondary reveal, aria-live count, animation-once keyed-by-id guarantee.
-- **`src/hooks/`** — record `useIncrementalReveal` in the hooks documentation (root `AGENTS.md` §5 table already describes `src/hooks/` as the home for DOM-side-effect hooks; add the hook to `src/hooks/` docs if a local AGENTS.md exists, otherwise note it in `src/components/AGENTS.md`).
-- **`src/tests/AGENTS.md`** — note the new hook suite and the local IntersectionObserver mock pattern.
-- **`PRODUCTION_READINESS_TODO.md`** — mark **8.7** `[x]` with an as-built summary once verification passes.
+- **`src/components/AGENTS.md`** — rewrite §3 (checkout deep dive): 4-step state machine diagram, per-step gate table, stepper/panel/CSS-class contracts; update §7.1 Navbar (form-wrapped search, `onSearchSubmit`, clear/submit affordances); resolve the §2.5 `Despacho & Facturación` stale-copy entry (superseded by the redesign).
+- **`src/tests/AGENTS.md`** — note the adapted `CheckoutModal` helpers and new Navbar search-suite coverage.
+- **`PRODUCTION_READINESS_TODO.md`** — mark **2.6** and **2.7** `[x]` with as-built summaries after verification passes. The summaries must explicitly record the two deliberate deviations from §3.A (SIS-before-RUT gate reorder; San Antonio minimum firing at the Step 2 → 3 boundary instead of the TODO's literal "Step 1 → Step 2") and the §2.5 `Despacho & Facturación` supersession.
+
+---
+
+## 6. Known Accepted Behaviors (from pre-execution audit)
+
+- **SIS credential file input clears on back-navigation.** The `key={step}` panel remounts mean navigating back to Despacho clears the chosen file from the DOM input while the `✓ Adjunto: …` chip (driven by `credentialFileName` state) persists. This is **new behavior introduced by the panel remounts** (today the file survives back-navigation because nothing remounts). Accepted as cosmetic: only the *name* (`credentialFileName`) ever reaches the order payload; the raw file is never uploaded. If it proves confusing in practice, a follow-up can gate the chip on a live file reference.
+- **Step-5 voucher keeps its existing inline styles** (per §3.A) to minimize churn; the class-based styling rule applies only to new markup.
+- **`ClinicalStorefront.test.tsx` needs no changes** — its Navbar test only asserts utility-bar copy, and no other suite references the checkout strings being renamed (verified: only `CheckoutModal.test.tsx` matches).

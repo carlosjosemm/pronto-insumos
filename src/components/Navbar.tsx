@@ -1,5 +1,5 @@
 import React from 'react'
-import { Search, ShoppingBag, MapPin, FileCheck, Phone, Truck } from 'lucide-react'
+import { Search, ShoppingBag, MapPin, FileCheck, Phone, Truck, X } from 'lucide-react'
 import { WHATSAPP_DISPLAY, whatsappLink } from '../config/contact'
 
 export interface NavbarProps {
@@ -8,11 +8,21 @@ export interface NavbarProps {
   cartCount: number
   onOpenCart: () => void
   onOpenTracking?: () => void
+  onSearchSubmit?: () => void
 }
 
-export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpenTracking }: NavbarProps) {
+export default function Navbar({
+  search,
+  setSearch,
+  cartCount,
+  onOpenCart,
+  onOpenTracking,
+  onSearchSubmit
+}: NavbarProps) {
   const [isPulsing, setIsPulsing] = React.useState(false)
   const prevCount = React.useRef(cartCount)
+  const desktopInputRef = React.useRef<HTMLInputElement>(null)
+  const mobileInputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
     if (cartCount > prevCount.current) {
@@ -23,6 +33,18 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
     }
     prevCount.current = cartCount
   }, [cartCount])
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    desktopInputRef.current?.blur()
+    mobileInputRef.current?.blur()
+    onSearchSubmit?.()
+  }
+
+  const clearSearch = (inputRef: React.RefObject<HTMLInputElement | null>) => {
+    setSearch('')
+    inputRef.current?.focus()
+  }
   return (
     <>
       {/* Top Commercial Utility Bar */}
@@ -95,16 +117,33 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
           </a>
 
           {/* Desktop Search Bar */}
-          <div className="nav-search desktop-only-search">
+          <form role="search" className="nav-search desktop-only-search" onSubmit={handleSearchSubmit}>
             <Search size={18} className="nav-search-icon" />
             <input
+              ref={desktopInputRef}
               type="text"
+              enterKeyHint="search"
               placeholder="Buscar turbinas, resinas, autoclaves, instrumental..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               aria-label="Buscar en el catálogo"
             />
-          </div>
+            <div className="nav-search-actions">
+              {search !== '' && (
+                <button
+                  type="button"
+                  className="nav-search-clear"
+                  aria-label="Limpiar búsqueda"
+                  onClick={() => clearSearch(desktopInputRef)}
+                >
+                  <X size={14} />
+                </button>
+              )}
+              <button type="submit" className="nav-search-submit" aria-label="Buscar">
+                <Search size={15} />
+              </button>
+            </div>
+          </form>
 
           {/* Action Controls */}
           <div className="nav-actions">
@@ -126,16 +165,33 @@ export default function Navbar({ search, setSearch, cartCount, onOpenCart, onOpe
         </div>
 
         {/* Mobile Dedicated Search Bar */}
-        <div className="nav-search-mobile">
+        <form role="search" className="nav-search-mobile" onSubmit={handleSearchSubmit}>
           <Search size={16} className="nav-search-icon" />
           <input
+            ref={mobileInputRef}
             type="text"
+            enterKeyHint="search"
             placeholder="Buscar insumos y equipos dentales..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Buscar insumos y equipos dentales"
           />
-        </div>
+          <div className="nav-search-actions">
+            {search !== '' && (
+              <button
+                type="button"
+                className="nav-search-clear"
+                aria-label="Limpiar búsqueda"
+                onClick={() => clearSearch(mobileInputRef)}
+              >
+                <X size={14} />
+              </button>
+            )}
+            <button type="submit" className="nav-search-submit" aria-label="Buscar">
+              <Search size={14} />
+            </button>
+          </div>
+        </form>
 
         {/* Mobile utility row — restores the phone + tracking actions the hidden top bar takes away */}
         <div className="nav-mobile-utility">
