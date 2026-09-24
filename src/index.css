@@ -2668,11 +2668,6 @@ textarea {
   padding: var(--space-6) 0 var(--space-8);
 }
 
-.load-more-sentinel {
-  width: 100%;
-  height: 1px;
-}
-
 .btn-load-more {
   display: inline-flex;
   align-items: center;
