@@ -22,7 +22,7 @@ export default function ProductList({
   cartQuantityById,
   onUpdateQuantity
 }: ProductListProps) {
-  const { visibleCount, hasMore, revealMore, sentinelRef } = useIncrementalReveal(products.length)
+  const { visibleCount, hasMore, revealMore } = useIncrementalReveal(products.length)
 
   if (loading) {
     return (
@@ -81,7 +81,6 @@ export default function ProductList({
       </div>
       {hasMore && (
         <div className="load-more-row">
-          <div ref={sentinelRef} aria-hidden="true" className="load-more-sentinel" />
           <button type="button" className="btn-load-more" onClick={revealMore}>
             Cargar más insumos
             <ChevronDown size={18} aria-hidden="true" />
