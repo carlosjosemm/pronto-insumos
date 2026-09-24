@@ -5,6 +5,9 @@ node_modules
 # Local Environment & Secrets (DO NOT COMMIT)
 .env.local
 .env.*.local
+# Timestamped backups written by scripts/sync-env-to-vercel.ts (belt-and-braces
+# alongside `.env*` below, so reverting that line cannot expose a secret file)
+.env*.backup.*
 
 # Vercel & Build Artifacts
 .vercel
@@ -12,3 +15,4 @@ dist
 
 # Raw Data Imports (Do not commit price lists)
 *.csv
+.env*

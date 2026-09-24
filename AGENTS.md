@@ -158,7 +158,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ### 📋 Prerequisites & Linking
 * The repository is linked to the Vercel project via the local `.vercel/` configuration.
-* Environment variables (`VITE_*` public variables and serverless secrets like `MERCADOPAGO_ACCESS_TOKEN`) are configured in the Vercel Project Settings or managed via `vercel env`.
+* Environment variables (`VITE_*` public variables and serverless secrets like `MERCADOPAGO_ACCESS_TOKEN`) live in the Vercel Project Settings. Push them up from a local env file with [`scripts/sync-env-to-vercel.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/sync-env-to-vercel.ts) — see §7.1.
 
 ### 🛠️ Deployment Commands
 
@@ -167,18 +167,51 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 pnpm test          # Ensure all 429+ tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
-# 2. Deploy a Staging / Preview Release (Generates a unique preview URL)
+# 2. Sync environment variables to Vercel (DRY RUN by default — see §7.1)
+pnpm run env:sync -- --target preview            # prints the plan, writes nothing
+pnpm run env:sync -- --target preview --apply    # writes only NEW vars
+
+# 3. Deploy a Staging / Preview Release (Generates a unique preview URL)
 pnpm dlx vercel
 
-# 3. Deploy directly to Production (Promotes live to production domain)
+# 4. Deploy directly to Production (Promotes live to production domain)
 pnpm dlx vercel --prod
 ```
 
 ### 🛡️ Deployment Guardrails
 * **Pre-Flight Testing:** Never execute `vercel --prod` without first confirming that `pnpm test` and `pnpm build` succeed without errors.
-* **Environment Variable Sync:** When introducing new environment variables (client or server), add them to `.env.example` and set them in the Vercel Dashboard before running `vercel --prod`.
+* **Environment Variable Sync:** when introducing new variables, add them to `.env.example` and push them up with `pnpm run env:sync` (§7.1) before deploying. ❌ **Never paste `.env.local` wholesale** — it carries `FIRESTORE_ENV=development`, and copying that into Production would silently point the live storefront at the `dev_*` collections.
+* **A green `vercel --prod` proves nothing about the app.** The build succeeds with *zero* environment variables set; the storefront then renders a **blank page** (the module-scope `getAuth()` in `src/services/firebase.ts` throws `auth/invalid-api-key` and aborts the whole import graph) while the build log stays clean. Verify with `pnpm dlx vercel@latest env ls` **and** by loading the deployed URL — never by the build log alone.
 * **`public/og-preview.jpg` — social-share card (delivered):** `index.html` references `https://pronto-insumos.vercel.app/og-preview.jpg` from `og:image`, `twitter:image` and the JSON-LD `image`. It is a **human-produced asset** (redesign proposal Appendix B.1) shipped at **1200×630 JPEG, ~128 KB**. It was previously absent, which broke every link preview — including the WhatsApp shares that are one of PRONTO's own sales channels. **Format deviation from the proposal (as built):** Appendix B.0 specified *PNG ≤300 KB*, but PNG is lossless and a photorealistic 1200×630 banner lands at ~1 MB; the JPEG carries the identical composition at 128 KB. ❌ **Never generate a substitute image.** If this asset is ever replaced, re-verify it is exactly 1200×630 and that `index.html`'s three references match the filename before promoting. The favicon, by contrast, has a final turnkey SVG already committed at `public/favicon.svg`.
 * **A green build does NOT mean the functions run.** Vercel transpiles `api/` in place and lets Node's ESM resolver run at request time, so ESM/CJS resolution faults surface as HTTP 500 `FUNCTION_INVOCATION_FAILED` *after* a successful build. Two load-bearing invariants — explicit `.js` extensions on relative imports, and the `jose` v5 `pnpm.overrides` pin — are documented in [api/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/api/AGENTS.md) §1.3. ❌ **Never remove the `jose` override or drop a `.js` import extension** without re-deploying a preview and hitting the affected endpoints.
+
+### 🔐 7.1 Environment Variable Sync (`pnpm run env:sync`)
+
+[`scripts/sync-env-to-vercel.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/sync-env-to-vercel.ts) is the single supported way to push local variables to Vercel. It exists because the project silently lost **all** of its environment variables: every production build shipped an empty Firebase config, the storefront rendered blank, and nothing in the build output indicated a problem.
+
+```bash
+pnpm run env:sync -- --target preview                            # dry run: prints the plan, writes nothing
+pnpm run env:sync -- --target preview --apply                    # writes only variables that don't exist yet
+pnpm run env:sync -- --target production --apply --overwrite     # replace existing values
+```
+
+**Safety model — four deliberate properties. Do not "simplify" them away:**
+
+1. **Dry run by default.** Nothing is written without `--apply`.
+2. **`--target` is required** (`production` | `preview` | `development`). There is no default, so production can never be hit by forgetting a flag.
+3. **Existing remote variables are skipped** unless `--overwrite` is passed — a routine sync cannot clobber a value that is already live.
+4. **The local env file is backed up** to `<file>.backup.<timestamp>` before the first write, and the script **aborts** if that path is not gitignored, so it can never leave an un-ignored file full of secrets behind.
+
+Additional guarantees:
+
+* **Values travel over stdin** — never printed, logged, or placed on a command line.
+* `VERCEL_*` / `TURBO_*` / `NX_*` system variables are filtered out and never synced.
+* `FIRESTORE_ENV` and `VITE_FIRESTORE_ENV` are set **per target** (`production` → `production`, otherwise `development`), so collection isolation cannot be broken by copying the local value up.
+* `FIREBASE_PRIVATE_KEY`, `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET` and `RESEND_API_KEY` are stored as Vercel **Secrets**; everything else as Config.
+* After writing, the script **re-reads remote state and verifies every key landed**. That check exists because `vercel env add … preview` prompts for a Git branch on the TTY and exits `0` having written *nothing* when stdin is piped — a silent no-op indistinguishable from success. (The script passes `--git-branch ''` to mean "all Preview branches".)
+
+> [!CAUTION]
+> **`vercel env pull` overwrites `.env.local` in place — it does not merge.** Running it replaces your local development values with the pulled environment's (flipping `FIRESTORE_ENV` to `production` points local development at live collections) and injects ~20 `VERCEL_*` / `TURBO_*` system variables. **Always pass an explicit output path** (`vercel env pull /tmp/env-check.txt`), or don't run it at all — `env:sync` covers the push direction and the dashboard covers inspection.
 
 ---
 
