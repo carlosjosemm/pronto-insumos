@@ -223,6 +223,15 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - Keep the order payload schema and all serverless/API contracts unchanged — this is a presentation-layer refactor only.
     - Existing `CheckoutModal.test.tsx` behavior coverage must keep passing (adapted to the new step structure as needed).
 
+- [ ] **2.7. Fix Storefront Search Input (Enter Does Nothing, No Visible Button)**
+  - **Context & Current State:** The upper search inputs (`src/components/Navbar.tsx` — desktop `.nav-search` and mobile `.nav-search-mobile`) are bare controlled `<input type="text">` elements: no `<form>` wrapper, no `onKeyDown`/submit handling, and no visible search button. Catalog filtering only happens live while typing, so pressing Enter visibly does nothing and the affordance looks broken to users.
+  - **Required Action:**
+    - Wrap each search input in a `<form>` (or add explicit submit handling) so pressing Enter performs a well-defined action: commit the search, blur the input, and scroll focus to the catalog results.
+    - Add a visible search submit button (icon button is fine) inside the search bar for both desktop and mobile variants, styled per the existing Vanilla CSS design system (`src/index.css`) — no new dependencies.
+    - Provide a clear way to clear the search (e.g., an ✕ affordance when the field is non-empty) and ensure the empty-search state restores the full catalog.
+    - Keep the existing live-filter behavior working; the submit path must not double-fetch or conflict with the `catalogRequestKey`-derived loading model in `App.tsx`.
+  - **Automated Test Coverage:** Extend `src/tests/components/Navbar.test.tsx` (or add a focused suite) covering Enter-to-submit, button click, and clear affordance.
+
 ---
 
 ## Phase 3: Logistics, Shipping & Local Warehouse Pickup (Melipilla / RM)
