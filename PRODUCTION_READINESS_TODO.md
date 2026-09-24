@@ -211,6 +211,18 @@ These items carry immediate risks of financial loss, critical security vulnerabi
       - UI component tests in `src/tests/components/OrderTrackingModal.test.tsx` (5 tests).
       - Total repository test suite: 28 test files, 272 tests passing (100% test reliability).
 
+- [ ] **2.6. Checkout Modal UX Overhaul (Modern, Multi-Step Form Redesign)**
+  - **Context & Current State:** The checkout modal (`CheckoutModal.tsx`) presents the customer/invoice data capture as one long, text-heavy form. The store owner's assessment: the UI is clumsy and verbose — too much text on screen at once — and does not feel modern. It should be slick, stunning, and better designed UX-wise.
+  - **Required Action:**
+    - Redesign the checkout flow into a modern, guided experience — e.g., splitting the single huge form into several small, focused steps (the executor decides the exact step breakdown, e.g. contact/delivery → fiscal document data → review & confirm), with a clear progress indicator.
+    - Reduce visible text: shorter labels, progressive disclosure (only show optional/conditional fields — Factura fiscal fields, ISP/SIS sanitary validation — when actually relevant), and concise Chilean-Spanish microcopy.
+    - Modern visual polish consistent with the existing handcrafted Vanilla CSS design system (`src/index.css`) — no new CSS or component frameworks (Anti-Overshooting Principle §2.3).
+  - **Hard Constraints (non-negotiable):**
+    - Preserve all existing validation and compliance behavior: RUT Modulo 11, Boleta-only document card (`FACTURA_ENABLED = false` gating stays), SIS registry validation for controlled items, San Antonio minimum-order check at Step 1 → Step 2, stock-availability guards.
+    - Preserve the payment iron rules (§4): orders still start `PENDIENTE_*`, no client-side payment approval, no card data handling.
+    - Keep the order payload schema and all serverless/API contracts unchanged — this is a presentation-layer refactor only.
+    - Existing `CheckoutModal.test.tsx` behavior coverage must keep passing (adapted to the new step structure as needed).
+
 ---
 
 ## Phase 3: Logistics, Shipping & Local Warehouse Pickup (Melipilla / RM)
