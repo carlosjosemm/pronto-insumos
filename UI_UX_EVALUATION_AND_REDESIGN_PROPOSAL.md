@@ -446,12 +446,12 @@ The implementing agent does **not** generate images. A human produces the assets
 
 | #   | Deliverable     | Path                                | Spec                                                     | Consumed by                                                 | If missing at implementation time                                          |
 | :-- | :-------------- | :---------------------------------- | :------------------------------------------------------- | :---------------------------------------------------------- | :------------------------------------------------------------------------- |
-| B.1 | OG share image  | `public/og-preview.png`             | 1200×630 PNG, ≤300 KB                                    | `index.html` (`og:image`, `twitter:image`, JSON-LD `image`) | Ship the meta tags anyway; **block `vercel --prod` until the file exists** |
+| B.1 | OG share image  | `public/og-preview.jpg`             | 1200×630 **JPEG**, ≤300 KB — delivered (see B.1 amendment) | `index.html` (`og:image`, `twitter:image`, JSON-LD `image`) | Ship the meta tags anyway; **block `vercel --prod` until the file exists** |
 | B.2 | Favicon         | `public/favicon.svg`                | SVG, 64×64 viewBox                                       | `index.html` `<link rel="icon">`                            | Implement the turnkey fallback SVG in B.2 verbatim — it is already final   |
 | B.3 | Routes graphic  | `public/assets/delivery-routes.png` | 1200×675 PNG, ≤250 KB                                    | Checkout Step 1, figure under the zone select (D.9b)        | Omit the `<figure>` entirely                                               |
 | B.4 | Warehouse photo | `public/assets/bodega-ortuzar.jpg`  | 1600×1067 JPG, ≤400 KB — **real photo, never generated** | Footer column 1, under the address block (D.9b)             | Omit the `<figure>` entirely                                               |
 
-### B.1 `og-preview.png` — generation prompt
+### B.1 `og-preview.jpg` — generation prompt
 
 > Static social-share banner for "PRONTO Insumos Odontológicos", a Chilean dental-supplies
 > distributor. 1200×630 px, flat editorial B2B catalog style — premium, restrained, clinical.
@@ -467,7 +467,9 @@ The implementing agent does **not** generate images. A human produces the assets
 > No people, no smiles, no teeth clipart, no neon, no glow, no gradients other than the edge
 > vignette, no watermark, no words or letters other than the three specified text lines.
 
-**Composition fallback** (if the tool mangles text): generate the same layout with **no text**, then a human overlays it in Figma/Canva — `PRONTO` Fraunces SemiBold ≈110 px `#FFFFFF`; hand-drawn stroke 6 px `#67E8F9`; `INSUMOS ODONTOLÓGICOS` Inter Medium 28 px, letter-spacing 8%, `#C9D2DB`; tagline Inter Regular 30 px `#C9D2DB`; 72 px outer padding; export 1200×630 PNG ≤300 KB.
+**Composition fallback** (if the tool mangles text): generate the same layout with **no text**, then a human overlays it in Figma/Canva — `PRONTO` Fraunces SemiBold ≈110 px `#FFFFFF`; hand-drawn stroke 6 px `#67E8F9`; `INSUMOS ODONTOLÓGICOS` Inter Medium 28 px, letter-spacing 8%, `#C9D2DB`; tagline Inter Regular 30 px `#C9D2DB`; 72 px outer padding; export 1200×630 JPEG ≤300 KB.
+
+> **As-built amendment — container format (B.1):** the shipped asset is **`public/og-preview.jpg` (1200×630 JPEG, ~128 KB)**, not PNG. PNG is lossless, so a photorealistic banner of this size lands at ~1 MB — measured on the existing hero photo, the same 1200×630 crop is **219 KB as JPEG vs 1.0 MB as PNG**. Composition, dimensions and the palette above are exactly as specified; only the container format changed. `index.html`'s three references (`og:image`, `twitter:image`, JSON-LD `image`) use the `.jpg` filename.
 
 ### B.2 `favicon.svg` — generation prompt + turnkey fallback
 

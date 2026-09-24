@@ -358,14 +358,15 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
   - Configure DNS records on Vercel with automatic TLS/SSL renewal.
   - Replace all occurrences of `pronto-insumos.vercel.app` with the production domain.
 
-- [ ] **7.3. Upload Brand Assets, Favicon, and OpenGraph Image** _(partially delivered — favicon shipped; `og-preview.png` still missing and still gates `vercel --prod`)_
-  - **Current Issue:** `index.html` references `https://pronto-insumos.vercel.app/og-preview.png` from `og:image`, `twitter:image` and the JSON-LD `image`, but the file has never existed — so link previews, including PRONTO's own WhatsApp shares, render broken.
-  - **⚠️ Governing spec (this entry corrected):** the wording below previously asked for `favicon.ico` / `apple-touch-icon.png` and an OG image "featuring company logo and Melipilla delivery badge". That is **superseded** by [UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md](file:///c:/Users/ecmv2/Documents/PRONTO/UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md) **Appendix B**, which is the asset spec of record — cited as such by root `AGENTS.md` §7 and `src/components/AGENTS.md` §2.2. Use **Appendix B.1** (its exact generation prompt, plus the no-text Figma/Canva overlay fallback). There is no "delivery badge": the approved composition carries a `Depósito dental · Melipilla y San Antonio` text line instead.
-  - **Already delivered — do not redo:**
-    - `public/` exists (holds `favicon.svg` and `assets/`).
-    - `public/favicon.svg` — Appendix B.2's turnkey SVG, committed and wired via `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />`. ❌ No `favicon.ico` and ❌ no `apple-touch-icon.png` are used by the as-built markup.
-  - **Still required (human-produced — an agent must never generate a substitute):**
-    - `public/og-preview.png` — Appendix B.1, **1200×630 PNG ≤300 KB**. ❌ **Blocks `vercel --prod`** (root `AGENTS.md` §7).
+- [x] **7.3. Upload Brand Assets, Favicon, and OpenGraph Image** ✅ _(OG share image and favicon delivered — the `vercel --prod` gate is cleared. B.3/B.4 figures remain optional and are tracked below.)_
+  - **Resolution:** `public/og-preview.jpg` now exists — **1200×630 JPEG, ~128 KB** — and `index.html`'s three references (`og:image`, `twitter:image`, JSON-LD `image`) point at it. Previously the file had never existed, so every link preview — including PRONTO's own WhatsApp shares — rendered broken.
+  - **⚠️ Format deviation from the proposal (as built):** Appendix B.0 specified *PNG ≤300 KB*. PNG is lossless, so a photorealistic 1200×630 banner lands at ~1 MB — measured on the existing hero photo, the same 1200×630 crop is **219 KB as JPEG vs 1.0 MB as PNG**. The delivered asset is therefore **JPEG**, and the `.png` references in root `AGENTS.md` §7, `src/components/AGENTS.md` §2.2 and `index.html` were all updated to `.jpg`.
+  - **⚠️ Wording superseded by this entry:** the original text below asked for `favicon.ico`, `apple-touch-icon.png`, and an OG image "featuring company logo and Melipilla delivery badge". All three are stale — the as-built markup wires only `favicon.svg` (no `.ico`, no `apple-touch-icon`), and the approved composition carries a `Depósito dental · Melipilla y San Antonio` text line instead of any badge. [UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md](file:///c:/Users/ecmv2/Documents/PRONTO/UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md) **Appendix B** is the asset spec of record.
+  - **Delivered:**
+    - `public/` exists (holds `favicon.svg`, `og-preview.jpg` and `assets/`).
+    - `public/favicon.svg` — Appendix B.2's turnkey SVG, committed and wired via `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />`.
+    - `public/og-preview.jpg` — Appendix B.1's composition, delivered at 1200×630 JPEG.
+  - **Still outstanding (optional, human-produced — an agent must never generate a substitute):**
     - `public/assets/delivery-routes.png` — Appendix B.3, 1200×675 PNG ≤250 KB (checkout Step 1 figure). Permitted fallback if absent: omit the `<figure>` entirely.
     - `public/assets/bodega-ortuzar.jpg` — Appendix B.4, 1600×1067 JPG ≤400 KB, **real photo, never generated**. Permitted fallback if absent: omit the `<figure>` entirely.
 
@@ -417,7 +418,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
     2. **Upgrade the Vercel project to Pro.** Removes the cap, costs money, requires no repo change.
   - **Acceptance Criteria:**
     - [x] `pnpm dlx vercel@latest deploy` produces a Preview URL that reaches `● Ready`. _(Done — verified against a live preview: `✓ Ready in 30s`. `api/admin/{orders,dashboard-stats,products}` all returned `403 {"success":false,"error":"Encabezado de autorización ausente o malformado"}`, `api/admin/nonexistent` returned `404 {"success":false,"error":"Endpoint de administración no encontrado"}` from the dispatcher, `api/admin/approve-transfer` returned `405`, and the runtime logs recorded **zero** errors across all five requests.)_
-    - [ ] `pnpm dlx vercel@latest deploy --prod` succeeds once the `og-preview.png` gate (§7.3 and root `AGENTS.md` §7) is also satisfied. _(Human step.)_
+    - [ ] `pnpm dlx vercel@latest deploy --prod` succeeds once the `og-preview.jpg` gate (§7.3 and root `AGENTS.md` §7) is also satisfied. _(Human step. The asset gate is now **cleared** — `public/og-preview.jpg` is committed — so only the deploy itself remains.)_
     - [x] Every suite under `src/tests/api/**` still passes **unchanged** — the admin client adapter `src/admin/services/adminApi.ts` must keep calling the same public URLs, or be updated in the same change. _(Done: assertions untouched; only handler import paths were rewritten. `adminApi.ts` needed zero changes.)_
     - [x] Security behaviour is unchanged: every admin route still requires `Authorization: Bearer <ID_TOKEN>` plus `decodedToken.admin === true` via `api/_lib/adminAuth.ts`, and `firestore.rules` is untouched. _(Done: handler bodies moved verbatim — verified by diff that only import lines changed.)_
   - **⚠️ Guardrail tension — resolved:** root `AGENTS.md` §2.2 mandates *"single-purpose Vercel Serverless Functions"* and forbids monolithic backend frameworks. The routed `api/admin/[action].ts` entry point is now a **documented exception** to that rule — the decision is recorded in root `AGENTS.md` §2.2 and `api/AGENTS.md` §1.2. No Express, NestJS, Koa or Fastify was introduced: the dispatcher is a plain `Record<string, handler>` lookup table.

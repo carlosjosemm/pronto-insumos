@@ -102,7 +102,7 @@ The brand mark is **type, not an image** — it renders as crisp text at any zoo
   * `<title>` and meta: `PRONTO Insumos Odontológicos — Depósito Dental en Melipilla`.
   * Legal line: `PRONTO INSUMOS ODONTOLÓGICOS SPA` (unchanged).
 * **Favicon:** `public/favicon.svg`, wired via `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />` in `index.html`.
-* **`og-preview.png`:** `index.html` references `https://pronto-insumos.vercel.app/og-preview.png` in `og:image`, `twitter:image` and the JSON-LD `image`. The file is produced by a human (redesign proposal Appendix B.1) and dropped at `public/og-preview.png`; the meta tags ship regardless. **Do not generate a substitute image.** `vercel --prod` is blocked until the real file exists.
+* **`og-preview.jpg`:** `index.html` references `https://pronto-insumos.vercel.app/og-preview.jpg` in `og:image`, `twitter:image` and the JSON-LD `image`. Human-produced (redesign proposal Appendix B.1), delivered at **1200×630 JPEG (~128 KB)**. Appendix B.0 specified *PNG ≤300 KB*, but PNG is lossless and a photorealistic banner of that size lands at ~1 MB — so the as-built asset is JPEG, and all three `index.html` references use the `.jpg` filename. **Do not generate a substitute image.**
 
 ### 2.3 Mobile Behaviour (≤768px)
 
