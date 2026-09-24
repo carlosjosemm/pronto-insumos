@@ -1,7 +1,8 @@
 import React from 'react'
 import ProductCard from './ProductCard'
 import { Product } from '../types'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, ChevronDown } from 'lucide-react'
+import { useIncrementalReveal } from '../hooks/useIncrementalReveal'
 
 export interface ProductListProps {
   products: Product[]
@@ -21,6 +22,8 @@ export default function ProductList({
   cartQuantityById,
   onUpdateQuantity
 }: ProductListProps) {
+  const { visibleCount, hasMore, revealMore, sentinelRef } = useIncrementalReveal(products.length)
+
   if (loading) {
     return (
       <div className="products-grid" aria-busy="true">
@@ -59,19 +62,35 @@ export default function ProductList({
     )
   }
 
+  const visibleProducts = products.slice(0, visibleCount)
+
   return (
-    <div className="products-grid">
-      {products.map((product, index) => (
-        <div key={product.id} className="product-card-entrance" style={{ animationDelay: `${(index % 4) * 60}ms` }}>
-          <ProductCard
-            product={product}
-            onAddToCart={onAddToCart}
-            onQuickView={onQuickView}
-            cartQuantity={cartQuantityById?.[product.id] ?? 0}
-            onUpdateQuantity={onUpdateQuantity}
-          />
+    <>
+      <div className="products-grid">
+        {visibleProducts.map((product, index) => (
+          <div key={product.id} className="product-card-entrance" style={{ animationDelay: `${(index % 4) * 60}ms` }}>
+            <ProductCard
+              product={product}
+              onAddToCart={onAddToCart}
+              onQuickView={onQuickView}
+              cartQuantity={cartQuantityById?.[product.id] ?? 0}
+              onUpdateQuantity={onUpdateQuantity}
+            />
+          </div>
+        ))}
+      </div>
+      {hasMore && (
+        <div className="load-more-row">
+          <div ref={sentinelRef} aria-hidden="true" className="load-more-sentinel" />
+          <button type="button" className="btn-load-more" onClick={revealMore}>
+            Cargar más insumos
+            <ChevronDown size={18} aria-hidden="true" />
+          </button>
+          <p className="load-more-count" role="status" aria-live="polite">
+            Mostrando {visibleProducts.length} de {products.length}
+          </p>
         </div>
-      ))}
-    </div>
+      )}
+    </>
   )
 }

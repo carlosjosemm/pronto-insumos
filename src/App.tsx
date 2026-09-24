@@ -313,8 +313,11 @@ export default function App() {
         {/* Visual Category Showcase Hub / Contextual Category Banner */}
         <CategoryShowcase selectedCategory={selectedCategory} onSelectCategory={setSelectedCategory} />
 
-        {/* Product Catalog Grid */}
+        {/* Product Catalog Grid — keyed by the catalog control signature so a
+            filter/category/search/sort change remounts the list and resets the
+            progressive reveal to page 1 (no reset effects). */}
         <ProductList
+          key={catalogRequestKey}
           products={products}
           loading={loading}
           onAddToCart={handleAddToCart}
