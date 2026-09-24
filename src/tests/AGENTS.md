@@ -10,6 +10,7 @@ This directory contains the **automated test suite** for PRONTO, powered by **Vi
 * **Directory Structure:**
   * [`setup.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/setup.ts): Test harness configuration, `@testing-library/jest-dom` extensions, and global browser mocks (`matchMedia`, `IntersectionObserver`).
   * `components/`: Unit and interaction tests for customer storefront components ([`Navbar.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/Navbar.test.tsx), [`ProductCard.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/ProductCard.test.tsx), [`Cart.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/Cart.test.tsx), [`CheckoutModal.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/CheckoutModal.test.tsx), [`CategoryShowcase.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/CategoryShowcase.test.tsx), [`ProductList.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/ProductList.test.tsx), etc.). **`PromoStrip.test.tsx` no longer exists** — the component was deleted with the UI/UX overhaul (§10.4); the hero trust row absorbed its messages and `ClinicalStorefront.test.tsx` covers them.
+  * **Task 2.6/2.7 as-built (2026-09-24):** `CheckoutModal.test.tsx` drives the 5-step guided flow through helpers (`fillContactStep`, `fillDespatchStep`, `fillDocumentStep`, `selectZone`, `advance`, `completeDataEntry`) — all 26 pre-existing `it` blocks preserved and re-targeted to the new step paths, plus a `Guided flow stepper & panels` describe (stepper states, back-navigation value preservation, Pago order summary, per-step Enter submit, confirmation header swap). `Navbar.test.tsx` gained a `search submit & clear affordances` describe (form-wrapped submit, exact-string `Buscar` button query, clear/refocus, mobile parity, live-filter preservation).
   * `admin/`: Test suites for backoffice management UI components ([`AdminApp.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/admin/AdminApp.test.tsx), [`OrderDetailPanel.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/admin/OrderDetailPanel.test.tsx), [`InventoryTable.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/admin/InventoryTable.test.tsx), [`StockAdjustModal.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/admin/StockAdjustModal.test.tsx), etc.).
   * `api/admin/`: Integration and unit tests for administrative serverless handlers (which live under `api/_lib/admin/` — see [api/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/api/AGENTS.md) §1.2), plus [`admin-router.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/api/admin/admin-router.test.ts) covering the `api/admin/[action].ts` dispatcher (happy path, unknown/missing/empty/non-string action → 404, array normalization, whitespace trim, `OPTIONS` passthrough, all 11 actions mapped, and rejection of inherited prototype keys). Other suites: [`approve-transfer.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/api/admin/approve-transfer.test.ts), [`dashboard-stats.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/api/admin/dashboard-stats.test.ts), [`update-stock.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/api/admin/update-stock.test.ts), [`firestoreEnv.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/api/admin/firestoreEnv.test.ts), etc.
   * `services/`: Adapter logic, network mocks, and environment resolver verification ([`api.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/services/api.test.ts), [`firestoreEnv.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/services/firestoreEnv.test.ts), [`mercadopago.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/services/mercadopago.test.ts)).
@@ -24,7 +25,7 @@ This directory contains the **automated test suite** for PRONTO, powered by **Vi
 ## 🚫 2. Anti-Overshooting & Testing Guardrails
 
 1. **Preserve Passing Tests (Zero Regression Policy):**
-   * Currently, **all 448 tests across 61 test suites pass (100% passing)**.
+   * Currently, **all 473 tests across 62 test suites pass (100% passing)**.
    * ❌ **NEVER** comment out, delete, or skip (`test.skip`) failing tests to get a passing build. If a test fails after your changes, diagnose and fix the root cause.
 2. **Speed & Efficiency:**
    * Automated tests must execute quickly without hanging.
@@ -53,7 +54,7 @@ pnpm test:watch
 pnpm test:coverage
 ```
 
-### Writing New Tests Checklist:
+### Writing New Tests Checklist
 
 * [ ] Place test file mirroring the source file path (e.g., `src/utils/currency.ts` -> `src/tests/utils/currency.test.ts`).
 * [ ] Test standard happy path.
