@@ -306,6 +306,18 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
     - Updated `firestore.rules` making audit collections read-only for admins and strictly write-blocked for all client SDKs.
     - Added comprehensive Vitest tests bringing total test coverage to **305 passing tests across 46 test files**.
 
+- [ ] **4.2. Admin Backoffice Readiness Sweep (Post-8.6 Consolidation Gaps)**
+  - **Context & Current State:** Full audit of the admin portal after the Task 8.6 `/api` consolidation found the routing layer healthy — all 11 `/api/admin/<action>` client calls in `src/admin/services/adminApi.ts` map 1:1 to the `api/admin/[action].ts` dispatch table, no stale `api/lib` imports remain, `vercel.json` rewrites exclude `api/`, and all 22 admin test files (57 tests) pass. Four follow-up gaps remain, none of them currently documented:
+    1. **Handler test-coverage gap:** 4 of the 11 admin handlers — `orders`, `products`, `mark-delivered`, `toggle-visibility` — have **no dedicated integration test suites** under `src/tests/api/admin/` (only the router dispatch is covered by `admin-router.test.ts`, which mocks the handlers). Every other handler has its own suite.
+    2. **Cursor pagination advertised but unimplemented:** `fetchAdminOrders({ cursor })` sends a `cursor` query param, but `api/_lib/admin/orders.ts` neither reads it nor applies Firestore `startAfter` — it fetches and slices against a default `limit` of 50. No UI caller passes `cursor` today, so it is harmless now, but as live order volume grows past 50 pending orders, staff would silently stop seeing older ones. Either implement real cursor pagination or remove the dead client param and document the 50-order window.
+    3. **Undocumented placeholder cards:** `AdminDashboard.tsx` renders two "Fase 5" analytics placeholder cards (Google Tag Manager / GA4 telemetry) and `AdminSettings.tsx` renders a "Fase 5" dynamic shipping-rates placeholder — none are recorded in `src/admin/AGENTS.md`, and the "Fase 5" labels don't match the roadmap numbering (the underlying work is TODO **3.1** and **8.5**). Document them as deliberate placeholders and align the labels with the actual TODO numbers.
+    4. **Doc drift in `src/admin/AGENTS.md`:** §1.4 states the warehouse address as "Av. Ortúzar 1234" while every component (and root `AGENTS.md` §3.4) says **Av. Ortúzar 750**; §1.4 also claims `#settings` shows "connected Firebase/Mercado Pago environment status", which the component does not render (only the `AdminTopbar` DEV/PROD badge exists).
+  - **Required Action:**
+    - Add dedicated Vitest integration suites for the 4 uncovered handlers (happy path, auth rejection, method gate, `OPTIONS` preflight, malformed payload — mirroring `approve-transfer.test.ts`).
+    - Resolve the cursor-pagination mismatch (implement or remove), with a test proving the chosen behavior.
+    - Document the placeholder cards in `src/admin/AGENTS.md` and correct the two §1.4 drift items.
+  - **Verification:** `pnpm test`, `pnpm build`, `pnpm lint` green; admin suite count updated in `src/tests/AGENTS.md`.
+
 ---
 
 ## Phase 5: Transactional Communications (Email & WhatsApp)
