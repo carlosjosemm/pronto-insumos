@@ -21,6 +21,7 @@ As-built technical reference for the client-side integration layer of PRONTO Ins
 | [`mercadopago.ts`](./mercadopago.ts) | `createMercadoPagoPreference()` → `POST /api/create-preference`; `processMercadoPagoPayment()` redirects to Checkout Pro `initPoint`. **No promo code is sent** — the endpoint resolves it from the order document it already registered. Also exports `MERCADOPAGO_PUBLIC_KEY` (`VITE_MERCADOPAGO_PUBLIC_KEY`). | Serverless `/api/create-preference` |
 | [`orderConfirmation.ts`](./orderConfirmation.ts) | Fire-and-forget proxy to `/api/order-confirmation` for transfer & WhatsApp-quote orders. Never throws; returns `boolean`. | Serverless `/api/order-confirmation` |
 | [`orderTracking.ts`](./orderTracking.ts) | `fetchOrderTracking()` → `/api/track-order` with client-side `validateRut` Modulo-11 gate first. | Serverless `/api/track-order` |
+| [`simulationPolicy.ts`](./simulationPolicy.ts) | `isSimulatedFallbackAllowed()` — client-side gate (Task 2.8): simulated fallbacks only outside a production runtime (`VITE_VERCEL_ENV`) or with the strict `VITE_ALLOW_SIMULATED_PAYMENTS='true'` opt-in. Injectable env → pure and unit-testable. | `import.meta.env` detector |
 | [`transferVoucher.ts`](./transferVoucher.ts) | `validateVoucherFile()` (PDF/PNG/JPG ≤ 5 MB — the **only** place these are enforced), `fileToDataUrl()`, `uploadTransferVoucher()` → `/api/upload-voucher`. | Serverless `/api/upload-voucher` |
 | [`whatsapp.ts`](./whatsapp.ts) | `generateWhatsAppQuoteUrl()`: pre-formatted `wa.me` quote with itemized list, tax-inclusive total, and SIS registry line. Reads `import.meta.env?.VITE_WHATSAPP_NUMBER` with its own `56929831595` fallback. | WhatsApp Click-to-Chat |
 
@@ -122,16 +123,16 @@ export function generateOrderId(): string {
 
 ---
 
-## ⚠️ 6. Simulated Fallbacks — Known Degradation Contracts
+## ⚠️ 6. Simulated Fallbacks — As-Built Failure Contracts (Task 2.8)
 
-Several adapters respond to endpoint failure by returning **fabricated success payloads** instead of errors. This kept demos/tests alive but means real failures are masked — treat these as deliberate-but-risky as-built behaviour:
+Adapters simulate **only** when the endpoint is demonstrably absent — a transport-level failure (fetch throw, unreadable response body) outside a production runtime, gated by `isSimulatedFallbackAllowed()` in [`simulationPolicy.ts`](./simulationPolicy.ts), the client mirror of `api/_lib/simulationPolicy.ts` (`VITE_VERCEL_ENV !== 'production'`, or the strict `VITE_ALLOW_SIMULATED_PAYMENTS='true'` opt-in). **Real HTTP error responses always surface as errors** — never a fabricated success. Production transport failures log via `console.error`; dev simulations keep the historical `console.warn`.
 
-| Adapter | Behaviour on failure | Consequence |
+| Adapter | Transport failure (non-production) | Real HTTP 4xx/5xx |
 | :--- | :--- | :--- |
-| `submitOrder()` (api.ts) | `setDoc` throw → warn → `success: true` | Checkout proceeds and payment can be initiated for an order that **was never persisted** (webhook then can't find it). |
-| `createMercadoPagoPreference()` / `processMercadoPagoPayment()` (mercadopago.ts) | **Any** fetch failure incl. HTTP 4xx/5xx → `success: true, initPoint: undefined`; the payment call then returns a fabricated `status: 'approved'` record (ignored by `CheckoutModal`, which only awaits it) | A server-side stock rejection (400) produces **no redirect and no error** — the customer lands on the confirmation step with a `PENDIENTE_PAGO_MERCADOPAGO` order that can never be paid. |
-| `fetchOrderTracking()` (orderTracking.ts) | Network/throwable failure → fabricated `PENDIENTE_TRANSFERENCIA` order for the queried ID | A transient outage renders fake tracking data. Non-OK HTTP responses *do* surface the real error message. |
-| `uploadTransferVoucher()` (transferVoucher.ts) | **Any** failure incl. 401 RUT mismatch, 404, 500 → `success: true` with a `simulated-voucher://` URL | Customer sees "Comprobante recepcionado exitosamente" while **nothing was stored** — silent voucher loss. |
-| `sendOrderConfirmationEmail()` (orderConfirmation.ts) | Failure → `false` | Correctly silent by design (fire-and-forget). |
+| `createMercadoPagoPreference()` / `processMercadoPagoPayment()` (mercadopago.ts) | Dev simulation preserved: `success: true, initPoint: undefined`; the fabricated `approved` record remains a non-authoritative client-side record on any successful preference (ignored by `CheckoutModal`) | `success: false` + the server's `error` message (e.g. the 400 stock rejection); `CheckoutModal` blocks on the Pago step via `submitError` |
+| `uploadTransferVoucher()` (transferVoucher.ts) | Simulated `simulated-voucher://` success (offline dev) | `success: false` + server message; both call sites (`CheckoutModal`, `OrderTrackingModal`) render `res.error` |
+| `fetchOrderTracking()` (orderTracking.ts) | Fabricated fallback order (dev/demo only) | Unchanged — already surfaced the real error message |
+| `sendOrderConfirmationEmail()` (orderConfirmation.ts) | Failure → `false` | Correctly silent by design (fire-and-forget) |
+| `submitOrder()` (api.ts) | — | ⚠️ Still swallows `setDoc` failures — **Task 0.11** (separate branch) |
 
-When these are revisited, the direction is: simulated fallback **only** when the endpoint is demonstrably absent (network error in dev), never on real HTTP error responses — and `submitOrder` must propagate persistence failure so checkout can block payment initiation.
+Known limitation (recorded, deliberate): a 200 response without `initPoint` would still land the customer on confirmation — unreachable per the Task 0.9/0.10 server contract (200 ⇒ `initPoint`; failures are 4xx/5xx), so no client-side guard was added (anti-overshooting). Revisit if the endpoint contract changes.

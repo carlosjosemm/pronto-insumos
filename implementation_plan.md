@@ -1,6 +1,6 @@
-# Task 1.4: Hardcoded Distributor RUT Fails Modulo-11
+# Task 2.8: Simulated-Success Fallbacks Must Not Mask Real HTTP Errors
 
-**Branch:** `fix/task-1.4-distributor-rut-modulo11` (cut from `main` @ `9166396`, synced with `origin/main`; executing in the primary worktree — no separate worktree, per explicit user instruction)
+**Branch:** `fix/task-2.8-simulated-success-fallbacks` (cut from `main` @ `9d938ce`, which already includes the merged Task 1.4; executing in the primary worktree — no separate worktree, per explicit user instruction)
 **Status:** Awaiting user approval — no source code changes until approved.
 **RequestFeedback:** true
 **UserFacing:** true
@@ -9,95 +9,122 @@
 
 ## 1. Context & Problem Statement
 
-Reference: `PRODUCTION_READINESS_TODO.md` → **1.4. Hardcoded Distributor RUT Fails Modulo-11** (P1 · Legal · production blocker · ~1h; audit finding 2026-09).
+Reference: `PRODUCTION_READINESS_TODO.md` → **2.8. Simulated-Success Fallbacks Must Not Mask Real HTTP Errors** (P1 · High; audit finding — full contract in `src/services/AGENTS.md` §6).
 
-Two storefront surfaces hardcode the distributor RUT with an **invalid Modulo-11 check digit**:
+Three client adapters respond to endpoint failure by returning **fabricated success**, masking real server rejections from the customer:
 
-1. **`src/components/Footer.tsx` l.112** — `<strong>RUT Empresa:</strong> 77.892.410-K` (public legal-identity block in the footer).
-2. **`src/components/CheckoutModal.tsx` l.1270** — `RUT Distribuidor: 77.892.410-K` (letterhead of the pro-forma "Ver Comprobante de Compra" receipt customers print/save).
+1. **`src/services/mercadopago.ts`** — `createMercadoPagoPreference()` treats *any* failure (including HTTP 4xx/5xx) as the "endpoint not active" dev case: `!response.ok` currently **throws into the same catch** that returns `success: true, initPoint: undefined`, and `processMercadoPagoPayment()` then fabricates a `status: 'approved'` record. The server's **400 stock rejection** (Task 0.9) and the 0.10 fail-closed `500`s therefore produce **no redirect and no error** — the customer lands on the confirmation step for an unpaid `PENDIENTE_PAGO_MERCADOPAGO` order.
+2. **`src/services/transferVoucher.ts`** — `uploadTransferVoucher()` catches *any* failure (401 RUT mismatch, 404, 500) and returns `success: true` with a `simulated-voucher://` URL — silent voucher loss displayed as "Comprobante recepcionado exitosamente".
+3. **`src/services/orderTracking.ts`** — `fetchOrderTracking()` fabricates a plausible order on network failure (its HTTP error path already surfaces correctly).
 
-Modulo-11 verification of body `77892410`: weighted sum `0·2+1·3+4·4+2·5+9·6+8·7+7·2+7·3 = 174` → `174 mod 11 = 9` → DV = `11 − 9 = 2`. The correct RUT is **`77.892.410-2`**; `-K` (DV 10) fails the check digit, so any legal/bank document carrying it is invalid.
+**UI readiness (verified):** `OrderTrackingModal` already renders `result.error` for both tracking (l.96-100) and voucher upload (l.160-162); `CheckoutModal`'s voucher upload already renders `res.error` (l.391-395). The **only** blind consumer is the Mercado Pago call site (`CheckoutModal` l.349-356), which ignores the result entirely.
 
-The correct value is already the single source of truth: **`BANK_DETAILS.rut`** in [`src/config/bankDetails.ts`](src/config/bankDetails.ts) (env-backed via `VITE_BANK_RUT`), asserted by `src/tests/config/bankDetails.test.ts`, and already rendered by `CheckoutModal` in its four other transfer-copy spots (l.1060–1072, l.1490–1505). `Footer.tsx` does not yet import `bankDetails`.
+**Out of scope:** `submitOrder`'s swallowed Firestore write — tracked separately as **0.11** (in progress by another agent; touches `src/services/api.ts`, no file overlap with this task).
 
-**Test debt:** `src/tests/components/CheckoutModal.test.tsx` l.354 asserts the wrong `-K` string — it must be updated in the same change or `pnpm test` breaks.
+**Required Action (from TODO):** simulate only when the endpoint is demonstrably absent (dev network error, behind the same env gate as 0.10); real HTTP error responses must surface as errors to the customer.
 
 ---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-- **No new credentials, secrets, env vars, dependencies, or external configuration.**
-- **Human legal confirmation:** verify that `77.892.410-2` matches the SII-registered company RUT. The fix renders config, so if the real RUT ever differs, update `VITE_BANK_RUT` in Vercel env (or the fallback in `bankDetails.ts`) — never a component literal.
+- **No new credentials or secrets.**
+- New **optional, non-secret** client env var documented in `.env.example`:
+  - `VITE_ALLOW_SIMULATED_PAYMENTS=false` — client-side escape hatch mirroring Task 0.10's server flag: simulated fallbacks are automatically disabled when the build was produced with `VERCEL_ENV=production`; only the exact string `'true'` opts back in (controlled demos). Leave unset/`false` in Production.
+- **Human check after merge:** confirm `VITE_ALLOW_SIMULATED_PAYMENTS` is absent (or `false`) for the Production build target. `env:sync` only writes variables present in the local env file, so nothing needs to be pushed.
 
 ---
 
 ## 3. Proposed Changes
 
-### 3.A `[MODIFY] src/components/Footer.tsx`
+### 3.A `[NEW] src/services/simulationPolicy.ts` — client-side gate (mirror of `api/_lib/simulationPolicy.ts`)
 
-- Add `import { BANK_DETAILS } from '../config/bankDetails'` (alongside the existing `contact` import).
-- Replace the literal:
-  ```tsx
-  <strong>RUT Empresa:</strong> 77.892.410-K
-  ```
-  with:
-  ```tsx
-  <strong>RUT Empresa:</strong> {BANK_DETAILS.rut}
-  ```
+```ts
+export function isSimulatedFallbackAllowed(env: ImportMetaEnv = import.meta.env): boolean {
+  if (env.VITE_ALLOW_SIMULATED_PAYMENTS === 'true') return true
+  return env.VITE_VERCEL_ENV !== 'production'
+}
+```
 
-### 3.B `[MODIFY] src/components/CheckoutModal.tsx`
+- Same semantics as the server gate from Task 0.10: allowed outside a production runtime, strict `'true'` opt-in (`'TRUE'`, `'1'`, `'false'` do **not** enable).
+- Browser-safe: reads the build-time `VITE_VERCEL_ENV` define that `vite.config.ts` injects from `process.env.VERCEL_ENV` (documented in `src/services/AGENTS.md` §2.3) — **no `process.env` in browser code**.
+- Injectable `env` parameter → pure and unit-testable without mutating globals (also sidesteps `ImportMetaEnv`'s read-only keys).
+- In Vitest/local runs `VITE_VERCEL_ENV` is unset → simulation allowed → existing fallback-dependent tests keep working; production-build behavior is what changes.
 
-- `BANK_DETAILS` is already imported (l.34). Replace the pro-forma letterhead literal:
-  ```tsx
-  RUT Distribuidor: 77.892.410-K
-  ```
-  with:
-  ```tsx
-  RUT Distribuidor: {BANK_DETAILS.rut}
-  ```
+### 3.B `[MODIFY] src/services/mercadopago.ts`
 
-### 3.C `[MODIFY] src/tests/components/CheckoutModal.test.tsx`
+- **`createMercadoPagoPreference()`** — restructure the error path:
+  - `!response.ok` is handled **explicitly before the catch**: parse the error body (`errData?.error` when available) and return `{ success: false, error }`. Real HTTP errors **never simulate** — this covers the 400 stock rejection, the 0.10 production `500`s, and `503` Admin-down.
+  - The `catch` (network throw — endpoint demonstrably absent) keeps today's simulated shape `{ success: true, initPoint: undefined }` **only when** `isSimulatedFallbackAllowed()`; otherwise returns `{ success: false, error: 'No fue posible contactar al servicio de pagos. Por favor reintenta o cotiza por WhatsApp.' }`.
+- **`processMercadoPagoPayment()`** — if `prefResult.success === false`, return `{ success: false, error, orderId }` immediately: **no fabricated approved record, no redirect attempt**. The success path (initPoint present → redirect + result record) is unchanged; the dev-simulated approved record remains the non-production simulation for the demonstrably-absent case.
+- `MercadoPagoPaymentResult`: add `error?: string`; make `paymentId` / `status` / `statusDetail` / `totalPaid` / `paidAt` optional so the failure return is honest (only the success path populates them; the sole UI consumer checks `success`, and existing tests read them on success paths only).
 
-- Import `BANK_DETAILS` from `../../config/bankDetails`.
-- Update the l.354 assertion from the wrong literal to the config-derived value, encoding the "render from config" contract:
-  ```tsx
-  expect(screen.getByText(`RUT Distribuidor: ${BANK_DETAILS.rut}`)).toBeInTheDocument()
-  ```
-  (If text-normalization quirks arise, fall back to the escaped regex `/RUT Distribuidor: 77\.892\.410-2/i`.)
+### 3.C `[MODIFY] src/services/transferVoucher.ts`
 
-### 3.D `[MODIFY] src/tests/config/bankDetails.test.ts` — small regression guard
+- **`uploadTransferVoucher()`** — `!response.ok` returns `{ success: false, orderId, status: 'PENDIENTE_TRANSFERENCIA', error: <server message> }` directly instead of throwing into the simulation catch. The 401 RUT-mismatch, 404 and 500 cases surface their real server message.
+- The `catch` (network throw) keeps the simulated success **only when** `isSimulatedFallbackAllowed()`; in a production runtime it returns `{ success: false, …, error: 'No fue posible subir el comprobante. Por favor reintenta o envíalo por WhatsApp.' }`.
+- **No UI changes needed** — both call sites already render `res.error`.
 
-Add a `describe('Fiscal RUT single-source guard')` block using the `readFileSync` source-content pattern already established by `storefrontCss.test.ts` / `firestore-rules.test.ts`:
+### 3.D `[MODIFY] src/services/orderTracking.ts`
 
-- `src/components/Footer.tsx` contains **no** `77.892.410` literal (one test).
-- `src/components/CheckoutModal.tsx` contains **no** `77.892.410` literal (one test).
+- The `catch` (network throw) keeps the simulated fallback **only when** `isSimulatedFallbackAllowed()`; in a production runtime it returns `{ success: false, error: 'No fue posible consultar el estado del pedido. Por favor reintenta en unos minutos.' }`.
+- The HTTP error path is already correct — untouched.
 
-Rationale: `src/config/AGENTS.md` §1 documents exactly this divergence class (delivery thresholds, `wa.me`, RUT). The guard makes the roadmap's "never hardcode fiscal literals" required action machine-checked. ~10 lines total; struck from scope at plan review if considered over-engineering.
+### 3.E `[MODIFY] src/components/CheckoutModal.tsx` (minimal — ~6 lines)
+
+- Capture the `processMercadoPagoPayment()` result; on `success: false` → `setSubmitError(result.error || 'No fue posible iniciar el pago...')`, `setIsSubmitting(false)`, and `return` — the customer **stays on the Pago step** (where `submitError` already renders, l.910-924) instead of landing on the confirmation step for an unpaid order.
+- **Parallel-work note:** Task 0.11 (other agent) targets `src/services/api.ts` and the `submitOrder` failure hunk (l.335-340, which already exists); this change is the adjacent l.348-356 hunk — small, reviewable overlap only.
+
+### 3.F `[MODIFY] .env.example`
+
+- New block mirroring the `ALLOW_SIMULATED_PAYMENTS` one: `VITE_ALLOW_SIMULATED_PAYMENTS=false` with an operator warning (client-side, build-time inlined; leave unset/`false` in Production).
 
 ### Explicitly NOT done (scope guardrails)
 
-- **No changes to `api/_lib/emailTemplates.ts`** — its server-side `VITE_BANK_*` fallback already carries the correct `-2`.
-- No new files, no deletions, no dependency changes, no copy rewrites beyond the RUT value itself.
+- **`submitOrder`** — Task 0.11 (other agent).
+- **Voucher storage/server-side validation** — Task 2.9 (this task only stops the client from *masking* the endpoint's errors; the Firestore doc-size and lifecycle-guard rework remains 2.9's scope).
+- No changes to `api/` endpoints, no new dependencies, no copy rewrites beyond the new error strings.
 
 ---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-1. **Updated assertion** (CheckoutModal boleta-comprobante flow): the printed comprobante renders `RUT Distribuidor: 77.892.410-2` sourced from `BANK_DETAILS.rut` — proves the legal document no longer carries the invalid check digit.
-2. **New guard tests** (bankDetails suite, 2 tests): neither component source file contains a `77.892.410` literal — negative regression guard against reintroduction.
-3. **Existing authority test stays green:** `bankDetails.test.ts` already asserts `validateRut(BANK_DETAILS.rut) === true` and `BANK_DETAILS.rut === '77.892.410-2'` — the Modulo-11 correctness anchor.
-4. **No new mocking** required: no network, Firebase, or payment boundaries are touched; the CheckoutModal suite's existing service mocks are reused as-is.
+**`[NEW] src/tests/services/simulationPolicy.test.ts`** (~5 tests; pure — injectable env, no global mutation):
 
-**Zero-regression target:** `pnpm test` (555 → **557** tests, 66 suites), `pnpm build`, `pnpm lint`, `pnpm format:check` — all green.
+1. `VITE_VERCEL_ENV` unset ⇒ allowed (local dev / Vitest).
+2. `'preview'` / `'development'` ⇒ allowed.
+3. `'production'` ⇒ blocked.
+4. production + `VITE_ALLOW_SIMULATED_PAYMENTS='true'` ⇒ allowed (escape hatch).
+5. production + `'TRUE'` / `'1'` ⇒ still blocked (strict opt-in).
+
+**`[MODIFY] src/tests/services/mercadopago.test.ts`:**
+
+- Existing 6 success tests currently pass via the *network-throw fallback* (jsdom `fetch` to a relative URL throws). They are re-based on an explicit `fetch` mock (`ok: true` + `initPoint`) so they assert the real success contract; assertions unchanged.
+- New: HTTP 400 with `{ error }` body ⇒ `success: false` + server message surfaced (stock-rejection contract); HTTP 500 ⇒ `success: false`; network throw in test env ⇒ simulated `success: true, initPoint: undefined` (dev behavior pinned); network throw with production env ⇒ `success: false`; `processMercadoPagoPayment` propagates a preference failure (`success: false`, **no** fabricated `approved` status).
+
+**`[MODIFY] src/tests/services/transferVoucher.test.ts`:**
+
+- New: HTTP 401 (RUT mismatch) ⇒ `success: false` + server error message; network throw in test env ⇒ simulated `success: true` with `simulated-voucher://` URL (dev behavior pinned); network throw with production env ⇒ `success: false`.
+
+**`[MODIFY] src/tests/services/orderTracking.test.ts`:**
+
+- New: network throw in test env ⇒ simulated fallback (dev behavior pinned); network throw with production env ⇒ `success: false` (no fabricated order).
+
+**`[MODIFY] src/tests/components/CheckoutModal.test.tsx`:**
+
+- New: `processMercadoPagoPayment` mocked to resolve `success: false` ⇒ `submitError` visible on the Pago step and the confirmation step is **not** reached.
+
+**Mocking & hygiene:** boundary mocks only (`vi.spyOn(global, 'fetch')`, existing `vi.mock` service doubles); suites that set `VITE_VERCEL_ENV` / `VITE_ALLOW_SIMULATED_PAYMENTS` restore them in `afterEach` (same env-hygiene pattern the `api/` suites use for `VERCEL_ENV`). The injectable-env design means no `import.meta.env` mutation is needed in the policy tests.
+
+**Zero-regression target:** `pnpm test` (557 → ~568 tests, 66 → 67 suites), `pnpm build`, `pnpm lint`, `pnpm format:check` — all green.
 
 ---
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-- **`src/components/AGENTS.md` §2.5:** rewrite the "wrong distributor RUT literals" paragraph as **resolved** — both surfaces render `BANK_DETAILS.rut`; guard test in place.
-- **`src/config/AGENTS.md` §1:** mark the `Footer.tsx` / `CheckoutModal.tsx` `-K` failure-mode bullet as **fixed by Task 1.4** (remove "Still open").
-- **`src/tests/AGENTS.md`:** refresh counts (555 → 557) and note the fiscal-RUT source guard under `config/`.
-- **`PRODUCTION_READINESS_TODO.md`:** mark **1.4** `[x]` with a short as-built summary.
+- **`src/services/AGENTS.md`:** §6 table rewritten from "known degradation contracts" to the as-built per-adapter failure contract (HTTP errors always surface; simulation only on network absence outside production, or with the explicit opt-in); §1 file map gains the `simulationPolicy.ts` row; §2.3 note cross-links the new `VITE_ALLOW_SIMULATED_PAYMENTS` var.
+- **`src/tests/AGENTS.md`:** refresh counts (557 → final count) and the `services/` suite list (+ `simulationPolicy`).
+- **`src/components/AGENTS.md`:** one-line addition to the checkout payment section — MP preference failures surface via `submitError` on the Pago step.
+- **`PRODUCTION_READINESS_TODO.md`:** mark **2.8** `[x]` with an as-built summary; note that the client no longer masks `upload-voucher` failures (motivating 2.9's server-side rework, which stays open).
 
 ---
 

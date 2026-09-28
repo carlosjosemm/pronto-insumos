@@ -1,5 +1,6 @@
 import { UploadVoucherResult } from '../types'
 import { validateRut, cleanRut } from '../utils/rut'
+import { isSimulatedFallbackAllowed } from './simulationPolicy'
 
 export interface UploadVoucherParams {
   orderId: string
@@ -107,7 +108,13 @@ export async function uploadTransferVoucher({
 
     if (!response.ok) {
       const errData = await response.json().catch(() => null)
-      throw new Error(errData?.error || `Error del servidor (${response.status})`)
+      const serverError = typeof errData?.error === 'string' ? errData.error : undefined
+      return {
+        success: false,
+        orderId: cleanId,
+        status: 'PENDIENTE_TRANSFERENCIA',
+        error: serverError || `Error del servidor (${response.status})`
+      }
     }
 
     const result = await response.json()
@@ -119,6 +126,18 @@ export async function uploadTransferVoucher({
       message: 'Comprobante recepcionado exitosamente. En proceso de validación contable.'
     }
   } catch (err: unknown) {
+    if (!isSimulatedFallbackAllowed()) {
+      console.error(
+        'No fue posible subir el comprobante a /api/upload-voucher en un runtime de producción:',
+        err instanceof Error ? err.message : err
+      )
+      return {
+        success: false,
+        orderId: cleanId,
+        status: 'PENDIENTE_TRANSFERENCIA',
+        error: 'No fue posible subir el comprobante. Por favor reintenta o envíalo por WhatsApp.'
+      }
+    }
     console.warn(
       'Endpoint /api/upload-voucher no disponible o falló; usando simulación local:',
       err instanceof Error ? err.message : err

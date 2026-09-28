@@ -3,7 +3,7 @@
 **Last Updated:** September 2026  
 **Target Market:** Melipilla & San Antonio, Chile  
 **Deployment Stack:** Vercel (Frontend React 18 + Serverless Node.js) & Google Firebase / Firestore  
-**Repository State:** Advanced functional storefront with automated test coverage (66 suites / 557 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11) — **0.9 and 0.10 are resolved** (including 0.9's adversarial-review remediation) — and a second audit pass on the promo path opened **Phase 9 (commercial promotions & discount governance)**. Remaining work covers the remaining fail-closed payment path (0.11), the promo data model (9.1), per-zone shipping rates, legal compliance, catalog assets, and DevOps polish before go-live.
+**Repository State:** Advanced functional storefront with automated test coverage (67 suites / 575 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11) — **0.9 and 0.10 are resolved** (including 0.9's adversarial-review remediation) — and a second audit pass on the promo path opened **Phase 9 (commercial promotions & discount governance)**. Remaining work covers the remaining fail-closed payment path (0.11), the promo data model (9.1), per-zone shipping rates, legal compliance, catalog assets, and DevOps polish before go-live.
 
 ---
 
@@ -279,13 +279,15 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - Keep the existing live-filter behavior working; the submit path must not double-fetch or conflict with the `catalogRequestKey`-derived loading model in `App.tsx`.
   - **Automated Test Coverage:** Extend `src/tests/components/Navbar.test.tsx` (or add a focused suite) covering Enter-to-submit, button click, and clear affordance.
 
-- [ ] **2.8. Simulated-Success Fallbacks Must Not Mask Real HTTP Errors** _(Audit finding — full contract in `src/services/AGENTS.md` §6)_
-  - Several adapters return fabricated success on **any** endpoint failure:
-    - `createMercadoPagoPreference` / `processMercadoPagoPayment` (`src/services/mercadopago.ts`): HTTP 4xx/5xx (including the 400 stock rejection) → `success: true, initPoint: undefined` → the customer lands on the confirmation step for an unpaid `PENDIENTE_PAGO_MERCADOPAGO` order.
-    - `uploadTransferVoucher` (`src/services/transferVoucher.ts`): any failure (401 RUT mismatch, 404, 500) → `success: true` with a `simulated-voucher://` URL — silent voucher loss displayed as "Comprobante recepcionado exitosamente".
-    - `fetchOrderTracking` (`src/services/orderTracking.ts`): network failure → fabricated plausible order instead of an error state.
-    - `submitOrder`'s swallowed Firestore write is the worst instance — tracked separately as **0.11**.
-  - **Required Action:** simulate only when the endpoint is demonstrably absent (dev network error, behind the same env gate as 0.10); real HTTP error responses must surface as errors to the customer.
+- [x] **2.8. Simulated-Success Fallbacks Must Not Mask Real HTTP Errors** _(Audit finding — full contract in `src/services/AGENTS.md` §6)_
+  - **Context:** Several adapters returned fabricated success on **any** endpoint failure — Mercado Pago 4xx/5xx (incl. the 400 stock rejection) → silent confirmation step for an unpayable order; voucher upload failures (401 RUT mismatch, 404, 500) → "Comprobante recepcionado exitosamente" with nothing stored; tracking network failures → fabricated orders. (`submitOrder`'s swallowed Firestore write is the worst instance — tracked separately as **0.11**.)
+  - **Fulfilled & Verified:**
+    - New client-side gate `src/services/simulationPolicy.ts` (`isSimulatedFallbackAllowed()`), mirroring Task 0.10's server policy: simulation only outside a production runtime (`VITE_VERCEL_ENV`) or with the strict `VITE_ALLOW_SIMULATED_PAYMENTS='true'` opt-in (documented in `.env.example`).
+    - All three adapters now surface real HTTP errors as `success: false` with the server's message; production network failures log loudly via `console.error`; dev simulations are preserved and pinned by tests.
+    - `CheckoutModal` blocks on the Pago step via `submitError` when the preference fails — the customer never reaches confirmation for an unpayable order; both voucher-upload call sites already rendered `res.error` (no UI change needed there).
+    - Known limitation recorded in `src/services/AGENTS.md` §6: a 200-without-`initPoint` remains unguarded (unreachable per the 0.9/0.10 server contract).
+    - ⚠️ Operator note (residual, pre-existing): a failed MP initiation leaves the persisted order `PENDIENTE_PAGO_MERCADOPAGO` forever, and a customer retry persists a *new* pending order (each attempt generates a fresh `orderId`). The admin orders list will accumulate these — a stale-pending-order expiry/cleanup task is a candidate follow-up.
+    - All 575 tests across 67 suites passing; production build, ESLint and Prettier clean.
 
 - [ ] **2.9. Bank-Transfer Voucher Storage & Validation Rework** _(Audit finding — Firestore doc-size limit)_
   - `/api/upload-voucher` writes the entire base64 `dataUrl` into the order document — real vouchers above ~750 KB exceed Firestore's ~1 MiB document limit and `batch.commit()` returns 500 (which the client then reports as success — see 2.8).

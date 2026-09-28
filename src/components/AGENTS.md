@@ -234,7 +234,7 @@ The Pago step opens with a **compact order summary** (`.checkout-summary`): scro
    - Advances to Step 5 where the customer receives transfer instructions and can upload their bank receipt directly.
 2. **Pago Inmediato Mercado Pago Chile (Webpay Plus / Redcompra):**
    - Instant digital settlement via credit/debit card.
-   - **PCI-DSS Compliance:** Zero card fields exist in state or DOM. Processing delegates to `/api/create-preference` which generates an official Checkout Pro URL.
+   - **PCI-DSS Compliance:** Zero card fields exist in state or DOM. Processing delegates to `/api/create-preference` which generates an official Checkout Pro URL. **Task 2.8:** a preference failure (HTTP 4xx/5xx, or a production network error) surfaces via `submitError` on the Pago step — the customer never reaches the confirmation step for an unpayable order.
 3. **Cotización Formal por WhatsApp:**
    - Designed for municipal procurement, university clinics, or custom high-volume orders.
    - Formats a comprehensive Markdown quote with itemized SKUs and tax breakdowns, opening `https://wa.me/...`.

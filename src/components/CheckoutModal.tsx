@@ -347,12 +347,20 @@ export default function CheckoutModal({
 
     // 2. Initiate Mercado Pago Online Payment Processing if selected
     if (paymentMethod === 'mercadopago') {
-      await processMercadoPagoPayment({
+      const paymentResult = await processMercadoPagoPayment({
         orderId: canonicalOrderId,
         items: cartItems,
         total: totalAmount,
         customer: sanitizedCustomer
       })
+
+      if (!paymentResult.success) {
+        setSubmitError(
+          paymentResult.error || 'No fue posible iniciar el pago. Por favor reintenta o cotiza por WhatsApp.'
+        )
+        setIsSubmitting(false)
+        return
+      }
     }
 
     setIsSubmitting(false)
