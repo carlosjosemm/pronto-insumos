@@ -8,6 +8,8 @@ import {
   buildWarehouseAlertEmail,
   toOrderEmailData,
 } from "../_lib/emailTemplates.js";
+import { resolvePromoPercent } from "../../src/config/promos.js";
+import { computeOrderTotal } from "../../src/utils/orderTotal.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MERCADOPAGO_ACCESS_TOKEN =
@@ -138,6 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Execute atomic transaction for order status update and stock deduction.
           // In Firestore transactions, all reads MUST precede all writes.
           let stockDeducted = false;
+          let flaggedForReview = false;
           await adminDb.runTransaction(async (transaction) => {
             const freshOrderSnap = await transaction.get(orderDoc.ref);
             const freshOrderData = freshOrderSnap.data();
@@ -176,9 +179,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               string,
               { qty: number; name?: string }
             >();
+            let hasUnverifiableItem = false;
             for (const item of items) {
               const pid = item.productId || item.id;
-              if (!pid) continue;
+              if (!pid || typeof pid !== "string") {
+                // A line without a resolvable productId can never be price-verified.
+                hasUnverifiableItem = true;
+                continue;
+              }
               const existing = consolidatedItems.get(pid) || {
                 qty: 0,
                 name: item.name,
@@ -187,6 +195,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               if (item.name) existing.name = item.name;
               consolidatedItems.set(pid, existing);
             }
+
+            const catalogLines: { price: number; quantity: number }[] = [];
+            let catalogComplete = !hasUnverifiableItem && consolidatedItems.size > 0;
 
             for (const [productId, info] of consolidatedItems.entries()) {
               const productRef = adminDb
@@ -199,6 +210,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 const currentStock = Number(pData.stockCount) || 0;
                 const newStock = Math.max(0, currentStock - info.qty);
                 const isActive = pData.isActive !== false;
+                const catalogPrice = Number(pData.price);
+                if (Number.isInteger(catalogPrice) && catalogPrice > 0) {
+                  catalogLines.push({ price: catalogPrice, quantity: info.qty });
+                } else {
+                  catalogComplete = false;
+                }
                 productUpdates.push({
                   ref: productRef,
                   productId,
@@ -209,7 +226,67 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   quantity: info.qty,
                   inStock: newStock > 0 && isActive,
                 });
+              } else {
+                catalogComplete = false;
               }
+            }
+
+            // AMOUNT ASSERTION (Task 0.9 — underpayment exploit):
+            // recompute the payable total from the CURRENT Firestore catalog and
+            // require BOTH the actually-paid amount and the order's stored total
+            // to match it exactly (integer CLP) before marking paid. Any mismatch
+            // — underpayment, tampered order total, or unverifiable lines — goes
+            // to manual review WITHOUT decrementing stock.
+            const discountPercent = resolvePromoPercent(
+              freshOrderData?.promoCode ?? orderData.promoCode,
+            );
+            const expectedAmount = catalogComplete
+              ? computeOrderTotal(catalogLines, discountPercent)
+              : null;
+            const paidAmount = Number(paymentData.transaction_amount);
+            const amountVerified =
+              expectedAmount !== null &&
+              Number.isInteger(paidAmount) &&
+              paidAmount === expectedAmount &&
+              freshOrderData?.totalAmount === expectedAmount;
+
+            if (!amountVerified) {
+              console.warn(
+                `[Mercado Pago Webhook] Order "${cleanOrderId}" amount verification failed: paid ${String(paymentData.transaction_amount)}, expected ${String(expectedAmount)}. Flagging for manual review; no stock deducted.`,
+              );
+              const reviewNowIso = new Date().toISOString();
+              transaction.update(orderDoc.ref, {
+                status: "PAGO_EN_REVISION",
+                mercadopagoPaymentId: String(paymentId),
+                updatedAt: reviewNowIso,
+              });
+
+              const reviewHistoryRef = adminDb
+                .collection(getCollectionName("order_status_history"))
+                .doc();
+              transaction.set(reviewHistoryRef, {
+                id: reviewHistoryRef.id,
+                orderId: cleanOrderId,
+                previousStatus:
+                  freshOrderData?.status || orderData.status || null,
+                newStatus: "PAGO_EN_REVISION",
+                changedBy: "MERCADOPAGO_WEBHOOK",
+                changedByEmail: "webhook@mercadopago.cl",
+                actorRole: "SYSTEM_WEBHOOK",
+                timestamp: reviewNowIso,
+                reason:
+                  expectedAmount === null
+                    ? `No fue posible verificar el monto del pago (ID: ${paymentId}) contra el catálogo. Revisión manual requerida.`
+                    : `Monto pagado (${String(paymentData.transaction_amount)}) no coincide con el total verificado del pedido (${expectedAmount}). Revisión manual requerida.`,
+                metadata: {
+                  paymentId: String(paymentId),
+                  paymentStatus: paymentData.status,
+                  transactionAmount: paymentData.transaction_amount,
+                  expectedAmount,
+                },
+              });
+              flaggedForReview = true;
+              return;
             }
 
             const nowIso = new Date().toISOString();
@@ -301,6 +378,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               await sendEmail({
                 to: warehouseEmail,
                 ...buildWarehouseAlertEmail(emailData, "PAGADO_MERCADOPAGO"),
+              });
+            }
+          } else if (flaggedForReview) {
+            // Amount mismatch: never notify the customer that payment succeeded —
+            // alert Melipilla dispatch staff so the discrepancy is reconciled manually.
+            const reviewEmailData = toOrderEmailData(cleanOrderId, {
+              ...orderData,
+              status: "PAGO_EN_REVISION",
+            });
+            const warehouseEmail = getWarehouseEmail();
+            if (warehouseEmail) {
+              await sendEmail({
+                to: warehouseEmail,
+                ...buildWarehouseAlertEmail(reviewEmailData, "PAGO_EN_REVISION"),
               });
             }
           }

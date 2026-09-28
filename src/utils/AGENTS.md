@@ -14,7 +14,7 @@ This document is the **authoritative algorithmic and technical guide** for the p
   * Given identical input arguments, they must always return identical outputs.
 * **Where hooks live:** anything that needs React state or a DOM side effect belongs in [`src/hooks/`](../hooks) (`useScrollLock`, `useFocusTrap`, `useIncrementalReveal`), **not** here. That directory exists precisely to keep this purity contract intact.
 * **Zero External Dependencies:** No `lodash`, `moment.js`, or external math libraries. Built entirely with modern ECMAScript standards.
-* **File map:** [`rut.ts`](./rut.ts) (RUT Modulo 11), [`currency.ts`](./currency.ts) (CLP formatting/parsing + IVA), [`tax.ts`](./tax.ts) (gross→neto IVA breakdown + Factura field validation), [`schemaValidation.ts`](./schemaValidation.ts) (untrusted Firestore document validators), [`categoryAlias.ts`](./categoryAlias.ts) (category display names).
+* **File map:** [`rut.ts`](./rut.ts) (RUT Modulo 11), [`currency.ts`](./currency.ts) (CLP formatting/parsing + IVA), [`tax.ts`](./tax.ts) (gross→neto IVA breakdown + Factura field validation), [`schemaValidation.ts`](./schemaValidation.ts) (untrusted Firestore document validators), [`categoryAlias.ts`](./categoryAlias.ts) (category display names), [`orderTotal.ts`](./orderTotal.ts) (server-authoritative payable-total math — Task 0.9).
 
 ---
 
@@ -134,7 +134,6 @@ To prevent data drift and ensure that all Firestore documents strictly satisfy d
 ---
 
 ### 2.5 Category Display Alias Map (`src/utils/categoryAlias.ts`)
-
 Firestore stores frozen, uppercase Chilean category keys (`DESECHABLES, ESTERILIZACION Y DESINFECCION`). Storefront presentation must never leak those raw keys, so this module is the **single source of truth for customer-facing category naming**:
 
 * **`CATEGORY_DISPLAY_MAP`**: Record mapping internal keys to clean labels (e.g. `Desechables y Esterilización`). Only `DESECHABLES, ESTERILIZACION Y DESINFECCION` also registers a lowercase variant — matching is otherwise case-sensitive and exact.
@@ -143,3 +142,17 @@ Firestore stores frozen, uppercase Chilean category keys (`DESECHABLES, ESTERILI
   * Returns `''` for `undefined`, non-string, empty, or whitespace-only values, so callers can guard rendering without extra checks.
 * **Consumers:** `ProductCard.tsx`, `ProductQuickView.tsx`, and `CATEGORIES` in [src/data/products.ts](../data/products.ts) (category pills derive their labels from this map to prevent naming drift).
 * **Purity Contract:** No imports from `src/data/`, no side effects — safe to use from any layer.
+
+---
+
+### 2.6 Server-Authoritative Payable Total (`src/utils/orderTotal.ts`) — Task 0.9
+
+The single source of truth for "how much does this order cost" — integer CLP, IVA-inclusive catalog prices, promo applied per line. Four surfaces derive the SAME amount through it: the cart display (`App`/`Cart` via `computeCartTotal`), order registration (`submitOrder` persists it), the MP preference (`create-preference` charges it), and the webhook (asserts the payment against it).
+
+* **`normalizeQuantity(quantity: unknown): number`** — positive-integer clamp (minimum 1); fractional/NaN/garbage collapse to 1. Identical on every call site by construction.
+* **`computeDiscountedUnitPrice(price, discountPercent)`**: `Math.round(price × (100 − pct) / 100)`; returns `0` for non-finite/non-positive prices; discount clamped to 0–100.
+* **`computeOrderTotal(lines, pct)`**: `Σ discountedUnit × quantity` over plain `{ price, quantity }` lines — exactly the amount Mercado Pago charges a preference built with the same unit prices.
+* **`toOrderLines(items)`** / **`computeCartTotal(items, pct)`**: the CartItem adapter — cart lines carry the price at `item.product.price`, so raw cart lines fed to `computeOrderTotal` would charge `$0` (regression-tested). Always go through `computeCartTotal` for cart-shaped input.
+* **Rounding iron rule:** `Math.round` at every step; CLP has no cents; floating residues are a gateway/SII rejection risk.
+* **Consumers:** `App.tsx` (`cartTotal`), `Cart.tsx` (drawer total), `src/services/api.ts` (`submitOrder`), `api/create-preference.ts` (preference lines), `api/webhooks/mercadopago.ts` (amount assertion).
+* **Purity Contract:** No DOM, no network, no `import.meta.env` — importable from Node (`api/`) and tsx scripts.

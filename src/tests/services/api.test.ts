@@ -232,7 +232,9 @@ describe('submitOrder', () => {
 
     expect(result.success).toBe(true)
     expect(result.orderId).toMatch(/^PRONTO-\d{6}$/)
-    expect(result.total).toBe(100000)
+    // The persisted/returned total is recomputed from the item lines (IVA incluido),
+    // not the client-supplied figure — PRODUCTS[0] at 189990 × 2 = 379980.
+    expect(result.total).toBe(379980)
     expect(result.itemsCount).toBe(2)
 
     expect(setDoc).toHaveBeenCalledTimes(1)
@@ -244,9 +246,43 @@ describe('submitOrder', () => {
     expect(submittedPayload.status).toBe('PENDIENTE_PAGO_MERCADOPAGO')
     expect(submittedPayload.paymentMethod).toBe('mercadopago')
     expect(submittedPayload.orderId).toBe(result.orderId)
+    expect(submittedPayload.totalAmount).toBe(379980)
     const items = submittedPayload.items as Array<Record<string, unknown>>
     expect(items).toHaveLength(1)
     expect(items[0].quantity).toBe(2)
+  })
+
+  it('should persist promoCode and discountAmount when a promo code is provided', async () => {
+    const { setDoc } = await import('firebase/firestore')
+    const result = await submitOrder({
+      items: mockItems,
+      total: 100000,
+      customer: mockCustomer,
+      paymentMethod: 'mercadopago',
+      promoCode: ' pronto10 '
+    })
+
+    expect(result.success).toBe(true)
+    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as unknown as Record<string, unknown>
+    expect(submittedPayload.promoCode).toBe('PRONTO10')
+    // 2 × 189990 list = 379980; 10% off per line: round(189990 × 0.9) = 170991 × 2 = 341982
+    expect(submittedPayload.totalAmount).toBe(341982)
+    expect(submittedPayload.discountAmount).toBe(37998)
+    expect(result.total).toBe(341982)
+  })
+
+  it('should not write promo fields when no promo code is provided', async () => {
+    const { setDoc } = await import('firebase/firestore')
+    await submitOrder({
+      items: mockItems,
+      total: 50000,
+      customer: mockCustomer,
+      paymentMethod: 'mercadopago'
+    })
+
+    const submittedPayload = vi.mocked(setDoc).mock.calls[0][1] as unknown as Record<string, unknown>
+    expect('promoCode' in submittedPayload).toBe(false)
+    expect('discountAmount' in submittedPayload ? submittedPayload.discountAmount : undefined).toBeUndefined()
   })
 
   it('should initialize Transferencia orders with status PENDIENTE_TRANSFERENCIA', async () => {

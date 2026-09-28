@@ -36,6 +36,13 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
           <span>Pagado Mercado Pago</span>
         </span>
       )
+    case 'PAGO_EN_REVISION':
+      return (
+        <span className="admin-status-badge admin-status-badge--pending">
+          <AlertTriangle size={12} />
+          <span>Pago en Revisión</span>
+        </span>
+      )
     case 'TRANSFERENCIA_APROBADA':
     case 'PAGADO_TRANSFERENCIA':
       return (

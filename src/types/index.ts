@@ -94,6 +94,7 @@ export type PaymentMethod = 'transferencia' | 'whatsapp' | 'mercadopago'
 export type OrderStatus =
   | 'PENDIENTE_PAGO_MERCADOPAGO'
   | 'PAGADO_MERCADOPAGO'
+  | 'PAGO_EN_REVISION'
   | 'PENDIENTE_TRANSFERENCIA'
   | 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
   | 'TRANSFERENCIA_APROBADA'
@@ -132,6 +133,10 @@ export interface Order {
   voucherUrl?: string
   voucherFileName?: string
   voucherUploadedAt?: string
+  // Promo trail — persisted so the payment webhook can recompute the verified
+  // payable total from the catalog (Task 0.9); written only at order creation.
+  promoCode?: string
+  discountAmount?: number
   courier?: string
   trackingNumber?: string
   mercadopagoPaymentId?: string

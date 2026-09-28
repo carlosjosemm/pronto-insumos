@@ -3,7 +3,7 @@
 **Last Updated:** September 2026  
 **Target Market:** Melipilla & San Antonio, Chile  
 **Deployment Stack:** Vercel (Frontend React 18 + Serverless Node.js) & Google Firebase / Firestore  
-**Repository State:** Advanced functional storefront with automated test coverage (62 suites / 473 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11), and remaining work covers per-zone shipping rates, legal compliance, catalog assets, and DevOps polish before go-live.
+**Repository State:** Advanced functional storefront with automated test coverage (65 suites / 534 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11) — **0.9 is resolved** (including its adversarial-review remediation) — and a second audit pass on the promo path opened **Phase 9 (commercial promotions & discount governance)**. Remaining work covers the fail-closed payment paths (0.10–0.11), the promo data model (9.1), per-zone shipping rates, legal compliance, catalog assets, and DevOps polish before go-live.
 
 ---
 
@@ -21,6 +21,7 @@
   - [Phase 6: Real Catalog Assets, Photography \& Technical Datasheets](#phase-6-real-catalog-assets-photography--technical-datasheets)
   - [Phase 7: Legal Compliance, SERNAC Warranty \& Customer Trust](#phase-7-legal-compliance-sernac-warranty--customer-trust)
   - [Phase 8: Performance, Infrastructure, DevOps \& Telemetry](#phase-8-performance-infrastructure-devops--telemetry)
+  - [Phase 9: Commercial Promotions \& Discount Governance](#phase-9-commercial-promotions--discount-governance)
   - [Prioritization Matrix \& Effort Estimation](#prioritization-matrix--effort-estimation)
   - [🏁 Go-Live Acceptance Criteria](#-go-live-acceptance-criteria)
 
@@ -61,13 +62,13 @@ These items carry immediate risks of financial loss, critical security vulnerabi
   - ⚠️ **Audit note:** verification is **fail-open** when `MERCADOPAGO_WEBHOOK_SECRET` is unset — a deploy that loses the secret silently accepts unsigned requests (mitigated only by the MP API re-check). Remediation tracked in **0.10**.
 
 - [x] **0.6. Create and Deploy Firestore Security Rules (`firestore.rules`)** ✅ _(Resolved: firestore.rules created with public read-only catalog, admin-only catalog write, strict pending-only order creation schema preventing injection, client-side order read/update/delete denied; firebase.json configured and deploy:rules script added; unit tests passing)_
-  - ⚠️ **Audit note:** `isValidOrderCreate` validates **shape only** — it cannot compare client `totalAmount`/item prices against the catalog. That is the client-supplied-total vector remediated server-side in **0.9**.
+  - ⚠️ **Audit note (resolved by 0.9):** `isValidOrderCreate` still validates **shape only** — it cannot join the catalog. The client-supplied-total vector is now remediated server-side (0.9: catalog-rebuilt preferences + webhook amount assertion), and the rules add per-line shape guards (integer `totalAmount`, `productId`/`quantity`/`price` on the first 10 lines, ≤25 lines).
 
 - [x] **0.7. Remove Public Database Seed Button (`Footer.tsx`)** ✅ _(Resolved: Public seed button completely removed from Footer.tsx; footer restructured to authentic 4-column B2B distributor layout; unit tests verified)_
 
 - [x] **0.8. Purge Mock Data and Ensure Privacy / PCI-DSS Compliance** ✅ _(Resolved: CheckoutModal form state initialized with empty strings and clean placeholders; cardNumber, expDate, and cvc eliminated from CustomerInfo and component state; input whitespace sanitization added; clean Chilean clinical inputs; comprehensive unit tests passing with zero regressions)_
 
-- [ ] **0.9. Server-Side Price & Total Verification for Mercado Pago Orders** 🔴 _(Audit finding, 2026-09 — underpayment exploit)_
+- [x] **0.9. Server-Side Price & Total Verification for Mercado Pago Orders** ✅ _(Resolved: catalog-rebuilt preferences + webhook amount assertion; unit tests passing)_
   - `api/create-preference.ts` builds `unit_price` straight from the client payload, and `api/webhooks/mercadopago.ts` never compares `paymentData.transaction_amount` against `order.totalAmount`. Combined with `firestore.rules` validating order-create **shape only** (status/customer/items presence, not prices — see 0.6 note) and `submitOrder` writing arbitrary `items`/`totalAmount`, an attacker can create a cheap preference that marks an expensive order `PAGADO_MERCADOPAGO` and decrements real stock.
   - Additionally, `create-preference` items lacking `productId`/`id` skip the stock-validation loop entirely — a hole in Task 2.3's server-side guard.
   - **Required Action:**
@@ -75,6 +76,15 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - In the webhook transaction, assert `paymentData.transaction_amount === order.totalAmount` (integer CLP) before marking paid; mismatches go to a review state instead of decrementing stock.
     - Extend `firestore.rules` `isValidOrderCreate` where feasible so client totals can't diverge silently.
   - **Verification:** unit tests for tampered `unit_price`, mismatched `transaction_amount`, unknown `productId`, and the happy path.
+  - **Fulfilled & Verified (as built):**
+    - **Shared amount authority (`src/utils/orderTotal.ts` + `src/config/promos.ts`):** one pure integer-CLP module defines the payable total (`computeOrderTotal` / `computeCartTotal` / `toOrderLines` / `normalizeQuantity` / `computeDiscountedUnitPrice`) and the promo table (`MOCK_PROMOS` moved from `src/data/products.ts`, which now re-exports it). Cart display, `submitOrder`, the preference builder and the webhook all derive the SAME amount through it. ⚠️ Pricing-semantics alignment (user decision, this task): catalog prices are **IVA-inclusive** (SERNAC) — the old `(subtotal − promo) × 1.19` double-IVA math was removed from `App.tsx`/`Cart.tsx`; the cart now renders the discounted IVA-inclusive total with an `IVA (19%) incluido en los precios` note.
+    - `api/create-preference.ts`: rebuilds every preference line from the Firestore `products` catalog — client payload contributes only `productId`s + quantities; unknown products, missing `productId` (closing the Task 2.3 bypass), non-integer/invalid catalog prices and insufficient stock all reject with `400`; promo resolved server-side from `PROMO_CODES` (forged codes ⇒ full price); **fail-closed** `503` when Firestore Admin is unavailable with a real token (token-less simulated fallback preserved for local dev).
+    - `api/webhooks/mercadopago.ts`: inside the atomic transaction the webhook recomputes the expected total from the current catalog + the order's stored `promoCode` and requires **both** `transaction_amount` and `order.totalAmount` to equal it (integer CLP) before marking paid. Mismatches (underpayment, tampered total, unresolvable `productId`s) transition to the new `PAGO_EN_REVISION` status with an `order_status_history` record (expected vs received amounts in metadata) and a warehouse alert — **no stock deduction, no customer "paid" email**; the review write stamps `mercadopagoPaymentId` so redeliveries hit the duplicate fast path, and a later correctly-amounted payment approves normally.
+    - `firestore.rules`: `isValidOrderCreate` now requires integer `totalAmount`, caps `items` at 25 lines, and shape-checks the first 10 lines (`productId` string, integer `quantity ≥ 1`, numeric `price ≥ 0`) via `isValidOrderItem` — rules still cannot join the catalog (documented in the rules file); the authoritative price check remains server-side.
+    - `submitOrder` persists `promoCode`/`discountAmount` and recomputes `totalAmount` from the item lines; `App`/`Cart`/`CheckoutModal` pass `appliedPromo` through so display = Firestore order = MP charge = webhook expectation.
+    - Unit tests: new `src/tests/utils/orderTotal.test.ts` (14 tests incl. the raw-CartItem `$0` pitfall regression); `create-preference.test.ts` (21 tests: tampered `unit_price`, forged promo, missing `productId` → 400, Admin-down → 503, stock suite); `mercadopago-webhook.test.ts` (24 tests — underpayment → `PAGO_EN_REVISION` with zero stock deduction, divergent `totalAmount` → review, unresolvable lines → review, promo-approved happy path, review-redelivery idempotency); `api.test.ts` promo persistence; `firestore-rules.test.ts` new assertions.
+    - **Adversarial-review remediation (same task, post-review):** the promo percent is now derived from its **code** on every surface (`resolvePromo` in `src/config/promos.ts`; `cartStorage` re-resolves on load, `App`/`Cart` derive at render) so a hand-edited `pronto_cart_v1` can no longer display a discount the server refuses to charge; `create-preference` reads `promoCode` from the **order document** (never the request body, which drops the dead client param) so the charge and the webhook expectation cannot disagree; paused products (`isActive === false`) are rejected; and `PAGO_EN_REVISION` is now actionable — the new admin action `resolve-payment-review` (`approve` ⇒ `PAGADO_MERCADOPAGO` + stock deduction in one transaction / `cancel` ⇒ `CANCELADO` with no stock movement), a `Pago en Revisión` filter chip, an action block in `OrderDetailPanel`, and `PAGO_EN_REVISION` counted as pending in the dashboard stats. Promo-model gaps that remain are tracked as **9.1**.
+    - All 534 tests across 65 suites passing with 100% reliability. Production build compiled cleanly.
 
 - [ ] **0.10. Fail-Closed Payment Paths in Production** 🔴 _(Audit finding — simulated success in prod)_
   - Two payment paths degrade silently instead of failing closed:
@@ -189,7 +199,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
   - **Verification & As-Built Implementation:**
     - `src/components/Cart.tsx`: Added dynamic stock cues (`"Sin stock disponible"`, `"Máximo disponible (X unid.)"`, `"Excede stock (X unid. disp.)"`), capped `+` stepper button with informative tooltip, rendered sticky stock warning alert banner, and disabled the checkout CTA with label `"Insumos sin Stock Suficiente"`.
     - `src/components/CheckoutModal.tsx`: Enforced pre-flight inventory guards in both `handleNextStep()` (blocking Step 1 -> Step 2 transition) and `handleCompleteOrder()`, alerting the customer with localized Chilean dental depot notifications. Rendered alert in Step 1.
-    - `api/create-preference.ts`: Integrated Firestore Admin inventory validation loop querying `products` collection before generating Mercado Pago preference payload or sandbox simulation, rejecting with HTTP 400 Bad Request if requested quantities exceed stock. ⚠️ _Audit note: items whose payload lacks `productId`/`id` skip this check entirely — closed by **0.9**'s server-side rebuild._
+    - `api/create-preference.ts`: Integrated Firestore Admin inventory validation loop querying `products` collection before generating Mercado Pago preference payload or sandbox simulation, rejecting with HTTP 400 Bad Request if requested quantities exceed stock. ✅ _The legacy bypass (items lacking `productId`/`id` skipping the check) is closed by **0.9**'s server-side rebuild — such lines now reject with 400._
     - Unit tests: Added new test suites in `src/tests/components/Cart.test.tsx`, `src/tests/components/CheckoutModal.test.tsx`, and `src/tests/api/create-preference.test.ts`.
     - All 22 test files and all 242 tests passing with 100% reliability. Production build compiled cleanly.
 
@@ -352,11 +362,11 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 
 - [ ] **4.2. Admin Backoffice Readiness Sweep (Post-8.6 Consolidation Gaps)**
   - **Context & Current State:** Full audit of the admin portal after the Task 8.6 `/api` consolidation found the routing layer healthy — all 11 `/api/admin/<action>` client calls in `src/admin/services/adminApi.ts` map 1:1 to the `api/admin/[action].ts` dispatch table, no stale `api/lib` imports remain, `vercel.json` rewrites exclude `api/`, and all 22 admin test files (57 tests) pass. Follow-up gaps remain (items 5–8 added by the 2026-09 audit):
-    1. **Handler test-coverage gap:** 4 of the 11 admin handlers — `orders`, `products`, `mark-delivered`, `toggle-visibility` — have **no dedicated integration test suites** under `src/tests/api/admin/` (only the router dispatch is covered by `admin-router.test.ts`, which mocks the handlers). Every other handler has its own suite.
+    1. **Handler test-coverage gap:** 4 of the 12 admin handlers — `orders`, `products`, `mark-delivered`, `toggle-visibility` — have **no dedicated integration test suites** under `src/tests/api/admin/` (only the router dispatch is covered by `admin-router.test.ts`, which mocks the handlers). Every other handler has its own suite.
     2. **Cursor pagination advertised but unimplemented:** `fetchAdminOrders({ cursor })` sends a `cursor` query param, but `api/_lib/admin/orders.ts` neither reads it nor applies Firestore `startAfter` — it fetches and slices against a default `limit` of 50. No UI caller passes `cursor` today, so it is harmless now, but as live order volume grows past 50 pending orders, staff would silently stop seeing older ones. Either implement real cursor pagination or remove the dead client param and document the 50-order window.
     3. **Undocumented placeholder cards:** `AdminDashboard.tsx` renders two "Fase 5" analytics placeholder cards (Google Tag Manager / GA4 telemetry) and `AdminSettings.tsx` renders a "Fase 5" dynamic shipping-rates placeholder — none are recorded in `src/admin/AGENTS.md`, and the "Fase 5" labels don't match the roadmap numbering (the underlying work is TODO **3.1** and **8.5**). Document them as deliberate placeholders and align the labels with the actual TODO numbers.
     4. ~~**Doc drift in `src/admin/AGENTS.md`:**~~ ✅ **Resolved by the doc audit** — §1 now says Av. Ortúzar 750, the `#settings` claim was corrected, and the placeholder cards are documented in `src/admin/AGENTS.md` §6.1.
-    5. **`StockAdjustModal` conditional-hooks crash (P1):** `if (!product) return null` precedes four `useState` calls, but `AdminInventory.tsx` mounts the modal unconditionally — the first time a product is selected, React throws *"Rendered more hooks than during the previous render"* and crashes `#inventory`. Mount it conditionally like `ProductEditModal`, or hoist the hooks above the early return.
+    5. **`StockAdjustModal` conditional-hooks crash (P1):** `if (!product) return null` precedes four `useState` calls, but `AdminInventory.tsx` mounts the modal unconditionally — the first time a product is selected, React throws _"Rendered more hooks than during the previous render"_ and crashes `#inventory`. Mount it conditionally like `ProductEditModal`, or hoist the hooks above the early return.
     6. **`var(--primary)` unresolved:** `OrderDetailPanel.tsx` references it twice but `admin.css` never defines it — the `color`/`borderLeft` declarations silently drop. Use `--teal-600` (admin palette).
     7. **`ProductEditModal` prop→state sync `useEffect`:** form fields are populated from `product` inside an effect — the exact pattern `react-hooks/set-state-in-effect` forbids on the storefront. Works today only via parent remount; refactor to lazy initializers in the same pass as item 5.
     8. **Stale copy:** `AdminOrders.tsx` header reads `…depósitos dentales en Melipilla y RM` — there are no RM delivery zones (root `AGENTS.md` §3.4).
@@ -544,6 +554,28 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 
 ---
 
+## Phase 9: Commercial Promotions & Discount Governance
+
+Task 0.9 turned `src/config/promos.ts` into the **amount authority** of the storefront: `/api/create-preference` charges from that table and the webhook recomputes the expected total from it. The model behind it is still the original three-field display fixture, so no real promotion policy can be expressed — and every gap below is now a payment-path gap rather than a UI nicety.
+
+- [ ] **9.1. Complete the Promo Code Data Model (Expiry, Exhaustion, Redemption Audit & Product Eligibility)** 🔴 _(Audit finding, 2026-09 — promo table promoted to payment authority)_
+  - `PromoCode` is `{ code, discountPercent, label }` and `MOCK_PROMOS` carries exactly two entries. `resolvePromoPercent(code)` is the single gate between a client-supplied code and the charged amount, and it can only answer "does this code exist?".
+  - **Gaps (as built):**
+    - **No validity window:** `isActive` / `startsAt` / `expiresAt` are unmodelled — a code is valid forever. `Cart.tsx` already tells customers `Código de descuento inválido o vencido`, so the UI promises an expiry check that does not exist.
+    - **No exhaustion control:** no `usageLimit`, `usageCount` or `perCustomerLimit`. `DENT20` ("Convenio Clínicas Melipilla") can be redeemed unlimited times by anyone, and because the table ships inside the browser bundle every code is publicly enumerable — a secret/clinic-only code cannot be secret today.
+    - **No redemption audit:** `Order.promoCode` / `Order.discountAmount` are persisted at order creation (Task 0.9) but **read by nothing** — no admin surface, no report, no reconciliation. "Who used this code and when" is unanswerable, and `firestore.rules` does not constrain either field.
+    - **No eligibility rules:** the discount is basket-wide — `computeOrderTotal(lines, discountPercent)` takes **one** percent for every line — so a code cannot include or exclude products by `productId` or REF. Note the order line persists only `{ productId, name, quantity, price }`: a REF-keyed rule must resolve REF (`Product.sku`) from the catalog at verification time, so a later SKU rename silently changes eligibility. Eligibility matters most on the products this repo already treats specially (`prescriptionRequired` / ISP-controlled items) and on high-ticket equipment where a blanket discount is a margin/liability decision.
+    - **No commercial floor or shape:** no `minSubtotal`, no `discountType` (`percent` | `fixed` | `free_shipping`), and no restriction of a code to one payment channel (Mercado Pago vs. bank transfer vs. WhatsApp quotation).
+  - **Required Action:**
+    - Extend `PromoCode` with the policy fields above and keep `src/config/promos.ts` as the pure resolver every surface derives through (cart display, `submitOrder`, `create-preference`, webhook). The policy table itself may stay a static module (lean, matches the anti-overshooting guardrail) — **only if** codes are genuinely public; if clinic/convenio codes must stay private, move the table to a Firestore `promo_codes` collection with admin-only writes and public reads denied.
+    - Resolve eligibility **per line**: change `computeOrderTotal` to accept per-line discount resolution and update all four consumers in the same change (they must never drift — that is the invariant Task 0.9 established).
+    - Make exhaustion authoritative **inside the webhook transaction**: increment `promo_codes/{CODE}.usageCount` and write a `promo_redemptions` record (`code`, `orderId`, customer RUT/email, `discountAmount`, `paymentId`, `timestamp`, `actorRole: SYSTEM_WEBHOOK`) in the same atomic block that deducts stock — never as a pre-check, or two concurrent approvals will both consume the last use. Exhausted/expired codes must route to `PAGO_EN_REVISION` (with a review reason distinct from "amount mismatch"), and `CANCELADO` must release a reserved use.
+    - Add the new collections to `scripts/manage-firestore-schema.ts` (today it only knows `products`, `orders`, `order_status_history`, `inventory_audit_logs`) and to `firestore.rules`.
+    - Add an admin read surface for redemptions (who/when/how much) so the audit trail is usable by Melipilla staff.
+  - **Verification:** unit tests for expired / inactive / exhausted codes (⇒ full price, never a discount), per-line eligibility (included, excluded, REF-keyed), concurrent redemptions consuming the final use exactly once, redemption-audit writes, and the existing forged-code assertions from Task 0.9 still green.
+
+---
+
 ## Prioritization Matrix & Effort Estimation
 
 | Module / Task | Priority | Impact | Estimated Effort | Production Blocker |
@@ -578,6 +610,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 | **8.7. Progressive catalog rendering (lazy product cards / "load more")** | **P3** | UX / Performance | 2 - 3 hours | No (Immediate post-launch) |
 | **8.8. Rate limiting on public dual-factor endpoints** | **P2** | Security | 2 - 3 hours | Recommended pre-launch |
 | **8.9 - 8.11. Env completeness, lint scope widening, resilient Firebase init** | **P3** | DevOps | 1 day | No (Immediate post-launch) |
+| **9.1. Complete the promo code data model (expiry, exhaustion, redemption audit, eligibility)** | **P2** | Commercial / Integrity | 1 - 2 days | No (current codes are public and unlimited — becomes a blocker only if a limited or clinic-private campaign is launched) |
 
 ---
 

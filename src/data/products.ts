@@ -1,4 +1,4 @@
-import { Category, ChileanDentalCategory, Product, PromoCode } from '../types'
+import { Category, ChileanDentalCategory, Product } from '../types'
 import { formatCategoryDisplayName } from '../utils/categoryAlias'
 
 // Display labels derive from the canonical alias map so storefront naming never drifts
@@ -373,7 +373,6 @@ export const PRODUCTS: Product[] = [
   }
 ]
 
-export const MOCK_PROMOS: Record<string, PromoCode> = {
-  PRONTO10: { discountPercent: 10, code: 'PRONTO10', label: '10% Descuento Primer Pedido Odontológico' },
-  DENT20: { discountPercent: 20, code: 'DENT20', label: '20% Convenio Clínicas Melipilla' }
-}
+// Promo codes live in src/config/promos.ts (single source of truth shared with the
+// serverless payment layer); re-exported here so existing catalog imports keep working.
+export { MOCK_PROMOS } from '../config/promos'

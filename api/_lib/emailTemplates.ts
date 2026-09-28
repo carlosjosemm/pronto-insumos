@@ -276,6 +276,33 @@ export function buildTransferApprovedEmail(data: OrderEmailData): EmailTemplate 
   return { subject, html, text }
 }
 
+/**
+ * Payment-review resolution — sent by /api/admin/resolve-payment-review when an
+ * administrator confirms (after manual reconciliation) a payment the webhook had
+ * flagged as `PAGO_EN_REVISION`.
+ */
+export function buildPaymentReviewResolvedEmail(data: OrderEmailData): EmailTemplate {
+  const subject = `Pago verificado — Pedido ${data.orderId}`
+
+  const html = layout(`
+    <h2 style="margin:0 0 8px;font-size:20px;color:#102748;">Pago verificado</h2>
+    <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">
+      Revisamos el pago de tu pedido <strong>${escapeHtml(data.orderId)}</strong> y quedó confirmado.
+      Nuestra bodega en Melipilla ya está preparando tus insumos.
+    </p>
+    ${itemsTable(data)}
+    ${totalsBlock(data)}
+    ${customerBlock(data)}
+    <p style="margin:20px 0 0;font-size:13px;color:#374151;">
+      Sigue el despacho de tu pedido aquí:<br>
+      <a href="${trackingUrl(data.orderId)}" style="color:#102748;font-weight:bold;">${trackingUrl(data.orderId)}</a>
+    </p>`)
+
+  const text = `Pago verificado — Pedido ${data.orderId}\n\nRevisamos el pago de tu pedido y quedó confirmado. Estamos preparando tus insumos en Melipilla.\n\n${itemsText(data)}\n\nTotal (IVA incluido): ${formatCLP(data.billing?.taxBreakdown?.total ?? data.totalAmount)}\n\nSeguimiento: ${trackingUrl(data.orderId)}`
+
+  return { subject, html, text }
+}
+
 // ---------------------------------------------------------------------------
 // Internal warehouse alert
 // ---------------------------------------------------------------------------
@@ -283,7 +310,9 @@ export function buildTransferApprovedEmail(data: OrderEmailData): EmailTemplate 
 const WAREHOUSE_EVENT_LABELS: Record<string, string> = {
   PAGADO_MERCADOPAGO: 'Pago Mercado Pago confirmado',
   TRANSFERENCIA_COMPROBANTE_SUBIDO: 'Comprobante de transferencia recibido',
-  TRANSFERENCIA_APROBADA: 'Transferencia aprobada por administración'
+  TRANSFERENCIA_APROBADA: 'Transferencia aprobada por administración',
+  PAGO_EN_REVISION: 'Pago Mercado Pago en revisión — monto inconsistente',
+  CANCELADO: 'Pedido cancelado por administración'
 }
 
 /** Internal alert to Melipilla dispatch staff (WAREHOUSE_NOTIFICATION_EMAIL). */
@@ -296,7 +325,11 @@ export function buildWarehouseAlertEmail(data: OrderEmailData, event: string): E
       ? 'Verificar el comprobante contra la cartola de Banco de Chile y aprobar en el portal /admin.'
       : event === 'PAGADO_MERCADOPAGO'
         ? 'Pago acreditado: preparar y despachar el pedido.'
-        : 'Pedido confirmado: preparar y despachar.'
+        : event === 'PAGO_EN_REVISION'
+          ? 'El monto pagado no coincide con el total verificado del pedido. NO despachar: conciliar el pago en el portal /admin.'
+          : event === 'CANCELADO'
+            ? 'Pedido cancelado al conciliar un pago inconsistente. NO despachar: gestionar el reembolso manualmente si corresponde.'
+            : 'Pedido confirmado: preparar y despachar.'
 
   const html = layout(`
     <h2 style="margin:0 0 8px;font-size:20px;color:#102748;">${escapeHtml(eventLabel)}</h2>

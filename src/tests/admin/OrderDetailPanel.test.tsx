@@ -56,4 +56,43 @@ describe('OrderDetailPanel Component', () => {
 
     approveSpy.mockRestore()
   })
+
+  it('renders the reconciliation panel for a PAGO_EN_REVISION order and approves it with a note', async () => {
+    const resolveSpy = vi.spyOn(adminApi, 'resolvePaymentReview').mockResolvedValue({ success: true })
+    const handleUpdated = vi.fn()
+    const reviewOrder: Order = { ...mockOrder, status: 'PAGO_EN_REVISION', paymentMethod: 'mercadopago' }
+
+    render(<OrderDetailPanel order={reviewOrder} onClose={vi.fn()} onOrderUpdated={handleUpdated} />)
+
+    expect(screen.getByText(/No despachar hasta conciliar/i)).toBeInTheDocument()
+    // The transfer-approval path must not be offered for a flagged gateway payment.
+    expect(screen.queryByText(/Aprobar Transferencia y Rebajar Stock/i)).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText(/pago confirmado en cartola/i), {
+      target: { value: 'Verificado en cartola Mercado Pago' }
+    })
+    fireEvent.click(screen.getByText(/Confirmar Pago y Rebajar Stock/i))
+
+    await waitFor(() => {
+      expect(resolveSpy).toHaveBeenCalledWith('PRONTO-998811', 'approve', 'Verificado en cartola Mercado Pago')
+      expect(handleUpdated).toHaveBeenCalledTimes(1)
+    })
+
+    resolveSpy.mockRestore()
+  })
+
+  it('cancels a flagged order without offering the approve path', async () => {
+    const resolveSpy = vi.spyOn(adminApi, 'resolvePaymentReview').mockResolvedValue({ success: true })
+    const reviewOrder: Order = { ...mockOrder, status: 'PAGO_EN_REVISION', paymentMethod: 'mercadopago' }
+
+    render(<OrderDetailPanel order={reviewOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+    fireEvent.click(screen.getByText(/Cancelar Pedido \(sin rebajar stock\)/i))
+
+    await waitFor(() => {
+      expect(resolveSpy).toHaveBeenCalledWith('PRONTO-998811', 'cancel', undefined)
+    })
+
+    resolveSpy.mockRestore()
+  })
 })

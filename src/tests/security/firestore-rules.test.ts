@@ -56,11 +56,20 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     expect(allowedStatuses).not.toContain('PAGADO')
 
     // Validate required fields
-    expect(content).toContain('totalAmount is number && data.totalAmount > 0')
+    expect(content).toContain('data.totalAmount is int && data.totalAmount > 0')
     expect(content).toContain('orderId is string && data.orderId.size() > 0')
     expect(content).toContain('customer is map')
     expect(content).toContain('data.items is list')
     expect(content).toContain('data.items.size() > 0')
+
+    // Task 0.9: per-line shape guards (productId / quantity / price) on the first 10 lines
+    expect(content).toContain('function isValidOrderItem(item)')
+    expect(content).toContain('item.productId is string && item.productId.size() > 0')
+    expect(content).toContain('item.quantity is int && item.quantity >= 1')
+    expect(content).toContain('item.price is number && item.price >= 0')
+    expect(content).toContain('isValidOrderItem(data.items[0])')
+    expect(content).toContain('isValidOrderItem(data.items[9])')
+    expect(content).toContain('data.items.size() <= 25')
 
     // Ensure client cannot inject payment confirmation attributes upon creation
     expect(content).toContain("!('mercadopagoPaymentId' in data)")

@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react'
-import { CartItem, CustomerInfo, PaymentMethod, SubmitOrderResult, BillingInfo, SanitaryVerification } from '../types'
+import {
+  CartItem,
+  CustomerInfo,
+  PaymentMethod,
+  SubmitOrderResult,
+  BillingInfo,
+  SanitaryVerification,
+  PromoCode
+} from '../types'
 import {
   X,
   Check,
@@ -48,6 +56,7 @@ export interface CheckoutModalProps {
   onClose: () => void
   cartItems: CartItem[]
   totalAmount: number
+  appliedPromo?: PromoCode | null
   onOrderSuccess: () => void
   onOpenTracking?: (orderId: string, rut: string) => void
 }
@@ -57,6 +66,7 @@ export default function CheckoutModal({
   onClose,
   cartItems,
   totalAmount,
+  appliedPromo,
   onOrderSuccess,
   onOpenTracking
 }: CheckoutModalProps) {
@@ -318,7 +328,8 @@ export default function CheckoutModal({
       customer: sanitizedCustomer,
       paymentMethod,
       billing,
-      sanitaryVerification
+      sanitaryVerification,
+      promoCode: appliedPromo?.code
     })
 
     if (!result.success) {

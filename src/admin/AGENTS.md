@@ -122,6 +122,17 @@ When staff click **"Aprobar Transferencia y Rebajar Stock"**:
 5. Updates order status to `'TRANSFERENCIA_APROBADA'`, recording `approvedBy` (admin email) and `approvedAt` (ISO timestamp).
 6. Ensures Melipilla warehouse physical inventory matches database counts in real-time.
 
+### 4.3b Payment Review Reconciliation (`PAGO_EN_REVISION`)
+
+The Mercado Pago webhook never marks an order paid when the paid amount disagrees with the catalog-recomputed total — it parks the order in `PAGO_EN_REVISION` (no stock deducted, no customer "paid" email, warehouse alerted) and a human must reconcile it. The backoffice closes that loop:
+
+- **Filter chip:** `OrderTable.tsx` surfaces a `Pago en Revisión` chip second in `STATUS_FILTER_CHIPS` — the flagged queue is the one that blocks fulfillment, so it must not be buried in "Todos".
+- **Action block:** `OrderDetailPanel.tsx` renders a `--danger-bg` panel (only for `PAGO_EN_REVISION`) with an optional **Nota de conciliación** plus two resolutions calling `/api/admin/resolve-payment-review`:
+  - **Confirmar Pago y Rebajar Stock** (`resolution: 'approve'`) — verifies the money in the Mercado Pago/bank ledger, then sets `PAGADO_MERCADOPAGO` and decrements stock in one transaction (same trust level as transfer approval; recorded as `actorRole: 'ADMIN'` in `order_status_history` and `reasonCode: 'conciliacion_pago'` in `inventory_audit_logs`). Sends the customer "pago verificado" email + warehouse alert.
+  - **Cancelar Pedido** (`resolution: 'cancel'`) — sets `CANCELADO` with **no** stock movement. Refunds are not modelled (`src/types/AGENTS.md` §2.1), so the refund and customer contact stay manual; the warehouse gets the alert only.
+- **Guardrails:** only an order currently in `PAGO_EN_REVISION` can be resolved (`409` otherwise, so the action cannot race the webhook or a second administrator), re-resolving the target status returns `duplicate: true` without a second stock deduction, and a paid order can never be cancelled through this action.
+- `dashboard-stats` counts `PAGO_EN_REVISION` inside **pending** work, so unresolved money never disappears from the KPIs.
+
 ### 4.4 Decoupled Catalog Visibility (`isActive`) vs Physical Stock (`stockCount`)
 In `InventoryTable.tsx` and `AdminInventory.tsx`, warehouse stock and catalog visibility are clearly decoupled:
 - **`stockCount` (Physical Warehouse Count):** The real unit count in the Melipilla storage facility. If `stockCount === 0`, the product is flagged as **Agotado**.

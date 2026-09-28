@@ -19,7 +19,8 @@ import {
 } from './services/cartStorage'
 import { CartItem, Product, ProductCategory, PromoCode, Toast } from './types'
 import { CheckCircle2 } from 'lucide-react'
-import { calculateIVA } from './utils/currency'
+import { computeCartTotal } from './utils/orderTotal'
+import { resolvePromoPercent } from './config/promos'
 
 type PaymentReturnStatus = 'approved' | 'failure' | 'pending' | null
 
@@ -265,11 +266,12 @@ export default function App() {
   // Units per product, so cards can swap their CTA for a quantity stepper
   const cartQuantityById = useMemo(() => Object.fromEntries(cart.map((i) => [i.product.id, i.quantity])), [cart])
 
-  const subtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
-  const discountAmount = appliedPromo ? Math.round((subtotal * appliedPromo.discountPercent) / 100) : 0
-  const taxable = subtotal - discountAmount
-  const tax = calculateIVA(taxable)
-  const cartTotal = Math.max(0, taxable + tax)
+  // Payable total: IVA-inclusive catalog prices minus the verified promo discount.
+  // Same helper the webhook uses to assert the Mercado Pago charge (Task 0.9).
+  // The percent is re-resolved from the code on every render — never read off the
+  // `appliedPromo` object, so a tampered/stale persisted entry cannot diverge from
+  // the amount the serverless payment layer charges.
+  const cartTotal = computeCartTotal(cart, resolvePromoPercent(appliedPromo?.code))
 
   const handleOpenCheckout = () => {
     setIsCartOpen(false)
@@ -360,6 +362,7 @@ export default function App() {
         onClose={() => setIsCheckoutOpen(false)}
         cartItems={cart}
         totalAmount={cartTotal}
+        appliedPromo={appliedPromo}
         onOrderSuccess={handleOrderSuccess}
         onOpenTracking={(orderId, rut) => handleOpenTracking(orderId, rut)}
       />
