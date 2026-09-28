@@ -39,6 +39,9 @@ Agents modifying this codebase must adhere to these absolute guardrails:
 5. **NO Over-Engineered CI/CD or Containers:**
    * Do **NOT** introduce Dockerfiles, Kubernetes manifests, complex multi-stage runners, or bloated pipeline scripts.
    * CI/CD for this project is deliberately lean: deployments are executed directly and securely using the **Vercel CLI**.
+6. **NO Git Worktrees or Sibling Working Copies:**
+   * All task work happens in the **primary working tree**, on a dedicated branch (`git checkout -b …`).
+   * ❌ Do **NOT** run `git worktree add`, create sibling task directories (`../PRONTO-<task>`), or open a second workspace per task — the worktree-based protocol is retired (owner decision, 2026-09-28; see the `development-workflow` skill).
 
 ---
 

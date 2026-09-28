@@ -141,5 +141,5 @@ When the author returns with fixes:
 ## 8. Integration with the task workflow
 
 - `production-readiness-workflow` **step 7** (adversarial review) and **step 8** (address claims): the parent agent evaluates this report, applies the necessary fixes, and re-runs the gates.
-- `parallel-worktree-workflow`: the same protocol applies to worktree tasks before the commit/PR.
+- [`development-workflow`](../../../.agents/skills/parallel-worktree-workflow/SKILL.md): the same protocol applies to task branches before the commit/PR — in the primary working tree only, never a Git worktree.
 - The parent records the disposition (fixed / accepted / deferred) in `implementation_plan.md` and `walkthrough.md`; deferred items must land in the roadmap or an `AGENTS.md` known-gaps list — never in silence.
