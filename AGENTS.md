@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (506 tests across 63 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (534 tests across 65 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -29,7 +29,7 @@ Agents modifying this codebase must adhere to these absolute guardrails:
 2. **NO Monolithic or Heavy Backend Frameworks:**
    * Do **NOT** add Express, NestJS, Koa, or Fastify.
    * All backend logic is handled cleanly by single-purpose **Vercel Serverless Functions** in the `api/` directory.
-   * **Documented exception — `api/admin/[action].ts`:** the Vercel Hobby plan refuses any deployment adding more than **12** Serverless Functions, so the 11 administrative endpoints are collapsed behind one routed entry point that dispatches on `req.query.action` via a plain lookup table. Public URLs (`/api/admin/orders`, …) are unchanged. This is **not** a framework — no Express/NestJS/Koa/Fastify, no middleware pipeline, just a dispatch table. Shared non-route code lives under `api/_lib/`; paths with a `_`-prefixed segment are excluded from Vercel's function count. Full rationale and layout: [api/AGENTS.md](./api/AGENTS.md) §1.2.
+   * **Documented exception — `api/admin/[action].ts`:** the Vercel Hobby plan refuses any deployment adding more than **12** Serverless Functions, so the 12 administrative endpoints are collapsed behind one routed entry point that dispatches on `req.query.action` via a plain lookup table. Public URLs (`/api/admin/orders`, …) are unchanged. This is **not** a framework — no Express/NestJS/Koa/Fastify, no middleware pipeline, just a dispatch table. Shared non-route code lives under `api/_lib/`; paths with a `_`-prefixed segment are excluded from Vercel's function count. Full rationale and layout: [api/AGENTS.md](./api/AGENTS.md) §1.2.
 3. **NO Additional CSS Frameworks:**
    * Do **NOT** install Tailwind CSS, Bootstrap, Material UI, Chakra, or Shadcn.
    * The project has a complete, handcrafted Vanilla CSS design system with CSS custom properties in [src/index.css](./src/index.css). Keep styles centralized, fast, and dependency-free.
@@ -80,7 +80,8 @@ Agents must strictly respect the payment boundaries defined in [PRODUCTION_READI
 * ✅ Serverless webhooks must verify HMAC-SHA256 signatures (`x-signature`) and enforce idempotency to prevent duplicate inventory decrement upon retries.
 * ✅ **Zero Card Data Handling (PCI-DSS):** Raw credit card fields must never be stored in component state or sent to our servers. Checkout Pro redirect/modal must handle payment collection.
 * ✅ **Strict Secret Separation:** Browser code uses `VITE_` variables only. Server credentials (`MERCADOPAGO_ACCESS_TOKEN`, `FIREBASE_PRIVATE_KEY`, etc.) belong strictly in `process.env` inside the `api/` directory.
-* ✅ **Server-side price & total verification (Task 0.9):** `/api/create-preference` rebuilds every preference line from the Firestore catalog (client sends only product IDs + quantities; promo validated against `src/config/promos.ts`) and fails closed (`503`) when Firestore Admin is unavailable with a real token. The webhook asserts `paymentData.transaction_amount` **and** `order.totalAmount` against a catalog-recomputed total (`src/utils/orderTotal.ts`) before marking `PAGADO_MERCADOPAGO`; mismatches go to `PAGO_EN_REVISION` with **no** stock deduction and no customer "paid" email.
+* ✅ **Server-side price & total verification (Task 0.9):** `/api/create-preference` rebuilds every preference line from the Firestore catalog (client sends only product IDs + quantities) and fails closed (`503`) when Firestore Admin is unavailable with a real token. The applied promo is read from the **order document** — never from the request body — and resolved against `src/config/promos.ts`, so the charge and the webhook's expectation can never disagree on which code applied; paused products (`isActive === false`) and unregistered orders are rejected with `400`. The webhook asserts `paymentData.transaction_amount` **and** `order.totalAmount` against a catalog-recomputed total (`src/utils/orderTotal.ts`) before marking `PAGADO_MERCADOPAGO`; mismatches go to `PAGO_EN_REVISION` with **no** stock deduction and no customer "paid" email.
+* ✅ **Promo discounts are derived from the code, never from stored state:** every surface (cart display, `submitOrder`, preference builder, webhook) resolves the percent through `resolvePromo`/`resolvePromoPercent` in `src/config/promos.ts`. A `PromoCode` object hydrated from `localStorage` is a display artifact — `cartStorage` re-resolves it on load and `App`/`Cart` re-derive at render, so a hand-edited cart can never render a discount the payment layer would refuse to charge. The promo **policy** model (expiry, usage limits, redemption audit, product eligibility) is deliberately thin today and tracked as **Task 9.1** in [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 * ✅ **Firestore Security Rules Enforced (`firestore.rules`):** `products` is public read-only and admin-write only (`request.auth.token.admin == true`). `orders` can only be created with pending statuses without pre-injected payment attributes; client-side reads, updates, and deletes on `orders` are strictly denied (`allow read, update, delete: if false;`). `isValidOrderCreate` also enforces integer `totalAmount` and per-line shape guards (productId/quantity/price, first 10 lines, ≤25 lines). Deploy with `pnpm run deploy:rules`.
 
 ---
@@ -111,7 +112,7 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 63 suites / 506 tests)
+# Run all automated tests (Vitest, 65 suites / 534 tests)
 pnpm test
 
 # Run tests with live file watcher (or a V8 coverage report)
@@ -172,7 +173,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 506 tests pass
+pnpm test          # Ensure all 534 tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Sync environment variables to Vercel (DRY RUN by default — see §7.1)

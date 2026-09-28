@@ -73,8 +73,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         salesToday += total
       }
 
-      // Check pending
-      if (status.startsWith('PENDIENTE_') || status === 'TRANSFERENCIA_COMPROBANTE_SUBIDO') {
+      // Check pending — PAGO_EN_REVISION is unresolved money (flagged by the webhook
+      // for manual reconciliation), so it must never drop out of the pending count.
+      if (
+        status.startsWith('PENDIENTE_') ||
+        status === 'TRANSFERENCIA_COMPROBANTE_SUBIDO' ||
+        status === 'PAGO_EN_REVISION'
+      ) {
         pendingOrders++
       }
     })

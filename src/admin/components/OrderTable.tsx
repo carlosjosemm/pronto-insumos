@@ -13,6 +13,9 @@ interface OrderTableProps {
 
 const STATUS_FILTER_CHIPS = [
   { id: 'all', label: 'Todos' },
+  // Surfaced first: a flagged amount mismatch blocks fulfillment until a human
+  // reconciles it (see `resolve-payment-review`).
+  { id: 'PAGO_EN_REVISION', label: 'Pago en Revisión' },
   { id: 'PENDIENTE_TRANSFERENCIA', label: 'Pend. Transferencia' },
   { id: 'TRANSFERENCIA_COMPROBANTE_SUBIDO', label: 'Comprobante Subido' },
   { id: 'PAGADO_MERCADOPAGO', label: 'Pagado MP' },

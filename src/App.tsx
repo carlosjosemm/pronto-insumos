@@ -20,6 +20,7 @@ import {
 import { CartItem, Product, ProductCategory, PromoCode, Toast } from './types'
 import { CheckCircle2 } from 'lucide-react'
 import { computeCartTotal } from './utils/orderTotal'
+import { resolvePromoPercent } from './config/promos'
 
 type PaymentReturnStatus = 'approved' | 'failure' | 'pending' | null
 
@@ -267,7 +268,10 @@ export default function App() {
 
   // Payable total: IVA-inclusive catalog prices minus the verified promo discount.
   // Same helper the webhook uses to assert the Mercado Pago charge (Task 0.9).
-  const cartTotal = computeCartTotal(cart, appliedPromo?.discountPercent ?? 0)
+  // The percent is re-resolved from the code on every render — never read off the
+  // `appliedPromo` object, so a tampered/stale persisted entry cannot diverge from
+  // the amount the serverless payment layer charges.
+  const cartTotal = computeCartTotal(cart, resolvePromoPercent(appliedPromo?.code))
 
   const handleOpenCheckout = () => {
     setIsCartOpen(false)

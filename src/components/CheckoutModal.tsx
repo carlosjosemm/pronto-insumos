@@ -351,8 +351,7 @@ export default function CheckoutModal({
         orderId: canonicalOrderId,
         items: cartItems,
         total: totalAmount,
-        customer: sanitizedCustomer,
-        promoCode: appliedPromo?.code
+        customer: sanitizedCustomer
       })
     }
 

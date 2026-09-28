@@ -14,7 +14,7 @@ As-built technical reference for the serverless backend layer of PRONTO Insumos 
 
 | Endpoint | Method | Security / Auth | Business Function |
 | :--- | :--- | :--- | :--- |
-| [`/api/create-preference`](./create-preference.ts) | `POST` | Public / Server Secrets | Generates a Mercado Pago Checkout Pro preference. **Rebuilds every line from the Firestore `products` catalog** (client payload contributes only `productId`s + quantities; promo resolved from `src/config/promos.ts`) and pre-checks quantities against live `stockCount`/`inStock`, rejecting with `400` for unknown products, missing `productId`, invalid catalog prices or insufficient stock. **Fail-closed:** returns `503` when Firestore Admin is unavailable and a real token exists (Task 0.9). |
+| [`/api/create-preference`](./create-preference.ts) | `POST` | Public / Server Secrets | Generates a Mercado Pago Checkout Pro preference. **Rebuilds every line from the Firestore `products` catalog** (client payload contributes only `productId`s + quantities) and pre-checks quantities against live `stockCount`/`inStock`/`isActive`, rejecting with `400` for unknown products, missing `productId`, invalid catalog prices, paused products or insufficient stock. The applied promo is read from the **order document** (never the request body) and resolved from `src/config/promos.ts`; an order that is not registered in Firestore is refused with `400`. **Fail-closed:** returns `503` when Firestore Admin is unavailable and a real token exists (Task 0.9). |
 | [`/api/webhooks/mercadopago`](./webhooks/mercadopago.ts) | `POST` (`GET` ping → 200) | HMAC-SHA256 (`x-signature`) | Single authority for payment reconciliation and stock deduction. Verifies the signature, double-checks the payment via `GET /v1/payments/{id}`, then decrements stock inside a Firestore transaction. |
 | [`/api/track-order`](./track-order.ts) | `POST` | Dual factor (Order ID + RUT) | Public order lookup bypassing the client-side Firestore read lock. Compares the order's stored RUT against the normalized request RUT; mismatch → `401`. Returns a sanitized 5-stage fulfillment payload. |
 | [`/api/upload-voucher`](./upload-voucher.ts) | `POST` | Dual factor (Order ID + RUT) | Bank-transfer voucher intake. Stores the Base64 `dataUrl` **inside the order document** and transitions status to `TRANSFERENCIA_COMPROBANTE_SUBIDO`. ⚠️ File size / MIME are validated **client-side only** (see §3.2). |
@@ -27,13 +27,13 @@ The Vercel **Hobby plan refuses any deployment that adds more than 12 Serverless
 | Path | Role | Counted as a function? |
 | :--- | :--- | :--- |
 | `api/create-preference.ts`, `api/order-confirmation.ts`, `api/track-order.ts`, `api/upload-voucher.ts`, `api/webhooks/mercadopago.ts` | Public endpoints | ✅ Yes |
-| `api/admin/[action].ts` | **Single routed entry point** for all 11 administrative actions | ✅ Yes |
-| `api/_lib/**` | Shared non-route code (`adminAuth`, `firebaseAdmin`, `firestoreEnv`, `email`, `emailTemplates`, `mercadopagoSignature`) **and** the 11 admin handler modules under `api/_lib/admin/` | ❌ No — `_`-prefixed segment |
+| `api/admin/[action].ts` | **Single routed entry point** for all 12 administrative actions | ✅ Yes |
+| `api/_lib/**` | Shared non-route code (`adminAuth`, `firebaseAdmin`, `firestoreEnv`, `email`, `emailTemplates`, `mercadopagoSignature`) **and** the 12 admin handler modules under `api/_lib/admin/` | ❌ No — `_`-prefixed segment |
 
 **Current function count: 6** (Hobby cap 12 — 6 slots of headroom).
 
 - **Routing:** `/api/admin/<action>` → `req.query.action === '<action>'`. A plain `Record<string, handler>` lookup table in [`api/admin/[action].ts`](./admin/[action].ts) dispatches to the matching module under `api/_lib/admin/`. Unknown, missing, empty, or non-string actions return `404 { success: false, error: 'Endpoint de administración no encontrado' }` and log a `[Admin Router]` warning. Inherited prototype keys (`constructor`, `__proto__`, …) are rejected by an own-property check.
-- **Public URLs are unchanged** — `src/admin/services/adminApi.ts` and `vercel.json` need no edits; the 11 client calls map 1:1 to the dispatch table.
+- **Public URLs are unchanged** — `src/admin/services/adminApi.ts` and `vercel.json` need no edits; the 12 client calls map 1:1 to the dispatch table.
 - **No framework.** The dispatcher holds no routing library, no middleware pipeline, and no CORS/auth of its own: each delegated handler keeps its own CORS headers, `OPTIONS` preflight, method gate, `verifyAdminToken` call, and error handling.
 - **Rule of thumb:** anything under `api/` that is *not* a public route belongs in `api/_lib/`. Every new `api/*.ts` route consumes one of the 12 Hobby slots.
 
@@ -56,7 +56,7 @@ Vercel does **not** bundle `api/` functions. It transpiles each file in place an
 ### 2.1 The Two-Phase Payment Boundary
 
 1. **Client Isolation:** The browser never sees card numbers or secret tokens. Checkout invokes `/api/create-preference` with the canonical `orderId` (`PRONTO-NNNNNN`, six digits), customer tax details, and cart items.
-2. **Stock Pre-Check:** `/api/create-preference` reads the live `products` collection in Firestore Admin. If an item is depleted (`inStock === false` or `stockCount < quantity`), it aborts with HTTP `400`. ⚠️ Items whose payload carries no `productId`/`id` **skip this check entirely**.
+2. **Order + Stock Pre-Check:** `/api/create-preference` first loads the **order document** (doc-id lookup, then a `where('orderId','==')` fallback) — the order is the authority for the applied promo code, and an unregistered order is refused with `400`. It then reads the live `products` collection in Firestore Admin. If an item is depleted (`inStock === false`), paused (`isActive === false`) or short on stock (`stockCount < quantity`), it aborts with HTTP `400`. Lines without a resolvable `productId` are rejected rather than skipped (the legacy bypass was closed by Task 0.9).
 3. **Checkout Pro Redirection:** Mercado Pago returns an `init_point` URL and the customer is redirected to the hosted checkout (Webpay Plus, Redcompra, Visa, Mastercard).
 
 ### 2.2 Webhook & Cryptographic Verification (`/api/webhooks/mercadopago`)
@@ -147,6 +147,8 @@ All templates return `{ subject, html, text }`, escape every user-supplied value
 | Payment approved (Mercado Pago) | `/api/webhooks/mercadopago` | `buildPaymentConfirmedEmail` | `buildWarehouseAlertEmail('PAGADO_MERCADOPAGO')` |
 | Voucher uploaded | `/api/upload-voucher` | — | `buildWarehouseAlertEmail('TRANSFERENCIA_COMPROBANTE_SUBIDO')` |
 | Transfer approved by admin | `/api/admin/approve-transfer` | `buildTransferApprovedEmail` | `buildWarehouseAlertEmail('TRANSFERENCIA_APROBADA')` |
+| Payment review flagged (amount mismatch) | `/api/webhooks/mercadopago` | — (never tells the customer the payment succeeded) | `buildWarehouseAlertEmail('PAGO_EN_REVISION')` |
+| Payment review resolved | `/api/admin/resolve-payment-review` | `buildPaymentReviewResolvedEmail` (**approve** only) | `buildWarehouseAlertEmail('PAGADO_MERCADOPAGO')` / `buildWarehouseAlertEmail('CANCELADO')` |
 
 ⚠️ The shared `layout()` header still reads `Depósito dental — Melipilla & Región Metropolitana` — stale copy (coverage is Melipilla y San Antonio only).
 
@@ -172,7 +174,7 @@ All templates return `{ subject, html, text }`, escape every user-supplied value
    - ❌ **NEVER** import client Firebase instances from `src/services/firebase.ts`.
    - ✅ Use `getAdminFirestore()` from [`./_lib/firebaseAdmin.ts`](./_lib/firebaseAdmin.ts).
 3. **CORS — as built, not uniform:**
-   - `order-confirmation` and **all 11 admin handlers** set `Access-Control-Allow-Origin: *` plus method/header allow-lists.
+   - `order-confirmation` and **all 12 admin handlers** set `Access-Control-Allow-Origin: *` plus method/header allow-lists.
    - `create-preference`, `track-order`, `upload-voucher` and `webhooks/mercadopago` set **no CORS headers** — they work because the storefront is served from the same Vercel origin (and the webhook is server-to-server). If a future caller is cross-origin, those endpoints will need the headers added explicitly.
    - Every endpoint short-circuits `OPTIONS` with `200`.
 
@@ -180,7 +182,7 @@ All templates return `{ subject, html, text }`, escape every user-supplied value
 
 ## 🛡️ 6. Administrative Endpoints (`/api/admin/`)
 
-The backoffice portal calls 11 actions under `/api/admin/<action>`, dispatched by [`api/admin/[action].ts`](./admin/[action].ts) to the handler modules under [`api/_lib/admin/`](./_lib/admin). Behaviour is identical to a dedicated file per endpoint.
+The backoffice portal calls 12 actions under `/api/admin/<action>`, dispatched by [`api/admin/[action].ts`](./admin/[action].ts) to the handler modules under [`api/_lib/admin/`](./_lib/admin). Behaviour is identical to a dedicated file per endpoint.
 
 ### 6.1 Admin Authentication ([`./_lib/adminAuth.ts`](./_lib/adminAuth.ts))
 
@@ -193,11 +195,12 @@ The backoffice portal calls 11 actions under `/api/admin/<action>`, dispatched b
 
 | Action | Method | Role & Transaction Behaviour |
 | :--- | :--- | :--- |
-| `dashboard-stats` ([`_lib/admin/dashboard-stats.ts`](./_lib/admin/dashboard-stats.ts)) | `GET` | Full-collection scan aggregating daily sales CLP localized to `America/Santiago`, pending transfers (`PENDIENTE_*` + `TRANSFERENCIA_COMPROBANTE_SUBIDO`), low-stock published items (`stockCount <= 5`), and monthly order count. |
+| `dashboard-stats` ([`_lib/admin/dashboard-stats.ts`](./_lib/admin/dashboard-stats.ts)) | `GET` | Full-collection scan aggregating daily sales CLP localized to `America/Santiago`, pending work (`PENDIENTE_*` + `TRANSFERENCIA_COMPROBANTE_SUBIDO` + `PAGO_EN_REVISION` — unresolved money must never leave the pending count), low-stock published items (`stockCount <= 5`), and monthly order count. |
 | `orders` ([`_lib/admin/orders.ts`](./_lib/admin/orders.ts)) | `GET` | `?orderId=` does the dual doc-id/`orderId`-field lookup (§8.1). Otherwise fetches the **entire** collection, sorts/filters in memory (`status`, `search` on id/name/razón social/RUT), and slices to `limit` (default 50). ⚠️ The client sends a `cursor` param that is **read and ignored** — no real pagination. |
 | `order-history` ([`_lib/admin/order-history.ts`](./_lib/admin/order-history.ts)) | `GET` | Queries `order_status_history` where `orderId == <param>` (history docs are keyed by the canonical code), sorts by `timestamp` ascending. |
 | `products` ([`_lib/admin/products.ts`](./_lib/admin/products.ts)) | `GET` | Full catalog with `stockCount`, `inStock`, `isActive`, pricing; optional `?category=` filter. |
 | `approve-transfer` ([`_lib/admin/approve-transfer.ts`](./_lib/admin/approve-transfer.ts)) | `POST` | Atomic `runTransaction`: re-reads order, consolidates items, decrements `stockCount`, sets `TRANSFERENCIA_APROBADA` with `approvedBy`/`approvedAt`, writes audit + status history. Idempotent for `TRANSFERENCIA_APROBADA`/`PAGADO_TRANSFERENCIA`/`PAGADO_MERCADOPAGO`. Fires customer + warehouse emails on non-duplicate. |
+| `resolve-payment-review` ([`_lib/admin/resolve-payment-review.ts`](./_lib/admin/resolve-payment-review.ts)) | `POST` | Closes a `PAGO_EN_REVISION` order (the webhook's amount-mismatch state). Body `{ orderId, resolution: 'approve'\|'cancel', notes? }`. `approve` settles it as `PAGADO_MERCADOPAGO` and **deducts stock** in the same transaction (mirrors `approve-transfer`); `cancel` sets `CANCELADO` with **no** stock movement (refunds stay off-platform). Any other starting status → `409`; re-resolving the target status → `duplicate: true` with no second deduction. Fires the customer "pago verificado" + warehouse emails on approve, warehouse-only on cancel. |
 | `dispatch-order` ([`_lib/admin/dispatch-order.ts`](./_lib/admin/dispatch-order.ts)) | `POST` | Sets `DESPACHADO` with free-text `carrier`, `trackingNumber`, `dispatch` metadata block; batch audit event. |
 | `mark-delivered` ([`_lib/admin/mark-delivered.ts`](./_lib/admin/mark-delivered.ts)) | `POST` | Sets `ENTREGADO` with `deliveredAt`; batch audit event. |
 | `update-stock` ([`_lib/admin/update-stock.ts`](./_lib/admin/update-stock.ts)) | `POST` | Absolute stock set (`newStock`, `Math.round`), recomputes `inStock = newStock > 0 && isActive !== false`, records `lastStockAdjustment` + audit log (`reason` free-form, defaults `correccion`). |
@@ -211,7 +214,7 @@ Append-only audit pattern across two root collections (both `allow read: if isAd
 
 1. **`order_status_history`** — `orderId`, `previousStatus`, `newStatus`, `changedBy`, `changedByEmail`, `actorRole` (`ADMIN` | `CUSTOMER` | `SYSTEM_WEBHOOK`), `timestamp`, `reason`, `metadata`. Written inside the same transaction/batch as every status mutation.
 2. **`inventory_audit_logs`** — `productId`, `productSku`, `productName`, `changeType` (`STOCK_ADJUSTMENT`, `ORDER_FULFILLMENT_DEDUCTION`, `METADATA_UPDATE`, `VISIBILITY_TOGGLE`), `previousStock`, `newStock`, `delta`, `reasonCode`, `operatorNotes`, `changedBy`, `changedByEmail`, `actorRole`, `timestamp`, `metadata`.
-   - `reasonCode` values as built: `reposicion`, `merma`, `correccion`, `venta_manual` (admin + transfer approval), `orden_compra` (webhook), `creacion_manual` (create-product), `activacion_catalogo`, `pausa_catalogo` (toggle-visibility).
+   - `reasonCode` values as built: `reposicion`, `merma`, `correccion`, `venta_manual` (admin + transfer approval), `conciliacion_pago` (payment-review approval), `orden_compra` (webhook), `creacion_manual` (create-product), `activacion_catalogo`, `pausa_catalogo` (toggle-visibility).
 
 ---
 
@@ -287,7 +290,7 @@ All product reads precede all writes (Firestore transaction invariant).
 
 ### 8.5 Known Trust-Boundary Gaps (as built — track against the roadmap)
 
-1. **~~Client-supplied pricing~~ RESOLVED (Task 0.9):** `/api/create-preference` now rebuilds every preference line from the Firestore catalog (client sends only product IDs + quantities; promo validated against `src/config/promos.ts`), fails closed with `503` when Admin is unavailable with a real token, and the webhook asserts `transaction_amount` **and** `order.totalAmount` against a catalog-recomputed total (`src/utils/orderTotal.ts`) before marking `PAGADO_MERCADOPAGO` — mismatches land in `PAGO_EN_REVISION` without stock deduction. Residual caveat: a catalog price change between preference creation and webhook delivery flags the (legitimate) order for manual review — fail-closed by design.
+1. **~~Client-supplied pricing~~ RESOLVED (Task 0.9):** `/api/create-preference` now rebuilds every preference line from the Firestore catalog (client sends only product IDs + quantities) and resolves the promo from the **order document** via `src/config/promos.ts`, fails closed with `503` when Admin is unavailable with a real token, and the webhook asserts `transaction_amount` **and** `order.totalAmount` against a catalog-recomputed total (`src/utils/orderTotal.ts`) before marking `PAGADO_MERCADOPAGO` — mismatches land in `PAGO_EN_REVISION` without stock deduction. Residual caveats: a catalog price change between preference creation and webhook delivery flags the (legitimate) order for manual review — fail-closed by design — and the promo **policy** model (expiry, usage limits, redemption audit, product eligibility) is still a thin static table, tracked as **Task 9.1** in the roadmap.
 2. **Unsigned webhook when secret missing:** signature verification is fail-open (`secret_not_configured` → valid). See §2.2.
 3. **Voucher size/MIME unchecked server-side + 1 MiB doc limit + no status guard:** see §3.2.
 4. **No rate limiting** on any endpoint (`track-order`/`upload-voucher`/`order-confirmation` are enumerable-oracle shaped behind RUT match, but nothing throttles attempts).

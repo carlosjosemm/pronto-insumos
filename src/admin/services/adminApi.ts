@@ -131,6 +131,33 @@ export async function approveBankTransfer(orderId: string): Promise<{ success: b
   }
 }
 
+/**
+ * Closes a `PAGO_EN_REVISION` order: `approve` settles it as PAGADO_MERCADOPAGO
+ * (stock deducted server-side, in one transaction) and `cancel` closes it as
+ * CANCELADO with no stock movement.
+ */
+export async function resolvePaymentReview(
+  orderId: string,
+  resolution: 'approve' | 'cancel',
+  notes?: string
+): Promise<{ success: boolean; error?: string }> {
+  const headers = await getAuthHeaders()
+  try {
+    const res = await fetch('/api/admin/resolve-payment-review', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ orderId, resolution, notes })
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || `HTTP ${res.status}` }
+    }
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error de conexión' }
+  }
+}
+
 export async function dispatchAdminOrder(payload: DispatchOrderPayload): Promise<{ success: boolean; error?: string }> {
   const headers = await getAuthHeaders()
   try {

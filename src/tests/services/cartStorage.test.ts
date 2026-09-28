@@ -9,6 +9,7 @@ import {
   CART_MAX_TTL_MS
 } from '../../services/cartStorage'
 import { CartItem, Product, PromoCode } from '../../types'
+import { MOCK_PROMOS } from '../../config/promos'
 
 const MOCK_PRODUCT: Product = {
   id: 'odon-101',
@@ -60,7 +61,37 @@ describe('cartStorage service', () => {
       expect(loaded!.items).toHaveLength(1)
       expect(loaded!.items[0].product.id).toBe('odon-101')
       expect(loaded!.items[0].quantity).toBe(2)
-      expect(loaded!.appliedPromo).toEqual(MOCK_PROMO)
+      // The promo is re-resolved from the shared catalog, so the persisted label
+      // snapshot is replaced by the canonical entry.
+      expect(loaded!.appliedPromo).toEqual(MOCK_PROMOS.DENT20)
+    })
+
+    it('should discard a tampered discountPercent and restore the catalog value', () => {
+      const tampered = {
+        version: CART_STORAGE_VERSION,
+        savedAt: Date.now(),
+        items: [{ product: MOCK_PRODUCT, quantity: 1 }],
+        appliedPromo: { code: 'DENT20', discountPercent: 100, label: 'Free everything' }
+      }
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(tampered))
+
+      const loaded = loadCartFromStorage()
+      expect(loaded!.appliedPromo).toEqual(MOCK_PROMOS.DENT20)
+      expect(loaded!.appliedPromo!.discountPercent).toBe(20)
+    })
+
+    it('should drop an applied promo whose code is not in the catalog', () => {
+      const unknownPromo = {
+        version: CART_STORAGE_VERSION,
+        savedAt: Date.now(),
+        items: [{ product: MOCK_PRODUCT, quantity: 1 }],
+        appliedPromo: { code: 'HACKED100', discountPercent: 100, label: 'Forged' }
+      }
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(unknownPromo))
+
+      const loaded = loadCartFromStorage()
+      expect(loaded).not.toBeNull()
+      expect(loaded!.appliedPromo).toBeNull()
     })
 
     it('should return null when localStorage is empty', () => {

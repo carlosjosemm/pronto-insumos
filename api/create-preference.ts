@@ -55,11 +55,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
+    // ORDER LOOKUP — the order document is the authority for which promo code was
+    // applied. The request body is never trusted for it: reading the code from the
+    // order guarantees the amount charged here matches the amount the webhook
+    // recomputes from the same document, so a stale/tampered client cannot create a
+    // preference whose total diverges from the order it belongs to.
+    const ordersCol = getCollectionName('orders')
+    let orderData: Record<string, unknown> | null = null
+
+    const directOrderSnap = await adminDb.collection(ordersCol).doc(cleanOrderId).get()
+    if (directOrderSnap.exists) {
+      orderData = (directOrderSnap.data() as Record<string, unknown> | undefined) || null
+    } else {
+      const orderByFieldSnap = await adminDb
+        .collection(ordersCol)
+        .where('orderId', '==', cleanOrderId)
+        .limit(1)
+        .get()
+      orderData = orderByFieldSnap.empty
+        ? null
+        : (orderByFieldSnap.docs[0].data() as Record<string, unknown> | undefined) || null
+    }
+
+    if (!orderData) {
+      console.warn(
+        `[create-preference] Order "${cleanOrderId}" not found; refusing to build a preference for an unregistered order.`
+      )
+      return res.status(400).json({
+        error: 'El pedido no está registrado en el sistema. Reintenta la compra o cotiza por WhatsApp.',
+        orderId: cleanOrderId
+      })
+    }
+
     // SERVER-SIDE PRICE REBUILD — the client payload only contributes product IDs
     // and quantities. Every unit price comes from the Firestore products catalog;
-    // the promo discount is resolved from the shared PROMO_CODES table, so a
-    // tampered `price`, `total` or `promoCode` cannot change the charged amount.
-    const discountPercent = resolvePromoPercent(req.body?.promoCode)
+    // the promo discount is resolved from the shared PROMO_CODES table using the
+    // order's own code, so a tampered `price`, `total` or `promoCode` cannot change
+    // the charged amount.
+    const discountPercent = resolvePromoPercent(orderData.promoCode)
     const rebuiltItems: Array<{
       id: string
       title: string
@@ -99,11 +132,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const availableStock = typeof productData?.stockCount === 'number' ? productData.stockCount : 0
-      const inStock = productData?.inStock !== false && availableStock > 0
+      // `isActive === false` pauses a product from sale (admin visibility toggle).
+      // The storefront filters these out of the catalog, so only a stale cart or a
+      // hand-crafted request can reach this branch — both must be refused.
+      const isActive = productData?.isActive !== false
+      const inStock = isActive && productData?.inStock !== false && availableStock > 0
 
       if (!inStock || availableStock < quantity) {
         return res.status(400).json({
-          error: `Stock insuficiente para el producto "${String(productData?.name || productId)}". Stock disponible: ${availableStock}, solicitado: ${quantity}.`,
+          error: isActive
+            ? `Stock insuficiente para el producto "${String(productData?.name || productId)}". Stock disponible: ${availableStock}, solicitado: ${quantity}.`
+            : `El producto "${String(productData?.name || productId)}" no está disponible para la venta. Por favor cotiza por WhatsApp.`,
           productId,
           availableStock,
           requestedQuantity: quantity

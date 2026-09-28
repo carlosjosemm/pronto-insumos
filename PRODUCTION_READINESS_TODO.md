@@ -3,7 +3,7 @@
 **Last Updated:** September 2026  
 **Target Market:** Melipilla & San Antonio, Chile  
 **Deployment Stack:** Vercel (Frontend React 18 + Serverless Node.js) & Google Firebase / Firestore  
-**Repository State:** Advanced functional storefront with automated test coverage (63 suites / 506 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11) — **0.9 is resolved**, and remaining work covers the fail-closed payment paths (0.10–0.11), per-zone shipping rates, legal compliance, catalog assets, and DevOps polish before go-live.
+**Repository State:** Advanced functional storefront with automated test coverage (65 suites / 534 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11) — **0.9 is resolved** (including its adversarial-review remediation) — and a second audit pass on the promo path opened **Phase 9 (commercial promotions & discount governance)**. Remaining work covers the fail-closed payment paths (0.10–0.11), the promo data model (9.1), per-zone shipping rates, legal compliance, catalog assets, and DevOps polish before go-live.
 
 ---
 
@@ -21,6 +21,7 @@
   - [Phase 6: Real Catalog Assets, Photography \& Technical Datasheets](#phase-6-real-catalog-assets-photography--technical-datasheets)
   - [Phase 7: Legal Compliance, SERNAC Warranty \& Customer Trust](#phase-7-legal-compliance-sernac-warranty--customer-trust)
   - [Phase 8: Performance, Infrastructure, DevOps \& Telemetry](#phase-8-performance-infrastructure-devops--telemetry)
+  - [Phase 9: Commercial Promotions \& Discount Governance](#phase-9-commercial-promotions--discount-governance)
   - [Prioritization Matrix \& Effort Estimation](#prioritization-matrix--effort-estimation)
   - [🏁 Go-Live Acceptance Criteria](#-go-live-acceptance-criteria)
 
@@ -82,7 +83,8 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - `firestore.rules`: `isValidOrderCreate` now requires integer `totalAmount`, caps `items` at 25 lines, and shape-checks the first 10 lines (`productId` string, integer `quantity ≥ 1`, numeric `price ≥ 0`) via `isValidOrderItem` — rules still cannot join the catalog (documented in the rules file); the authoritative price check remains server-side.
     - `submitOrder` persists `promoCode`/`discountAmount` and recomputes `totalAmount` from the item lines; `App`/`Cart`/`CheckoutModal` pass `appliedPromo` through so display = Firestore order = MP charge = webhook expectation.
     - Unit tests: new `src/tests/utils/orderTotal.test.ts` (14 tests incl. the raw-CartItem `$0` pitfall regression); `create-preference.test.ts` (21 tests: tampered `unit_price`, forged promo, missing `productId` → 400, Admin-down → 503, stock suite); `mercadopago-webhook.test.ts` (24 tests — underpayment → `PAGO_EN_REVISION` with zero stock deduction, divergent `totalAmount` → review, unresolvable lines → review, promo-approved happy path, review-redelivery idempotency); `api.test.ts` promo persistence; `firestore-rules.test.ts` new assertions.
-    - All 506 tests across 63 suites passing with 100% reliability. Production build compiled cleanly.
+    - **Adversarial-review remediation (same task, post-review):** the promo percent is now derived from its **code** on every surface (`resolvePromo` in `src/config/promos.ts`; `cartStorage` re-resolves on load, `App`/`Cart` derive at render) so a hand-edited `pronto_cart_v1` can no longer display a discount the server refuses to charge; `create-preference` reads `promoCode` from the **order document** (never the request body, which drops the dead client param) so the charge and the webhook expectation cannot disagree; paused products (`isActive === false`) are rejected; and `PAGO_EN_REVISION` is now actionable — the new admin action `resolve-payment-review` (`approve` ⇒ `PAGADO_MERCADOPAGO` + stock deduction in one transaction / `cancel` ⇒ `CANCELADO` with no stock movement), a `Pago en Revisión` filter chip, an action block in `OrderDetailPanel`, and `PAGO_EN_REVISION` counted as pending in the dashboard stats. Promo-model gaps that remain are tracked as **9.1**.
+    - All 534 tests across 65 suites passing with 100% reliability. Production build compiled cleanly.
 
 - [ ] **0.10. Fail-Closed Payment Paths in Production** 🔴 _(Audit finding — simulated success in prod)_
   - Two payment paths degrade silently instead of failing closed:
@@ -360,7 +362,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 
 - [ ] **4.2. Admin Backoffice Readiness Sweep (Post-8.6 Consolidation Gaps)**
   - **Context & Current State:** Full audit of the admin portal after the Task 8.6 `/api` consolidation found the routing layer healthy — all 11 `/api/admin/<action>` client calls in `src/admin/services/adminApi.ts` map 1:1 to the `api/admin/[action].ts` dispatch table, no stale `api/lib` imports remain, `vercel.json` rewrites exclude `api/`, and all 22 admin test files (57 tests) pass. Follow-up gaps remain (items 5–8 added by the 2026-09 audit):
-    1. **Handler test-coverage gap:** 4 of the 11 admin handlers — `orders`, `products`, `mark-delivered`, `toggle-visibility` — have **no dedicated integration test suites** under `src/tests/api/admin/` (only the router dispatch is covered by `admin-router.test.ts`, which mocks the handlers). Every other handler has its own suite.
+    1. **Handler test-coverage gap:** 4 of the 12 admin handlers — `orders`, `products`, `mark-delivered`, `toggle-visibility` — have **no dedicated integration test suites** under `src/tests/api/admin/` (only the router dispatch is covered by `admin-router.test.ts`, which mocks the handlers). Every other handler has its own suite.
     2. **Cursor pagination advertised but unimplemented:** `fetchAdminOrders({ cursor })` sends a `cursor` query param, but `api/_lib/admin/orders.ts` neither reads it nor applies Firestore `startAfter` — it fetches and slices against a default `limit` of 50. No UI caller passes `cursor` today, so it is harmless now, but as live order volume grows past 50 pending orders, staff would silently stop seeing older ones. Either implement real cursor pagination or remove the dead client param and document the 50-order window.
     3. **Undocumented placeholder cards:** `AdminDashboard.tsx` renders two "Fase 5" analytics placeholder cards (Google Tag Manager / GA4 telemetry) and `AdminSettings.tsx` renders a "Fase 5" dynamic shipping-rates placeholder — none are recorded in `src/admin/AGENTS.md`, and the "Fase 5" labels don't match the roadmap numbering (the underlying work is TODO **3.1** and **8.5**). Document them as deliberate placeholders and align the labels with the actual TODO numbers.
     4. ~~**Doc drift in `src/admin/AGENTS.md`:**~~ ✅ **Resolved by the doc audit** — §1 now says Av. Ortúzar 750, the `#settings` claim was corrected, and the placeholder cards are documented in `src/admin/AGENTS.md` §6.1.
@@ -552,6 +554,28 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 
 ---
 
+## Phase 9: Commercial Promotions & Discount Governance
+
+Task 0.9 turned `src/config/promos.ts` into the **amount authority** of the storefront: `/api/create-preference` charges from that table and the webhook recomputes the expected total from it. The model behind it is still the original three-field display fixture, so no real promotion policy can be expressed — and every gap below is now a payment-path gap rather than a UI nicety.
+
+- [ ] **9.1. Complete the Promo Code Data Model (Expiry, Exhaustion, Redemption Audit & Product Eligibility)** 🔴 _(Audit finding, 2026-09 — promo table promoted to payment authority)_
+  - `PromoCode` is `{ code, discountPercent, label }` and `MOCK_PROMOS` carries exactly two entries. `resolvePromoPercent(code)` is the single gate between a client-supplied code and the charged amount, and it can only answer "does this code exist?".
+  - **Gaps (as built):**
+    - **No validity window:** `isActive` / `startsAt` / `expiresAt` are unmodelled — a code is valid forever. `Cart.tsx` already tells customers `Código de descuento inválido o vencido`, so the UI promises an expiry check that does not exist.
+    - **No exhaustion control:** no `usageLimit`, `usageCount` or `perCustomerLimit`. `DENT20` ("Convenio Clínicas Melipilla") can be redeemed unlimited times by anyone, and because the table ships inside the browser bundle every code is publicly enumerable — a secret/clinic-only code cannot be secret today.
+    - **No redemption audit:** `Order.promoCode` / `Order.discountAmount` are persisted at order creation (Task 0.9) but **read by nothing** — no admin surface, no report, no reconciliation. "Who used this code and when" is unanswerable, and `firestore.rules` does not constrain either field.
+    - **No eligibility rules:** the discount is basket-wide — `computeOrderTotal(lines, discountPercent)` takes **one** percent for every line — so a code cannot include or exclude products by `productId` or REF. Note the order line persists only `{ productId, name, quantity, price }`: a REF-keyed rule must resolve REF (`Product.sku`) from the catalog at verification time, so a later SKU rename silently changes eligibility. Eligibility matters most on the products this repo already treats specially (`prescriptionRequired` / ISP-controlled items) and on high-ticket equipment where a blanket discount is a margin/liability decision.
+    - **No commercial floor or shape:** no `minSubtotal`, no `discountType` (`percent` | `fixed` | `free_shipping`), and no restriction of a code to one payment channel (Mercado Pago vs. bank transfer vs. WhatsApp quotation).
+  - **Required Action:**
+    - Extend `PromoCode` with the policy fields above and keep `src/config/promos.ts` as the pure resolver every surface derives through (cart display, `submitOrder`, `create-preference`, webhook). The policy table itself may stay a static module (lean, matches the anti-overshooting guardrail) — **only if** codes are genuinely public; if clinic/convenio codes must stay private, move the table to a Firestore `promo_codes` collection with admin-only writes and public reads denied.
+    - Resolve eligibility **per line**: change `computeOrderTotal` to accept per-line discount resolution and update all four consumers in the same change (they must never drift — that is the invariant Task 0.9 established).
+    - Make exhaustion authoritative **inside the webhook transaction**: increment `promo_codes/{CODE}.usageCount` and write a `promo_redemptions` record (`code`, `orderId`, customer RUT/email, `discountAmount`, `paymentId`, `timestamp`, `actorRole: SYSTEM_WEBHOOK`) in the same atomic block that deducts stock — never as a pre-check, or two concurrent approvals will both consume the last use. Exhausted/expired codes must route to `PAGO_EN_REVISION` (with a review reason distinct from "amount mismatch"), and `CANCELADO` must release a reserved use.
+    - Add the new collections to `scripts/manage-firestore-schema.ts` (today it only knows `products`, `orders`, `order_status_history`, `inventory_audit_logs`) and to `firestore.rules`.
+    - Add an admin read surface for redemptions (who/when/how much) so the audit trail is usable by Melipilla staff.
+  - **Verification:** unit tests for expired / inactive / exhausted codes (⇒ full price, never a discount), per-line eligibility (included, excluded, REF-keyed), concurrent redemptions consuming the final use exactly once, redemption-audit writes, and the existing forged-code assertions from Task 0.9 still green.
+
+---
+
 ## Prioritization Matrix & Effort Estimation
 
 | Module / Task | Priority | Impact | Estimated Effort | Production Blocker |
@@ -586,6 +610,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 | **8.7. Progressive catalog rendering (lazy product cards / "load more")** | **P3** | UX / Performance | 2 - 3 hours | No (Immediate post-launch) |
 | **8.8. Rate limiting on public dual-factor endpoints** | **P2** | Security | 2 - 3 hours | Recommended pre-launch |
 | **8.9 - 8.11. Env completeness, lint scope widening, resilient Firebase init** | **P3** | DevOps | 1 day | No (Immediate post-launch) |
+| **9.1. Complete the promo code data model (expiry, exhaustion, redemption audit, eligibility)** | **P2** | Commercial / Integrity | 1 - 2 days | No (current codes are public and unlimited — becomes a blocker only if a limited or clinic-private campaign is launched) |
 
 ---
 

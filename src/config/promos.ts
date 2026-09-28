@@ -16,12 +16,26 @@ export const MOCK_PROMOS: Record<string, PromoCode> = {
 }
 
 /**
+ * Canonical catalog entry for a promo code (case-insensitive, trimmed), or `null`.
+ *
+ * This is the ONLY sanctioned way to turn a code into a discount: the percent and
+ * label are always read back from the table, never from a persisted snapshot. A
+ * `PromoCode` object hydrated from `localStorage` (or any other client storage) is
+ * a display artifact and must be re-resolved through here before it can influence
+ * a total — otherwise a hand-edited cart entry could render a discount the
+ * serverless payment layer would refuse to charge (display ≠ charge).
+ */
+export function resolvePromo(code: unknown): PromoCode | null {
+  if (typeof code !== 'string') return null
+  const key = code.trim().toUpperCase()
+  return Object.prototype.hasOwnProperty.call(MOCK_PROMOS, key) ? MOCK_PROMOS[key] : null
+}
+
+/**
  * Resolves the discount percent for a promo code (case-insensitive, trimmed).
  * Returns 0 for unknown, empty or non-string codes — an unknown code never
  * discounts, so a forged promoCode can only ever reduce to the full price.
  */
 export function resolvePromoPercent(code: unknown): number {
-  if (typeof code !== 'string') return 0
-  const promo = MOCK_PROMOS[code.trim().toUpperCase()]
-  return promo ? promo.discountPercent : 0
+  return resolvePromo(code)?.discountPercent ?? 0
 }

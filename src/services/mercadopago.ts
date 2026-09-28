@@ -7,7 +7,6 @@ export interface MercadoPagoPaymentParams {
   items: CartItem[]
   total: number
   customer: CustomerInfo
-  promoCode?: string
 }
 
 export interface MercadoPagoPaymentResult {
@@ -64,10 +63,12 @@ export async function processMercadoPagoPayment({
   orderId,
   items,
   total,
-  customer,
-  promoCode
+  customer
 }: MercadoPagoPaymentParams): Promise<MercadoPagoPaymentResult> {
-  const prefResult = await createMercadoPagoPreference({ orderId, items, total, customer, promoCode })
+  // No promo code is sent: `/api/create-preference` resolves the discount from the
+  // order document it already registered, so the charge can never be driven by a
+  // client-supplied code that disagrees with the order.
+  const prefResult = await createMercadoPagoPreference({ orderId, items, total, customer })
 
   // If running on live Vercel deployment with valid initPoint, open Mercado Pago Checkout Pro
   if (prefResult.initPoint && typeof window !== 'undefined') {

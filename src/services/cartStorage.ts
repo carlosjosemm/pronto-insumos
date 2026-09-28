@@ -1,4 +1,5 @@
 import { CartItem, Product, PromoCode } from '../types'
+import { resolvePromo } from '../config/promos'
 
 export const CART_STORAGE_KEY = 'pronto_cart_v1'
 export const CART_STORAGE_VERSION = 1
@@ -121,20 +122,11 @@ export function loadCartFromStorage(): { items: CartItem[]; appliedPromo: PromoC
       }
     }
 
-    // Validate appliedPromo
-    let validPromo: PromoCode | null = null
-    if (
-      data.appliedPromo &&
-      typeof data.appliedPromo.code === 'string' &&
-      typeof data.appliedPromo.discountPercent === 'number' &&
-      typeof data.appliedPromo.label === 'string'
-    ) {
-      validPromo = {
-        code: data.appliedPromo.code,
-        discountPercent: data.appliedPromo.discountPercent,
-        label: data.appliedPromo.label
-      }
-    }
+    // Re-resolve the applied promo from the shared catalog: the persisted
+    // discountPercent/label are display snapshots only, so a hand-edited or stale
+    // entry can never render a discount the payment layer would not charge. A code
+    // that no longer exists in `MOCK_PROMOS` is dropped outright.
+    const validPromo: PromoCode | null = resolvePromo(data.appliedPromo?.code)
 
     return {
       items: Array.from(consolidated.values()),

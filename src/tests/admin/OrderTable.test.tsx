@@ -61,4 +61,21 @@ describe('OrderTable Component', () => {
     expect(screen.queryByText('PRONTO-100001')).not.toBeInTheDocument()
     expect(screen.getByText('PRONTO-100002')).toBeInTheDocument()
   })
+
+  it('isolates the payment-review queue through its own filter chip', () => {
+    const flaggedOrder: Order = {
+      ...mockOrders[0],
+      orderId: 'PRONTO-100003',
+      status: 'PAGO_EN_REVISION',
+      paymentMethod: 'mercadopago'
+    }
+
+    render(<OrderTable orders={[...mockOrders, flaggedOrder]} onSelectOrder={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Pago en Revisión/i }))
+
+    expect(screen.getByText('PRONTO-100003')).toBeInTheDocument()
+    expect(screen.queryByText('PRONTO-100001')).not.toBeInTheDocument()
+    expect(screen.queryByText('PRONTO-100002')).not.toBeInTheDocument()
+  })
 })

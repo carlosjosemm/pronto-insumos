@@ -4,6 +4,7 @@ import orders from '../_lib/admin/orders.js'
 import orderHistory from '../_lib/admin/order-history.js'
 import products from '../_lib/admin/products.js'
 import approveTransfer from '../_lib/admin/approve-transfer.js'
+import resolvePaymentReview from '../_lib/admin/resolve-payment-review.js'
 import dispatchOrder from '../_lib/admin/dispatch-order.js'
 import markDelivered from '../_lib/admin/mark-delivered.js'
 import updateStock from '../_lib/admin/update-stock.js'
@@ -16,7 +17,7 @@ type AdminHandler = (req: VercelRequest, res: VercelResponse) => unknown
 /**
  * Single routed entry point for every `/api/admin/<action>` endpoint.
  *
- * The Vercel Hobby plan caps a deployment at 12 Serverless Functions, so the 11
+ * The Vercel Hobby plan caps a deployment at 12 Serverless Functions, so the 12
  * administrative handlers live as plain modules under `api/_lib/admin/` (paths
  * containing `/_` are excluded from function detection) and are dispatched here.
  * Public URLs are unchanged: `/api/admin/orders` → `req.query.action === 'orders'`.
@@ -30,6 +31,7 @@ const ADMIN_ACTIONS: Record<string, AdminHandler> = {
   'order-history': orderHistory,
   products: products,
   'approve-transfer': approveTransfer,
+  'resolve-payment-review': resolvePaymentReview,
   'dispatch-order': dispatchOrder,
   'mark-delivered': markDelivered,
   'update-stock': updateStock,

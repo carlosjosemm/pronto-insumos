@@ -20,6 +20,7 @@ import {
 import { validatePromo } from '../services/api'
 import { formatCLP } from '../utils/currency'
 import { computeCartTotal } from '../utils/orderTotal'
+import { resolvePromo } from '../config/promos'
 import {
   FREE_SHIPPING_THRESHOLD,
   DELIVERY_ZONES,
@@ -78,9 +79,13 @@ export default function Cart({
   if (!isOpen) return null
 
   const subtotal = items.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
+  // The promo is re-resolved from its code — the percent/label are read from the
+  // shared catalog, never from the (persisted, client-held) `appliedPromo` object,
+  // so the rendered discount can never exceed what the payment layer charges.
+  const activePromo = resolvePromo(appliedPromo?.code)
   // Payable total from the shared helper (IVA-inclusive prices, verified promo) —
   // the exact amount the preference charges and the webhook asserts (Task 0.9).
-  const total = computeCartTotal(items, appliedPromo?.discountPercent ?? 0)
+  const total = computeCartTotal(items, activePromo?.discountPercent ?? 0)
   // Derived so the rendered breakdown always balances: Subtotal − Descuento = Total.
   const discountAmount = Math.max(0, subtotal - total)
 
@@ -308,7 +313,7 @@ export default function Cart({
               </div>
             )}
 
-            {appliedPromo && (
+            {activePromo && (
               <div
                 style={{
                   background: 'var(--accent-soft)',
@@ -327,7 +332,7 @@ export default function Cart({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   <Tag size={14} />
                   <span>
-                    {appliedPromo.label} ({appliedPromo.code})
+                    {activePromo.label} ({activePromo.code})
                   </span>
                 </div>
                 <span>{formatCLP(-discountAmount)}</span>
@@ -340,9 +345,9 @@ export default function Cart({
               <span>{formatCLP(subtotal)}</span>
             </div>
 
-            {appliedPromo && (
+            {activePromo && (
               <div className="cart-summary-line" style={{ color: 'var(--ink-700)', fontWeight: '600' }}>
-                <span>Descuento ({appliedPromo.discountPercent}%)</span>
+                <span>Descuento ({activePromo.discountPercent}%)</span>
                 <span>{formatCLP(-discountAmount)}</span>
               </div>
             )}

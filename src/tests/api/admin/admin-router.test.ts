@@ -6,6 +6,7 @@ vi.mock('../../../../api/_lib/admin/orders', () => ({ default: vi.fn() }))
 vi.mock('../../../../api/_lib/admin/order-history', () => ({ default: vi.fn() }))
 vi.mock('../../../../api/_lib/admin/products', () => ({ default: vi.fn() }))
 vi.mock('../../../../api/_lib/admin/approve-transfer', () => ({ default: vi.fn() }))
+vi.mock('../../../../api/_lib/admin/resolve-payment-review', () => ({ default: vi.fn() }))
 vi.mock('../../../../api/_lib/admin/dispatch-order', () => ({ default: vi.fn() }))
 vi.mock('../../../../api/_lib/admin/mark-delivered', () => ({ default: vi.fn() }))
 vi.mock('../../../../api/_lib/admin/update-stock', () => ({ default: vi.fn() }))
@@ -19,6 +20,7 @@ import orders from '../../../../api/_lib/admin/orders'
 import orderHistory from '../../../../api/_lib/admin/order-history'
 import products from '../../../../api/_lib/admin/products'
 import approveTransfer from '../../../../api/_lib/admin/approve-transfer'
+import resolvePaymentReview from '../../../../api/_lib/admin/resolve-payment-review'
 import dispatchOrder from '../../../../api/_lib/admin/dispatch-order'
 import markDelivered from '../../../../api/_lib/admin/mark-delivered'
 import updateStock from '../../../../api/_lib/admin/update-stock'
@@ -32,6 +34,7 @@ const ROUTES: Record<string, ReturnType<typeof vi.fn>> = {
   'order-history': vi.mocked(orderHistory),
   products: vi.mocked(products),
   'approve-transfer': vi.mocked(approveTransfer),
+  'resolve-payment-review': vi.mocked(resolvePaymentReview),
   'dispatch-order': vi.mocked(dispatchOrder),
   'mark-delivered': vi.mocked(markDelivered),
   'update-stock': vi.mocked(updateStock),

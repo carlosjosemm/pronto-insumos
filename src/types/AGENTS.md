@@ -9,7 +9,7 @@ This document is the **authoritative reference for data structures, domain contr
 * **Role:** The **single source of truth** for all business models in the application.
 * **Pure Typing (Zero Runtime Overhead):** Contains strictly TypeScript interfaces, type aliases, and string literal unions. No executable JavaScript code, classes, or runtime side effects.
 * **Single Location:** Components must never define ad-hoc interfaces (e.g. `interface OrderItem` inside a component file); all domain interfaces must be declared in [`src/types/index.ts`](./index.ts).
-* **File map:** `index.ts` is the only module. It exports the category unions (`ChileanDentalCategory`, `ProductCategory`, `Category`), `Product`, `CartItem`, the fiscal trio (`DocumentType`, `TaxBreakdown`, `BillingInfo`), `SanitaryVerification`, `CustomerInfo`, `PaymentMethod` (`'transferencia' | 'whatsapp' | 'mercadopago'`), `OrderStatus`, `Order`, `PromoCode`, `Toast`, `SubmitOrderResult`, `OrderTrackingInfo`, `UploadVoucherResult`, and the audit trail contracts (`AuditActorRole`, `OrderStatusHistory`, `InventoryChangeType`, `InventoryAuditLog`).
+* **File map:** `index.ts` is the only module. It exports the category unions (`ChileanDentalCategory`, `ProductCategory`, `Category`), `Product`, `CartItem`, the fiscal trio (`DocumentType`, `TaxBreakdown`, `BillingInfo`), `SanitaryVerification`, `CustomerInfo`, `PaymentMethod` (`'transferencia' | 'whatsapp' | 'mercadopago'`), `OrderStatus`, `Order`, `PromoCode` (a resolved catalog entry — `{ code, discountPercent, label }`; promo **policy** fields such as expiry, usage limits and product eligibility are unmodelled and tracked as Task 9.1), `Toast`, `SubmitOrderResult`, `OrderTrackingInfo`, `UploadVoucherResult`, and the audit trail contracts (`AuditActorRole`, `OrderStatusHistory`, `InventoryChangeType`, `InventoryAuditLog`).
 
 ---
 
@@ -142,7 +142,9 @@ export interface Order {
   // Bank-transfer voucher trail
   voucherUrl?: string; voucherFileName?: string; voucherUploadedAt?: string
   // Task 0.9 promo trail — written only at order creation so the payment webhook
-  // can recompute the verified payable total from the catalog.
+  // can recompute the verified payable total from the catalog. `promoCode` is the
+  // single input `create-preference` charges from (never the request body), and
+  // `discountAmount` is informational (nothing reads it yet — see Task 9.1).
   promoCode?: string; discountAmount?: number
   // Fulfillment telemetry
   courier?: string; trackingNumber?: string

@@ -14,11 +14,11 @@ As-built technical reference for the client-side integration layer of PRONTO Ins
 
 | Service Module | Purpose & Domain Responsibility | Boundary |
 | :--- | :--- | :--- |
-| [`api.ts`](./api.ts) | `fetchProducts()` catalog queries with offline fallback, `generateOrderId()`, `submitOrder()` Firestore order registration, `validatePromo()` against static `MOCK_PROMOS`. | Firebase Web SDK Firestore + `../data/products` fixtures |
+| [`api.ts`](./api.ts) | `fetchProducts()` catalog queries with offline fallback, `generateOrderId()`, `submitOrder()` Firestore order registration, `validatePromo()` against static `MOCK_PROMOS` (returns the canonical entry from `resolvePromo`). | Firebase Web SDK Firestore + `../data/products` fixtures |
 | [`cartStorage.ts`](./cartStorage.ts) | Persistent cart in `localStorage` (`pronto_cart_v1`): schema versioning, 7-day TTL, quota defense, duplicate consolidation, live-catalog revalidation. | Browser `localStorage` |
 | [`firebase.ts`](./firebase.ts) | Firebase Web SDK init (`initializeApp`, `getFirestore`, `getAuth`) from `VITE_FIREBASE_*`. Also exports `seedProductsToFirestore()` — **retained but uncalled** (the public seed button was removed; catalog seeding now goes through `pnpm run schema:seed*`). | Google Firebase Client SDK |
 | [`firestoreEnv.ts`](./firestoreEnv.ts) | Client-side resolver: production (`orders`, `products`) vs isolated `dev_*` collections. | `import.meta.env` detector |
-| [`mercadopago.ts`](./mercadopago.ts) | `createMercadoPagoPreference()` → `POST /api/create-preference`; `processMercadoPagoPayment()` redirects to Checkout Pro `initPoint`. Also exports `MERCADOPAGO_PUBLIC_KEY` (`VITE_MERCADOPAGO_PUBLIC_KEY`). | Serverless `/api/create-preference` |
+| [`mercadopago.ts`](./mercadopago.ts) | `createMercadoPagoPreference()` → `POST /api/create-preference`; `processMercadoPagoPayment()` redirects to Checkout Pro `initPoint`. **No promo code is sent** — the endpoint resolves it from the order document it already registered. Also exports `MERCADOPAGO_PUBLIC_KEY` (`VITE_MERCADOPAGO_PUBLIC_KEY`). | Serverless `/api/create-preference` |
 | [`orderConfirmation.ts`](./orderConfirmation.ts) | Fire-and-forget proxy to `/api/order-confirmation` for transfer & WhatsApp-quote orders. Never throws; returns `boolean`. | Serverless `/api/order-confirmation` |
 | [`orderTracking.ts`](./orderTracking.ts) | `fetchOrderTracking()` → `/api/track-order` with client-side `validateRut` Modulo-11 gate first. | Serverless `/api/track-order` |
 | [`transferVoucher.ts`](./transferVoucher.ts) | `validateVoucherFile()` (PDF/PNG/JPG ≤ 5 MB — the **only** place these are enforced), `fileToDataUrl()`, `uploadTransferVoucher()` → `/api/upload-voucher`. | Serverless `/api/upload-voucher` |
@@ -65,7 +65,7 @@ export function generateOrderId(): string {
 
 - Maps `paymentMethod` → `PENDIENTE_PAGO_MERCADOPAGO` / `PENDIENTE_TRANSFERENCIA` / `COTIZACION_SOLICITADA_WHATSAPP` — the only statuses `firestore.rules` `isValidOrderCreate()` accepts.
 - Builds the `billing` block (defaults `calculateTaxBreakdown(totalAmount)` + `PENDIENTE_EMISION_SII`) and snapshots `items` as `{ productId, name, quantity, price }`.
-- **Task 0.9 — server-verifiable amount trail:** `totalAmount` is **recomputed** from the item lines with `computeCartTotal` (`src/utils/orderTotal.ts`) — the same helper `create-preference` charges and the webhook asserts — not the client-supplied `total`. When a `promoCode` is provided, the percent is resolved from `src/config/promos.ts` (never trusted from the client) and the order persists `promoCode` (trimmed, upper-cased) + `discountAmount` (list subtotal − total); no promo fields are written when no valid code is given.
+- **Task 0.9 — server-verifiable amount trail:** `totalAmount` is **recomputed** from the item lines with `computeCartTotal` (`src/utils/orderTotal.ts`) — the same helper `create-preference` charges and the webhook asserts — not the client-supplied `total`. When a `promoCode` is provided, the percent is resolved from `src/config/promos.ts` (never trusted from the client) and the order persists `promoCode` (trimmed, upper-cased) + `discountAmount` (list subtotal − total); no promo fields are written when no valid code is given. **This persisted `promoCode` is the single input `create-preference` charges from**, so the order document — not the request body — decides the discount.
 - ⚠️ **The Firestore write is swallowed:** `setDoc` failures (rules denial, offline) are caught, logged, and the function still returns `success: true`. `CheckoutModal` therefore proceeds to payment/confirmation even when the order was never persisted. See §6.
 
 ---
@@ -85,6 +85,7 @@ export function generateOrderId(): string {
 
 - **7-Day TTL:** `Date.now() - savedAt > CART_MAX_TTL_MS` → entry purged.
 - **Defensive guards:** `window`/storage absence, `QuotaExceededError`, corrupt JSON → purge + `null`.
+- **The promo is re-resolved on load (never trusted from storage):** `appliedPromo` is rebuilt with `resolvePromo(data.appliedPromo?.code)`, so a hand-edited `discountPercent`/`label` is discarded and a code that is no longer in `MOCK_PROMOS` is dropped entirely. The persisted percent/label are display snapshots — they must never reach a total (see [src/config/AGENTS.md](../config/AGENTS.md)).
 - **Load-time consolidation:** duplicate `product.id` lines are merged by summing quantities; invalid items filtered.
 - **`revalidateCartAgainstCatalog()`** on catalog arrival: removes discontinued/`!inStock`/zero-stock items, clamps quantity to live `stockCount` (default ceiling 99 when `stockCount` is absent), swaps in the live product object (price/spec sync), and returns `{ items, removedCount, adjustedCount, hasChanges }` for the UI toast.
 

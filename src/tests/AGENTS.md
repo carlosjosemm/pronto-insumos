@@ -7,16 +7,16 @@ This directory contains the **automated test suite** for PRONTO, powered by **Vi
 ## 🎯 1. Directory Scope & Organization
 
 * **Role:** Ensures regression prevention, verifies business logic calculations (cart totals, Chilean tax, RUT check digits), and validates user interaction flows.
-* **Directory Structure** (63 suites, 506 tests):
+* **Directory Structure** (65 suites, 534 tests):
   * [`setup.ts`](./setup.ts): Test harness — registers `@testing-library/jest-dom`, injects `VITE_FIREBASE_*`/`VITE_WHATSAPP_NUMBER`/`VITE_MERCADOPAGO_PUBLIC_KEY` placeholders into `import.meta.env`, strips `FIRESTORE_ENV`/`VITE_FIRESTORE_ENV` so suites stay deterministic, and installs an in-memory `localStorage` mock. There are **no** `matchMedia`/`IntersectionObserver` globals — mock them per-suite if a component needs them.
   * `components/` (13 suites): storefront unit & interaction tests — `AppCartPersistence`, `AppPaymentReturn`, `Cart`, `CategoryShowcase`, `CheckoutModal`, `ClinicalStorefront`, `ErrorBoundary`, `Navbar`, `OrderTrackingModal`, `PaymentReturnModal`, `ProductCard`, `ProductDetailModal`, `ProductList`. `CheckoutModal.test.tsx` drives the 5-step guided flow through helpers (`fillContactStep`, `fillDespatchStep`, `fillDocumentStep`, `selectZone`, `advance`, `completeDataEntry`) — reuse them instead of hand-filling fields.
   * `admin/` (12 suites): backoffice UI tests (`AdminApp`, `AdminDashboard`, `AdminLogin`, `AdminSidebar`, `AdminTopbar`, `InventoryTable`, `MetricCard`, `OrderDetailPanel`, `OrderTable`, `ProductEditModal`, `StatusBadge`, `StockAdjustModal`).
-  * `api/` (7 suites): public serverless endpoints — `create-preference`, `email` (Resend layer), `mercadopago-signature`, `mercadopago-webhook`, `order-confirmation`, `track-order`, `upload-voucher`.
-  * `api/admin/` (10 suites): admin serverless handlers (which live under `api/_lib/admin/` — see [api/AGENTS.md](../../../api/AGENTS.md) §1.2) — `adminAuth`, `approve-transfer`, `create-product`, `dashboard-stats`, `dispatch-order`, `firestoreEnv`, `order-history`, `update-product`, `update-stock`, plus `admin-router` covering the `api/admin/[action].ts` dispatcher (action → 404 mapping, `OPTIONS` passthrough, all 11 actions mapped). **Coverage gap (TODO 4.2):** `orders`, `products`, `mark-delivered`, `toggle-visibility` have no dedicated suite.
+  * `api/` (7 suites): public serverless endpoints — `create-preference`, `email` (Resend layer), `mercadopago-signature`, `mercadopago-webhook`, `order-confirmation`, `track-order`, `upload-voucher`. `create-preference` covers the Task 0.9 price rebuild: tampered `unit_price`, a forged body `promoCode` (the **order document** wins), the `orderId`-field lookup fallback, unregistered orders → 400, paused products (`isActive: false`) → 400, and Admin-down → 503.
+  * `api/admin/` (11 suites): admin serverless handlers (which live under `api/_lib/admin/` — see [api/AGENTS.md](../../../api/AGENTS.md) §1.2) — `adminAuth`, `approve-transfer`, `create-product`, `dashboard-stats`, `dispatch-order`, `firestoreEnv`, `order-history`, `resolve-payment-review` (approve ⇒ stock deduction, cancel ⇒ no stock, 409 outside review, idempotency, emails), `update-product`, `update-stock`, plus `admin-router` covering the `api/admin/[action].ts` dispatcher (action → 404 mapping, `OPTIONS` passthrough, all 12 actions mapped). **Coverage gap (TODO 4.2):** `orders`, `products`, `mark-delivered`, `toggle-visibility` have no dedicated suite.
   * `services/` (8 suites): client adapters — `api`, `cartStorage`, `firestoreEnv`, `mercadopago`, `orderConfirmation`, `orderTracking`, `transferVoucher`, `whatsapp`.
   * `utils/` (6 suites): `rut`, `tax`, `currency`, `categoryAlias`, `schemaValidation`, `orderTotal` (Task 0.9 — payable-total math incl. the raw-CartItem `$0` pitfall regression).
   * `hooks/` (2 suites): `useFocusTrap` (focus wrap/restore), `useIncrementalReveal` (page reveal/clamp; reveal is button-only — there is no IntersectionObserver path).
-  * `config/` (1 suite): `bankDetails` env-override fallbacks.
+  * `config/` (2 suites): `bankDetails` env-override fallbacks, and `promos` — the forged-code gate (`resolvePromo`/`resolvePromoPercent`: case/trim normalisation, non-string inputs, prototype-key rejection, unknown ⇒ full price).
   * `data/` (1 suite): `products` schema/fixture integrity (11 items, `unitOfSale` ≤60 chars, integer CLP prices, valid categories).
   * `scripts/` (1 suite): `syncEnvToVercel` pure plan logic (dry-run/skip/overwrite, per-target `FIRESTORE_ENV`, system-key filter).
   * `security/` (1 suite): `firestore-rules` — asserts the rules file's allow/deny structure by `readFileSync` content match.
@@ -27,7 +27,7 @@ This directory contains the **automated test suite** for PRONTO, powered by **Vi
 ## 🚫 2. Anti-Overshooting & Testing Guardrails
 
 1. **Preserve Passing Tests (Zero Regression Policy):**
-   * Currently, **all 506 tests across 63 test suites pass (100% passing)**.
+   * Currently, **all 534 tests across 65 test suites pass (100% passing)**.
    * ❌ **NEVER** comment out, delete, or skip (`test.skip`) failing tests to get a passing build. If a test fails after your changes, diagnose and fix the root cause.
 2. **Speed & Efficiency:**
    * Automated tests must execute quickly without hanging.

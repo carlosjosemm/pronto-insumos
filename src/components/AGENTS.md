@@ -326,9 +326,11 @@ To avoid customer frustration during checkout, the cart actively monitors invent
 * A muted zone line sits under the bar: `Despacho a Melipilla y San Antonio · Compra mínima San Antonio: $60.000` — the same rule checkout enforces, surfaced proactively.
 * **No pickup wording.** The old `despacho gratis en Melipilla y RM` / "retiro" copy is retired; see root [AGENTS.md](../../AGENTS.md) §3.4.
 
-### 5.3 Tax & Discount Breakdown
+### 5.3 Payable Total & Discount Breakdown
 
-* Calculates itemized subtotal, promotional discount, and isolates the 19% IVA using Chilean rounding rules (`calculateTaxBreakdown` in [src/utils/tax.ts](../../src/utils/tax.ts)).
+* The drawer total comes from `computeCartTotal(items, discountPercent)` in [src/utils/orderTotal.ts](../../src/utils/orderTotal.ts) — the same helper `submitOrder`, `/api/create-preference` and the webhook derive from, so display = Firestore order = Mercado Pago charge = webhook expectation by construction (Task 0.9).
+* Catalog prices are **IVA-inclusive** (SERNAC), so the total is the discounted IVA-inclusive sum: there is no `× 1.19` recomposition and no separate estimated-IVA figure — the summary carries `IVA (19%) incluido en los precios`.
+* The discount percent is re-derived from the promo **code** via `resolvePromo` ([src/config/promos.ts](../../src/config/promos.ts)), never read off the persisted `appliedPromo` object — a tampered or stale `localStorage` entry cannot render a discount the payment layer refuses to charge, and a code that is no longer in the catalog renders as no discount at all.
 * Ensures every total sent to checkout is a whole Chilean Peso integer without decimal cents.
 
 ### 5.4 Overlay Scroll Lock

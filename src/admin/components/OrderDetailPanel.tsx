@@ -3,7 +3,13 @@ import { X, CheckCircle2, Truck, Package, FileText, Building2, Phone, Mail, User
 import { StatusBadge } from './StatusBadge'
 import { formatCLP } from '../../utils/currency'
 import { formatRut } from '../../utils/rut'
-import { approveBankTransfer, dispatchAdminOrder, markOrderDelivered, fetchOrderHistory } from '../services/adminApi'
+import {
+  approveBankTransfer,
+  dispatchAdminOrder,
+  markOrderDelivered,
+  fetchOrderHistory,
+  resolvePaymentReview
+} from '../services/adminApi'
 import { CARRIER_LABELS, type CarrierType } from '../types'
 import type { Order, OrderStatusHistory } from '../../types'
 
@@ -20,6 +26,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
 }) => {
   const [carrier, setCarrier] = useState<CarrierType>('despacho_local_melipilla')
   const [trackingCode, setTrackingCode] = useState('')
+  const [reviewNotes, setReviewNotes] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState('')
   const [actionSuccess, setActionSuccess] = useState('')
@@ -56,6 +63,26 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
       onOrderUpdated()
     } else {
       setActionError(res.error || 'Error al aprobar la transferencia')
+    }
+  }
+
+  const handleResolvePaymentReview = async (resolution: 'approve' | 'cancel') => {
+    setActionLoading(true)
+    setActionError('')
+    setActionSuccess('')
+    const res = await resolvePaymentReview(order.orderId, resolution, reviewNotes.trim() || undefined)
+    setActionLoading(false)
+    if (res.success) {
+      setActionSuccess(
+        resolution === 'approve'
+          ? '¡Pago conciliado y confirmado! Stock rebajado en bodega y cliente notificado.'
+          : 'Pedido cancelado tras la conciliación. No se rebajó stock — gestiona el reembolso manualmente.'
+      )
+      setReviewNotes('')
+      setHistoryRefreshKey(k => k + 1)
+      onOrderUpdated()
+    } else {
+      setActionError(res.error || 'Error al conciliar el pago en revisión')
     }
   }
 
@@ -105,6 +132,10 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
     order.status === 'EN_PREPARACION'
 
   const isDispatched = order.status === 'DESPACHADO'
+
+  // The Mercado Pago webhook flags a mismatch here instead of marking the order
+  // paid — a human must reconcile before anything is dispatched.
+  const isInPaymentReview = order.status === 'PAGO_EN_REVISION'
 
   return (
     <div className="admin-slide-overlay" onClick={onClose}>
@@ -302,6 +333,57 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
             <div style={{ fontSize: '0.825rem', fontWeight: '800', color: 'var(--navy-900)' }}>
               Acciones de Despacho y Estado
             </div>
+
+            {isInPaymentReview && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.75rem',
+                  background: 'var(--danger-bg)',
+                  border: '1px solid var(--danger)',
+                  padding: '0.85rem',
+                  borderRadius: 'var(--radius-sm)'
+                }}
+              >
+                <div style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--danger)' }}>
+                  El monto pagado no coincide con el total verificado del pedido. No despachar hasta conciliar.
+                </div>
+
+                <div className="admin-form-group">
+                  <label className="admin-label">Nota de conciliación (opcional)</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    placeholder="Ej: pago confirmado en cartola Mercado Pago"
+                    value={reviewNotes}
+                    onChange={e => setReviewNotes(e.target.value)}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => handleResolvePaymentReview('approve')}
+                  className="admin-btn admin-btn-primary"
+                  style={{ width: '100%', padding: '0.7rem' }}
+                >
+                  <CheckCircle2 size={16} />
+                  <span>{actionLoading ? 'Procesando...' : 'Confirmar Pago y Rebajar Stock'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => handleResolvePaymentReview('cancel')}
+                  className="admin-btn admin-btn-danger"
+                  style={{ width: '100%', padding: '0.7rem' }}
+                >
+                  <X size={16} />
+                  <span>Cancelar Pedido (sin rebajar stock)</span>
+                </button>
+              </div>
+            )}
 
             {isPendingTransfer && (
               <button
