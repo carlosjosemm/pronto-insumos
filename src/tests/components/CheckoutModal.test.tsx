@@ -10,10 +10,12 @@ vi.mock('../../services/api', () => ({
 
 vi.mock('../../services/mercadopago', () => ({
   processMercadoPagoPayment: vi.fn().mockResolvedValue({
-    id: 'MP-TEST-123',
+    success: true,
+    paymentId: 'MP-TEST-123',
     status: 'approved',
+    statusDetail: 'accredited',
     orderId: 'PRONTO-TEST1234',
-    total: 189990,
+    totalPaid: 189990,
     paidAt: new Date().toISOString()
   })
 }))
@@ -277,6 +279,27 @@ describe('CheckoutModal Component', () => {
     expect(mpCustomer).not.toHaveProperty('cardNumber')
     expect(mpCustomer).not.toHaveProperty('expDate')
     expect(mpCustomer).not.toHaveProperty('cvc')
+  })
+
+  it('surfaces a Mercado Pago preference failure on the Pago step instead of the confirmation step (Task 2.8)', async () => {
+    vi.mocked(processMercadoPagoPayment).mockResolvedValueOnce({
+      success: false,
+      orderId: 'PRONTO-TEST1234',
+      error: 'El servicio de pagos rechazó la solicitud (400).'
+    })
+
+    render(<CheckoutModal {...defaultProps} />)
+    completeDataEntry()
+
+    fireEvent.click(screen.getByLabelText(/Pago Inmediato Mercado Pago Chile/i))
+    fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+    await waitFor(() => {
+      expect(processMercadoPagoPayment).toHaveBeenCalledTimes(1)
+    })
+
+    expect(await screen.findByText(/El servicio de pagos rechazó la solicitud/i)).toBeInTheDocument()
+    expect(screen.queryByText('¡Pedido Registrado con Éxito!')).not.toBeInTheDocument()
   })
 
   it('should trim whitespace from text inputs when preparing submission payload', async () => {

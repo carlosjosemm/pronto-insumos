@@ -1,4 +1,5 @@
 import { CartItem, CustomerInfo } from '../types'
+import { isSimulatedFallbackAllowed } from './simulationPolicy'
 
 export const MERCADOPAGO_PUBLIC_KEY: string = import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY || ''
 
@@ -11,13 +12,14 @@ export interface MercadoPagoPaymentParams {
 
 export interface MercadoPagoPaymentResult {
   success: boolean
-  paymentId: string
-  status: string
-  statusDetail: string
+  paymentId?: string
+  status?: string
+  statusDetail?: string
   orderId: string
-  totalPaid: number
-  paidAt: string
+  totalPaid?: number
+  paidAt?: string
   initPoint?: string
+  error?: string
 }
 
 /**
@@ -36,7 +38,12 @@ export async function createMercadoPagoPreference(
     })
 
     if (!response.ok) {
-      throw new Error(`Server returned ${response.status}: ${response.statusText}`)
+      const errData = await response.json().catch(() => null)
+      const serverError = typeof errData?.error === 'string' ? errData.error : undefined
+      return {
+        success: false,
+        error: serverError || `El servicio de pagos rechazó la solicitud (${response.status}).`
+      }
     }
 
     const data = await response.json()
@@ -45,6 +52,16 @@ export async function createMercadoPagoPreference(
       initPoint: data.initPoint || data.sandboxInitPoint
     }
   } catch (error: unknown) {
+    if (!isSimulatedFallbackAllowed()) {
+      console.error(
+        'No fue posible contactar /api/create-preference en un runtime de producción:',
+        error instanceof Error ? error.message : error
+      )
+      return {
+        success: false,
+        error: 'No fue posible contactar al servicio de pagos. Por favor reintenta o cotiza por WhatsApp.'
+      }
+    }
     console.warn(
       'Vercel serverless preference endpoint not active in current environment, using fallback simulation:',
       error instanceof Error ? error.message : error
@@ -69,6 +86,14 @@ export async function processMercadoPagoPayment({
   // order document it already registered, so the charge can never be driven by a
   // client-supplied code that disagrees with the order.
   const prefResult = await createMercadoPagoPreference({ orderId, items, total, customer })
+
+  if (!prefResult.success) {
+    return {
+      success: false,
+      orderId,
+      error: prefResult.error
+    }
+  }
 
   // If running on live Vercel deployment with valid initPoint, open Mercado Pago Checkout Pro
   if (prefResult.initPoint && typeof window !== 'undefined') {

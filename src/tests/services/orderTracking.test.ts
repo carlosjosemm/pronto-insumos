@@ -1,10 +1,19 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fetchOrderTracking } from '../../services/orderTracking'
 
 describe('Order Tracking Service (src/services/orderTracking)', () => {
+  const mutableEnv = import.meta.env as unknown as Record<string, unknown>
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.restoreAllMocks()
+    delete mutableEnv.VITE_VERCEL_ENV
+    delete mutableEnv.VITE_ALLOW_SIMULATED_PAYMENTS
+  })
+
+  afterEach(() => {
+    delete mutableEnv.VITE_VERCEL_ENV
+    delete mutableEnv.VITE_ALLOW_SIMULATED_PAYMENTS
   })
 
   it('should return error when orderId is empty', async () => {
@@ -69,5 +78,29 @@ describe('Order Tracking Service (src/services/orderTracking)', () => {
     const res = await fetchOrderTracking({ orderId: 'PRONTO-000000', rut: '12.345.678-5' })
     expect(res.success).toBe(false)
     expect(res.error).toBe('Pedido no encontrado')
+  })
+
+  it('keeps the simulated fallback when the endpoint is unreachable outside production', async () => {
+    vi.spyOn(global, 'fetch').mockRejectedValueOnce(new TypeError('Network request failed'))
+
+    const res = await fetchOrderTracking({ orderId: 'PRONTO-123456', rut: '12.345.678-5' })
+
+    expect(res.success).toBe(true)
+    expect(res.data?.orderId).toBe('PRONTO-123456')
+    expect(res.data?.status).toBe('PENDIENTE_TRANSFERENCIA')
+  })
+
+  it('returns an error instead of fabricated data when the endpoint is unreachable in production', async () => {
+    const mutableEnv = import.meta.env as unknown as Record<string, unknown>
+    mutableEnv.VITE_VERCEL_ENV = 'production'
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(global, 'fetch').mockRejectedValueOnce(new TypeError('Network request failed'))
+
+    const res = await fetchOrderTracking({ orderId: 'PRONTO-123456', rut: '12.345.678-5' })
+
+    expect(res.success).toBe(false)
+    expect(res.error).toContain('No fue posible consultar el estado del pedido')
+    expect(res.data).toBeUndefined()
+    expect(errorSpy).toHaveBeenCalled()
   })
 })

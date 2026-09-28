@@ -1,5 +1,6 @@
 import { OrderTrackingInfo } from '../types'
 import { validateRut, cleanRut } from '../utils/rut'
+import { isSimulatedFallbackAllowed } from './simulationPolicy'
 
 export interface TrackOrderParams {
   orderId: string
@@ -45,15 +46,26 @@ export async function fetchOrderTracking({
 
     if (!response.ok) {
       const errData = await response.json().catch(() => null)
+      const serverError = typeof errData?.error === 'string' ? errData.error : undefined
       return {
         success: false,
-        error: errData?.error || `No fue posible encontrar el pedido "${cleanId}" con el RUT proporcionado.`
+        error: serverError || `No fue posible encontrar el pedido "${cleanId}" con el RUT proporcionado.`
       }
     }
 
     const data: OrderTrackingInfo = await response.json()
     return { success: true, data }
   } catch (err: unknown) {
+    if (!isSimulatedFallbackAllowed()) {
+      console.error(
+        'No fue posible contactar /api/track-order en un runtime de producción:',
+        err instanceof Error ? err.message : err
+      )
+      return {
+        success: false,
+        error: 'No fue posible consultar el estado del pedido. Por favor reintenta en unos minutos.'
+      }
+    }
     console.warn('Endpoint /api/track-order no disponible, usando fallback:', err instanceof Error ? err.message : err)
     // Simulated fallback for test/dev environments
     return {

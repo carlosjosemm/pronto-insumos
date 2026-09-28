@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { validateVoucherFile, fileToDataUrl, uploadTransferVoucher } from '../../services/transferVoucher'
 
 describe('Transfer Voucher Service (src/services/transferVoucher)', () => {
@@ -44,6 +44,18 @@ describe('Transfer Voucher Service (src/services/transferVoucher)', () => {
   })
 
   describe('uploadTransferVoucher', () => {
+    const mutableEnv = import.meta.env as unknown as Record<string, unknown>
+
+    beforeEach(() => {
+      delete mutableEnv.VITE_VERCEL_ENV
+      delete mutableEnv.VITE_ALLOW_SIMULATED_PAYMENTS
+    })
+
+    afterEach(() => {
+      delete mutableEnv.VITE_VERCEL_ENV
+      delete mutableEnv.VITE_ALLOW_SIMULATED_PAYMENTS
+    })
+
     it('should reject missing orderId or invalid RUT', async () => {
       const file = new File(['dummy'], 'receipt.pdf', { type: 'application/pdf' })
 
@@ -78,6 +90,57 @@ describe('Transfer Voucher Service (src/services/transferVoucher)', () => {
       expect(res.orderId).toBe('PRONTO-998877')
       expect(res.status).toBe('TRANSFERENCIA_COMPROBANTE_SUBIDO')
       expect(fetchSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('surfaces a real HTTP 401 RUT mismatch as an error — never simulates success', async () => {
+      const file = new File(['comprobante-data'], 'transfer.pdf', { type: 'application/pdf' })
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: 'RUT no coincide con el pedido' })
+      } as Response)
+
+      const res = await uploadTransferVoucher({
+        orderId: 'PRONTO-998877',
+        customerRut: '12.345.678-5',
+        file
+      })
+
+      expect(res.success).toBe(false)
+      expect(res.error).toBe('RUT no coincide con el pedido')
+      expect(res.status).toBe('PENDIENTE_TRANSFERENCIA')
+    })
+
+    it('keeps the local simulation when the endpoint is unreachable outside production', async () => {
+      const file = new File(['dummy'], 'receipt.pdf', { type: 'application/pdf' })
+      vi.spyOn(global, 'fetch').mockRejectedValueOnce(new TypeError('Network request failed'))
+
+      const res = await uploadTransferVoucher({
+        orderId: 'PRONTO-998877',
+        customerRut: '12.345.678-5',
+        file
+      })
+
+      expect(res.success).toBe(true)
+      expect(res.voucherUrl).toContain('simulated-voucher://')
+      expect(res.status).toBe('TRANSFERENCIA_COMPROBANTE_SUBIDO')
+    })
+
+    it('fails when the endpoint is unreachable in a production runtime', async () => {
+      mutableEnv.VITE_VERCEL_ENV = 'production'
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const file = new File(['dummy'], 'receipt.pdf', { type: 'application/pdf' })
+      vi.spyOn(global, 'fetch').mockRejectedValueOnce(new TypeError('Network request failed'))
+
+      const res = await uploadTransferVoucher({
+        orderId: 'PRONTO-998877',
+        customerRut: '12.345.678-5',
+        file
+      })
+
+      expect(res.success).toBe(false)
+      expect(res.error).toContain('No fue posible subir el comprobante')
+      expect(errorSpy).toHaveBeenCalled()
     })
   })
 })
