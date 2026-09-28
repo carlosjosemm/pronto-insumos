@@ -316,22 +316,32 @@ describe('submitOrder', () => {
     expect(submittedPayload.status).toBe('COTIZACION_SOLICITADA_WHATSAPP')
   })
 
-  it('should handle Firestore save error gracefully without throwing', async () => {
+  it('should surface Firestore write failures instead of reporting success (Task 0.11)', async () => {
     const { setDoc } = await import('firebase/firestore')
-    vi.mocked(setDoc).mockRejectedValueOnce(new Error('Network disconnected'))
+    vi.mocked(setDoc).mockRejectedValueOnce(new Error('Missing or insufficient permissions.'))
 
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const result = await submitOrder({
-      items: mockItems,
-      total: 50000,
-      customer: mockCustomer,
-      paymentMethod: 'mercadopago'
-    })
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const result = await submitOrder({
+        items: mockItems,
+        total: 50000,
+        customer: mockCustomer,
+        paymentMethod: 'mercadopago'
+      })
 
-    expect(result.success).toBe(true)
-    expect(result.orderId).toMatch(/^PRONTO-\d{6}$/)
-    expect(consoleSpy).toHaveBeenCalled()
-    consoleSpy.mockRestore()
+      // Rules denial: the write was attempted, and checkout must see the failure
+      // (`success: false`) so it can block payment initiation.
+      expect(setDoc).toHaveBeenCalledTimes(1)
+      const [docRef] = vi.mocked(setDoc).mock.calls[0] as unknown as [{ id: string }, unknown]
+      expect(docRef.id).toBe(result.orderId)
+      expect(result.success).toBe(false)
+      expect(result.orderId).toMatch(/^PRONTO-\d{6}$/)
+      expect(result.total).toBe(379980)
+      expect(result.itemsCount).toBe(2)
+      expect(consoleSpy).toHaveBeenCalled()
+    } finally {
+      consoleSpy.mockRestore()
+    }
   })
 
   it('should accept and persist a custom canonical orderId', async () => {

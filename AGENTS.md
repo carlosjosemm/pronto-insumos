@@ -39,6 +39,9 @@ Agents modifying this codebase must adhere to these absolute guardrails:
 5. **NO Over-Engineered CI/CD or Containers:**
    * Do **NOT** introduce Dockerfiles, Kubernetes manifests, complex multi-stage runners, or bloated pipeline scripts.
    * CI/CD for this project is deliberately lean: deployments are executed directly and securely using the **Vercel CLI**.
+6. **NO Git Worktrees or Sibling Working Copies:**
+   * All task work happens in the **primary working tree**, on a dedicated branch (`git checkout -b …`).
+   * ❌ Do **NOT** run `git worktree add`, create sibling task directories (`../PRONTO-<task>`), or open a second workspace per task — the worktree-based protocol is retired (owner decision, 2026-09-28; see the `development-workflow` skill).
 
 ---
 
@@ -79,6 +82,7 @@ Agents must strictly respect the payment boundaries defined in [PRODUCTION_READI
 * ✅ Orders created in checkout start in `'PENDIENTE_PAGO_MERCADOPAGO'` or `'PENDIENTE_TRANSFERENCIA'`.
 * ✅ Serverless webhooks must verify HMAC-SHA256 signatures (`x-signature`) and enforce idempotency to prevent duplicate inventory decrement upon retries.
 * ✅ **Simulated payment paths are environment-gated (`api/_lib/simulationPolicy.ts`, Task 0.10):** allowed only outside a production runtime (`VERCEL_ENV !== 'production'`) or with the explicit `ALLOW_SIMULATED_PAYMENTS=true` opt-in. In production, a missing/placeholder Mercado Pago token or webhook secret returns `500` + a loud log — never a fabricated approved checkout, never an unverified webhook — and a verified payment that cannot be reconciled (Firestore Admin down) is refused for retry, never silently acknowledged.
+* ✅ **Checkout never initiates payment for an unpersisted order:** `submitOrder` propagates Firestore write failures (`success: false` + `console.error`, Task 0.11), so `CheckoutModal` blocks payment/confirmation and surfaces the error instead of creating a "paid ghost order". The client Firestore instance is initialized with `ignoreUndefinedProperties: true` — the Web SDK rejects `undefined` optional fields by default (`razonSocial?`, `giroComercial?`, `sanitaryVerification?`), which is what made every checkout write fail silently before Task 0.11.
 * ✅ **Zero Card Data Handling (PCI-DSS):** Raw credit card fields must never be stored in component state or sent to our servers. Checkout Pro redirect/modal must handle payment collection.
 * ✅ **Strict Secret Separation:** Browser code uses `VITE_` variables only. Server credentials (`MERCADOPAGO_ACCESS_TOKEN`, `FIREBASE_PRIVATE_KEY`, etc.) belong strictly in `process.env` inside the `api/` directory.
 * ✅ **Server-side price & total verification (Task 0.9):** `/api/create-preference` rebuilds every preference line from the Firestore catalog (client sends only product IDs + quantities) and fails closed (`503`) when Firestore Admin is unavailable with a real token. The applied promo is read from the **order document** — never from the request body — and resolved against `src/config/promos.ts`, so the charge and the webhook's expectation can never disagree on which code applied; paused products (`isActive === false`) and unregistered orders are rejected with `400`. The webhook asserts `paymentData.transaction_amount` **and** `order.totalAmount` against a catalog-recomputed total (`src/utils/orderTotal.ts`) before marking `PAGADO_MERCADOPAGO`; mismatches go to `PAGO_EN_REVISION` with **no** stock deduction and no customer "paid" email.

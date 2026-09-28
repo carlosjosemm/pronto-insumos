@@ -1,16 +1,18 @@
 ---
-name: parallel-worktree-workflow
+name: development-workflow
 description: >-
-  Executes development tasks in an isolated Git worktree on a dedicated branch,
-  integrating Antigravity multi-window parallelization, rigorous unit testing,
-  adversarial code reviews, remote push, PR creation, and automated worktree cleanup.
+  Task execution protocol for the PRONTO repository: a dedicated feature branch in
+  the PRIMARY working tree (no Git worktrees), an approved implementation plan,
+  unit tests, verification gates, adversarial code review, as-built docs, and a
+  conventional commit plus pull request at wrap-up.
 ---
 
-# Parallel Worktree & Multi-Window Task Execution Protocol
+# Development Task Execution Protocol (Primary Working Tree)
 
-This skill codifies the protocol for executing isolated, concurrent tasks in the **PRONTO Insumos Odontológicos** repository using **Git Worktrees** and **Antigravity IDE parallel workspaces**.
+This skill codifies the mechanics for executing a development task in the **PRONTO Insumos Odontológicos** repository: branch → plan → approval → implement → verify → review → docs → wrap-up → commit → push → PR → walkthrough. Roadmap task *selection* lives in [`production-readiness-workflow`](../production-readiness-workflow/SKILL.md); the review report format lives in the [`code-review`](../../../.devin/skills/code-review/SKILL.md) skill.
 
-When this skill is activated, the agent operates in an isolated filesystem location and dedicated Git branch, preventing file locks, line-range collision, and dirty working trees. Upon task completion, review, and human wrap-up approval, the branch is pushed, a Pull Request is initiated, and the worktree is cleanly dismantled.
+> [!IMPORTANT]
+> **No Git worktrees. Ever.** All task work happens in the **primary working tree**, on a dedicated branch. Do not run `git worktree add`, do not create sibling task directories, and do not open a second workspace per task. *(Owner decision, 2026-09-28 — the previous worktree-based protocol is retired; the skill directory name is retained only to preserve the historical identifier.)*
 
 ---
 
@@ -18,147 +20,91 @@ When this skill is activated, the agent operates in an isolated filesystem locat
 
 ```mermaid
 flowchart TD
-    A["1. Task Intake & Branch Formulation"] --> B["2. Provision Git Worktree (../PRONTO-task)"]
-    B --> C["3. Draft implementation_plan.md"]
-    C --> D["4. Await Human Approval (Proceed)"]
-    D --> E["5. Execute Changes & Unit Tests in Worktree"]
-    E --> F["6. Verify: pnpm test & pnpm build"]
-    F --> G["7. Adversarial Read-Only Code Review"]
-    G --> H["8. Remediate Findings & Update As-Built Docs"]
-    H --> I["9. Await Human Wrap-Up Command"]
-    I --> J["10. Stage & Conventional Commit"]
-    J --> K["11. Push Branch to Origin"]
-    K --> L["12. Generate / Output Pull Request"]
-    L --> M["13. Dismantle & Clean Up Worktree"]
-    M --> N["14. Walkthrough & Return to Main Workspace"]
+    A["1. Task Intake & Branch Formulation"] --> B["2. Draft implementation_plan.md"]
+    B --> C["3. Await Human Approval (Proceed)"]
+    C --> D["4. Execute Changes & Unit Tests"]
+    D --> E["5. Verify: test, build, lint, format, tsc"]
+    E --> F["6. Adversarial Read-Only Code Review (/code-review)"]
+    F --> G["7. Remediate Findings & Update As-Built Docs"]
+    G --> H["8. Await Human Wrap-Up Command"]
+    H --> I["9. Stage & Conventional Commit"]
+    I --> J["10. Pre-PR Sync & Conflict Check"]
+    J --> K["11. Push Branch & Create the Pull Request"]
+    K --> L["12. Walkthrough"]
 ```
 
 ---
 
 ## 🛠️ Phase-by-Phase Execution Protocol
 
-### Phase 1: Task Intake & Worktree Provisioning
+### Phase 1: Task Intake & Branch Formulation
 
-1. **Formulate Branch & Directory Names:**
-   * Branch convention: `feat/<task-kebab-name>` or `fix/<task-kebab-name>`.
-   * Worktree directory path: `../PRONTO-<task-kebab-name>` (adjacent to the main repository).
-   * Example: For task *"Synchronize Order Identifier"*, use branch `fix/sync-order-id` and worktree `../PRONTO-sync-order-id`.
+1. **Sync the base and create the task branch — in this working tree:**
+   * Branch convention: `feat/task-X.Y-<kebab-slug>` or `fix/task-X.Y-<kebab-slug>` (e.g. `fix/task-0.11-submit-order-write-failure`).
 
-2. **Verify Clean Base State:**
-   * Ensure `main` is up to date and clean before branching:
      ```bash
-     git status
-     git fetch origin main
+     git checkout main && git pull --ff-only
+     git checkout -b <branch-name>
      ```
 
-3. **Create the Isolated Worktree:**
-   ```bash
-   git worktree add ../PRONTO-<task-slug> -b <branch-name>
-   ```
-
-4. **Context Switching & Multi-Window Guidance:**
-   * **In Antigravity IDE (Multi-Window):** Instruct the user they can open the new worktree in a second Antigravity IDE window (`File` → `New Window` → `Open Folder` → `../PRONTO-<task-slug>`) to run parallel agent chat sessions.
-   * **In Direct Tool Execution:** All subsequent file operations, terminal commands, and test runners MUST point their working directory (`Cwd`) to the absolute path of the worktree:
-     ```powershell
-     # Cwd: C:\Users\ecmv2\Documents\PRONTO-<task-slug>
-     ```
-
----
+   * ❌ Never work directly on `main` for roadmap tasks. Documentation/tooling-only changes may go to `main` **only** when the owner explicitly asks for it.
 
 ### Phase 2: Implementation & Rigorous Verification
 
-All work inside the worktree must strictly observe the **PRONTO Master Guardrails** in [AGENTS.md](../../../AGENTS.md):
+All work must strictly observe the **PRONTO Master Guardrails** in [AGENTS.md](../../../AGENTS.md).
 
-1. **Draft `implementation_plan.md`:**
-   * Create or overwrite `implementation_plan.md` in the artifact directory.
-   * Include the 5 mandatory sections:
-     1. *Context & Problem Statement* (reference [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md)).
-     2. *Human Action Items & Credentials* (safe placeholders in `.env.example`).
-     3. *Proposed Changes* (categorized by `[NEW]`, `[MODIFY]`, `[DELETE]`).
-     4. *Robust Unit Testing Plan* (Vitest test suites in `src/tests/`).
-     5. *As-Built Documentation Plan* (updates to localized `AGENTS.md`).
-   * Set `RequestFeedback: true` and `UserFacing: true`.
-   * **STOP and await explicit human approval ("Proceed").**
+1. **Draft `implementation_plan.md`** — overwrite the volatile artifact with the 5 mandatory sections:
+   1. *Context & Problem Statement* (reference [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md)).
+   2. *Human Action Items & Placeholders* (safe placeholders in `.env.example`).
+   3. *Proposed Changes* (`[NEW]`, `[MODIFY]`, `[DELETE]`).
+   4. *Robust Unit Testing Plan* (Vitest suites in `src/tests/`).
+   5. *As-Built Documentation & Roadmap Sync Plan*.
+   * Note the branch name and status in the header. **STOP and await explicit human approval ("Proceed").**
 
-2. **Execute Code in Worktree:**
-   * Apply minimal, lean changes. No extraneous libraries (no Redux, no Tailwind, no Express).
-   * Adhere to Chilean localization: Integer CLP currency, Modulo 11 RUT, Boleta/Factura separation.
+2. **Execute the changes** — minimal and lean. No extraneous libraries (no Redux, no Tailwind, no Express). Chilean localization: integer CLP, Modulo 11 RUT, Boleta/Factura separation.
 
-3. **Write Robust Unit Tests:**
-   * Add automated Vitest tests covering happy path, missing fields, race conditions, and boundary mock fallbacks in `src/tests/`.
+3. **Write robust unit tests** — happy path, missing fields, race conditions, boundary/mock fallbacks, in `src/tests/`.
 
-4. **Verify in Worktree Context:**
+4. **Verify (all five gates):**
+
    ```bash
-   # Run within ../PRONTO-<task-slug>
-   pnpm test
-   pnpm build
+   pnpm test && pnpm build && pnpm lint && pnpm format:check && pnpm exec tsc --noEmit
    ```
-   * **Zero Regression Policy:** All tests (95+) must pass 100%.
 
-5. **Adversarial Read-Only Code Review:**
-   * Inspect modified files for:
-     - Runtime safety (`process.env` vs `import.meta.env`).
-     - Defensive guards and boundary fallbacks.
-     - Unintended formatting diffs or dangling secrets.
-   * Address any findings directly in the worktree working tree.
+   * **Zero Regression Policy:** every pre-existing test plus the new ones must pass 100%.
 
-6. **Update Documentation & Checklist:**
-   * Update the relevant subdirectory's `AGENTS.md` (e.g., `api/AGENTS.md`, `src/services/AGENTS.md`).
-   * Mark the corresponding item `[x]` in [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md).
+5. **Adversarial read-only code review** — invoke the `code-review` skill (`/code-review`), which spawns a fresh-context reviewer and returns the structured report (verdict, severity-ranked findings, verified-vs-assumed evidence). Applying its protocol inline is acceptable when no subagent is available.
 
----
+6. **Remediate valid findings**, re-run the gates, update the as-built docs (the relevant `AGENTS.md`) and mark the roadmap checkbox `[x]`.
 
-### Phase 3: Completion, PR Creation & Worktree Cleanup
+### Phase 3: Completion, PR & Walkthrough
 
 > [!CAUTION]
-> **CRITICAL TIMING GUARD:** Never stage, commit, push, or delete the worktree prematurely. Await explicit human command to **"wrap up and proceed"**.
+> **CRITICAL TIMING GUARD:** Never stage, commit, push, or open the PR prematurely. Await the explicit human command **"wrap up and proceed"**.
 
-Once the human gives wrap-up authorization:
+Once authorized:
 
-1. **Stage & Commit on Task Branch (Inside Worktree):**
+1. **Stage & conventional commit** on the task branch (match the repository's commit style; include the Devin trailer).
+
+2. **Pre-PR sync & conflict check (required — `main` may have moved):**
+
    ```bash
-   git add .
-   git commit -m "<type>: <Task Title>"
-   ```
-   * Example: `git commit -m "fix: Synchronize Order Identifier across Mercado Pago and Firestore"`
-
-2. **Push Dedicated Branch to Remote:**
-   ```bash
-   git push -u origin <branch-name>
+   git fetch origin
+   git log --oneline HEAD..origin/main     # anything new since the branch was cut?
    ```
 
-3. **Generate Pull Request (Automated via `gh` CLI):**
-   * The GitHub CLI (`gh`) is authenticated for this repository (`carlosjosemm/pronto-insumos`).
-   * Execute the pull request creation in non-interactive mode directly from the worktree:
-     ```bash
-     gh pr create --base main --head <branch-name> --title "<type>: <Task Title>" --body "$(cat <<'EOF'
-     ## 🎯 Objective
-     - Reference: PRODUCTION_READINESS_TODO.md
-     - Description of changes and problem solved.
+   * If `main` moved: `git rebase origin/main`, resolve conflicts (they are usually confined to shared docs — combine both sides, then fix counts/status lines), re-run the gates, and amend the commit if counts changed.
+   * After pushing, confirm GitHub agrees: `gh pr view <n> --json mergeable,mergeStateStatus` → expect `MERGEABLE` / `CLEAN`.
 
-     ## 🛠️ Changes Implemented
-     - Summary of modified and newly added files.
+3. **Push the branch:** `git push -u origin <branch-name>`.
 
-     ## 🧪 Verification & Test Results
-     - Vitest suite passed (pnpm test).
-     - Build validation passed (pnpm build).
-     - Zero regressions.
-     EOF
-     )"
-     ```
-   * Capture and report the created Pull Request URL (e.g., `https://github.com/carlosjosemm/pronto-insumos/pull/XX`).
+4. **Create the Pull Request** with `gh pr create --base main`. Write the body to a **`.txt` file** and use `--body-file`: heredocs inside `--body "$(…)"` are fragile in this shell, and `.md` temp files trigger IDE markdownlint noise.
 
-4. **Dismantle & Clean Up Worktree:**
-   * Switch the execution context back to the primary repository root (`c:\Users\ecmv2\Documents\PRONTO`).
-   * Remove the isolated worktree directory:
-     ```bash
-     git worktree remove ../PRONTO-<task-slug>
-     ```
-   * Verify cleanup:
-     ```bash
-     git worktree list
-     ```
-   * Ensure no orphaned directories or lock files remain outside the main repository.
+   ```bash
+   gh pr create --base main --title "<type>(<scope>): <summary> (Task X.Y)" --body-file /tmp/<task>-pr-body.txt
+   ```
 
-5. **Final Walkthrough:**
-   * Write or update `walkthrough.md` in the artifact directory detailing the branch pushed, the PR URL, the test verification results, and confirmation that the worktree was dismantled.
+   * Body sections: Objective & reference · Changes implemented (grouped by area) · Chilean localization compliance · Verification (test counts, build/lint/format results) · Strict guardrails verification.
+   * Report the PR URL back to the owner.
+
+5. **Walkthrough:** write/update `walkthrough.md` (gitignored local artifact) with the branch, commit, PR URL, verification results, human action items, and the disposition of every review finding.
