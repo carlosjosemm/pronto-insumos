@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (534 tests across 65 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (555 tests across 66 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -78,6 +78,7 @@ Agents must strictly respect the payment boundaries defined in [PRODUCTION_READI
 * ✅ **The single authority for payment verification and stock deduction is the serverless webhook at `/api/webhooks/mercadopago`.**
 * ✅ Orders created in checkout start in `'PENDIENTE_PAGO_MERCADOPAGO'` or `'PENDIENTE_TRANSFERENCIA'`.
 * ✅ Serverless webhooks must verify HMAC-SHA256 signatures (`x-signature`) and enforce idempotency to prevent duplicate inventory decrement upon retries.
+* ✅ **Simulated payment paths are environment-gated (`api/_lib/simulationPolicy.ts`, Task 0.10):** allowed only outside a production runtime (`VERCEL_ENV !== 'production'`) or with the explicit `ALLOW_SIMULATED_PAYMENTS=true` opt-in. In production, a missing/placeholder Mercado Pago token or webhook secret returns `500` + a loud log — never a fabricated approved checkout, never an unverified webhook — and a verified payment that cannot be reconciled (Firestore Admin down) is refused for retry, never silently acknowledged.
 * ✅ **Zero Card Data Handling (PCI-DSS):** Raw credit card fields must never be stored in component state or sent to our servers. Checkout Pro redirect/modal must handle payment collection.
 * ✅ **Strict Secret Separation:** Browser code uses `VITE_` variables only. Server credentials (`MERCADOPAGO_ACCESS_TOKEN`, `FIREBASE_PRIVATE_KEY`, etc.) belong strictly in `process.env` inside the `api/` directory.
 * ✅ **Server-side price & total verification (Task 0.9):** `/api/create-preference` rebuilds every preference line from the Firestore catalog (client sends only product IDs + quantities) and fails closed (`503`) when Firestore Admin is unavailable with a real token. The applied promo is read from the **order document** — never from the request body — and resolved against `src/config/promos.ts`, so the charge and the webhook's expectation can never disagree on which code applied; paused products (`isActive === false`) and unregistered orders are rejected with `400`. The webhook asserts `paymentData.transaction_amount` **and** `order.totalAmount` against a catalog-recomputed total (`src/utils/orderTotal.ts`) before marking `PAGADO_MERCADOPAGO`; mismatches go to `PAGO_EN_REVISION` with **no** stock deduction and no customer "paid" email.
@@ -112,7 +113,7 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 65 suites / 534 tests)
+# Run all automated tests (Vitest, 66 suites / 555 tests)
 pnpm test
 
 # Run tests with live file watcher (or a V8 coverage report)
@@ -167,6 +168,7 @@ Always verify that `pnpm test` passes completely without regressions after makin
 The deployment and CI/CD strategy for this project is deliberately simple, lean, and direct. We do not use complex external CI pipelines, Docker containers, or multi-stage cloud runners. All previews and production releases are deployed directly using the **Vercel CLI**.
 
 ### 📋 Prerequisites & Linking
+
 * The repository is linked to the Vercel project via the local `.vercel/` configuration.
 * Environment variables (`VITE_*` public variables and serverless secrets like `MERCADOPAGO_ACCESS_TOKEN`) live in the Vercel Project Settings. Push them up from a local env file with [`scripts/sync-env-to-vercel.ts`](./scripts/sync-env-to-vercel.ts) — see §7.1.
 
@@ -174,7 +176,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 534 tests pass
+pnpm test          # Ensure all 555 tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Sync environment variables to Vercel (DRY RUN by default — see §7.1)
@@ -189,6 +191,7 @@ pnpm dlx vercel --prod
 ```
 
 ### 🛡️ Deployment Guardrails
+
 * **Pre-Flight Testing:** Never execute `vercel --prod` without first confirming that `pnpm test` and `pnpm build` succeed without errors.
 * **Environment Variable Sync:** when introducing new variables, add them to `.env.example` and push them up with `pnpm run env:sync` (§7.1) before deploying. ❌ **Never paste `.env.local` wholesale** — it carries `FIRESTORE_ENV=development`, and copying that into Production would silently point the live storefront at the `dev_*` collections.
 * **A green `vercel --prod` proves nothing about the app.** The build succeeds with *zero* environment variables set; the storefront then renders a **blank page** (the module-scope `getAuth()` in `src/services/firebase.ts` throws `auth/invalid-api-key` and aborts the whole import graph) while the build log stays clean. Verify with `pnpm dlx vercel@latest env ls` **and** by loading the deployed URL — never by the build log alone.

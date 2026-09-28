@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 // Mock firebaseAdmin before importing webhook handler
@@ -19,9 +19,29 @@ function createMockRes() {
 }
 
 describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
+  const initialVercelEnv = process.env.VERCEL_ENV
+  const initialAllowSimulated = process.env.ALLOW_SIMULATED_PAYMENTS
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.restoreAllMocks()
+    // Deterministic simulation policy (Task 0.10): every test starts outside
+    // production with no override; the production-gate tests set VERCEL_ENV explicitly.
+    delete process.env.VERCEL_ENV
+    delete process.env.ALLOW_SIMULATED_PAYMENTS
+  })
+
+  afterAll(() => {
+    if (initialVercelEnv === undefined) {
+      delete process.env.VERCEL_ENV
+    } else {
+      process.env.VERCEL_ENV = initialVercelEnv
+    }
+    if (initialAllowSimulated === undefined) {
+      delete process.env.ALLOW_SIMULATED_PAYMENTS
+    } else {
+      process.env.ALLOW_SIMULATED_PAYMENTS = initialAllowSimulated
+    }
   })
 
   it('should return 200 with health message on GET request', async () => {
@@ -1085,6 +1105,249 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
         })
       )
       expect(mockAdminDb.runTransaction).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Production fail-closed configuration gates (Task 0.10)', () => {
+    const testSecret = 'secret_webhook_key_12345'
+    const initialSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET
+    const initialToken = process.env.MERCADOPAGO_ACCESS_TOKEN
+
+    afterEach(() => {
+      if (initialSecret === undefined) {
+        delete process.env.MERCADOPAGO_WEBHOOK_SECRET
+      } else {
+        process.env.MERCADOPAGO_WEBHOOK_SECRET = initialSecret
+      }
+      if (initialToken === undefined) {
+        delete process.env.MERCADOPAGO_ACCESS_TOKEN
+      } else {
+        process.env.MERCADOPAGO_ACCESS_TOKEN = initialToken
+      }
+    })
+
+    async function validSignatureHeaders(paymentId: string, secret: string) {
+      const requestId = 'req-test-uuid-valid'
+      const ts = '1710372000'
+      const manifest = `id:${paymentId};request-id:${requestId};ts:${ts};`
+      const hash = (await import('crypto')).default.createHmac('sha256', secret).update(manifest).digest('hex')
+      return { 'x-signature': `ts=${ts},v1=${hash}`, 'x-request-id': requestId }
+    }
+
+    it('should fail closed with 500 when the webhook secret is missing in a production runtime', async () => {
+      process.env.VERCEL_ENV = 'production'
+      delete process.env.MERCADOPAGO_WEBHOOK_SECRET
+
+      const fetchSpy = vi.spyOn(global, 'fetch').mockRejectedValue(new Error('fetch should not be called'))
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: {},
+        body: { data: { id: '998877' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith({
+        error: expect.stringContaining('signature verification unavailable')
+      })
+      expect(fetchSpy).not.toHaveBeenCalled()
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('MERCADOPAGO_WEBHOOK_SECRET missing in a production runtime')
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should fail closed with 500 when the access token is missing in a production runtime', async () => {
+      process.env.VERCEL_ENV = 'production'
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = testSecret
+      delete process.env.MERCADOPAGO_ACCESS_TOKEN
+
+      const fetchSpy = vi.spyOn(global, 'fetch').mockRejectedValue(new Error('fetch should not be called'))
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const paymentId = '998877'
+      const req = {
+        method: 'POST',
+        headers: await validSignatureHeaders(paymentId, testSecret),
+        body: { data: { id: paymentId } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith({
+        error: expect.stringContaining('payment verification unavailable')
+      })
+      expect(fetchSpy).not.toHaveBeenCalled()
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('MERCADOPAGO_ACCESS_TOKEN missing in a production runtime')
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should keep the permissive acknowledgement in production when ALLOW_SIMULATED_PAYMENTS=true', async () => {
+      process.env.VERCEL_ENV = 'production'
+      process.env.ALLOW_SIMULATED_PAYMENTS = 'true'
+      delete process.env.MERCADOPAGO_WEBHOOK_SECRET
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found'
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: {},
+        body: { data: { id: '998877' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          received: true,
+          note: expect.stringContaining('verification failed')
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it("should not gate a production runtime with real credentials (MP API failure keeps today's ack)", async () => {
+      // Known gap #5 (api/AGENTS.md §8.5): this permissive ack is still un-gated in
+      // production — update this test when that path is picked up.
+      process.env.VERCEL_ENV = 'production'
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = testSecret
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found'
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const paymentId = '998877'
+      const req = {
+        method: 'POST',
+        headers: await validSignatureHeaders(paymentId, testSecret),
+        body: { data: { id: paymentId } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          received: true,
+          note: expect.stringContaining('verification failed')
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should keep the permissive acknowledgement outside production when the secret is missing (regression guard)', async () => {
+      delete process.env.VERCEL_ENV
+      delete process.env.MERCADOPAGO_WEBHOOK_SECRET
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found'
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: {},
+        body: { data: { id: '998877' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      consoleSpy.mockRestore()
+    })
+
+    it('should refuse to acknowledge a verified payment when Firestore Admin is unavailable in production', async () => {
+      process.env.VERCEL_ENV = 'production'
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = testSecret
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 'approved',
+          external_reference: 'PRONTO-123456',
+          id: '998877'
+        })
+      } as Response)
+      vi.mocked(getAdminFirestore).mockReturnValue(null)
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const paymentId = '998877'
+      const req = {
+        method: 'POST',
+        headers: await validSignatureHeaders(paymentId, testSecret),
+        body: { data: { id: paymentId } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith({ error: 'Webhook processing unavailable' })
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Firestore Admin unavailable in a production runtime')
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should keep the permissive warning response in production when ALLOW_SIMULATED_PAYMENTS=true (Admin down)', async () => {
+      process.env.VERCEL_ENV = 'production'
+      process.env.ALLOW_SIMULATED_PAYMENTS = 'true'
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = testSecret
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 'approved',
+          external_reference: 'PRONTO-123456',
+          id: '998877'
+        })
+      } as Response)
+      vi.mocked(getAdminFirestore).mockReturnValue(null)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const paymentId = '998877'
+      const req = {
+        method: 'POST',
+        headers: await validSignatureHeaders(paymentId, testSecret),
+        body: { data: { id: paymentId } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          received: true,
+          warning: 'Firestore Admin unavailable'
+        })
+      )
+      consoleSpy.mockRestore()
     })
   })
 })
