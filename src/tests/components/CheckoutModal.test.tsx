@@ -729,6 +729,33 @@ describe('CheckoutModal Component', () => {
         expect(submitOrder).toHaveBeenCalledTimes(1)
       })
       expect(sendOrderConfirmationEmail).not.toHaveBeenCalled()
+      expect(screen.getByText(/No fue posible registrar el pedido en el sistema/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('Order registration failure propagation (Task 0.11)', () => {
+    it('should block Mercado Pago payment initiation and show an error when order registration fails', async () => {
+      vi.mocked(submitOrder).mockResolvedValue({
+        success: false,
+        orderId: 'PRONTO-TEST1234',
+        timestamp: new Date().toISOString(),
+        total: 189990,
+        itemsCount: 1
+      })
+      render(<CheckoutModal {...defaultProps} />)
+      completeDataEntry()
+      fireEvent.click(screen.getByLabelText(/Pago Inmediato Mercado Pago Chile/i))
+      fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+      await waitFor(() => {
+        expect(submitOrder).toHaveBeenCalledTimes(1)
+      })
+
+      expect(screen.getByText(/No fue posible registrar el pedido en el sistema/i)).toBeInTheDocument()
+      expect(processMercadoPagoPayment).not.toHaveBeenCalled()
+      expect(screen.queryByText(/¡Pedido Registrado con Éxito!/i)).not.toBeInTheDocument()
+      // The shopper stays on the Pago step with the submit control re-enabled (retry possible).
+      expect(screen.getByRole('button', { name: /Confirmar Pedido/i })).toBeEnabled()
     })
   })
 })

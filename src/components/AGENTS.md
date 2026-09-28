@@ -168,15 +168,18 @@ graph TD
     G --> H{Gate on Confirmar}
     H -- Final stock re-check fails --> H1[Stock alert & block]
     H -- Valid --> I[submitOrder with PENDIENTE_* status]
-    I --> J[Step 5: Confirmación — voucher, transfer instructions, tracking, WhatsApp]
+    I -- success:false, write rejected (Task 0.11) --> I1[Registration-error banner & block — no payment, retry allowed]
+    I -- success:true --> J[Step 5: Confirmación — voucher, transfer instructions, tracking, WhatsApp]
 ```
 
 **Stepper contract:** `.checkout-stepper` renders the four labels with `checkout-step--active` / `--done` states (`aria-current="step"` on the active one, a check icon on done steps) and is hidden on step 5, where the header swaps `Finalizar Pedido` → `Pedido Registrado`. Each step renders inside a `key={step}` `.checkout-panel` that replays a fade/slide entrance (disabled under `prefers-reduced-motion`), and a DOM-only effect scrolls `.modal-card` back to the top on every step change. `Volver` walks back exactly one step (steps 2–4) and clears `submitError`; there is no click-to-jump stepper navigation.
 
 **Gate placement (as built — two deliberate deviations from the TODO's literal wording):**
+
 * The **stock check** and the **San Antonio minimum-order** gates fire when leaving **Despacho** (Step 2 → 3) — the delivery-data step, matching the TODO's intent ("Step 1 → 2" under the old 2-step numbering).
 * The **SIS validation** fires at the same Despacho → Documento gate, *before* the **RUT Modulo 11** check, which now guards Documento → Pago. Today's order was stock → min-order → RUT → SIS; the reorder is deliberate (a shopper missing both sees the SIS error first — both still block).
 * The **final stock re-check** still runs inside `handleCompleteOrder()` before `submitOrder`.
+* The **order-registration gate** (`!result.success`, `handleCompleteOrder` l. 335) blocks payment initiation, the confirmation email, and the confirmation step when the Firestore write is rejected — reachable since **Task 0.11** (previously dead code: the SDK rejected the `undefined`-bearing payload and `submitOrder` swallowed the throw, so no order ever persisted).
 
 ### 3.1 Field-by-Field Reference & Business Rationale
 
@@ -196,13 +199,16 @@ graph TD
 | **Giro Comercial** | `formData.giroComercial` | 3 · Documento (dormant) · *Giro Comercial Registrado \** | **Factura Only:** The registered economic activity code and description recognized by the SII (e.g., *"Servicios odontológicos"*, *"Atención médica y dental"*). Invoices lacking a valid economic activity are legally rejected for tax credit. | Mandatory when `documentType === 'factura'`. Minimum 3 characters. |
 
 ### 3.2 Pre-Flight Stock Validation at the Despacho Gate
+
 Before allowing the customer to proceed from Step 2 (Despacho) to Step 3 (Documento), `handleNextStep()` iterates through every cart line item against current inventory:
+
 ```typescript
 const stockIssueItem = cartItems.find(item => {
   const stock = typeof item.product.stockCount === 'number' ? item.product.stockCount : 0
   return !item.product.inStock || stock <= 0 || item.quantity > stock
 })
 ```
+
 If an item has depleted or the requested quantity exceeds physical stock, the transition is halted and an amber alert banner displays:
 > *"El producto '[Nombre]' supera el stock disponible (X solicitados, Y disponibles). Por favor ajusta la cantidad en el carro."*
 
@@ -227,22 +233,26 @@ if (isBelowMinimumOrder(deliveryZone, productSubtotal)) {
 * The same rule is surfaced in the Cart drawer, so the shopper learns it before reaching checkout. Both read the constants from `src/config/delivery.ts`.
 
 ### 3.3 Step 4: Payment Pathways
+
 The Pago step opens with a **compact order summary** (`.checkout-summary`): scrollable item lines (`qty × name — subtotal`) plus the Neto / IVA (19%) / Total rows computed by `calculateTaxBreakdown`. Below it, 3 distinct payment pathways tailored to Chilean healthcare purchasing habits:
+
 1. **Transferencia Bancaria Directa (Banco de Chile):**
-   - The preferred B2B method for dental clinics managing monthly account balances.
-   - Bank details are externalized in [`src/config/bankDetails.ts`](../../src/config/bankDetails.ts) (**Banco de Chile, Cuenta Corriente 849-01284-01, RUT 77.892.410-2, pagos@prontoinsumos.cl**).
-   - Advances to Step 5 where the customer receives transfer instructions and can upload their bank receipt directly.
+   * The preferred B2B method for dental clinics managing monthly account balances.
+   * Bank details are externalized in [`src/config/bankDetails.ts`](../../src/config/bankDetails.ts) (**Banco de Chile, Cuenta Corriente 849-01284-01, RUT 77.892.410-2, <pagos@prontoinsumos.cl>**).
+   * Advances to Step 5 where the customer receives transfer instructions and can upload their bank receipt directly.
 2. **Pago Inmediato Mercado Pago Chile (Webpay Plus / Redcompra):**
-   - Instant digital settlement via credit/debit card.
-   - **PCI-DSS Compliance:** Zero card fields exist in state or DOM. Processing delegates to `/api/create-preference` which generates an official Checkout Pro URL.
+   * Instant digital settlement via credit/debit card.
+   * **PCI-DSS Compliance:** Zero card fields exist in state or DOM. Processing delegates to `/api/create-preference` which generates an official Checkout Pro URL.
 3. **Cotización Formal por WhatsApp:**
-   - Designed for municipal procurement, university clinics, or custom high-volume orders.
-   - Formats a comprehensive Markdown quote with itemized SKUs and tax breakdowns, opening `https://wa.me/...`.
+   * Designed for municipal procurement, university clinics, or custom high-volume orders.
+   * Formats a comprehensive Markdown quote with itemized SKUs and tax breakdowns, opening `https://wa.me/...`.
 
 The method cards use `.checkout-pay-option` (with `--selected`, `:hover` and `:focus-within` states — hover/focus affordances were impossible under the old inline styles). The submit label stays `Confirmar Pedido` (or `Generar Cotización` for WhatsApp).
 
 ### 3.4 Step 5: Order Confirmation & Transfer Voucher Intake
+
 When Transferencia Bancaria is confirmed:
+
 * Generates a canonical Order ID (`PRONTO-XXXXXX`).
 * Displays the complete Banco de Chile transfer specifications.
 * Renders an **embedded voucher upload widget** allowing immediate attachment of receipts (`.pdf`, `.png`, `.jpg` <= 5MB).
@@ -258,7 +268,9 @@ Closing the modal on step 5 (`handleClose` — overlay click, ✕ button, Escape
 The [`OrderTrackingModal.tsx`](../../src/components/OrderTrackingModal.tsx) component provides dental practitioners with transparent visibility into their order fulfillment.
 
 ### 4.1 Security Architecture
+
 Under [`firestore.rules`](../../firestore.rules), client-side queries against `/orders` are blocked (`allow read, update, delete: if false;`) to protect clinical order privacy.
+
 * **Authentication Contract:** Lookups require two canonical factors:
   1. **Canonical Order ID:** `PRONTO-XXXXXX`
   2. **Customer / Clinic Tax ID:** Validated Chilean RUT (Modulo 11) matching the order.
@@ -301,6 +313,7 @@ stateDiagram-v2
 (The numbered list mirrors the rendered `STEPS` labels in the component; the mermaid node names above are conceptual.)
 
 ### 4.3 In-Modal Bank Transfer Voucher Upload
+
 If a customer consults an order that is pending bank transfer (`status === 'PENDIENTE_TRANSFERENCIA'`), the modal dynamically embeds a voucher upload form directly below the timeline, eliminating the need to contact support via email.
 
 ---
@@ -310,7 +323,9 @@ If a customer consults an order that is pending bank transfer (`status === 'PEND
 [`Cart.tsx`](../../src/components/Cart.tsx) manages the clinician's shopping bag with real-time stock cues, shipping incentives, and tax breakdowns:
 
 ### 5.1 Real-Time Stock Cues
+
 To avoid customer frustration during checkout, the cart actively monitors inventory:
+
 * **"Sin stock disponible"** (Red badge): Displayed if `stockCount <= 0` or `inStock === false`.
 * **"Máximo disponible (X unid.)"** (Amber badge): Displayed when the item quantity equals warehouse physical stock.
 * **"Excede stock (X unid. disp.)"** (Red badge): Displayed if inventory depleted while items were in the cart.
@@ -342,6 +357,7 @@ The Cart drawer is one of five surfaces that call `useScrollLock(...)` from [src
 ## 📦 6. Catalog Components Reference
 
 ### 6.1 `ProductCard.tsx`
+
 * **Confidential Stock Defense:** Warehouse inventory counts (`stockCount`) are **never rendered** to public users to prevent competitors from scraping inventory levels. The low-stock cue is the fixed string **`Últimas unidades`** (it used to interpolate the count as `Últimas N unid.` — never reintroduce that), the out-of-stock cue is **`Sin stock`**, and the add button reads `Agregar` / `Agotado`. `stockCount` still drives *whether* the cue shows (`<= 5`) and still caps steppers; only the number is withheld.
 * **Media contract (Phase 9):** `.media-placeholder-box` is a fixed **4:3** area, so a delivered photo never changes a card's height. Two treatments:
   * *No photo* (all current catalog items have `images: []`) → the icon-on-dot-grid placeholder, which is now **category icon only** — the repeated product name was removed because it duplicated the card title. One neutral treatment; the eight `gradient-*` theme rules were collapsed, so `placeholderTheme` no longer changes the look.
@@ -359,13 +375,16 @@ The Cart drawer is one of five surfaces that call `useScrollLock(...)` from [src
 * **Pricing Standard:** Renders whole Chilean Peso amounts with `IVA incluido` tag. Ratings and strikethrough prices render only when the data actually exists (fixtures now carry `rating: 0` / `reviewsCount: 0`, and only one fixture carries an `originalPrice`).
 
 ### 6.2 `ProductQuickView.tsx`
+
 Vertical 1-column Product Detail Modal:
+
 * **Multi-Photo Gallery:** Thumbnail strip, next/prev navigation buttons, and keyboard arrow controls.
 * **Clinical Checklists:** Technical specifications checklist (`specs`) and itemized packaging contents (`packageContents` e.g., *"1x Turbina LED, 1x Llave de desarme, 1x Manual técnico"*).
 * **Sanitary Notice:** products flagged `prescriptionRequired` carry a `⚕️ Venta Regulada ISP (Requiere N° SIS)` badge and render an `⚠️ Dispositivo / Fármaco Regulado por ISP Chile` warning block explaining that dispatch requires the buyer's RNPI/SIS registry number; a `Normativa ISP Homologada` trust badge sits in the modal footer strip.
 * **Per-product state via remount:** `App.tsx` renders this component with `key={quickViewProduct.id}`. Quantity, active gallery index and failed-image state are therefore scoped to a single product and reset by remounting — there is deliberately **no** "reset when `product` changes" effect (it would be a synchronous `setState` inside an effect, which `pnpm lint` rejects). Keep the `key`.
 
 ### 6.3 `CategoryFilter.tsx`
+
 Clinical category pills — the six frozen Chilean keys (`DESECHABLES, ESTERILIZACION Y DESINFECCION`, `ENDODONCIA`, `HIGIENE BUCAL`, `IMPRESION`, `INSTRUMENTAL Y ACCESORIOS`, `OPERATORIA`, displayed via `formatCategoryDisplayName()`) plus any extra category present in the live catalog, each with a per-category count — with `role="tablist"`/`role="tab"` + `aria-selected`, a `Solo en Stock` checkbox, and a sort dropdown (`featured`, `price-low`, `price-high`, `rating`, `reviews`).
 
 ---
@@ -373,6 +392,7 @@ Clinical category pills — the six frozen Chilean keys (`DESECHABLES, ESTERILIZ
 ## 🌐 7. Navigation, Layout & Utility Components
 
 ### 7.1 `Navbar.tsx`
+
 * **Brand Lockup:** the code-rendered `PRONTO` / `INSUMOS ODONTOLÓGICOS` wordmark with the `--signal` underline motif — see §2.2. The link carries `aria-label="PRONTO Insumos Odontológicos"`.
 * **Top Commercial Utility Bar:** left side carries `Despacho a clínicas en Melipilla y San Antonio`; right side carries the `Seguimiento de Pedido` button (only when `onOpenTracking` is passed), `Boleta Electrónica · IVA 19%`, and `Mesa Clínica: {WHATSAPP_DISPLAY}`. It no longer advertises Factura, pickup, or the warehouse address. It is an `--ink-900` surface, so its icons use `var(--accent-on-dark)`, never `var(--accent)`.
 * **Mobile utility row (`.nav-mobile-utility`):** the utility bar is `display: none` ≤768px, which took the phone and tracking actions with it. This row — rendered inside `<header className="navbar">` right after `.nav-search-mobile` — restores them: a `Mesa Clínica` link to `whatsappLink()` plus a `Seguimiento` button (again gated on `onOpenTracking`). It is `display: none` above 768px and only becomes a flex row in the ≤768px block. `Navbar.test.tsx` covers both the rendered row and the handler-gated omission.
@@ -381,6 +401,7 @@ Clinical category pills — the six frozen Chilean keys (`DESECHABLES, ESTERILIZ
 * **Contact data:** the "Mesa Clínica" phone and its `wa.me` link come from `src/config/contact.ts` (`WHATSAPP_DISPLAY`, `whatsappLink()`), never from a literal.
 
 ### 7.2 `Footer.tsx`
+
 * **Brand Lockup:** the same wordmark as the navbar, in its `brand-lockup--inverse` (navy-surface) variant — see §2.2.
 * Grounded 4-column B2B distributor layout:
   1. *Identidad Corporativa:* Corporate details, Av. Ortúzar 750 warehouse location, Melipilla, Chile.
@@ -392,13 +413,16 @@ Clinical category pills — the six frozen Chilean keys (`DESECHABLES, ESTERILIZ
 * **Zero Prototype Buttons:** Administrative wipe/seed buttons are strictly eliminated from public view.
 
 ### 7.3 `PaymentReturnModal.tsx`
+
 Handles Mercado Pago return redirects (`/?status=approved&collection_id=...`):
+
 * `approved`: Displays success header, order ID, payment ID, and a WhatsApp delivery-coordination link. The cart reset is owned by `App.tsx` (module-scope `parseUrlBootstrap()` + `clearCartFromStorage()` in the mount effect — see §2.1), not by this modal.
 * `failure`: Explains payment decline, reassures no funds were charged, and offers retry or bank transfer alternatives.
 * `pending`: Informs the customer that the payment is awaiting banking clearance.
 * Its WhatsApp URL is the last literal `wa.me` in the storefront — see §4.1.2.
 
 ### 7.4 `ErrorBoundary.tsx`
+
 Top-level React error boundary preventing white-screen crashes. Catches unhandled exceptions and displays a clinical error card with a direct WhatsApp technical support button pre-filled with error diagnostic details.
 
 ---

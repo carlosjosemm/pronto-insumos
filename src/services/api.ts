@@ -13,7 +13,8 @@ import {
   PaymentMethod,
   Product,
   PromoCode,
-  SanitaryVerification
+  SanitaryVerification,
+  SubmitOrderResult
 } from '../types'
 import { calculateTaxBreakdown } from '../utils/tax'
 
@@ -40,14 +41,6 @@ export interface SubmitOrderOptions {
  */
 export function generateOrderId(): string {
   return 'PRONTO-' + Math.floor(100000 + Math.random() * 900000)
-}
-
-export interface SubmitOrderResult {
-  success: boolean
-  orderId: string
-  timestamp: string
-  total: number
-  itemsCount: number
 }
 
 /**
@@ -145,6 +138,8 @@ export async function validatePromo(code: string): Promise<{ success: boolean; p
  * Submit order to Firestore
  * Orders start in pending state (e.g., PENDIENTE_PAGO_MERCADOPAGO, PENDIENTE_TRANSFERENCIA).
  * Physical stock is deducted EXCLUSIVELY by the verified serverless webhook upon payment confirmation.
+ * FAIL-CLOSED (Task 0.11): a rejected write returns `success: false` — callers must block
+ * payment initiation and surface the error instead of continuing.
  */
 export async function submitOrder(orderData: SubmitOrderOptions): Promise<SubmitOrderResult> {
   const orderId = (orderData.orderId || generateOrderId()).trim().toUpperCase()
@@ -192,11 +187,22 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     ...(discountAmount > 0 ? { promoCode: orderData.promoCode?.trim().toUpperCase(), discountAmount } : {})
   }
 
+  const itemsCount = orderData.items.reduce((acc, i) => acc + i.quantity, 0)
+
   try {
     const orderDocRef = doc(db, getCollectionName('orders'), orderId)
     await setDoc(orderDocRef, payload)
   } catch (err: unknown) {
-    console.warn('Firestore order submit notice:', err instanceof Error ? err.message : err)
+    // FAIL-CLOSED (Task 0.11): a rejected write must never look like a persisted
+    // order — checkout would otherwise initiate payment for a "ghost order".
+    console.error('Firestore order submit failed:', err instanceof Error ? err.message : err)
+    return {
+      success: false,
+      orderId,
+      timestamp: new Date().toISOString(),
+      total: totalAmount,
+      itemsCount
+    }
   }
 
   return {
@@ -204,6 +210,6 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     orderId,
     timestamp: new Date().toISOString(),
     total: totalAmount,
-    itemsCount: orderData.items.reduce((acc, i) => acc + i.quantity, 0)
+    itemsCount
   }
 }
