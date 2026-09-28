@@ -134,6 +134,7 @@ pnpm build
 pnpm preview
 
 # Deploy Firestore Security Rules (protects both canonical and dev_* collections)
+# One-time per machine: `pnpm dlx firebase-tools login` — the script invokes the CLI via pnpm dlx
 pnpm run deploy:rules
 
 # Provision an administrator account for the backoffice portal (/admin)

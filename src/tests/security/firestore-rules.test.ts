@@ -128,6 +128,6 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
 
   it('should have deploy:rules script configured in package.json', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'))
-    expect(pkg.scripts['deploy:rules']).toBe('firebase deploy --only firestore:rules')
+    expect(pkg.scripts['deploy:rules']).toBe('pnpm dlx firebase-tools deploy --only firestore:rules')
   })
 })
