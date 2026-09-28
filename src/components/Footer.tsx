@@ -1,6 +1,7 @@
 import React from 'react'
 import { Activity, ShieldCheck, RefreshCw, MapPin, Building2, Phone, CreditCard, Truck } from 'lucide-react'
 import { WHATSAPP_DISPLAY, whatsappLink } from '../config/contact'
+import { BANK_DETAILS } from '../config/bankDetails'
 
 export interface FooterProps {
   onOpenTracking?: () => void
@@ -109,7 +110,7 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               }}
             >
               <div>
-                <strong>RUT Empresa:</strong> 77.892.410-K
+                <strong>RUT Empresa:</strong> {BANK_DETAILS.rut}
               </div>
               <div>
                 <strong>Bodega & Despacho:</strong> Av. Ortúzar 750, Melipilla, Chile

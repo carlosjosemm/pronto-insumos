@@ -1,189 +1,109 @@
-# Task 0.10: Fail-Closed Payment Paths in Production
+# Task 1.4: Hardcoded Distributor RUT Fails Modulo-11
 
-**Branch:** `fix/task-0.10-fail-closed-payment-paths` (cut from `main` @ `5f8593a`, synced with `origin/main`; executing in the primary worktree — no separate worktree, per explicit user instruction)
+**Branch:** `fix/task-1.4-distributor-rut-modulo11` (cut from `main` @ `9166396`, synced with `origin/main`; executing in the primary worktree — no separate worktree, per explicit user instruction)
 **Status:** Awaiting user approval — no source code changes until approved.
+**RequestFeedback:** true
+**UserFacing:** true
 
 ---
 
 ## 1. Context & Problem Statement
 
-Reference: `PRODUCTION_READINESS_TODO.md` → **0.10. Fail-Closed Payment Paths in Production** (P0 · Critical · production blocker).
+Reference: `PRODUCTION_READINESS_TODO.md` → **1.4. Hardcoded Distributor RUT Fails Modulo-11** (P1 · Legal · production blocker · ~1h; audit finding 2026-09).
 
-Two server-side payment paths degrade silently instead of failing closed:
+Two storefront surfaces hardcode the distributor RUT with an **invalid Modulo-11 check digit**:
 
-1. **`api/create-preference.ts` — fabricated approved checkout.** When `MERCADOPAGO_ACCESS_TOKEN` is missing/placeholder (`hasRealToken === false`), the endpoint returns `200 { isSimulated: true, initPoint: '<baseUrl>/?status=approved&orderId=…' }` from **two** branches: (a) Firestore Admin unavailable (l. 40–56) and (b) after full catalog/stock validation (l. 173–182). A production deploy that loses the token hands the customer a fake "approved" return with no money collected — `PaymentReturnModal` then renders the approved-payment screen.
-2. **`api/_lib/mercadopagoSignature.ts` — fail-open signature gate.** When `MERCADOPAGO_WEBHOOK_SECRET` is unset/placeholder, `verifyMercadoPagoSignature()` returns `{ valid: true, reason: 'secret_not_configured' }` (l. 33–36) and the webhook proceeds to the MP API re-check — i.e. an unverifiable webhook is trusted. Flagged in 0.5's audit note; remediation explicitly assigned here.
+1. **`src/components/Footer.tsx` l.112** — `<strong>RUT Empresa:</strong> 77.892.410-K` (public legal-identity block in the footer).
+2. **`src/components/CheckoutModal.tsx` l.1270** — `RUT Distribuidor: 77.892.410-K` (letterhead of the pro-forma "Ver Comprobante de Compra" receipt customers print/save).
 
-3. **`api/webhooks/mercadopago.ts` — placeholder access-token ack.** *(Approved scope expansion — the plan's adjacent observation, promoted at the user's request.)* When `MERCADOPAGO_ACCESS_TOKEN` is missing, the handler falls back to the literal `'YOUR_MERCADOPAGO_ACCESS_TOKEN'` (l. 15–16); the MP API re-check then 401s and the webhook acks `200 { note: 'Payment verification failed or credentials placeholder' }` without processing — silently dropping reconciliation and stopping MP retries.
+Modulo-11 verification of body `77892410`: weighted sum `0·2+1·3+4·4+2·5+9·6+8·7+7·2+7·3 = 174` → `174 mod 11 = 9` → DV = `11 − 9 = 2`. The correct RUT is **`77.892.410-2`**; `-K` (DV 10) fails the check digit, so any legal/bank document carrying it is invalid.
 
-All three behaviors are correct for local dev and tests, but must be impossible in a production runtime. Vercel sets `VERCEL_ENV=production|preview|development` on every deployment; Vitest/local runs leave it unset (which is why the existing simulated-fallback tests currently pass).
+The correct value is already the single source of truth: **`BANK_DETAILS.rut`** in [`src/config/bankDetails.ts`](src/config/bankDetails.ts) (env-backed via `VITE_BANK_RUT`), asserted by `src/tests/config/bankDetails.test.ts`, and already rendered by `CheckoutModal` in its four other transfer-copy spots (l.1060–1072, l.1490–1505). `Footer.tsx` does not yet import `bankDetails`.
+
+**Test debt:** `src/tests/components/CheckoutModal.test.tsx` l.354 asserts the wrong `-K` string — it must be updated in the same change or `pnpm test` breaks.
 
 ---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-- **No new credentials or secrets are required.**
-- New **optional** env var, documented in `.env.example` (placeholder only — no real value shipped):
-  - `ALLOW_SIMULATED_PAYMENTS=false` — explicit opt-in escape hatch to force simulated payment paths inside a production runtime (controlled demos). Leave unset/`false` in Production.
-- **Human check after merge:** confirm `ALLOW_SIMULATED_PAYMENTS` is absent (or `false`) in Vercel → Project → Settings → Environment Variables → **Production**. Nothing needs to be pushed — `env:sync` only writes variables present in the local env file.
-- No human-produced assets, no new dependencies, no external configuration changes.
+- **No new credentials, secrets, env vars, dependencies, or external configuration.**
+- **Human legal confirmation:** verify that `77.892.410-2` matches the SII-registered company RUT. The fix renders config, so if the real RUT ever differs, update `VITE_BANK_RUT` in Vercel env (or the fallback in `bankDetails.ts`) — never a component literal.
 
 ---
 
 ## 3. Proposed Changes
 
-### 3.A `[NEW] api/_lib/simulationPolicy.ts` — single policy authority
+### 3.A `[MODIFY] src/components/Footer.tsx`
 
-```ts
-export function isSimulatedPaymentAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.ALLOW_SIMULATED_PAYMENTS === 'true') return true
-  return env.VERCEL_ENV !== 'production'
-}
-```
+- Add `import { BANK_DETAILS } from '../config/bankDetails'` (alongside the existing `contact` import).
+- Replace the literal:
+  ```tsx
+  <strong>RUT Empresa:</strong> 77.892.410-K
+  ```
+  with:
+  ```tsx
+  <strong>RUT Empresa:</strong> {BANK_DETAILS.rut}
+  ```
 
-- Injectable `env` (defaults to `process.env`) → pure and unit-testable without global mutation.
-- Strict opt-in: only the exact string `'true'` enables the override (`'TRUE'`, `'1'`, `'false'` do **not**).
-- Lives under `api/_lib/` → not counted against the Vercel Hobby function cap.
-- Deliberately **not** keyed on `getFirestoreEnv()`: `FIRESTORE_ENV` governs collection namespacing and can be explicitly overridden (`FIRESTORE_ENV=development`) — coupling payment policy to it would let a Firestore-scoping mistake reopen the simulation door.
+### 3.B `[MODIFY] src/components/CheckoutModal.tsx`
 
-### 3.B `[MODIFY] api/create-preference.ts` — early fail-closed checkpoint
+- `BANK_DETAILS` is already imported (l.34). Replace the pro-forma letterhead literal:
+  ```tsx
+  RUT Distribuidor: 77.892.410-K
+  ```
+  with:
+  ```tsx
+  RUT Distribuidor: {BANK_DETAILS.rut}
+  ```
 
-One gate, placed immediately after the method guard (before any Firestore work):
+### 3.C `[MODIFY] src/tests/components/CheckoutModal.test.tsx`
 
-```ts
-// FAIL-CLOSED (Task 0.10): a production runtime must never fabricate an approved
-// checkout. Without a real access token, refuse loudly instead of simulating.
-if (!hasRealToken && !isSimulatedPaymentAllowed()) {
-  console.error(
-    '[create-preference] MERCADOPAGO_ACCESS_TOKEN missing in a production runtime; refusing to fabricate a simulated checkout.'
-  )
-  return res.status(500).json({
-    error: 'Servicio de pagos no configurado. Por favor cotiza por WhatsApp mientras lo resolvemos.'
-  })
-}
-```
+- Import `BANK_DETAILS` from `../../config/bankDetails`.
+- Update the l.354 assertion from the wrong literal to the config-derived value, encoding the "render from config" contract:
+  ```tsx
+  expect(screen.getByText(`RUT Distribuidor: ${BANK_DETAILS.rut}`)).toBeInTheDocument()
+  ```
+  (If text-normalization quirks arise, fall back to the escaped regex `/RUT Distribuidor: 77\.892\.410-2/i`.)
 
-- Chosen over gating each simulated branch individually: a single checkpoint means both existing branches (l. 49–55 and l. 175–181) become **unreachable in production by construction**, no partial work is done first, and there is exactly one place to audit.
-- The existing `hasRealToken → 503` Admin-unavailable branch, the order lookup, the catalog price/stock rebuild, and the real MP preference call are **untouched**.
-- Net effect: production + missing token ⇒ **500 + `console.error`**; dev / test / preview ⇒ simulated fallback exactly as today.
+### 3.D `[MODIFY] src/tests/config/bankDetails.test.ts` — small regression guard
 
-### 3.C `[MODIFY] api/webhooks/mercadopago.ts` — close the fail-open gate
+Add a `describe('Fiscal RUT single-source guard')` block using the `readFileSync` source-content pattern already established by `storefrontCss.test.ts` / `firestore-rules.test.ts`:
 
-Immediately after the existing 401 branch (l. 60–68):
+- `src/components/Footer.tsx` contains **no** `77.892.410` literal (one test).
+- `src/components/CheckoutModal.tsx` contains **no** `77.892.410` literal (one test).
 
-```ts
-if (signatureResult.reason === 'secret_not_configured' && !isSimulatedPaymentAllowed()) {
-  console.error(
-    '[Mercado Pago Webhook] MERCADOPAGO_WEBHOOK_SECRET missing in a production runtime; refusing to process an unverifiable webhook.'
-  )
-  return res.status(500).json({ error: 'Webhook configuration error: signature verification unavailable' })
-}
-```
-
-- `verifyMercadoPagoSignature()` itself stays a **pure crypto helper — unchanged** (all 12 existing signature tests untouched): it already reports *why* it passed (`reason: 'secret_not_configured'`), so the trust decision belongs at the boundary that consumes the result.
-- **500, not 401, is deliberate:** it signals misconfiguration (not an auth rejection) and Mercado Pago retries 5xx, so real deliveries are processed once the secret is restored.
-- The rest of the webhook (MP API double-check, amount assertion, transaction, idempotency, emails) is untouched.
-
-**Additional gate — placeholder access token (approved expansion).** Derive `hasRealAccessToken` the same way `create-preference` does and refuse *before* the MP API call:
-
-```ts
-if (!hasRealAccessToken && !isSimulatedPaymentAllowed()) {
-  console.error(
-    '[Mercado Pago Webhook] MERCADOPAGO_ACCESS_TOKEN missing in a production runtime; refusing to process an unverifiable payment notification.'
-  )
-  return res.status(500).json({ error: 'Webhook configuration error: payment verification unavailable' })
-}
-```
-
-The `Authorization` header keeps its existing placeholder fallback (`rawAccessToken || 'YOUR_MERCADOPAGO_ACCESS_TOKEN'`), so non-production behavior — including every existing mocked test — is unchanged.
-
-### 3.D `[MODIFY] .env.example`
-
-New block under the Mercado Pago server secrets:
-
-```bash
-# Payment Simulation Policy (Server-Side, Optional)
-# Simulated checkouts / unverified webhook signatures are automatically disabled when
-# VERCEL_ENV=production. Set to "true" ONLY for a controlled demo deployment — never
-# for the real storefront.
-ALLOW_SIMULATED_PAYMENTS=false
-```
+Rationale: `src/config/AGENTS.md` §1 documents exactly this divergence class (delivery thresholds, `wa.me`, RUT). The guard makes the roadmap's "never hardcode fiscal literals" required action machine-checked. ~10 lines total; struck from scope at plan review if considered over-engineering.
 
 ### Explicitly NOT done (scope guardrails)
 
-- **No changes to `src/services/mercadopago.ts`.** The client still swallows any HTTP error (incl. the new 500) into `success: true, initPoint: undefined`, so the browser masks server failures until Task **2.8** ("Simulated-Success Fallbacks Must Not Mask Real HTTP Errors"). Residual risk to be recorded honestly: after 0.10 the *server* never fabricates success, but the *browser* still can — the roadmap already sequences 2.8 immediately after 0.11/1.4.
-- No new dependencies, no framework, no changes to the MP payload shape, Firestore rules, or admin endpoints.
-
-### Scope note
-
-- The placeholder access-token observation from the original plan draft is **in scope** (approved by the user): see the additional gate in §3.C.
+- **No changes to `api/_lib/emailTemplates.ts`** — its server-side `VITE_BANK_*` fallback already carries the correct `-2`.
+- No new files, no deletions, no dependency changes, no copy rewrites beyond the RUT value itself.
 
 ---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-**`[NEW] src/tests/api/simulationPolicy.test.ts`** (~6 tests; pure — no mocks, no `process.env` mutation):
+1. **Updated assertion** (CheckoutModal boleta-comprobante flow): the printed comprobante renders `RUT Distribuidor: 77.892.410-2` sourced from `BANK_DETAILS.rut` — proves the legal document no longer carries the invalid check digit.
+2. **New guard tests** (bankDetails suite, 2 tests): neither component source file contains a `77.892.410` literal — negative regression guard against reintroduction.
+3. **Existing authority test stays green:** `bankDetails.test.ts` already asserts `validateRut(BANK_DETAILS.rut) === true` and `BANK_DETAILS.rut === '77.892.410-2'` — the Modulo-11 correctness anchor.
+4. **No new mocking** required: no network, Firebase, or payment boundaries are touched; the CheckoutModal suite's existing service mocks are reused as-is.
 
-1. `VERCEL_ENV` unset ⇒ allowed (local dev / Vitest).
-2. `VERCEL_ENV='preview'` and `'development'` ⇒ allowed.
-3. `VERCEL_ENV='production'` ⇒ blocked.
-4. production + `ALLOW_SIMULATED_PAYMENTS='true'` ⇒ allowed (escape hatch).
-5. production + `'false'` / `'TRUE'` / `'1'` ⇒ still blocked (strict opt-in).
-6. No-argument call reads `process.env` (set + restored inside the test).
-
-**`[MODIFY] src/tests/api/create-preference.test.ts`** (+4 tests, new describe `Production fail-closed policy`):
-
-- prod + no token (Admin unavailable) ⇒ **500**, no `isSimulated`/`initPoint`, `console.error` called (loud log).
-- prod + no token + Admin mocked with a valid product ⇒ **500** (proves the gate precedes catalog work / is Admin-independent).
-- prod + no token + `ALLOW_SIMULATED_PAYMENTS='true'` ⇒ simulated 200 (escape hatch).
-- Env hygiene: `beforeEach` deletes `VERCEL_ENV` / `ALLOW_SIMULATED_PAYMENTS`; prod tests set + restore in `afterEach` (same pattern the webhook suite already uses for `MERCADOPAGO_WEBHOOK_SECRET`). Existing simulated-fallback tests (both branches) stay green **unchanged**.
-
-**`[MODIFY] src/tests/api/mercadopago-webhook.test.ts`** (+5 tests, new describe `Production fail-closed configuration gates`):
-
-- prod + missing secret ⇒ **500**, `console.error` called, MP API `fetch` never invoked.
-- prod + missing token (secret configured + valid HMAC) ⇒ **500**, `fetch` never invoked, `console.error` called.
-- prod + missing secret + `ALLOW_SIMULATED_PAYMENTS='true'` ⇒ falls through to today's unsigned-ack behavior (escape hatch).
-- prod + configured secret **and** token + MP API failure ⇒ existing 200 ack preserved (gate never over-fires).
-- non-production + missing secret ⇒ unchanged open behavior (explicit regression guard; currently only covered implicitly).
-
-**Unchanged suites:** `mercadopago-signature.test.ts` (helper untouched) plus every client-side suite.
-
-**Mocking:** reuse existing boundary doubles (`vi.mock('api/_lib/firebaseAdmin')`, `vi.spyOn(global, 'fetch')`, `createMockRes()`, `mockAdminDbWithProducts`) — no real network, Firebase, or MP calls.
-
-**Zero-regression target:** `pnpm test` (534 → 555 tests; 65 → 66 suites), `pnpm build`, `pnpm lint`, `pnpm format:check` — all green.
+**Zero-regression target:** `pnpm test` (555 → **557** tests, 66 suites), `pnpm build`, `pnpm lint`, `pnpm format:check` — all green.
 
 ---
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-- **`api/AGENTS.md`:**
-  - §1.1 table (`/api/create-preference` row): extend the fail-closed summary with the production gate.
-  - §2.2: replace the "⚠️ Fail-open when unconfigured" paragraph with the as-built fail-closed behavior (500 + loud log in production; simulation only outside production or with the explicit flag).
-  - §4.2 env vars: add `ALLOW_SIMULATED_PAYMENTS` (optional, non-secret).
-  - §5 (security rules) / §8.5 (known trust-boundary gaps): record the new invariant and resolve the fail-open entry.
-- **`src/tests/AGENTS.md`:** add the `simulationPolicy` suite to the `api/` list; refresh suite/test counts.
-- **`PRODUCTION_READINESS_TODO.md`:** mark **0.10** `[x]` with an as-built summary; annotate 0.5's "⚠️ Audit note" (fail-open) as resolved by 0.10.
-- **Root `AGENTS.md` §4:** one-line addition — simulated payment paths are environment-gated (`VERCEL_ENV !== 'production'` or `ALLOW_SIMULATED_PAYMENTS=true`), never in production.
+- **`src/components/AGENTS.md` §2.5:** rewrite the "wrong distributor RUT literals" paragraph as **resolved** — both surfaces render `BANK_DETAILS.rut`; guard test in place.
+- **`src/config/AGENTS.md` §1:** mark the `Footer.tsx` / `CheckoutModal.tsx` `-K` failure-mode bullet as **fixed by Task 1.4** (remove "Still open").
+- **`src/tests/AGENTS.md`:** refresh counts (555 → 557) and note the fiscal-RUT source guard under `config/`.
+- **`PRODUCTION_READINESS_TODO.md`:** mark **1.4** `[x]` with a short as-built summary.
 
 ---
 
 ## 6. Verification Sequence (workflow steps 6 → 8)
 
-1. `pnpm test` — full suite green (no regressions; new tests passing).
+1. `pnpm test` — full suite green, no regressions.
 2. `pnpm build` — production bundle compiles.
 3. `pnpm lint` + `pnpm format:check`.
 4. Adversarial read-only self-review of the diff (defensive programming, runtime separation, observability, negative assertions), remediate findings, re-run 1–3.
-
----
-
-## 7. Post-Approval Review Follow-ups (external code review)
-
-An independent review approved the task ("ship it") and raised five findings. Disposition:
-
-| # | Finding | Disposition |
-| :-- | :--- | :--- |
-| F1 | Duplicated token-placeholder logic across both endpoints (DRY — this repo has divergence history) | **Fixed** — `hasRealMercadoPagoToken(env)` extracted into `api/_lib/simulationPolicy.ts`; both endpoints import it (+4 unit tests). |
-| F2 | Webhook `!adminDb` branch acks `200` for a *verified* payment (money collected, nothing reconciled, MP stops retrying) — same silent-degradation class | **Fixed** — same environment gate: production ⇒ `500` + loud log (MP retries), non-production unchanged (+2 webhook tests). Sibling order-not-found path left permissive (retries cannot help) and recorded as known gap #6 → Task 0.11. |
-| F3 | 500-refusal relies on Mercado Pago's retry window; the only signal is `console.error` | **Accepted, no code change** — detection depends on log monitoring (Task 8.5 Sentry/GA4, still pending); recorded in the roadmap as-built note. |
-| F4 | Regression test cements known gap #5's permissive ack | **Addressed** — pointer comment added in the test (`api/AGENTS.md` §8.5). |
-| F5 | Plan estimated ~548 tests vs 549 actual | **Fixed** — target corrected to the final **555** tests (549 + 6 follow-up tests). |

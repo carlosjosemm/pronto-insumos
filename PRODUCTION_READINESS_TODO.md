@@ -3,7 +3,7 @@
 **Last Updated:** September 2026  
 **Target Market:** Melipilla & San Antonio, Chile  
 **Deployment Stack:** Vercel (Frontend React 18 + Serverless Node.js) & Google Firebase / Firestore  
-**Repository State:** Advanced functional storefront with automated test coverage (66 suites / 555 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11) — **0.9 and 0.10 are resolved** (including 0.9's adversarial-review remediation) — and a second audit pass on the promo path opened **Phase 9 (commercial promotions & discount governance)**. Remaining work covers the remaining fail-closed payment path (0.11), the promo data model (9.1), per-zone shipping rates, legal compliance, catalog assets, and DevOps polish before go-live.
+**Repository State:** Advanced functional storefront with automated test coverage (66 suites / 557 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11) — **0.9 and 0.10 are resolved** (including 0.9's adversarial-review remediation) — and a second audit pass on the promo path opened **Phase 9 (commercial promotions & discount governance)**. Remaining work covers the remaining fail-closed payment path (0.11), the promo data model (9.1), per-zone shipping rates, legal compliance, catalog assets, and DevOps polish before go-live.
 
 ---
 
@@ -149,9 +149,13 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - **Automated Test Coverage:**
       - All 189 tests passing across 18 test suites (including `CheckoutModal.test.tsx`, `Cart.test.tsx`, `products.test.ts`, and `whatsapp.test.ts`).
 
-- [ ] **1.4. Hardcoded Distributor RUT Fails Modulo-11** _(Audit finding, 2026-09)_
-  - `Footer.tsx` (`RUT Empresa:`) and `CheckoutModal.tsx` (pro-forma `RUT Distribuidor:`) hardcode `77.892.410-K` — the check digit is wrong (correct: `77.892.410-2`, the value already centralized in `BANK_DETAILS.rut` and asserted by `src/tests/config/bankDetails.test.ts`).
-  - **Required Action:** render `BANK_DETAILS.rut` like the rest of the transfer copy — never hardcode fiscal literals. ⚠️ `CheckoutModal.test.tsx` currently asserts the wrong `-K` string and must be updated in the same change or `pnpm test` breaks.
+- [x] **1.4. Hardcoded Distributor RUT Fails Modulo-11** _(Audit finding, 2026-09)_
+  - **Context:** `Footer.tsx` (`RUT Empresa:`) and `CheckoutModal.tsx` (pro-forma `RUT Distribuidor:`) hardcoded `77.892.410-K` — an invalid Modulo-11 check digit (correct: `77.892.410-2`, the value centralized in `BANK_DETAILS.rut`), so any legal/bank document carrying it was invalid.
+  - **Fulfilled & Verified:**
+    - Both surfaces now render `BANK_DETAILS.rut` like the rest of the transfer copy — no fiscal literals remain in components (`Footer.tsx` gained the `bankDetails` import; `CheckoutModal.tsx` already had it).
+    - Wrong-literal test assertions updated in the same change: `CheckoutModal.test.tsx` (comprobante letterhead) and `ClinicalStorefront.test.tsx` (footer tax ID) — the latter stored the RUT as an escaped regex (`77\.892\.410-K`), a form plain-text sweeps miss.
+    - New source-content guard in `src/tests/config/bankDetails.test.ts` (`Fiscal RUT single-source guard`): either component reintroducing a `77…892…410` literal — plain, escaped-regex, or raw-body form — fails `pnpm test`.
+    - All 557 tests across 66 suites passing; production build, ESLint and Prettier clean.
 
 ---
 

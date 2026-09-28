@@ -1267,7 +1267,7 @@ export default function CheckoutModal({
                             Distribuidora Dental • Melipilla, Región Metropolitana
                           </div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            RUT Distribuidor: 77.892.410-K
+                            RUT Distribuidor: {BANK_DETAILS.rut}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>

@@ -5,6 +5,7 @@ import Navbar from '../../components/Navbar'
 import Hero from '../../components/Hero'
 import ProductCard from '../../components/ProductCard'
 import Footer from '../../components/Footer'
+import { BANK_DETAILS } from '../../config/bankDetails'
 import { Product } from '../../types'
 
 const mockProduct: Product = {
@@ -94,7 +95,7 @@ describe('Clinical Storefront UI/UX Enhancement Tests', () => {
 
     it('should render corporate tax identification, physical warehouse, and operating hours', () => {
       render(<Footer />)
-      expect(screen.getByText(/77\.892\.410-K/i)).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(BANK_DETAILS.rut.replace(/\./g, '\\.')))).toBeInTheDocument()
       expect(screen.getByText(/Av\. Ortúzar 750, Melipilla/i)).toBeInTheDocument()
       expect(screen.getByText(/Lunes a Viernes 08:30 – 18:30/i)).toBeInTheDocument()
     })
