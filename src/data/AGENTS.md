@@ -8,7 +8,7 @@ This document is the **authoritative domain and technical reference** for the ba
 
 * **Role:** Serves as the primary seed source for Google Firebase Firestore (`products` collection), the resilient offline fallback for local development when database credentials are not configured, and the mock dataset for Vitest automated test suites.
 * **Key File:**
-  * [`products.ts`](./products.ts): Contains `PRODUCTS` (the master catalog of dental supplies — **11 `odon-*` prototype fixtures**), `CATEGORIES` (storefront category pills: `all` + the 6 Chilean specialties), and `MOCK_PROMOS` (`PRONTO10`, `DENT20` promo codes).
+  * [`products.ts`](./products.ts): Contains `PRODUCTS` (the master catalog of dental supplies — **11 `odon-*` prototype fixtures**) and `CATEGORIES` (storefront category pills: `all` + the 6 Chilean specialties). `MOCK_PROMOS` moved to [`src/config/promos.ts`](../config/AGENTS.md) (Task 0.9 — single promo source shared with the serverless payment layer) and is re-exported here for import compatibility.
   * **Category display naming:** `CATEGORIES` derives each `name` from `formatCategoryDisplayName()` in [src/utils/categoryAlias.ts](../utils/categoryAlias.ts). Never hardcode a second label for a category id — extend the alias map instead, so storefront naming cannot drift from the frozen Firestore keys.
 
 ---

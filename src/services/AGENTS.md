@@ -64,7 +64,8 @@ export function generateOrderId(): string {
 ### 2.4 Order Registration (`submitOrder()`)
 
 - Maps `paymentMethod` → `PENDIENTE_PAGO_MERCADOPAGO` / `PENDIENTE_TRANSFERENCIA` / `COTIZACION_SOLICITADA_WHATSAPP` — the only statuses `firestore.rules` `isValidOrderCreate()` accepts.
-- Builds the `billing` block (defaults `calculateTaxBreakdown(total)` + `PENDIENTE_EMISION_SII`) and snapshots `items` as `{ productId, name, quantity, price }`.
+- Builds the `billing` block (defaults `calculateTaxBreakdown(totalAmount)` + `PENDIENTE_EMISION_SII`) and snapshots `items` as `{ productId, name, quantity, price }`.
+- **Task 0.9 — server-verifiable amount trail:** `totalAmount` is **recomputed** from the item lines with `computeCartTotal` (`src/utils/orderTotal.ts`) — the same helper `create-preference` charges and the webhook asserts — not the client-supplied `total`. When a `promoCode` is provided, the percent is resolved from `src/config/promos.ts` (never trusted from the client) and the order persists `promoCode` (trimmed, upper-cased) + `discountAmount` (list subtotal − total); no promo fields are written when no valid code is given.
 - ⚠️ **The Firestore write is swallowed:** `setDoc` failures (rules denial, offline) are caught, logged, and the function still returns `success: true`. `CheckoutModal` therefore proceeds to payment/confirmation even when the order was never persisted. See §6.
 
 ---

@@ -7,6 +7,7 @@ export interface MercadoPagoPaymentParams {
   items: CartItem[]
   total: number
   customer: CustomerInfo
+  promoCode?: string
 }
 
 export interface MercadoPagoPaymentResult {
@@ -63,9 +64,10 @@ export async function processMercadoPagoPayment({
   orderId,
   items,
   total,
-  customer
+  customer,
+  promoCode
 }: MercadoPagoPaymentParams): Promise<MercadoPagoPaymentResult> {
-  const prefResult = await createMercadoPagoPreference({ orderId, items, total, customer })
+  const prefResult = await createMercadoPagoPreference({ orderId, items, total, customer, promoCode })
 
   // If running on live Vercel deployment with valid initPoint, open Mercado Pago Checkout Pro
   if (prefResult.initPoint && typeof window !== 'undefined') {

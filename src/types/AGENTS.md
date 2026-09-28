@@ -35,7 +35,7 @@ export type OrderStatus =
   | 'PENDIENTE_PAGO';                  // Generic pending-payment fallback in submitOrder()'s statusMap
 ```
 
-* The union has **12 members**. There is no `PAGO_VERIFICADO_MANUAL` and no `REEMBOLSADO` — manual reconciliation is `TRANSFERENCIA_APROBADA`, and refunds are not modeled (handle them as `CANCELADO` + a manual note).
+* The union has **13 members** (as of Task 0.9, which added `PAGO_EN_REVISION` — the webhook's manual-review state for amount mismatches; see `api/AGENTS.md` §2.2). There is no `PAGO_VERIFICADO_MANUAL` and no `REEMBOLSADO` — manual reconciliation is `TRANSFERENCIA_APROBADA`, and refunds are not modeled (handle them as `CANCELADO` + a manual note).
 * `VALID_ORDER_STATUSES` in [src/utils/schemaValidation.ts](../utils/schemaValidation.ts) mirrors this union and must be updated in the same change if a status is ever added.
 
 ### 2.2 Customer & Tax Identity (`CustomerInfo` & `BillingInfo`)
@@ -141,6 +141,9 @@ export interface Order {
   items: { productId: string; name: string; quantity: number; price: number }[]
   // Bank-transfer voucher trail
   voucherUrl?: string; voucherFileName?: string; voucherUploadedAt?: string
+  // Task 0.9 promo trail — written only at order creation so the payment webhook
+  // can recompute the verified payable total from the catalog.
+  promoCode?: string; discountAmount?: number
   // Fulfillment telemetry
   courier?: string; trackingNumber?: string
   mercadopagoPaymentId?: string; paidAt?: string

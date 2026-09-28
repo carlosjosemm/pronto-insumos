@@ -283,7 +283,8 @@ export function buildTransferApprovedEmail(data: OrderEmailData): EmailTemplate 
 const WAREHOUSE_EVENT_LABELS: Record<string, string> = {
   PAGADO_MERCADOPAGO: 'Pago Mercado Pago confirmado',
   TRANSFERENCIA_COMPROBANTE_SUBIDO: 'Comprobante de transferencia recibido',
-  TRANSFERENCIA_APROBADA: 'Transferencia aprobada por administración'
+  TRANSFERENCIA_APROBADA: 'Transferencia aprobada por administración',
+  PAGO_EN_REVISION: 'Pago Mercado Pago en revisión — monto inconsistente'
 }
 
 /** Internal alert to Melipilla dispatch staff (WAREHOUSE_NOTIFICATION_EMAIL). */
@@ -296,7 +297,9 @@ export function buildWarehouseAlertEmail(data: OrderEmailData, event: string): E
       ? 'Verificar el comprobante contra la cartola de Banco de Chile y aprobar en el portal /admin.'
       : event === 'PAGADO_MERCADOPAGO'
         ? 'Pago acreditado: preparar y despachar el pedido.'
-        : 'Pedido confirmado: preparar y despachar.'
+        : event === 'PAGO_EN_REVISION'
+          ? 'El monto pagado no coincide con el total verificado del pedido. NO despachar: conciliar el pago en el portal /admin.'
+          : 'Pedido confirmado: preparar y despachar.'
 
   const html = layout(`
     <h2 style="margin:0 0 8px;font-size:20px;color:#102748;">${escapeHtml(eventLabel)}</h2>

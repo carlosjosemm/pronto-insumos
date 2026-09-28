@@ -18,7 +18,8 @@ import {
   LucideIcon
 } from 'lucide-react'
 import { validatePromo } from '../services/api'
-import { formatCLP, calculateIVA } from '../utils/currency'
+import { formatCLP } from '../utils/currency'
+import { computeCartTotal } from '../utils/orderTotal'
 import {
   FREE_SHIPPING_THRESHOLD,
   DELIVERY_ZONES,
@@ -77,10 +78,11 @@ export default function Cart({
   if (!isOpen) return null
 
   const subtotal = items.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
-  const discountAmount = appliedPromo ? Math.round((subtotal * appliedPromo.discountPercent) / 100) : 0
-  const taxable = subtotal - discountAmount
-  const tax = calculateIVA(taxable) // 19% IVA Chile
-  const total = Math.max(0, taxable + tax)
+  // Payable total from the shared helper (IVA-inclusive prices, verified promo) —
+  // the exact amount the preference charges and the webhook asserts (Task 0.9).
+  const total = computeCartTotal(items, appliedPromo?.discountPercent ?? 0)
+  // Derived so the rendered breakdown always balances: Subtotal − Descuento = Total.
+  const discountAmount = Math.max(0, subtotal - total)
 
   const progressPercent = Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100)
   const remainingForFreeShipping = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal)
@@ -345,9 +347,8 @@ export default function Cart({
               </div>
             )}
 
-            <div className="cart-summary-line">
-              <span>IVA (19%) Estimado</span>
-              <span>{formatCLP(tax)}</span>
+            <div className="cart-summary-line" style={{ color: 'var(--text-muted)' }}>
+              <span>IVA (19%) incluido en los precios</span>
             </div>
 
             <div className="cart-summary-total">

@@ -14,7 +14,7 @@ As-built technical reference for the serverless backend layer of PRONTO Insumos 
 
 | Endpoint | Method | Security / Auth | Business Function |
 | :--- | :--- | :--- | :--- |
-| [`/api/create-preference`](./create-preference.ts) | `POST` | Public / Server Secrets | Generates a Mercado Pago Checkout Pro preference. Pre-checks requested quantities against live Firestore `stockCount`/`inStock` and rejects with `400` if insufficient. ⚠️ Item **prices and totals are taken from the client payload** — they are not re-verified against the catalog (known gap, see §8.5). |
+| [`/api/create-preference`](./create-preference.ts) | `POST` | Public / Server Secrets | Generates a Mercado Pago Checkout Pro preference. **Rebuilds every line from the Firestore `products` catalog** (client payload contributes only `productId`s + quantities; promo resolved from `src/config/promos.ts`) and pre-checks quantities against live `stockCount`/`inStock`, rejecting with `400` for unknown products, missing `productId`, invalid catalog prices or insufficient stock. **Fail-closed:** returns `503` when Firestore Admin is unavailable and a real token exists (Task 0.9). |
 | [`/api/webhooks/mercadopago`](./webhooks/mercadopago.ts) | `POST` (`GET` ping → 200) | HMAC-SHA256 (`x-signature`) | Single authority for payment reconciliation and stock deduction. Verifies the signature, double-checks the payment via `GET /v1/payments/{id}`, then decrements stock inside a Firestore transaction. |
 | [`/api/track-order`](./track-order.ts) | `POST` | Dual factor (Order ID + RUT) | Public order lookup bypassing the client-side Firestore read lock. Compares the order's stored RUT against the normalized request RUT; mismatch → `401`. Returns a sanitized 5-stage fulfillment payload. |
 | [`/api/upload-voucher`](./upload-voucher.ts) | `POST` | Dual factor (Order ID + RUT) | Bank-transfer voucher intake. Stores the Base64 `dataUrl` **inside the order document** and transitions status to `TRANSFERENCIA_COMPROBANTE_SUBIDO`. ⚠️ File size / MIME are validated **client-side only** (see §3.2). |
@@ -90,7 +90,7 @@ sequenceDiagram
 
 - **Signature verification** ([`./_lib/mercadopagoSignature.ts`](./_lib/mercadopagoSignature.ts)) builds the official manifest `id:[data.id];request-id:[x-request-id];ts:[ts];`, computes HMAC-SHA256, and compares with `crypto.timingSafeEqual`. Optional `maxAgeSeconds` replay-window support exists but is **not** currently passed by the webhook.
 - ⚠️ **Fail-open when unconfigured:** if `MERCADOPAGO_WEBHOOK_SECRET` is missing or the placeholder, verification returns `{ valid: true, reason: 'secret_not_configured' }`. The MP API double-check (Step 1) still gates mutation, but a deployment that loses the secret silently accepts unsigned requests — never treat the signature gate alone as proof of configuration.
-- ⚠️ **No amount check:** the webhook does not compare `paymentData.transaction_amount` against `order.totalAmount`. Combined with client-supplied preference prices (§8.5), this is the residual payment-integrity gap.
+- **Amount assertion (Task 0.9):** inside the transaction the webhook recomputes the payable total from the **current** catalog (`computeOrderTotal` over the consolidated lines, promo from the order's stored `promoCode`) and requires **both** `paymentData.transaction_amount` **and** `order.totalAmount` to equal it exactly (integer CLP) before marking paid. Any mismatch — underpayment, tampered order total, or lines whose `productId`/catalog price cannot be verified — transitions the order to `PAGO_EN_REVISION` (history event + warehouse alert, **no stock deduction**, no customer "paid" email). The review write stamps `mercadopagoPaymentId`, so redeliveries hit the duplicate fast path; a later, correctly-amounted payment re-enters the transaction and approves normally.
 
 ### 2.3 Idempotency & Stock Decrement Protection
 
@@ -285,7 +285,12 @@ All product reads precede all writes (Firestore transaction invariant).
 
 ### 8.5 Known Trust-Boundary Gaps (as built — track against the roadmap)
 
-1. **Client-supplied pricing:** `/api/create-preference` builds the MP preference from client-sent `unit_price`/items; `submitOrder` (client SDK) also writes `totalAmount` and item prices under rules that check shape only. **Server-side price/total recomputation from the catalog does not exist**, and the webhook does not compare `transaction_amount` to `order.totalAmount` — a forged cheap preference could mark an expensive order paid.
+### 8.5 Known Trust-Boundary Gaps (as built — track against the roadmap)
+
+1. **~~Client-supplied pricing~~ RESOLVED (Task 0.9):** `/api/create-preference` now rebuilds every preference line from the Firestore catalog (client sends only product IDs + quantities; promo validated against `src/config/promos.ts`), fails closed with `503` when Admin is unavailable with a real token, and the webhook asserts `transaction_amount` **and** `order.totalAmount` against a catalog-recomputed total (`src/utils/orderTotal.ts`) before marking `PAGADO_MERCADOPAGO` — mismatches land in `PAGO_EN_REVISION` without stock deduction. Residual caveat: a catalog price change between preference creation and webhook delivery flags the (legitimate) order for manual review — fail-closed by design.
+2. **Unsigned webhook when secret missing:** signature verification is fail-open (`secret_not_configured` → valid). See §2.2.
+3. **Voucher size/MIME unchecked server-side + 1 MiB doc limit + no status guard:** see §3.2.
+4. **No rate limiting** on any endpoint (`track-order`/`upload-voucher`/`order-confirmation` are enumerable-oracle shaped behind RUT match, but nothing throttles attempts).
 2. **Unsigned webhook when secret missing:** signature verification is fail-open (`secret_not_configured` → valid). See §2.2.
 3. **Voucher size/MIME unchecked server-side + 1 MiB doc limit + no status guard:** see §3.2.
 4. **No rate limiting** on any endpoint (`track-order`/`upload-voucher`/`order-confirmation` are enumerable-oracle shaped behind RUT match, but nothing throttles attempts).

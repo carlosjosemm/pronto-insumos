@@ -1,4 +1,6 @@
-import { PRODUCTS, MOCK_PROMOS } from '../data/products'
+import { PRODUCTS } from '../data/products'
+import { MOCK_PROMOS, resolvePromoPercent } from '../config/promos'
+import { computeCartTotal } from '../utils/orderTotal'
 import { db } from './firebase'
 import { getCollectionName } from './firestoreEnv'
 import { collection, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
@@ -30,6 +32,7 @@ export interface SubmitOrderOptions {
   paymentMethod: PaymentMethod
   billing?: BillingInfo
   sanitaryVerification?: SanitaryVerification
+  promoCode?: string
 }
 
 /**
@@ -152,6 +155,14 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     whatsapp: 'COTIZACION_SOLICITADA_WHATSAPP'
   }
 
+  // Server-verifiable amount trail: the promo percent is resolved from the shared
+  // PROMO_CODES catalog (never from the client), and totalAmount is recomputed from
+  // the item lines with the same pure helper the webhook uses to assert the payment.
+  const discountPercent = resolvePromoPercent(orderData.promoCode)
+  const totalAmount = computeCartTotal(orderData.items, discountPercent)
+  const listSubtotal = orderData.items.reduce((acc, i) => acc + i.product.price * i.quantity, 0)
+  const discountAmount = Math.max(0, listSubtotal - totalAmount)
+
   const billing: BillingInfo = orderData.billing || {
     documentType: orderData.customer.documentType,
     rut: orderData.customer.rut,
@@ -159,7 +170,7 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     giroComercial: orderData.customer.giroComercial,
     direccionFiscal: orderData.customer.address,
     comunaFiscal: orderData.customer.city,
-    taxBreakdown: calculateTaxBreakdown(orderData.total),
+    taxBreakdown: calculateTaxBreakdown(totalAmount),
     status: 'PENDIENTE_EMISION_SII'
   }
 
@@ -168,7 +179,7 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     createdAt: serverTimestamp(),
     paymentMethod: orderData.paymentMethod || 'transferencia',
     status: statusMap[orderData.paymentMethod] || 'PENDIENTE_PAGO',
-    totalAmount: orderData.total,
+    totalAmount,
     customer: orderData.customer,
     billing,
     sanitaryVerification: orderData.sanitaryVerification || orderData.customer.sanitaryVerification,
@@ -177,7 +188,8 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
       name: item.product.name,
       quantity: item.quantity,
       price: item.product.price
-    }))
+    })),
+    ...(discountAmount > 0 ? { promoCode: orderData.promoCode?.trim().toUpperCase(), discountAmount } : {})
   }
 
   try {
@@ -191,7 +203,7 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     success: true,
     orderId,
     timestamp: new Date().toISOString(),
-    total: orderData.total,
+    total: totalAmount,
     itemsCount: orderData.items.reduce((acc, i) => acc + i.quantity, 0)
   }
 }

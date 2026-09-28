@@ -12,10 +12,21 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.admin == true;
     }
 
+    // Per-line shape guard for order creation (Task 0.9 defense in depth).
+    // NOTE: rules cannot join the products catalog to verify prices — the
+    // authoritative price/total verification lives in api/create-preference.ts
+    // (catalog rebuild) and api/webhooks/mercadopago.ts (amount assertion).
+    function isValidOrderItem(item) {
+      return item is map
+        && item.productId is string && item.productId.size() > 0
+        && item.quantity is int && item.quantity >= 1
+        && item.price is number && item.price >= 0;
+    }
+
     function isValidOrderCreate() {
       let data = request.resource.data;
       return data.orderId is string && data.orderId.size() > 0
-        && data.totalAmount is number && data.totalAmount > 0
+        && data.totalAmount is int && data.totalAmount > 0
         && data.status in [
           'PENDIENTE_PAGO_MERCADOPAGO',
           'PENDIENTE_TRANSFERENCIA',
@@ -24,6 +35,19 @@ service cloud.firestore {
         && data.customer is map
         && data.items is list
         && data.items.size() > 0
+        && data.items.size() <= 25
+        // Shape-check the first 10 lines (index-guarded; lines beyond 10 are
+        // verified server-side by the webhook's catalog recomputation).
+        && (data.items.size() < 1 || isValidOrderItem(data.items[0]))
+        && (data.items.size() < 2 || isValidOrderItem(data.items[1]))
+        && (data.items.size() < 3 || isValidOrderItem(data.items[2]))
+        && (data.items.size() < 4 || isValidOrderItem(data.items[3]))
+        && (data.items.size() < 5 || isValidOrderItem(data.items[4]))
+        && (data.items.size() < 6 || isValidOrderItem(data.items[5]))
+        && (data.items.size() < 7 || isValidOrderItem(data.items[6]))
+        && (data.items.size() < 8 || isValidOrderItem(data.items[7]))
+        && (data.items.size() < 9 || isValidOrderItem(data.items[8]))
+        && (data.items.size() < 10 || isValidOrderItem(data.items[9]))
         && !('mercadopagoPaymentId' in data)
         && !('paidAt' in data);
     }
