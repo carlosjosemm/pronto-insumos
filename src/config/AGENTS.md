@@ -12,7 +12,7 @@ Each file's env-var fallback is the **only** sanctioned fallback for that value.
 
 * `Cart` computed free shipping against `150000` while `Footer` advertised `$100.000` — fixed by `delivery.ts`.
 * `OrderTrackingModal` hardcoded `wa.me/56987654321`, a different placeholder than the configured line — fixed by `contact.ts`. (`PaymentReturnModal` still carries the last literal `wa.me` + a stale fallback; see [src/components/AGENTS.md](../components/AGENTS.md) §4.1.2.)
-* `Footer.tsx` / `CheckoutModal.tsx` hardcode `77.892.410-K` — an **invalid** Modulo-11 check digit; the correct RUT lives in `BANK_DETAILS.rut` (`77.892.410-2`). Still open — see [src/components/AGENTS.md](../components/AGENTS.md) §2.5.
+* `Footer.tsx` / `CheckoutModal.tsx` hardcode `77.892.410-K` — an **invalid** Modulo-11 check digit; the correct RUT lives in `BANK_DETAILS.rut` (`77.892.410-2`). **Fixed (Task 1.4, 2026-09-28):** both components now render `BANK_DETAILS.rut`, enforced by the `Fiscal RUT single-source guard` in `src/tests/config/bankDetails.test.ts` (details: [src/components/AGENTS.md](../components/AGENTS.md) §2.5).
 
 ---
 

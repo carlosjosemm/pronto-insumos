@@ -31,6 +31,7 @@ import { submitOrder } from '../../services/api'
 import { processMercadoPagoPayment } from '../../services/mercadopago'
 import { sendOrderConfirmationEmail } from '../../services/orderConfirmation'
 import { CartItem, Product } from '../../types'
+import { BANK_DETAILS } from '../../config/bankDetails'
 
 const mockProduct: Product = {
   id: 'odon-101',
@@ -351,7 +352,7 @@ describe('CheckoutModal Component', () => {
 
     fireEvent.click(screen.getByText(/Ver Comprobante de Compra/i))
     expect(screen.getByText('PRONTO INSUMOS ODONTOLÓGICOS')).toBeInTheDocument()
-    expect(screen.getByText(/RUT Distribuidor: 77.892.410-K/i)).toBeInTheDocument()
+    expect(screen.getByText(`RUT Distribuidor: ${BANK_DETAILS.rut}`)).toBeInTheDocument()
     expect(screen.getByText('COMPROBANTE BOLETA')).toBeInTheDocument()
     expect(screen.getByText('$159.655')).toBeInTheDocument() // Neto
     expect(screen.getByText('$30.335')).toBeInTheDocument() // IVA

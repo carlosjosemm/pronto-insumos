@@ -7,7 +7,7 @@ This directory contains the **automated test suite** for PRONTO, powered by **Vi
 ## 🎯 1. Directory Scope & Organization
 
 * **Role:** Ensures regression prevention, verifies business logic calculations (cart totals, Chilean tax, RUT check digits), and validates user interaction flows.
-* **Directory Structure** (66 suites, 555 tests):
+* **Directory Structure** (66 suites, 557 tests):
   * [`setup.ts`](./setup.ts): Test harness — registers `@testing-library/jest-dom`, injects `VITE_FIREBASE_*`/`VITE_WHATSAPP_NUMBER`/`VITE_MERCADOPAGO_PUBLIC_KEY` placeholders into `import.meta.env`, strips `FIRESTORE_ENV`/`VITE_FIRESTORE_ENV` so suites stay deterministic, and installs an in-memory `localStorage` mock. There are **no** `matchMedia`/`IntersectionObserver` globals — mock them per-suite if a component needs them.
   * `components/` (13 suites): storefront unit & interaction tests — `AppCartPersistence`, `AppPaymentReturn`, `Cart`, `CategoryShowcase`, `CheckoutModal`, `ClinicalStorefront`, `ErrorBoundary`, `Navbar`, `OrderTrackingModal`, `PaymentReturnModal`, `ProductCard`, `ProductDetailModal`, `ProductList`. `CheckoutModal.test.tsx` drives the 5-step guided flow through helpers (`fillContactStep`, `fillDespatchStep`, `fillDocumentStep`, `selectZone`, `advance`, `completeDataEntry`) — reuse them instead of hand-filling fields.
   * `admin/` (12 suites): backoffice UI tests (`AdminApp`, `AdminDashboard`, `AdminLogin`, `AdminSidebar`, `AdminTopbar`, `InventoryTable`, `MetricCard`, `OrderDetailPanel`, `OrderTable`, `ProductEditModal`, `StatusBadge`, `StockAdjustModal`).
@@ -16,7 +16,7 @@ This directory contains the **automated test suite** for PRONTO, powered by **Vi
   * `services/` (8 suites): client adapters — `api`, `cartStorage`, `firestoreEnv`, `mercadopago`, `orderConfirmation`, `orderTracking`, `transferVoucher`, `whatsapp`.
   * `utils/` (6 suites): `rut`, `tax`, `currency`, `categoryAlias`, `schemaValidation`, `orderTotal` (Task 0.9 — payable-total math incl. the raw-CartItem `$0` pitfall regression).
   * `hooks/` (2 suites): `useFocusTrap` (focus wrap/restore), `useIncrementalReveal` (page reveal/clamp; reveal is button-only — there is no IntersectionObserver path).
-  * `config/` (2 suites): `bankDetails` env-override fallbacks, and `promos` — the forged-code gate (`resolvePromo`/`resolvePromoPercent`: case/trim normalisation, non-string inputs, prototype-key rejection, unknown ⇒ full price).
+  * `config/` (2 suites): `bankDetails` env-override fallbacks **plus the `Fiscal RUT single-source guard` (Task 1.4)** — a `readFileSync` content assertion that `Footer.tsx`/`CheckoutModal.tsx` never hardcode a `77…892…410` literal in any form (plain, escaped-regex, or raw body; same pattern as `storefrontCss`/`firestore-rules`), and `promos` — the forged-code gate (`resolvePromo`/`resolvePromoPercent`: case/trim normalisation, non-string inputs, prototype-key rejection, unknown ⇒ full price).
   * `data/` (1 suite): `products` schema/fixture integrity (11 items, `unitOfSale` ≤60 chars, integer CLP prices, valid categories).
   * `scripts/` (1 suite): `syncEnvToVercel` pure plan logic (dry-run/skip/overwrite, per-target `FIRESTORE_ENV`, system-key filter).
   * `security/` (1 suite): `firestore-rules` — asserts the rules file's allow/deny structure by `readFileSync` content match.
@@ -27,7 +27,7 @@ This directory contains the **automated test suite** for PRONTO, powered by **Vi
 ## 🚫 2. Anti-Overshooting & Testing Guardrails
 
 1. **Preserve Passing Tests (Zero Regression Policy):**
-   * Currently, **all 555 tests across 66 test suites pass (100% passing)**.
+   * Currently, **all 557 tests across 66 test suites pass (100% passing)**.
    * ❌ **NEVER** comment out, delete, or skip (`test.skip`) failing tests to get a passing build. If a test fails after your changes, diagnose and fix the root cause.
 2. **Speed & Efficiency:**
    * Automated tests must execute quickly without hanging.
