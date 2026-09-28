@@ -66,11 +66,17 @@ function mockAdminDbWithProducts(
 
 describe('Create Preference Serverless Endpoint (/api/create-preference)', () => {
   const initialEnv = process.env.MERCADOPAGO_ACCESS_TOKEN
+  const initialVercelEnv = process.env.VERCEL_ENV
+  const initialAllowSimulated = process.env.ALLOW_SIMULATED_PAYMENTS
 
   beforeEach(() => {
     vi.clearAllMocks()
     vi.restoreAllMocks()
     delete process.env.MERCADOPAGO_ACCESS_TOKEN
+    // Deterministic simulation policy (Task 0.10): every test starts outside
+    // production with no override; the production-gate tests set VERCEL_ENV explicitly.
+    delete process.env.VERCEL_ENV
+    delete process.env.ALLOW_SIMULATED_PAYMENTS
   })
 
   afterAll(() => {
@@ -78,6 +84,16 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       process.env.MERCADOPAGO_ACCESS_TOKEN = initialEnv
     } else {
       delete process.env.MERCADOPAGO_ACCESS_TOKEN
+    }
+    if (initialVercelEnv === undefined) {
+      delete process.env.VERCEL_ENV
+    } else {
+      process.env.VERCEL_ENV = initialVercelEnv
+    }
+    if (initialAllowSimulated === undefined) {
+      delete process.env.ALLOW_SIMULATED_PAYMENTS
+    } else {
+      process.env.ALLOW_SIMULATED_PAYMENTS = initialAllowSimulated
     }
   })
 
@@ -624,6 +640,103 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
           isSimulated: true
         })
       )
+    })
+  })
+
+  describe('Production fail-closed policy (Task 0.10)', () => {
+    const validBody = {
+      orderId: 'PRONTO-654321',
+      items: [{ product: { id: 'odon-1', name: 'Turbina', price: 189990 }, quantity: 1 }],
+      customer: { fullName: 'Dr. Test' }
+    }
+
+    it('should fail closed with 500 when the access token is missing in a production runtime', async () => {
+      process.env.VERCEL_ENV = 'production'
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'pronto-insumos.vercel.app' },
+        body: validBody
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith({
+        error: expect.stringContaining('no configurado')
+      })
+      expect(res.json).not.toHaveBeenCalledWith(expect.objectContaining({ isSimulated: true }))
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('MERCADOPAGO_ACCESS_TOKEN missing in a production runtime')
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should fail closed before any catalog work when the token is missing in production', async () => {
+      process.env.VERCEL_ENV = 'production'
+      const mockAdminDb = mockAdminDbWithProducts({
+        'odon-1': { name: 'Turbina', price: 189990, stockCount: 10, inStock: true }
+      })
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'pronto-insumos.vercel.app' },
+        body: validBody
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(mockAdminDb.collection).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('should keep the simulated fallback in production when ALLOW_SIMULATED_PAYMENTS=true (escape hatch)', async () => {
+      process.env.VERCEL_ENV = 'production'
+      process.env.ALLOW_SIMULATED_PAYMENTS = 'true'
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'localhost:5173' },
+        body: validBody
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          isSimulated: true,
+          initPoint: expect.stringContaining('orderId=PRONTO-654321')
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should stay fail-closed in production when ALLOW_SIMULATED_PAYMENTS is not exactly "true"', async () => {
+      process.env.VERCEL_ENV = 'production'
+      process.env.ALLOW_SIMULATED_PAYMENTS = 'TRUE'
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'pronto-insumos.vercel.app' },
+        body: validBody
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      consoleSpy.mockRestore()
     })
   })
 })

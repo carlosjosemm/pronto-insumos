@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from './_lib/firebaseAdmin.js'
 import { getCollectionName } from './_lib/firestoreEnv.js'
+import { hasRealMercadoPagoToken, isSimulatedPaymentAllowed } from './_lib/simulationPolicy.js'
 import { resolvePromoPercent } from '../src/config/promos.js'
 import { computeDiscountedUnitPrice, normalizeQuantity } from '../src/utils/orderTotal.js'
 
@@ -10,8 +11,8 @@ function buildBaseUrl(host: string): string {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const MERCADOPAGO_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || ''
-  const hasRealToken = Boolean(MERCADOPAGO_ACCESS_TOKEN) && MERCADOPAGO_ACCESS_TOKEN !== 'YOUR_MERCADOPAGO_ACCESS_TOKEN'
+  const MERCADOPAGO_ACCESS_TOKEN = (process.env.MERCADOPAGO_ACCESS_TOKEN || '').trim()
+  const hasRealToken = hasRealMercadoPagoToken()
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end()
@@ -19,6 +20,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  // FAIL-CLOSED (Task 0.10): a production runtime must never fabricate an approved
+  // checkout. Without a real access token, refuse loudly instead of simulating.
+  if (!hasRealToken && !isSimulatedPaymentAllowed()) {
+    console.error(
+      '[create-preference] MERCADOPAGO_ACCESS_TOKEN missing in a production runtime; refusing to fabricate a simulated checkout.'
+    )
+    return res.status(500).json({
+      error: 'Servicio de pagos no configurado. Por favor cotiza por WhatsApp mientras lo resolvemos.'
+    })
   }
 
   try {

@@ -10,10 +10,12 @@ import {
 } from "../_lib/emailTemplates.js";
 import { resolvePromoPercent } from "../../src/config/promos.js";
 import { computeOrderTotal } from "../../src/utils/orderTotal.js";
+import { hasRealMercadoPagoToken, isSimulatedPaymentAllowed } from "../_lib/simulationPolicy.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MERCADOPAGO_ACCESS_TOKEN =
-    process.env.MERCADOPAGO_ACCESS_TOKEN || "YOUR_MERCADOPAGO_ACCESS_TOKEN";
+    (process.env.MERCADOPAGO_ACCESS_TOKEN || "").trim() || "YOUR_MERCADOPAGO_ACCESS_TOKEN";
+  const hasRealAccessToken = hasRealMercadoPagoToken();
   const MERCADOPAGO_WEBHOOK_SECRET =
     process.env.MERCADOPAGO_WEBHOOK_SECRET || "";
 
@@ -67,6 +69,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // FAIL-CLOSED (Task 0.10): a production runtime must not run with placeholder
+    // credentials — without the webhook secret nothing can be verified, and without
+    // a real access token the payment cannot be double-checked. Refuse loudly (5xx
+    // makes Mercado Pago retry) instead of acknowledging blindly.
+    if (
+      signatureResult.reason === "secret_not_configured" &&
+      !isSimulatedPaymentAllowed()
+    ) {
+      console.error(
+        "[Mercado Pago Webhook] MERCADOPAGO_WEBHOOK_SECRET missing in a production runtime; refusing to process an unverifiable webhook.",
+      );
+      return res
+        .status(500)
+        .json({ error: "Webhook configuration error: signature verification unavailable" });
+    }
+
+    if (!hasRealAccessToken && !isSimulatedPaymentAllowed()) {
+      console.error(
+        "[Mercado Pago Webhook] MERCADOPAGO_ACCESS_TOKEN missing in a production runtime; refusing to process an unverifiable payment notification.",
+      );
+      return res
+        .status(500)
+        .json({ error: "Webhook configuration error: payment verification unavailable" });
+    }
+
     // Step 1: DOUBLE-CHECK PAYMENT WITH MERCADO PAGO OFFICIAL API USING SECRET TOKEN
     const mpResponse = await fetch(
       `https://api.mercadopago.com/v1/payments/${paymentId}`,
@@ -98,6 +125,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const adminDb = getAdminFirestore();
 
         if (!adminDb) {
+          // FAIL-CLOSED (Task 0.10): a verified payment we cannot reconcile must not
+          // be silently acknowledged — money was collected. 5xx makes Mercado Pago
+          // retry, so the delivery is processed once Firestore Admin is restored.
+          if (!isSimulatedPaymentAllowed()) {
+            console.error(
+              "[Mercado Pago Webhook] Firestore Admin unavailable in a production runtime; refusing to acknowledge an unreconcilable payment.",
+            );
+            return res
+              .status(500)
+              .json({ error: "Webhook processing unavailable" });
+          }
           console.warn(
             "Firestore Admin not initialized; skipping database updates",
           );
