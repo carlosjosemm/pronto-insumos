@@ -1,9 +1,9 @@
 # PRONTO INSUMOS ODONTOLÓGICOS — Production Readiness TODO & Audit Report
 
 **Last Updated:** September 2026  
-**Target Market:** Melipilla & Región Metropolitana, Chile  
+**Target Market:** Melipilla & San Antonio, Chile  
 **Deployment Stack:** Vercel (Frontend React 18 + Serverless Node.js) & Google Firebase / Firestore  
-**Repository State:** Advanced functional storefront with automated test coverage. Phases 0–5 resolved; remaining work covers catalog assets, legal compliance, and DevOps polish before go-live.
+**Repository State:** Advanced functional storefront with automated test coverage (62 suites / 473 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11), and remaining work covers per-zone shipping rates, legal compliance, catalog assets, and DevOps polish before go-live.
 
 ---
 
@@ -15,7 +15,7 @@
   - [Phase 0: Critical Security \& Payment Architecture Blockers (Priority P0 - Immediate)](#phase-0-critical-security--payment-architecture-blockers-priority-p0---immediate)
   - [Phase 1: Chilean Localization, Pricing \& Tax Compliance (SII / ISP / CLP)](#phase-1-chilean-localization-pricing--tax-compliance-sii--isp--clp)
   - [Phase 2: Checkout UX, Cart Persistence \& Payment Return Flows](#phase-2-checkout-ux-cart-persistence--payment-return-flows)
-  - [Phase 3: Logistics, Shipping \& Local Warehouse Pickup (Melipilla / RM)](#phase-3-logistics-shipping--local-warehouse-pickup-melipilla--rm)
+  - [Phase 3: Logistics, Shipping \& Delivery Zones (Melipilla / San Antonio)](#phase-3-logistics-shipping--delivery-zones-melipilla--san-antonio)
   - [Phase 4: Backoffice Operations \& Order Management Dashboard](#phase-4-backoffice-operations--order-management-dashboard)
   - [Phase 5: Transactional Communications (Email \& WhatsApp)](#phase-5-transactional-communications-email--whatsapp)
   - [Phase 6: Real Catalog Assets, Photography \& Technical Datasheets](#phase-6-real-catalog-assets-photography--technical-datasheets)
@@ -58,12 +58,33 @@ These items carry immediate risks of financial loss, critical security vulnerabi
 - [x] **0.4. Enforce Idempotency in the Mercado Pago Webhook** ✅ _(Resolved: Fast-path idempotency pre-check and atomic all-in-one Firestore transaction inside api/webhooks/mercadopago.ts; duplicate deliveries return HTTP 200 without mutating stock or orders; comprehensive unit tests passing)_
 
 - [x] **0.5. Cryptographic Signature Verification on Webhooks (`x-signature`)** ✅ _(Resolved: api/_lib/mercadopagoSignature.ts computes HMAC-SHA256 over Mercado Pago manifest template; timing-safe equality verification in api/webhooks/mercadopago.ts rejects unauthorized requests with 401; unit and integration tests passing)_
+  - ⚠️ **Audit note:** verification is **fail-open** when `MERCADOPAGO_WEBHOOK_SECRET` is unset — a deploy that loses the secret silently accepts unsigned requests (mitigated only by the MP API re-check). Remediation tracked in **0.10**.
 
 - [x] **0.6. Create and Deploy Firestore Security Rules (`firestore.rules`)** ✅ _(Resolved: firestore.rules created with public read-only catalog, admin-only catalog write, strict pending-only order creation schema preventing injection, client-side order read/update/delete denied; firebase.json configured and deploy:rules script added; unit tests passing)_
+  - ⚠️ **Audit note:** `isValidOrderCreate` validates **shape only** — it cannot compare client `totalAmount`/item prices against the catalog. That is the client-supplied-total vector remediated server-side in **0.9**.
 
 - [x] **0.7. Remove Public Database Seed Button (`Footer.tsx`)** ✅ _(Resolved: Public seed button completely removed from Footer.tsx; footer restructured to authentic 4-column B2B distributor layout; unit tests verified)_
 
 - [x] **0.8. Purge Mock Data and Ensure Privacy / PCI-DSS Compliance** ✅ _(Resolved: CheckoutModal form state initialized with empty strings and clean placeholders; cardNumber, expDate, and cvc eliminated from CustomerInfo and component state; input whitespace sanitization added; clean Chilean clinical inputs; comprehensive unit tests passing with zero regressions)_
+
+- [ ] **0.9. Server-Side Price & Total Verification for Mercado Pago Orders** 🔴 _(Audit finding, 2026-09 — underpayment exploit)_
+  - `api/create-preference.ts` builds `unit_price` straight from the client payload, and `api/webhooks/mercadopago.ts` never compares `paymentData.transaction_amount` against `order.totalAmount`. Combined with `firestore.rules` validating order-create **shape only** (status/customer/items presence, not prices — see 0.6 note) and `submitOrder` writing arbitrary `items`/`totalAmount`, an attacker can create a cheap preference that marks an expensive order `PAGADO_MERCADOPAGO` and decrements real stock.
+  - Additionally, `create-preference` items lacking `productId`/`id` skip the stock-validation loop entirely — a hole in Task 2.3's server-side guard.
+  - **Required Action:**
+    - In `create-preference`, rebuild `items`/`unit_price` from the Firestore `products` catalog — never trust client prices; reject unknown product IDs (also closes the stock-check bypass).
+    - In the webhook transaction, assert `paymentData.transaction_amount === order.totalAmount` (integer CLP) before marking paid; mismatches go to a review state instead of decrementing stock.
+    - Extend `firestore.rules` `isValidOrderCreate` where feasible so client totals can't diverge silently.
+  - **Verification:** unit tests for tampered `unit_price`, mismatched `transaction_amount`, unknown `productId`, and the happy path.
+
+- [ ] **0.10. Fail-Closed Payment Paths in Production** 🔴 _(Audit finding — simulated success in prod)_
+  - Two payment paths degrade silently instead of failing closed:
+    1. `api/create-preference.ts` returns a **simulated `initPoint`** (`/?status=approved`) when `MERCADOPAGO_ACCESS_TOKEN` is missing/placeholder — in production this fabricates an approved-payment return with no money collected.
+    2. `api/_lib/mercadopagoSignature.ts` returns `valid: true` when `MERCADOPAGO_WEBHOOK_SECRET` is unset — the Task 0.5 signature gate silently opens (mitigated only by the MP API re-check, which itself needs the access token).
+  - **Required Action:** gate every simulated path on environment (`VERCEL_ENV !== 'production'` or an explicit `ALLOW_SIMULATED_PAYMENTS` flag) so a production missing-secret state returns 500 + a loud log, never a fabricated success. Keep simulation available for local dev and tests.
+
+- [ ] **0.11. `submitOrder` Must Propagate Firestore Write Failure** 🔴 _(Audit finding — paid ghost orders)_
+  - `src/services/api.ts` catches `setDoc` failure (rules denial, offline) and still returns `success: true`; `CheckoutModal` then initiates payment for an order that was never persisted — the webhook logs "Order not found", no stock is deducted, and the customer paid for an order that doesn't exist.
+  - **Required Action:** let the write failure reach the caller (or return `success: false`) so checkout blocks payment initiation and surfaces an error. Unit test: rules denial → no preference created, error shown to the customer.
 
 ---
 
@@ -109,6 +130,10 @@ These items carry immediate risks of financial loss, critical security vulnerabi
       - Appends `*Registro Sanitario SIS:* <number>` to the generated WhatsApp quote URL for rapid manual dispatch validation.
     - **Automated Test Coverage:**
       - All 189 tests passing across 18 test suites (including `CheckoutModal.test.tsx`, `Cart.test.tsx`, `products.test.ts`, and `whatsapp.test.ts`).
+
+- [ ] **1.4. Hardcoded Distributor RUT Fails Modulo-11** _(Audit finding, 2026-09)_
+  - `Footer.tsx` (`RUT Empresa:`) and `CheckoutModal.tsx` (pro-forma `RUT Distribuidor:`) hardcode `77.892.410-K` — the check digit is wrong (correct: `77.892.410-2`, the value already centralized in `BANK_DETAILS.rut` and asserted by `src/tests/config/bankDetails.test.ts`).
+  - **Required Action:** render `BANK_DETAILS.rut` like the rest of the transfer copy — never hardcode fiscal literals. ⚠️ `CheckoutModal.test.tsx` currently asserts the wrong `-K` string and must be updated in the same change or `pnpm test` breaks.
 
 ---
 
@@ -164,7 +189,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
   - **Verification & As-Built Implementation:**
     - `src/components/Cart.tsx`: Added dynamic stock cues (`"Sin stock disponible"`, `"Máximo disponible (X unid.)"`, `"Excede stock (X unid. disp.)"`), capped `+` stepper button with informative tooltip, rendered sticky stock warning alert banner, and disabled the checkout CTA with label `"Insumos sin Stock Suficiente"`.
     - `src/components/CheckoutModal.tsx`: Enforced pre-flight inventory guards in both `handleNextStep()` (blocking Step 1 -> Step 2 transition) and `handleCompleteOrder()`, alerting the customer with localized Chilean dental depot notifications. Rendered alert in Step 1.
-    - `api/create-preference.ts`: Integrated Firestore Admin inventory validation loop querying `products` collection before generating Mercado Pago preference payload or sandbox simulation, rejecting with HTTP 400 Bad Request if requested quantities exceed stock.
+    - `api/create-preference.ts`: Integrated Firestore Admin inventory validation loop querying `products` collection before generating Mercado Pago preference payload or sandbox simulation, rejecting with HTTP 400 Bad Request if requested quantities exceed stock. ⚠️ _Audit note: items whose payload lacks `productId`/`id` skip this check entirely — closed by **0.9**'s server-side rebuild._
     - Unit tests: Added new test suites in `src/tests/components/Cart.test.tsx`, `src/tests/components/CheckoutModal.test.tsx`, and `src/tests/api/create-preference.test.ts`.
     - All 22 test files and all 242 tests passing with 100% reliability. Production build compiled cleanly.
 
@@ -180,7 +205,7 @@ These items carry immediate risks of financial loss, critical security vulnerabi
       - Converts binary files to Base64 data URLs for transport and storage.
       - Sends vouchers to `/api/upload-voucher` with customer RUT verification and automatic fallback for offline/development environments.
     - **Serverless Voucher Intake Endpoint (`/api/upload-voucher.ts`):**
-      - Validates payload structure, checks file size limits and MIME types, and compares normalized Chilean Modulo 11 RUTs.
+      - Validates payload structure, checks file size limits and MIME types, and compares normalized Chilean Modulo 11 RUTs. ⚠️ _Correction (audit): it does **not** validate size or MIME server-side — those checks live only in `src/services/transferVoucher.ts`. It also stores the raw base64 in the order doc (Firestore ~1 MiB limit) and has no status guard — rework tracked in **2.9**._
       - Updates order document in Firestore Admin transitioning status to `'TRANSFERENCIA_COMPROBANTE_SUBIDO'` with receipt URL, timestamp, and audit trail.
     - **Step 3 Checkout & Tracking Upload UI:**
       - Embedded instant voucher upload widget directly in Step 3 of checkout when selecting bank transfer.
@@ -232,23 +257,42 @@ These items carry immediate risks of financial loss, critical security vulnerabi
     - Keep the existing live-filter behavior working; the submit path must not double-fetch or conflict with the `catalogRequestKey`-derived loading model in `App.tsx`.
   - **Automated Test Coverage:** Extend `src/tests/components/Navbar.test.tsx` (or add a focused suite) covering Enter-to-submit, button click, and clear affordance.
 
+- [ ] **2.8. Simulated-Success Fallbacks Must Not Mask Real HTTP Errors** _(Audit finding — full contract in `src/services/AGENTS.md` §6)_
+  - Several adapters return fabricated success on **any** endpoint failure:
+    - `createMercadoPagoPreference` / `processMercadoPagoPayment` (`src/services/mercadopago.ts`): HTTP 4xx/5xx (including the 400 stock rejection) → `success: true, initPoint: undefined` → the customer lands on the confirmation step for an unpaid `PENDIENTE_PAGO_MERCADOPAGO` order.
+    - `uploadTransferVoucher` (`src/services/transferVoucher.ts`): any failure (401 RUT mismatch, 404, 500) → `success: true` with a `simulated-voucher://` URL — silent voucher loss displayed as "Comprobante recepcionado exitosamente".
+    - `fetchOrderTracking` (`src/services/orderTracking.ts`): network failure → fabricated plausible order instead of an error state.
+    - `submitOrder`'s swallowed Firestore write is the worst instance — tracked separately as **0.11**.
+  - **Required Action:** simulate only when the endpoint is demonstrably absent (dev network error, behind the same env gate as 0.10); real HTTP error responses must surface as errors to the customer.
+
+- [ ] **2.9. Bank-Transfer Voucher Storage & Validation Rework** _(Audit finding — Firestore doc-size limit)_
+  - `/api/upload-voucher` writes the entire base64 `dataUrl` into the order document — real vouchers above ~750 KB exceed Firestore's ~1 MiB document limit and `batch.commit()` returns 500 (which the client then reports as success — see 2.8).
+  - The endpoint also performs no server-side MIME/size validation (client-only in `transferVoucher.ts`) and has no lifecycle guard: anyone with orderId + RUT can overwrite a voucher and regress `PAGADO_MERCADOPAGO`/`DESPACHADO`/`ENTREGADO` back to `TRANSFERENCIA_COMPROBANTE_SUBIDO`.
+  - **Required Action:** move voucher bytes to Firebase Storage (or compress/enforce a server-side byte cap), enforce MIME/size at the endpoint, and allow the transition only from `PENDIENTE_TRANSFERENCIA`.
+
+- [ ] **2.10. Replace the Last Literal `wa.me` URL (`PaymentReturnModal`)**
+  - `PaymentReturnModal.tsx` builds its WhatsApp link inline (`import.meta.env.VITE_WHATSAPP_NUMBER || '56912345678'`) — the fallback digits are stale vs the canonical `56929831595` (see `src/components/AGENTS.md` §4.1.2). Route through `whatsappLink()` from `src/config/contact.ts` like every other surface; do not invent a number.
+
 ---
 
-## Phase 3: Logistics, Shipping & Local Warehouse Pickup (Melipilla / RM)
+## Phase 3: Logistics, Shipping & Delivery Zones (Melipilla / San Antonio)
 
-- [ ] **3.1. Delivery Zone Selector & Dynamic Shipping Rates**
-  - **Context & Current State:** The free shipping progress tracker is standardized to `$150.000 CLP` in `Cart.tsx`, `Navbar.tsx`, and `Hero.tsx`. However, checkout currently lacks a dedicated Chilean delivery zone selector to calculate freight charges for orders below the threshold or for regional couriers.
+- [ ] **3.1. Dynamic Shipping Rates by Delivery Zone**
+  - **Context & Current State (spec rewritten — original was stale):** The zone-selector half is **already built**: `CheckoutModal` exposes a `Comuna de Despacho` select fed by `DELIVERY_ZONES` in `src/config/delivery.ts` — `Melipilla` (default, same-day for orders confirmed before 16:00) and `San Antonio` (scheduled route, `MIN_ORDER_OUTSIDE_MELIPILLA = 60000` enforced when leaving the Despacho step). `FREE_SHIPPING_THRESHOLD = 150000` applies to both zones. The original spec was deleted: it proposed a **Retiro en Local** pickup option (pickup is not a fulfilment mode — root `AGENTS.md` §3.4), **Región Metropolitana** communes (not served — San Antonio is in the Valparaíso region), and **Envíos a Regiones por pagar** (out of scope).
   - **Required Action:**
-    - Add a delivery method selector at Step 1 of checkout:
-      1. **Retiro en Local (Bodega Melipilla - Av. Ortúzar):** Gratis ($0 CLP).
-      2. **Despacho Urbano Melipilla:** Tarifa plana ($3.500 CLP o gratis sobre $80.000 CLP).
-      3. **Comunas Periféricas & Rurales Melipilla:** Bollenar, San Manuel, Culiprán, Pabellón, Chocalán ($5.000 CLP).
-      4. **Región Metropolitana:** Talagante, Peñaflor, Buin, Santiago Centro, Providencia, Las Condes, etc. ($4.990 CLP o gratis sobre $150.000 CLP).
-      5. **Envíos a Regiones:** Envío por pagar a sucursal o domicilio vía Starken / Chilexpress / Blue Express ($0 CLP en carrito, cobro en destino).
-    - Automatically add freight charges to the subtotal and include in tax/billing breakdown before creating payment preferences.
+    - Define per-zone freight for orders **below** the free-shipping threshold (e.g., Melipilla urban flat rate vs. San Antonio scheduled-route rate) as constants in `src/config/delivery.ts` — never redeclared locally.
+    - Add freight to the subtotal and include it in the tax/billing breakdown **server-side** before creating the Mercado Pago preference (coordinates with Task 0.9's server-side pricing rebuild).
+    - Surface the freight line in Cart/Checkout UI and in the pro-forma voucher.
 
 - [ ] **3.2. Estimated Delivery Time Windows**
-  - Display estimated fulfillment times in the cart and checkout (e.g., _"Same-day / 24-hour delivery for clinics in Melipilla"_ and _"24-48 hours for wider RM"_).
+  - Display estimated fulfillment times in the cart and checkout (e.g., _"Despacho mismo día en Melipilla para pedidos confirmados antes de las 16:00"_ and _"Ruta programada a San Antonio"_ — copy must reflect `DELIVERY_ZONES`, never "RM").
+
+- [ ] **3.3. Stale Localization Copy Sweep (API & Services)**
+  - **Audit finding (2026-09):** several strings still reference the removed logistics model:
+    - `api/_lib/emailTemplates.ts` — "Melipilla & Región Metropolitana" coverage copy.
+    - `api/track-order.ts` — "o retirado en Av. Ortúzar 750" (pickup is not offered) and regional-courier fallback copy.
+    - `src/services/whatsapp.ts` — "(Melipilla & RM)" comment and hardcoded "despacho para Melipilla" note even for San Antonio buyers.
+    - Storefront stale strings (Cart `Transacción Segura · Factura Electrónica B2B` strip; CheckoutModal `…emisión de Factura` transfer-card copy; pro-forma `Melipilla, Región Metropolitana` letterhead) are catalogued in `src/components/AGENTS.md` §2.5 — ⚠️ those require an Appendix C-sanctioned replacement string before editing; the API/service strings can be fixed directly.
 
 ---
 
@@ -307,15 +351,19 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
     - Added comprehensive Vitest tests bringing total test coverage to **305 passing tests across 46 test files**.
 
 - [ ] **4.2. Admin Backoffice Readiness Sweep (Post-8.6 Consolidation Gaps)**
-  - **Context & Current State:** Full audit of the admin portal after the Task 8.6 `/api` consolidation found the routing layer healthy — all 11 `/api/admin/<action>` client calls in `src/admin/services/adminApi.ts` map 1:1 to the `api/admin/[action].ts` dispatch table, no stale `api/lib` imports remain, `vercel.json` rewrites exclude `api/`, and all 22 admin test files (57 tests) pass. Four follow-up gaps remain, none of them currently documented:
+  - **Context & Current State:** Full audit of the admin portal after the Task 8.6 `/api` consolidation found the routing layer healthy — all 11 `/api/admin/<action>` client calls in `src/admin/services/adminApi.ts` map 1:1 to the `api/admin/[action].ts` dispatch table, no stale `api/lib` imports remain, `vercel.json` rewrites exclude `api/`, and all 22 admin test files (57 tests) pass. Follow-up gaps remain (items 5–8 added by the 2026-09 audit):
     1. **Handler test-coverage gap:** 4 of the 11 admin handlers — `orders`, `products`, `mark-delivered`, `toggle-visibility` — have **no dedicated integration test suites** under `src/tests/api/admin/` (only the router dispatch is covered by `admin-router.test.ts`, which mocks the handlers). Every other handler has its own suite.
     2. **Cursor pagination advertised but unimplemented:** `fetchAdminOrders({ cursor })` sends a `cursor` query param, but `api/_lib/admin/orders.ts` neither reads it nor applies Firestore `startAfter` — it fetches and slices against a default `limit` of 50. No UI caller passes `cursor` today, so it is harmless now, but as live order volume grows past 50 pending orders, staff would silently stop seeing older ones. Either implement real cursor pagination or remove the dead client param and document the 50-order window.
     3. **Undocumented placeholder cards:** `AdminDashboard.tsx` renders two "Fase 5" analytics placeholder cards (Google Tag Manager / GA4 telemetry) and `AdminSettings.tsx` renders a "Fase 5" dynamic shipping-rates placeholder — none are recorded in `src/admin/AGENTS.md`, and the "Fase 5" labels don't match the roadmap numbering (the underlying work is TODO **3.1** and **8.5**). Document them as deliberate placeholders and align the labels with the actual TODO numbers.
-    4. **Doc drift in `src/admin/AGENTS.md`:** §1.4 states the warehouse address as "Av. Ortúzar 1234" while every component (and root `AGENTS.md` §3.4) says **Av. Ortúzar 750**; §1.4 also claims `#settings` shows "connected Firebase/Mercado Pago environment status", which the component does not render (only the `AdminTopbar` DEV/PROD badge exists).
+    4. ~~**Doc drift in `src/admin/AGENTS.md`:**~~ ✅ **Resolved by the doc audit** — §1 now says Av. Ortúzar 750, the `#settings` claim was corrected, and the placeholder cards are documented in `src/admin/AGENTS.md` §6.1.
+    5. **`StockAdjustModal` conditional-hooks crash (P1):** `if (!product) return null` precedes four `useState` calls, but `AdminInventory.tsx` mounts the modal unconditionally — the first time a product is selected, React throws *"Rendered more hooks than during the previous render"* and crashes `#inventory`. Mount it conditionally like `ProductEditModal`, or hoist the hooks above the early return.
+    6. **`var(--primary)` unresolved:** `OrderDetailPanel.tsx` references it twice but `admin.css` never defines it — the `color`/`borderLeft` declarations silently drop. Use `--teal-600` (admin palette).
+    7. **`ProductEditModal` prop→state sync `useEffect`:** form fields are populated from `product` inside an effect — the exact pattern `react-hooks/set-state-in-effect` forbids on the storefront. Works today only via parent remount; refactor to lazy initializers in the same pass as item 5.
+    8. **Stale copy:** `AdminOrders.tsx` header reads `…depósitos dentales en Melipilla y RM` — there are no RM delivery zones (root `AGENTS.md` §3.4).
   - **Required Action:**
     - Add dedicated Vitest integration suites for the 4 uncovered handlers (happy path, auth rejection, method gate, `OPTIONS` preflight, malformed payload — mirroring `approve-transfer.test.ts`).
     - Resolve the cursor-pagination mismatch (implement or remove), with a test proving the chosen behavior.
-    - Document the placeholder cards in `src/admin/AGENTS.md` and correct the two §1.4 drift items.
+    - Fix items 5–8 (the hooks bug and the undefined token are functional defects, not cosmetics).
   - **Verification:** `pnpm test`, `pnpm build`, `pnpm lint` green; admin suite count updated in `src/tests/AGENTS.md`.
 
 ---
@@ -394,7 +442,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 - [x] **7.3. Upload Brand Assets, Favicon, and OpenGraph Image** ✅ _(OG share image and favicon delivered — the `vercel --prod` gate is cleared. B.3/B.4 figures remain optional and are tracked below.)_
   - **Resolution:** `public/og-preview.jpg` now exists — **1200×630 JPEG, ~128 KB** — and `index.html`'s three references (`og:image`, `twitter:image`, JSON-LD `image`) point at it. Previously the file had never existed, so every link preview — including PRONTO's own WhatsApp shares — rendered broken.
   - **⚠️ Format deviation from the proposal (as built):** Appendix B.0 specified *PNG ≤300 KB*. PNG is lossless, so a photorealistic 1200×630 banner lands at ~1 MB — measured on the existing hero photo, the same 1200×630 crop is **219 KB as JPEG vs 1.0 MB as PNG**. The delivered asset is therefore **JPEG**, and the `.png` references in root `AGENTS.md` §7, `src/components/AGENTS.md` §2.2 and `index.html` were all updated to `.jpg`.
-  - **⚠️ Wording superseded by this entry:** the original text below asked for `favicon.ico`, `apple-touch-icon.png`, and an OG image "featuring company logo and Melipilla delivery badge". All three are stale — the as-built markup wires only `favicon.svg` (no `.ico`, no `apple-touch-icon`), and the approved composition carries a `Depósito dental · Melipilla y San Antonio` text line instead of any badge. [UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md](file:///c:/Users/ecmv2/Documents/PRONTO/UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md) **Appendix B** is the asset spec of record.
+  - **⚠️ Wording superseded by this entry:** the original text below asked for `favicon.ico`, `apple-touch-icon.png`, and an OG image "featuring company logo and Melipilla delivery badge". All three are stale — the as-built markup wires only `favicon.svg` (no `.ico`, no `apple-touch-icon`), and the approved composition carries a `Depósito dental · Melipilla y San Antonio` text line instead of any badge. [UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md](./UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md) **Appendix B** is the asset spec of record.
   - **Delivered:**
     - `public/` exists (holds `favicon.svg`, `og-preview.jpg` and `assets/`).
     - `public/favicon.svg` — Appendix B.2's turnkey SVG, committed and wired via `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />`.
@@ -434,7 +482,7 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 
 - [ ] **8.5. Real-Time Error Monitoring & Analytics (Sentry & GA4)**
   - Integrate **Sentry for React** to capture unhandled client runtime errors across mobile devices and browsers.
-  - Set up Google Analytics 4 (GA4) with e-commerce events (`view_item`, `add_to_cart`, `begin_checkout`, `purchase`) to analyze dental clinic purchasing behavior in Melipilla and RM.
+  - Set up Google Analytics 4 (GA4) with e-commerce events (`view_item`, `add_to_cart`, `begin_checkout`, `purchase`) to analyze dental clinic purchasing behavior in Melipilla and San Antonio.
 
 - [x] **8.6. Consolidate `api/` Endpoints Below the Vercel Hobby Function Cap** ✅ _(Resolved: the 11 `api/admin/*` handlers moved to `api/_lib/admin/*` and are now dispatched by the single routed entry point `api/admin/[action].ts`; every shared module moved `api/lib/` → `api/_lib/`. `api/` counts **6** functions against the Hobby cap of 12 — 6 slots of headroom. Public URLs and `src/admin/services/adminApi.ts` are unchanged. The single-purpose-function guardrail exception is recorded in root `AGENTS.md` §2.2 and `api/AGENTS.md` §1.2, and covered by the new `src/tests/api/admin/admin-router.test.ts` suite. **Lifting the cap exposed two further, pre-existing runtime blockers that had never been reachable because no deploy had succeeded since 2026-09-17 — both are fixed and verified live (see the two Runtime Blocker bullets below).**)_
   - **Current Issue:** Every deployment — preview *and* production — is rejected at the output stage, after the build has already succeeded:
@@ -481,6 +529,19 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
     - [x] No new runtime dependency is added to `package.json`. _(Done: platform `IntersectionObserver` only.)_
     - [x] `pnpm test`, `pnpm build`, `pnpm lint` and `pnpm format:check` stay green (zero regressions). _(Done: 448/448 tests across 61 suites; build clean — only the pre-existing vendor-firebase chunk-size warning remains.)_
 
+- [ ] **8.8. Rate Limiting on Public Dual-Factor Endpoints** _(Audit finding)_
+  - `track-order`, `upload-voucher`, and `order-confirmation` authenticate with orderId + RUT — but `PRONTO-NNNNNN` is a sequential, guessable numeric space with the RUT as the only second factor, and no attempt throttling exists.
+  - **Required Action:** add lean attempt throttling (per-IP / per-orderId counters and a lockout window — Firestore or Vercel Edge config, no new infra services).
+
+- [ ] **8.9. `.env.example` Completeness**
+  - `api/_lib/emailTemplates.ts` reads `SITE_URL` (voucher-upload links) but it is absent from `.env.example`. Document `VITE_VERCEL_ENV` as a build-time `define` injected by `vite.config.ts` — not a dashboard variable. Verify every var referenced in `api/` and `src/` is represented.
+
+- [ ] **8.10. Widen Lint/Format Scope to `api/` and `src/admin/`**
+  - Root `AGENTS.md` §8.3 documents the carve-out: `api/**` and `src/admin/**` sit in the ESLint `ignores` list. The `StockAdjustModal` conditional-hooks bug (Task 4.2 item 5) is exactly the class of defect `react-hooks/rules-of-hooks` would have caught — widen coverage in a dedicated pass.
+
+- [ ] **8.11. Resilient Firebase Init (No Blank Page on Missing Env)**
+  - `src/services/firebase.ts` calls `getAuth(app)` unguarded at module scope: a missing/invalid `VITE_FIREBASE_API_KEY` throws `auth/invalid-api-key` at import time and renders a blank page instead of the catalog fallback (root `AGENTS.md` §7 documents the incident this caused). The fix makes `auth` nullable and touches `adminApi.ts`/`AdminApp.tsx`/`AdminLogin.tsx` — deliberately its own task (see `src/services/AGENTS.md` §4.5).
+
 ---
 
 ## Prioritization Matrix & Effort Estimation
@@ -493,20 +554,30 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 | **0.4. Idempotency & signature validation in Mercado Pago Webhook** | **P0** | Critical | 2 hours | **YES** |
 | **0.5. Deploy strict Firestore security rules (`firestore.rules`)** | **P0** | Critical | 2 hours | **YES** |
 | **0.6. Remove seed DB button in Footer and clean mock checkout fields** | **P0** | High | 1 hour | **YES** |
+| **0.9. Server-side price & total verification (underpayment exploit)** | **P0** | Critical | 3 - 4 hours | **YES** |
+| **0.10. Fail-closed payment paths in production (simulated success)** | **P0** | Critical | 2 hours | **YES** |
+| **0.11. `submitOrder` propagates Firestore write failure** | **P0** | High | 1 - 2 hours | **YES** |
 | **1.1. Standardize prices and currency to Chilean Pesos (CLP)** | **P0** | Critical | 2 hours | **YES** |
 | **2.1. Handle Mercado Pago return state (`status=approved`) in UI** | **P1** | High | 2 hours | **YES** |
 | **2.2. Shopping cart persistence via `localStorage`** | **P1** | Medium | 1 hour | No (Recommended) |
 | **2.4. Bank transfer voucher upload workflow** | **P1** | High | 3 hours | **YES** |
-| **3.1. Delivery zone rate selector (Melipilla vs. RM vs. Regions)** | **P1** | High | 3 hours | **YES** |
+| **1.4. Hardcoded distributor RUT `77.892.410-K` fails Modulo-11** | **P1** | Legal | 1 hour | **YES** |
+| **2.8. Simulated-success fallbacks mask real HTTP errors** | **P1** | High | 2 - 3 hours | **YES** |
+| **2.9. Voucher storage & server-side validation rework** | **P1** | High | 2 - 3 hours | **YES** |
+| **2.10. Last literal `wa.me` in `PaymentReturnModal`** | **P3** | Low | 30 min | No |
+| **3.1. Per-zone freight below free-shipping threshold (Melipilla + San Antonio)** | **P1** | High | 3 hours | **YES** |
+| **3.3. Stale localization copy sweep (API & services)** | **P2** | Medium | 1 hour | **YES** |
 | **5.1. Transactional emails via Resend or Nodemailer** | **P1** | High | 4 hours | **YES** |
 | **7.1. Publish legal pages (Warranty, SERNAC terms, Privacy)** | **P1** | Legal | 3 hours | **YES** |
 | **7.2. Configure custom `.cl` domain and SSL on Vercel** | **P1** | Trust | 1 hour | **YES** |
-| **4.2. Backoffice order management dashboard for warehouse staff** | **P2** | Operational | 1 - 2 days | No (Can manage via Firebase temporarily) |
+| **4.2. Backoffice readiness sweep (handler tests, pagination, admin UI defects)** | **P2** | Operational | 4 - 6 hours | No |
 | **1.2. Automated electronic invoicing with SII (OpenFactura/LibreDTE)** | **P2** | Tax / B2B | 2 - 3 days | No (Can invoice manually at start) |
 | **6.1. High-resolution dental product photography & datasheets** | **P2** | Commercial | Variable | No (Initial catalog can launch lean) |
 | **8.1 - 8.5. Bundle optimization, Sentry, CI/CD, and GA4 tracking** | **P3** | DevOps | 1 day | No (Immediate post-launch) |
 | **8.6. Consolidate `api/` endpoints below the Vercel Hobby function cap** | **P0** | Critical | 3 - 4 hours | **YES** |
 | **8.7. Progressive catalog rendering (lazy product cards / "load more")** | **P3** | UX / Performance | 2 - 3 hours | No (Immediate post-launch) |
+| **8.8. Rate limiting on public dual-factor endpoints** | **P2** | Security | 2 - 3 hours | Recommended pre-launch |
+| **8.9 - 8.11. Env completeness, lint scope widening, resilient Firebase init** | **P3** | DevOps | 1 day | No (Immediate post-launch) |
 
 ---
 
@@ -519,5 +590,6 @@ The store is officially ready to process its first real commercial transaction w
 3. [x] If a customer abandons or gets rejected on the payment gateway, inventory remains intact and the order is not marked as paid.
 4. [x] Secret server keys for Firebase and Mercado Pago are stored strictly in serverless environment variables.
 5. [x] The purchasing clinic receives an immediate formal order confirmation with an order number via email and/or WhatsApp.
-6. [x] Customers can select Boleta or Factura with validated RUT and company data, and the business issues the corresponding legal tax invoice.
-7. [ ] The storefront runs on a branded `.cl` domain with active SSL and visible consumer legal terms conforming to Chilean law.
+6. [x] Customers purchase with Boleta Electrónica + validated RUT (Factura Electrónica is retained in the order schema but gated — `FACTURA_ENABLED = false`; clinics needing Factura are routed to the WhatsApp quotation path).
+7. [ ] Prices and payment amounts are verified server-side — a client-supplied total can never mark an order paid or decrement stock (Task 0.9).
+8. [ ] The storefront runs on a branded `.cl` domain with active SSL and visible consumer legal terms conforming to Chilean law.

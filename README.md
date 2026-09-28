@@ -96,4 +96,4 @@ pnpm dlx vercel
 pnpm dlx vercel --prod
 ```
 
-For full architectural guidelines, Chilean localization details, and anti-overshooting constraints, see [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md).
+For full architectural guidelines, Chilean localization details, and anti-overshooting constraints, see [AGENTS.md](./AGENTS.md).

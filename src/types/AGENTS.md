@@ -8,13 +8,15 @@ This document is the **authoritative reference for data structures, domain contr
 
 * **Role:** The **single source of truth** for all business models in the application.
 * **Pure Typing (Zero Runtime Overhead):** Contains strictly TypeScript interfaces, type aliases, and string literal unions. No executable JavaScript code, classes, or runtime side effects.
-* **Single Location:** Components must never define ad-hoc interfaces (e.g. `interface OrderItem` inside a component file); all domain interfaces must be declared in [`src/types/index.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/index.ts).
+* **Single Location:** Components must never define ad-hoc interfaces (e.g. `interface OrderItem` inside a component file); all domain interfaces must be declared in [`src/types/index.ts`](./index.ts).
+* **File map:** `index.ts` is the only module. It exports the category unions (`ChileanDentalCategory`, `ProductCategory`, `Category`), `Product`, `CartItem`, the fiscal trio (`DocumentType`, `TaxBreakdown`, `BillingInfo`), `SanitaryVerification`, `CustomerInfo`, `PaymentMethod` (`'transferencia' | 'whatsapp' | 'mercadopago'`), `OrderStatus`, `Order`, `PromoCode`, `Toast`, `SubmitOrderResult`, `OrderTrackingInfo`, `UploadVoucherResult`, and the audit trail contracts (`AuditActorRole`, `OrderStatusHistory`, `InventoryChangeType`, `InventoryAuditLog`).
 
 ---
 
 ## 🏛️ 2. Core Domain Contracts & Chilean Healthcare Models
 
 ### 2.1 Order Lifecycle Union (`OrderStatus`)
+
 Reflects the authentic operational lifecycle of a Chilean dental supplies distributor:
 
 ```typescript
@@ -23,16 +25,21 @@ export type OrderStatus =
   | 'PAGADO_MERCADOPAGO'               // Payment approved cryptographically by serverless webhook
   | 'PENDIENTE_TRANSFERENCIA'          // Bank transfer selected, awaiting customer voucher upload
   | 'TRANSFERENCIA_COMPROBANTE_SUBIDO' // Customer uploaded bank voucher (PDF/PNG/JPG), awaiting warehouse review
-  | 'PAGO_VERIFICADO_MANUAL'           // Bank transfer reconciled against Banco de Chile by Melipilla staff
-  | 'PAGADO_TRANSFERENCIA'             // Bank transfer approved and reconciled
+  | 'TRANSFERENCIA_APROBADA'           // Bank transfer reconciled & approved by admin (stock deducted in the same transaction)
+  | 'PAGADO_TRANSFERENCIA'             // Terminal paid state for the manual transfer flow
   | 'EN_PREPARACION'                   // Order packing in Melipilla warehouse, Factura/Boleta DTE being generated
   | 'DESPACHADO'                       // Handed to courier (Local Melipilla route or Starken/Chilexpress)
   | 'ENTREGADO'                        // Signed and received at dental clinic reception desk
   | 'CANCELADO'                        // Order cancelled due to stock exhaustion, customer request, or non-payment
-  | 'REEMBOLSADO';                     // Payment refunded via gateway or manual bank reversal
+  | 'COTIZACION_SOLICITADA_WHATSAPP'   // WhatsApp quotation order — no payment capture, handled manually
+  | 'PENDIENTE_PAGO';                  // Generic pending-payment fallback in submitOrder()'s statusMap
 ```
 
+* The union has **12 members**. There is no `PAGO_VERIFICADO_MANUAL` and no `REEMBOLSADO` — manual reconciliation is `TRANSFERENCIA_APROBADA`, and refunds are not modeled (handle them as `CANCELADO` + a manual note).
+* `VALID_ORDER_STATUSES` in [src/utils/schemaValidation.ts](../utils/schemaValidation.ts) mirrors this union and must be updated in the same change if a status is ever added.
+
 ### 2.2 Customer & Tax Identity (`CustomerInfo` & `BillingInfo`)
+
 Captures contact, physical shipping destination, and Chilean SII electronic invoicing attributes:
 
 ```typescript
@@ -41,22 +48,24 @@ export interface CustomerInfo {
   email: string;                 // Contact email and SII DTE reception mailbox
   phone: string;                 // Mobile / WhatsApp for delivery coordination
   rut: string;                   // Validated Chilean Modulo 11 tax ID (Personal RUN or Corporate RUT)
-  documentType: 'boleta' | 'factura'; // Fiscal document choice
+  documentType: DocumentType;    // 'boleta' | 'factura' — fiscal document choice
   razonSocial?: string;          // Required for Factura: Legal entity name in SII registry
   giroComercial?: string;        // Required for Factura: Economic activity description (e.g., "Servicios Odontológicos")
   address: string;               // Physical delivery street and number / Fiscal address
-  city: string;                  // Commune (e.g., "Melipilla", "Talagante", "Providencia")
+  city: string;                  // Commune (e.g., "Melipilla", "San Antonio")
   zip: string;                   // Postal code / Region identifier
-  deliveryInstructions?: string; // Operatory hours, office/floor number, clinic reception instructions
+  transferReceipt?: string;      // Bank voucher reference captured in the transfer flow
   sanitaryVerification?: SanitaryVerification; // ISP / SIS registration for controlled items
 }
 ```
 
 #### Why "email" is crucial for Chilean SII Compliance
-In Chilean corporate tax accounting, every electronic invoice (**Factura Electrónica DTE**) must be submitted to the recipient company's official electronic tax exchange mailbox (**Casilla Electrónica DTE**). 
+
+In Chilean corporate tax accounting, every electronic invoice (**Factura Electrónica DTE**) must be submitted to the recipient company's official electronic tax exchange mailbox (**Casilla Electrónica DTE**).
 Clinics provide this email in `CustomerInfo.email` so the resulting XML and PDF invoices reach their accounting department without delaying their monthly **Formulario 29 (F29)** tax filing.
 
 ### 2.3 Sanitary Regulation Model (`SanitaryVerification`)
+
 Enforces compliance with **Código Sanitario DFL 725** and **Decreto Supremo 466** for prescription dental supplies and local anesthetics:
 
 ```typescript
@@ -69,38 +78,81 @@ export interface SanitaryVerification {
 ```
 
 ### 2.4 Customer Order Tracking Model (`OrderTrackingInfo`)
-Sanitized public tracking representation returned by `/api/track-order`:
+
+Sanitized public tracking representation returned by `/api/track-order`. The 5-stage `fulfillment.currentStep` maps database statuses onto the customer-facing timeline (_Registrado → Comprobante/Pago → Preparación → En Ruta → Entregado_):
 
 ```typescript
 export interface OrderTrackingInfo {
   orderId: string;
-  status: OrderStatus;
-  statusLabel: string;
-  customerName: string;
-  itemsCount: number;
-  total: number;
-  shippingAddress: string;
-  shippingCity: string;
-  deliveryMethod?: string;
-  trackingNumber?: string;
-  carrier?: string;
-  estimatedDelivery?: string;
   createdAt: string;
-  updatedAt: string;
-  timeline: {
-    step: number;
-    title: string;
-    description: string;
-    completed: boolean;
-    current: boolean;
-    timestamp?: string;
-  }[];
-  voucherUrl?: string;
-  voucherUploadedAt?: string;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
+  totalAmount: number;
+  items: { productId: string; name: string; quantity: number; price: number }[];
+  customer: {
+    fullName: string; email: string; rut: string;
+    address: string; city: string;
+    documentType: DocumentType; razonSocial?: string;
+  };
+  billing?: { documentType: DocumentType; status: string; taxBreakdown?: TaxBreakdown };
+  voucher?: { uploaded: boolean; url?: string; fileName?: string; uploadedAt?: string };
+  fulfillment: {
+    currentStep: 1 | 2 | 3 | 4 | 5;
+    statusTitle: string;
+    statusDescription: string;
+    courier?: string;
+    trackingNumber?: string;
+  };
+}
+```
+
+### 2.4b Fiscal Billing Contract (`BillingInfo` & `TaxBreakdown`)
+
+Persisted on `Order.billing` when the fiscal document is chosen; `status` starts `'PENDIENTE_EMISION_SII'` and moves to `'EMITIDO'` when the document is issued via the SII portal:
+
+```typescript
+export interface BillingInfo {
+  documentType: DocumentType
+  rut: string
+  razonSocial?: string
+  giroComercial?: string
+  direccionFiscal: string
+  comunaFiscal: string
+  taxBreakdown: TaxBreakdown             // { neto, iva, total } — integer CLP, see §3
+  status: 'PENDIENTE_EMISION_SII' | 'EMITIDO'
+}
+```
+
+### 2.4c Order Document Contract (`Order`)
+
+The canonical Firestore `orders` document. Everything optional below is written only when the corresponding lifecycle event happens:
+
+```typescript
+export interface Order {
+  orderId: string                      // 'PRONTO-XXXXXX' — also the Firestore document key
+  createdAt?: any                      // see §2.7 — the single permitted `any`
+  updatedAt?: string
+  paymentMethod: PaymentMethod
+  status: OrderStatus
+  totalAmount: number                  // integer CLP, IVA incluido
+  customer: CustomerInfo
+  billing?: BillingInfo
+  sanitaryVerification?: SanitaryVerification
+  items: { productId: string; name: string; quantity: number; price: number }[]
+  // Bank-transfer voucher trail
+  voucherUrl?: string; voucherFileName?: string; voucherUploadedAt?: string
+  // Fulfillment telemetry
+  courier?: string; trackingNumber?: string
+  mercadopagoPaymentId?: string; paidAt?: string
+  approvedAt?: string; approvedBy?: string
+  confirmationEmailSentAt?: string     // idempotency flag for /api/order-confirmation
+  dispatch?: { carrier: string; trackingCode?: string; dispatchedAt: string; dispatchedBy: string }
+  deliveredAt?: string
 }
 ```
 
 ### 2.5 Catalog Product Contract (`Product`)
+
 ```typescript
 export interface Product {
   id: string;                    // Canonical identifier (e.g. 'odon-101')
@@ -111,12 +163,12 @@ export interface Product {
   price: number;                 // Integer Chilean Pesos (IVA incluido)
   priceNeto?: number;            // Integer Chilean Pesos (Neto sin IVA, Math.round(price / 1.19))
   originalPrice?: number;        // Strikethrough price for promotions
-  rating: number;                // Customer evaluation (1 to 5)
+  rating: number;                // Customer evaluation (0–5; 0 = no reviews yet — see §3.4)
   reviewsCount: number;          // Total clinician reviews
   inStock: boolean;              // Public stock flag: (stockCount > 0 && isActive !== false)
   stockCount: number;            // Physical warehouse count in Melipilla
   isActive?: boolean;            // Decoupled visibility switch (default: true). False pauses product from sales.
-  prescriptionRequired: boolean; // Triggers 'Uso Profesional' badge & SIS check in checkout
+  prescriptionRequired: boolean; // Triggers '⚕️ Requiere SIS' badge & SIS check in checkout
   ispRegistrationNumber?: string;// Chilean ISP health registry code for controlled pharmaceuticals/devices
   tag: string;                   // Visual badge (e.g., 'MÁS VENDIDO', 'OFERTA CLÍNICA')
   description: string;           // Detailed technical overview
@@ -134,7 +186,8 @@ export interface Product {
 
 ### 2.6 Relational Audit Trail Contracts
 
-#### Order Status Transition History (`OrderStatusHistory`):
+#### Order Status Transition History (`OrderStatusHistory`)
+
 ```typescript
 export type AuditActorRole = 'ADMIN' | 'CUSTOMER' | 'SYSTEM_WEBHOOK' | 'SYSTEM_SEED' | 'SYSTEM_CRON';
 
@@ -152,7 +205,8 @@ export interface OrderStatusHistory {
 }
 ```
 
-#### Inventory & Warehouse Audit Log (`InventoryAuditLog`):
+#### Inventory & Warehouse Audit Log (`InventoryAuditLog`)
+
 ```typescript
 export type InventoryChangeType =
   | 'STOCK_ADJUSTMENT'
@@ -203,16 +257,17 @@ export interface Order {
 }
 ```
 
-* **Attempted and reverted:** typing this as `Timestamp | FieldValue | string` (via a type-only `firebase/firestore` import) is the *correct* model, but it breaks compilation in `src/admin/components/OrderTable.tsx`, which does `new Date(order.createdAt)` at three call sites. `new Date()` only accepts `string | number | Date`, so **no** precise union works without also changing the admin portal.
+* **Attempted and reverted:** typing this as `Timestamp | FieldValue | string` (via a type-only `firebase/firestore` import) is the _correct_ model, but it breaks compilation in `src/admin/components/OrderTable.tsx`, which does `new Date(order.createdAt)` at three call sites. `new Date()` only accepts `string | number | Date`, so **no** precise union works without also changing the admin portal.
 * **Do not narrow `createdAt` unilaterally.** Narrowing it and the admin read path must happen in the same change, as its own reviewed task. This is the single permitted `any` in the codebase.
 * `serverTimestamp()` is still the correct write value — do not switch order creation to a client `new Date()` just to make the type nicer; that would trade a server-authoritative timestamp for the clinic's device clock.
+* `OrderStatusHistory.timestamp` and `InventoryAuditLog.timestamp` are `string` (ISO 8601) — unlike `Order.createdAt`, they are always written by server code as `new Date().toISOString()`.
 
 #### Audit `metadata` is `Record<string, unknown>`, not `Record<string, any>`
 
-`OrderStatusHistory.metadata` and `InventoryAuditLog.metadata` were widened from `any` to `unknown` values. Rationale: these records carry operator- and system-supplied context (carrier, tracking number, payment ID, reason codes) whose *shape is not part of the domain contract*. `unknown` forces any consumer to narrow before use, while `any` silently propagated untyped access through the audit timeline UI.
+`OrderStatusHistory.metadata` and `InventoryAuditLog.metadata` were widened from `any` to `unknown` values. Rationale: these records carry operator- and system-supplied context (carrier, tracking number, payment ID, reason codes) whose _shape is not part of the domain contract_. `unknown` forces any consumer to narrow before use, while `any` silently propagated untyped access through the audit timeline UI.
 
 * **Consumer rule:** cast at the point of use (e.g. `const meta = entry.metadata as { carrier?: string }`) rather than loosening the interface.
-* **Producer rule:** the serverless webhooks and admin endpoints that write these records are unchanged — only the *read* typing tightened.
+* **Producer rule:** the serverless webhooks and admin endpoints that write these records are unchanged — only the _read_ typing tightened.
 
 ---
 
@@ -226,3 +281,5 @@ export interface Order {
    * When invoicing, the net amount is extracted using `Math.round(total / 1.19)` and IVA is `Math.round(total - net)`.
 3. **Synchronized Net Pricing (`priceNeto`):**
    * In catalog updates, `priceNeto` is always stored as `Math.round(price / 1.19)` to maintain alignment between inventory valuation and Chilean SII tax books.
+4. **Fixture data may sit outside the `1–5` rating band intentionally:**
+   * `rating` is typed `number` with a comment "1 to 5", but all in-repo fixtures carry `rating: 0` (no fabricated social proof — see [src/data/AGENTS.md](../data/AGENTS.md) §3.5). `0` is a valid sentinel meaning "no reviews yet"; the UI renders stars only when `reviewsCount > 0`.

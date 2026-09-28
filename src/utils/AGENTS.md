@@ -8,50 +8,59 @@ This document is the **authoritative algorithmic and technical guide** for the p
 
 * **Role:** Houses algorithmic calculations, string formatters, Chilean tax mathematics, and national identity validation.
 * **Strict Purity:** All functions in this directory are **strictly pure and deterministic**:
-  - ❌ Zero side effects (no DOM manipulation, no `localStorage` mutation).
-  - ❌ Zero network calls or asynchronous promises.
-  - ❌ Zero React hooks (`useState`, `useEffect`).
-  - Given identical input arguments, they must always return identical outputs.
-* **Where hooks live:** anything that needs React state or a DOM side effect belongs in [`src/hooks/`](file:///c:/Users/ecmv2/Documents/PRONTO/src/hooks) (e.g. `useScrollLock`, `useFocusTrap`), **not** here. That directory exists precisely to keep this purity contract intact.
-* **Zero External Dependencies:** No `lodash`, `moment.js`, or external math libraries. Built entirely with modern ECMAScript standards and native `Intl` formatters.
+  * ❌ Zero side effects (no DOM manipulation, no `localStorage` mutation).
+  * ❌ Zero network calls or asynchronous promises.
+  * ❌ Zero React hooks (`useState`, `useEffect`).
+  * Given identical input arguments, they must always return identical outputs.
+* **Where hooks live:** anything that needs React state or a DOM side effect belongs in [`src/hooks/`](../hooks) (`useScrollLock`, `useFocusTrap`, `useIncrementalReveal`), **not** here. That directory exists precisely to keep this purity contract intact.
+* **Zero External Dependencies:** No `lodash`, `moment.js`, or external math libraries. Built entirely with modern ECMAScript standards.
+* **File map:** [`rut.ts`](./rut.ts) (RUT Modulo 11), [`currency.ts`](./currency.ts) (CLP formatting/parsing + IVA), [`tax.ts`](./tax.ts) (gross→neto IVA breakdown + Factura field validation), [`schemaValidation.ts`](./schemaValidation.ts) (untrusted Firestore document validators), [`categoryAlias.ts`](./categoryAlias.ts) (category display names).
 
 ---
 
 ## 🇨🇱 2. Chilean Domain Algorithms & Legal Specifications
 
 ### 2.1 Chilean Modulo 11 Algorithm (`src/utils/rut.ts`)
+
 The **Rol Único Tributario (RUT)** / **Rol Único Nacional (RUN)** is the official unique identifier for Chilean natural persons and corporate legal entities.
 
-#### Algorithmic Specification:
+#### Algorithmic Specification
+
 1. **Cleaning:** Strips all dots, hyphens, and whitespace:
    ```typescript
    export function cleanRut(rut: string): string {
      return rut.replace(/[^0-9kK]/g, '').toUpperCase()
    }
    ```
-2. **Modulo 11 Calculation:**
-   - Multiplies digits of the body from right to left using repeating sequence weights: `[2, 3, 4, 5, 6, 7]`.
-   - Sums the products.
-   - Calculates `remainder = 11 - (sum % 11)`.
-   - If `remainder === 11`, check digit is `'0'`.
-   - If `remainder === 10`, check digit is `'K'`.
-   - Otherwise, check digit is `remainder.toString()`.
+2. **Modulo 11 Calculation (`calculateDv`):**
+   * Multiplies digits of the body from right to left using repeating sequence weights: `[2, 3, 4, 5, 6, 7]` (the multiplier cycles 2→7 and resets).
+   * Sums the products.
+   * Calculates `remainder = 11 - (sum % 11)`.
+   * If `remainder === 11`, check digit is `'0'`.
+   * If `remainder === 10`, check digit is `'K'`.
+   * Otherwise, check digit is `remainder.toString()`.
+   * Exported as `calculateDv(body: string): string` — usable standalone for generating DVs (e.g. seed data).
 3. **Validation (`validateRut`):**
-   - Verifies the body consists strictly of digits.
-   - Requires a length of 7 to 8 body digits plus 1 check digit.
-   - Computes expected DV and compares against input DV in constant time.
+   * Guards `!rut || typeof rut !== 'string'` up front, then cleans.
+   * Requires a cleaned length of 8–9 characters: 7–8 body digits plus 1 check digit.
+   * Verifies the body consists strictly of digits (`/^\d+$/`).
+   * Computes the expected DV and compares with a plain `===` (not constant-time — acceptable here; a RUT is not a secret credential).
 4. **Formatting (`formatRut`):**
-   - Formats clean numbers into standard Chilean commercial notation with thousand separators: `12.345.678-5`.
+   * Formats clean numbers into standard Chilean commercial notation with thousand separators: `12.345.678-5`.
 
 ---
 
 ### 2.2 Chilean Peso Currency Logic (`src/utils/currency.ts`)
-The Chilean Peso (**CLP**) has no active fractional subunits (cents were officially abolished). 
-* **`formatCLP(amount: number)`**:
-  - Formats numbers using Chilean locale: `$189.990` (dollar symbol prefix, period thousands separator, zero decimals).
-  - Implemented via `Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })`.
-* **`parseCLP(formatted: string)`**:
-  - Safely extracts raw integer amounts from formatted currency strings, stripping `$`, dots, and spaces.
+
+The Chilean Peso (**CLP**) has no active fractional subunits (cents were officially abolished).
+* **`formatCLP(amount: number): string`**:
+  * Formats numbers using Chilean convention: `$189.990` (dollar prefix, period thousands separator, zero decimals).
+  * Implemented with a hand-rolled regex thousands separator (`replace(/\B(?=(\d{3})+(?!\d))/g, '.')`) after `Math.round()` — **not** `Intl.NumberFormat`, so output is identical in Node, jsdom, and every browser regardless of ICU data.
+  * Handles `NaN`/`null`/`undefined` → `'$0'`, and negatives → `-$10.000`.
+* **`parseCLP(formatted: string): number`**:
+  * Safely extracts raw integer amounts from formatted currency strings, stripping `$`, dots, and spaces. Preserves a leading `-` sign; returns `0` on garbage input.
+* **`calculateIVA(netAmount: number, rate = 0.19): number`**:
+  * `Math.round(netAmount * rate)` for net→tax math; returns `0` on non-positive/`NaN` input. (Gross→neto extraction lives in `tax.ts` — do not confuse the two directions.)
 
 ---
 
@@ -59,19 +68,21 @@ The Chilean Peso (**CLP**) has no active fractional subunits (cents were officia
 
 Under Chilean tax law, the standard **Impuesto al Valor Agregado (IVA)** rate is **19%**.
 
-#### Mathematical Formulas & Integer Rounding:
-1. **Gross Price (Precio Bruto - IVA incluido):**
-   $$\text{Bruto} = \text{Math.round}(\text{Neto} \times 1.19)$$
-2. **Net Extraction from Gross:**
-   $$\text{Neto} = \text{Math.round}\left(\frac{\text{Bruto}}{1.19}\right)$$
-3. **IVA Amount Extraction:**
-   $$\text{IVA} = \text{Math.round}(\text{Bruto} - \text{Neto})$$
-4. **Rounding Iron Rule:**
-   - In Chile, tax and billing amounts are strictly whole integers. 
-   - Never use `toFixed(2)` or allow floating point residues (e.g. `$18999.33`). Always apply `Math.round()` at each step to prevent payment gateway or SII DTE rejection.
+#### Mathematical Formulas & Integer Rounding
 
-#### Factura Validation Rules (`validateFacturaFields`):
-Validates the mandatory attributes required by the SII before a Factura Electrónica can be issued:
+`calculateTaxBreakdown(totalAmount: number): TaxBreakdown` is the single gross→neto extractor. It returns `{ neto, iva, total }` where the identity **`neto + iva === total` always holds** (IVA is the exact remainder, never independently rounded):
+
+1. **Net Extraction from Gross:** `neto = Math.round(Math.round(total) / 1.19)`
+2. **IVA Amount Extraction:** `iva = roundedTotal - neto`
+3. **Gross direction (neto → bruto)** is `Math.round(neto * 1.19)` — provided by `calculateIVA` in `currency.ts`.
+4. **Rounding Iron Rule:**
+   * In Chile, tax and billing amounts are strictly whole integers.
+   * Never use `toFixed(2)` or allow floating point residues (e.g. `$18999.33`). Always apply `Math.round()` at each step to prevent payment gateway or SII DTE rejection.
+   * Non-positive or `NaN` input returns `{ neto: 0, iva: 0, total: 0 }` rather than throwing.
+
+#### Factura Validation Rules (`validateFacturaFields`)
+
+`validateFacturaFields(fields: FacturaValidationInput): FacturaValidationResult` returns `{ isValid, errors }` with localized Spanish messages per field. Validates the mandatory attributes required by the SII before a Factura Electrónica can be issued:
 * `rut`: Must be a valid corporate or personal RUT satisfying Modulo 11.
 * `razonSocial`: Minimum 3 characters (e.g., *"Sociedad Dental SpA"*).
 * `giroComercial`: Minimum 3 characters (e.g., *"Atención odontológica"*).
@@ -88,9 +99,12 @@ To prevent data drift and ensure that all Firestore documents strictly satisfy d
 >
 > **`as OrderStatus` / `as PaymentMethod` casts** on the two `VALID_*` membership checks are required because `Array.prototype.includes` is invariant; they are safe because the check is exactly what validates the value.
 >
-> **Behaviour change worth knowing:** the `customer.rut` check now reads `typeof c.rut !== 'string' || !validateRut(c.rut)`. Previously a non-string RUT was passed straight into `validateRut()`, which calls `rut.replace(...)` and would have thrown instead of reporting a validation error.
+> **The `customer.rut` check is string-guarded:** `typeof c.rut !== 'string' || !validateRut(c.rut)` — a non-string RUT reports a validation error instead of throwing inside `rut.replace(...)`.
+>
+> **Scope honesty — what the validators do NOT check:** `orderId` is only asserted non-empty (there is no `PRONTO-XXXXXX` format check); `timestamp`/`actorRole`/`changeType` fields in the audit validators are only asserted as present strings (no ISO-8601 parse, no enum-membership check except `newStatus`/`status`/`paymentMethod` on orders); stock deltas (`previousStock`/`newStock`/`delta`) are not validated at all. If you need stricter guarantees, add them here and to the tests together — do not assume coverage that is not in the code.
 
 #### 1. `validateProductSchema(input: unknown): ValidationResult`
+
 * Enforces required string `id`, `name`, and `category`.
 * Validates `price`: Must be a positive integer in CLP (zero decimals, no floating points).
 * Validates `stockCount`: Must be a non-negative integer (`>= 0`).
@@ -99,22 +113,23 @@ To prevent data drift and ensure that all Firestore documents strictly satisfy d
 * Validates optional `unitOfSale`: when present it must be a **non-empty string of at most 60 characters** (`typeof !== 'string'`, `trim() === ''` or `length > 60` is an error). Absent on every legacy document — the field is optional, so no migration is needed and `pronto-*` / `odon-*` docs stay valid. `scripts/import-catalog-csv.ts` writes it only when the CSV carries a `unit_of_sale` column.
 
 #### 2. `validateOrderSchema(input: unknown): ValidationResult`
-* Validates canonical `orderId` (`PRONTO-XXXXXX`).
-* Enforces membership in `VALID_ORDER_STATUSES`.
+
+* Requires a non-empty string `orderId` (no `PRONTO-XXXXXX` format check — see scope note above).
+* Enforces membership in `VALID_ORDER_STATUSES` (all 12 `OrderStatus` values) and `VALID_PAYMENT_METHODS` (`'transferencia' | 'mercadopago' | 'whatsapp'`).
 * Validates `totalAmount`: Must be a positive integer in CLP.
-* Enforces Chilean Modulo 11 RUT validation on `customer.rut` (string-guarded, see above).
-* If `customer.documentType === 'factura'`, enforces non-empty `razonSocial`, `giroComercial`, and valid company tax attributes.
-* Verifies item line integrity: ensures each item contains integer `price` and quantity `>= 1`. Items are read through a `SchemaDoc[]` view, not `any[]`.
+* Enforces Chilean Modulo 11 RUT validation on `customer.rut` (string-guarded, see above), plus required `fullName`, `email` (must contain `@`), `address`, `city`.
+* If `customer.documentType === 'factura'`, enforces non-empty `razonSocial` and `giroComercial`.
+* Verifies item line integrity: each item needs a `productId` (or legacy `id`), a `name`, integer `quantity >= 1` and integer `price >= 0`. Items are read through a `SchemaDoc[]` view, not `any[]`.
 
 #### 3. `validateOrderStatusHistorySchema(input: unknown): ValidationResult`
-* Enforces relational foreign key `orderId`.
-* Validates `actorRole`: Must belong to `'ADMIN' | 'CUSTOMER' | 'SYSTEM_WEBHOOK' | 'SYSTEM_SEED' | 'SYSTEM_CRON'`.
-* Asserts valid ISO 8601 `timestamp` and non-empty `reason`.
+
+* Enforces relational foreign key `orderId` (non-empty string).
+* Enforces `newStatus` membership in `VALID_ORDER_STATUSES`; `changedBy`, `actorRole`, `timestamp`, `reason` are only asserted non-empty strings (see scope note).
 
 #### 4. `validateInventoryAuditLogSchema(input: unknown): ValidationResult`
-* Enforces relational foreign key `productId`.
-* Validates `changeType`: Must belong to `'STOCK_ADJUSTMENT' | 'ORDER_FULFILLMENT_DEDUCTION' | 'METADATA_UPDATE' | 'VISIBILITY_TOGGLE' | 'CATALOG_SEED'`.
-* Asserts integer deltas and valid ISO 8601 `timestamp`.
+
+* Enforces relational foreign key `productId` (non-empty string).
+* `changeType`, `changedBy`, `actorRole`, `timestamp` are only asserted non-empty strings (see scope note); stock deltas are not validated.
 
 ---
 
@@ -122,9 +137,9 @@ To prevent data drift and ensure that all Firestore documents strictly satisfy d
 
 Firestore stores frozen, uppercase Chilean category keys (`DESECHABLES, ESTERILIZACION Y DESINFECCION`). Storefront presentation must never leak those raw keys, so this module is the **single source of truth for customer-facing category naming**:
 
-* **`CATEGORY_DISPLAY_MAP`**: Frozen record mapping internal keys (and their lowercase variants) to clean labels (e.g. `Desechables y Esterilización`).
+* **`CATEGORY_DISPLAY_MAP`**: Record mapping internal keys to clean labels (e.g. `Desechables y Esterilización`). Only `DESECHABLES, ESTERILIZACION Y DESINFECCION` also registers a lowercase variant — matching is otherwise case-sensitive and exact.
 * **`formatCategoryDisplayName(category?: string): string`**:
-  - Trims the input, returns the alias when registered, and otherwise falls back safely to the original string (legacy fixtures like `Sterilization` render unchanged).
-  - Returns `''` for `undefined`, empty, or whitespace-only values, so callers can guard rendering without extra checks.
-* **Consumers:** `ProductCard.tsx`, `ProductQuickView.tsx`, and `CATEGORIES` in [src/data/products.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/data/products.ts) (category pills derive their labels from this map to prevent naming drift).
+  * Trims the input, returns the alias when registered, and otherwise falls back safely to the **trimmed** string (legacy fixtures like `Sterilization` render unchanged).
+  * Returns `''` for `undefined`, non-string, empty, or whitespace-only values, so callers can guard rendering without extra checks.
+* **Consumers:** `ProductCard.tsx`, `ProductQuickView.tsx`, and `CATEGORIES` in [src/data/products.ts](../data/products.ts) (category pills derive their labels from this map to prevent naming drift).
 * **Purity Contract:** No imports from `src/data/`, no side effects — safe to use from any layer.

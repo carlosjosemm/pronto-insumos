@@ -4,7 +4,7 @@
 **Priority:** P2 (Operational, can launch storefront without but critical for daily operations)  
 **Author:** Planning Agent  
 **Date:** September 2026  
-**References:** [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md) §Phase 4, [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md)
+**References:** [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md) §Phase 4, [AGENTS.md](./AGENTS.md)
 
 ---
 
@@ -78,7 +78,7 @@ The admin portal uses a **fixed sidebar + scrollable main content** layout, dist
 
 ### 2.2 Design Tokens (Shared with Storefront)
 
-The admin portal reuses the **exact same design tokens** defined in [src/index.css :root](file:///c:/Users/ecmv2/Documents/PRONTO/src/index.css#L3-L83):
+The admin portal reuses the **exact same design tokens** defined in [src/index.css :root](./src/index.css#L3-L83):
 
 | Token | Value | Usage in Admin |
 |---|---|---|
@@ -168,7 +168,7 @@ The admin portal is implemented as a **second Vite entry point** — a separate 
 
 ### 3.2 Vite Multi-Page Configuration
 
-Update [vite.config.ts](file:///c:/Users/ecmv2/Documents/PRONTO/vite.config.ts):
+Update [vite.config.ts](./vite.config.ts):
 
 ```typescript
 import { defineConfig } from 'vite'
@@ -213,7 +213,7 @@ Create `admin.html` at the project root (sibling to `index.html`):
 
 ### 3.4 Vercel Rewrites
 
-Update [vercel.json](file:///c:/Users/ecmv2/Documents/PRONTO/vercel.json) to serve `admin.html` for `/admin` paths:
+Update [vercel.json](./vercel.json) to serve `admin.html` for `/admin` paths:
 
 ```json
 {
@@ -522,7 +522,7 @@ The `inStock` toggle in the table row calls `POST /api/admin/toggle-visibility` 
 All admin mutations go through **Vercel Serverless Functions** in `api/admin/`. These functions:
 1. Verify the Firebase Auth ID token from the `Authorization: Bearer <token>` header.
 2. Check that the token contains `admin: true` custom claim.
-3. Use `firebase-admin` (the existing [api/lib/firebaseAdmin.ts](file:///c:/Users/ecmv2/Documents/PRONTO/api/lib/firebaseAdmin.ts) singleton) to perform Firestore mutations.
+3. Use `firebase-admin` (the existing [api/lib/firebaseAdmin.ts](./api/lib/firebaseAdmin.ts) singleton) to perform Firestore mutations.
 
 ### 8.1 Auth Middleware
 
@@ -582,7 +582,7 @@ export async function verifyAdminToken(req: VercelRequest): Promise<AdminAuthRes
 
 ### 8.3 Transfer Approval — Stock Deduction Logic
 
-The `approve-transfer` endpoint performs **the same atomic Firestore transaction** as the Mercado Pago webhook ([api/webhooks/mercadopago.ts](file:///c:/Users/ecmv2/Documents/PRONTO/api/webhooks/mercadopago.ts#L113-L169)):
+The `approve-transfer` endpoint performs **the same atomic Firestore transaction** as the Mercado Pago webhook ([api/webhooks/mercadopago.ts](./api/webhooks/mercadopago.ts#L113-L169)):
 
 1. **All reads first:** Read the order document + all referenced product documents.
 2. **Idempotency check:** If order is already `TRANSFERENCIA_APROBADA` or `PAGADO_MERCADOPAGO`, return success without re-decrementing.
@@ -594,7 +594,7 @@ The `approve-transfer` endpoint performs **the same atomic Firestore transaction
 
 ## 9. Firestore Rules Update
 
-The current [firestore.rules](file:///c:/Users/ecmv2/Documents/PRONTO/firestore.rules) deny all client-side reads on orders (`allow read, update, delete: if false`). This is intentional — the admin portal does **not** query Firestore directly from the browser. All reads go through the serverless API which uses `firebase-admin` (bypasses security rules).
+The current [firestore.rules](./firestore.rules) deny all client-side reads on orders (`allow read, update, delete: if false`). This is intentional — the admin portal does **not** query Firestore directly from the browser. All reads go through the serverless API which uses `firebase-admin` (bypasses security rules).
 
 **No Firestore rules changes are needed for the admin portal.**
 
@@ -610,7 +610,7 @@ This is the correct architecture because:
 
 ### 10.1 Extended Order Status Type
 
-The current `OrderStatus` type in [src/types/index.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/types/index.ts#L78-L84) needs to be extended:
+The current `OrderStatus` type in [src/types/index.ts](./src/types/index.ts#L78-L84) needs to be extended:
 
 ```typescript
 export type OrderStatus =
@@ -853,7 +853,7 @@ For the one-time setup script only (not deployed):
 
 ## 15. Guardrails & Constraints
 
-Per [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md) §2:
+Per [AGENTS.md](./AGENTS.md) §2:
 
 | Guardrail | Compliance |
 |---|---|

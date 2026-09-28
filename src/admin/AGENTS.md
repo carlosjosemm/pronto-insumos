@@ -13,50 +13,55 @@ The PRONTO Admin Portal is an internal, lightweight management console designed 
 2. **Order Management & Fulfillment (`#orders`):**
    - Search orders by canonical ID (`PRONTO-XXXXXX`), customer/company name, or Chilean RUT.
    - Filter by status chips (`PENDIENTE_TRANSFERENCIA`, `PAGADO_MERCADOPAGO`, `DESPACHADO`, `ENTREGADO`, etc.).
-   - Inspect clinical orders in a 420px slide-over panel displaying Chilean legal invoicing attributes (Factura Electrónica: RUT, Razón Social, Giro Comercial, Dirección Fiscal).
+   - Inspect clinical orders in a **440px** slide-over panel (`.admin-slide-panel`) displaying Chilean legal invoicing attributes (Factura Electrónica: RUT, Razón Social, Giro Comercial, Dirección Fiscal).
    - Display sanitary verification credentials (SIS / ISP health registry numbers).
    - View bank transfer payment vouchers uploaded by clinics.
    - Execute operational fulfillment transitions:
      * **Aprobar Transferencia:** Clears bank transfer payment and triggers atomic inventory decrement in the Melipilla warehouse.
-     * **Marcar Despachado:** Records Chilean courier (Starken, Chilexpress, Blue Express, Melipilla Express) and tracking number.
+     * **Marcar Despachado:** Records the carrier (`starken`, `chilexpress`, `blue_express`, `despacho_local_melipilla` — rendered *Despacho Local Melipilla (Flota Directa)*; see `CarrierType` in `src/admin/types.ts`) and tracking number.
      * **Marcar Entregado:** Confirms receipt and closes the fulfillment cycle.
 3. **Inventory & Warehouse Management (`#inventory`):**
    - Live view of product stock levels, categories, and Chilean Peso pricing (Neto and Total con 19% IVA).
    - **Audit-Logged Stock Adjustments:** Modal supporting reason codes (`reposicion`, `merma`, `correccion`, `venta_manual`) and operator notes.
    - **Product Metadata Editor:** Modify integer CLP pricing, descriptions, specifications, package contents, and clinical manufacturer tags.
    - **Instant Catalog Visibility Switch:** Pause sales for backordered items (`inStock: false`).
-4. **Settings & Operational Config (`#settings`):** Centralized display of warehouse location (Av. Ortúzar 1234, Melipilla), delivery cut-off times, and connected Firebase/Mercado Pago environment status.
+4. **Settings & Operational Config (`#settings`):** A branch/legal-identity card sourced from `BANK_DETAILS` in `src/config/bankDetails.ts` (Razón Social, RUT Empresa, `Av. Ortúzar 750, Melipilla` warehouse address, transfer account) plus a deliberately deferred **"Fase 5"** shipping-rates placeholder card — see §6.1.
 
 ---
 
 ## 🏗️ 2. Architectural Boundaries & Isolation
 
 ### 2.1 Multi-Page Entry Point (`admin.html`)
-To strictly follow the **Anti-Overshooting Principle** in [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md):
+To strictly follow the **Anti-Overshooting Principle** in [AGENTS.md](../../AGENTS.md):
 * The admin portal is **NOT** a bloated router bundle injected into the customer storefront.
 * It is configured as a secondary Vite multi-page entry point:
-  - `dist/index.html`: Public customer storefront bundle (~111 kB JS, ~34 kB CSS).
-  - `dist/admin.html`: Internal admin console bundle (~63 kB JS, ~13 kB CSS).
+  - `dist/index.html`: Public customer storefront bundle.
+  - `dist/admin.html`: Internal admin console bundle.
 * Customers visiting `prontoinsumos.cl` never download admin logic, forms, or admin API adapters.
 * Vercel rewrites in `vercel.json` route `/admin` and `/admin/*` directly to `admin.html`.
 * `admin.html` includes `<meta name="robots" content="noindex, nofollow">` to prevent indexing by search engine crawlers.
 
 ### 2.2 Hash-Based Internal Routing
-* Internal navigation uses lightweight browser hash changes:
-  - `#/dashboard` (Default view)
-  - `#/orders`
-  - `#/inventory`
-  - `#/settings`
-* No heavyweight routing libraries (React Router, TanStack Router) are used. The route is managed via standard React `useState` synchronized with `window.location.hash`.
+* Internal navigation uses lightweight browser hash changes; the canonical written form has **no** leading slash:
+  - `#dashboard` (default view)
+  - `#orders`
+  - `#orders/<orderId>` — deep link that opens `AdminOrders` with `initialOrderId` preselected
+  - `#inventory`
+  - `#settings`
+* `AdminApp.tsx` parses `window.location.hash` with `replace(/^#\/?/, '')`, so `#/orders` is tolerated but not canonical, and writes `#${view}` / `#${view}/${orderId}` on navigation.
+* No heavyweight routing libraries (React Router, TanStack Router) are used. The route is managed via standard React `useState` synchronized with a `hashchange` listener.
 
 ### 2.3 Styling & Design Tokens (`src/admin/admin.css`)
-* Uses handcrafted Vanilla CSS prefixed with `.admin-*` to prevent global style leakage.
-* Shares the brand typography (Outfit / Inter) and clinical palette:
-  - Primary Navy: `var(--navy-900)` (`#0f172a`), `var(--navy-800)` (`#1e293b`)
-  - Clinical Cyan Accent: `var(--primary)` (`#00a896`)
-  - Chilean Alert Red: `#ef4444` (Critical stock, rejected status)
-  - Amber Warning: `#f59e0b` (Pending transfer clearance)
-  - Emerald Green: `#10b981` (Paid, delivered, approved)
+* Uses handcrafted Vanilla CSS prefixed with `.admin-*` to prevent global style leakage. `admin.css` carries its **own independent `:root`** — it does not share the storefront tokens from `src/index.css` (that is why deleting the storefront alias block never affected the admin portal).
+* Typography: `DM Sans` (`--font-sans`) for the console, `JetBrains Mono` (`--font-mono`) for REF codes/IDs/amounts. It is **not** the storefront's Fraunces/Inter pairing — do not "align" them.
+* Clinical palette (as defined in `admin.css :root`):
+  - Primary Navy: `var(--navy-900)` (`#0b192c`), `var(--navy-800)` (`#142844`), `var(--navy-950)` (`#07101d`)
+  - Teal Accent: `var(--teal-600)` (`#088395`), `var(--teal-700)` (`#0a6371`), `var(--teal-800)` (`#0e4c56`)
+  - Alert Red: `var(--danger)` (`#dc2626`, `--danger-bg #fef2f2`) — critical stock, rejected status
+  - Amber Warning: `var(--warning)` (`#d97706`, `--warning-bg #fffbeb`) — pending transfer clearance
+  - Emerald Green: `var(--success)` (`#059669`, `--success-bg #ecfdf5`) — paid, delivered, approved
+  - Info Blue: `var(--accent-info)` (`#2563eb`, `--accent-info-bg #eff6ff`)
+* ⚠️ **Known broken token:** `OrderDetailPanel.tsx` references `var(--primary)` twice (the `History` icon colour and the audit-timeline `borderLeft`), but `--primary` is **never defined** in `admin.css` — both declarations silently drop (the icon inherits, the timeline loses its accent border). Use `var(--teal-600)` instead when touching that file.
 
 ---
 
@@ -144,9 +149,10 @@ In `AdminInventory.tsx` and `ProductEditModal.tsx`:
 
 ## 🛠️ 5. Database Schema, Migration & Multi-Environment CLI Tooling
 
-PRONTO provides administrative CLI utilities ([`scripts/manage-firestore-schema.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/manage-firestore-schema.ts) and [`scripts/import-catalog-csv.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/scripts/import-catalog-csv.ts)) to enforce data quality and manage database lifecycles across production and isolated development environments:
+PRONTO provides administrative CLI utilities ([`scripts/manage-firestore-schema.ts`](../../scripts/manage-firestore-schema.ts) and [`scripts/import-catalog-csv.ts`](../../scripts/import-catalog-csv.ts)) to enforce data quality and manage database lifecycles across production and isolated development environments:
 
 ### 5.1 Environment Isolation Commands
+
 To prevent developmental work or testing from touching live clinic orders and warehouse inventory, all operations support an isolated `dev_*` mode:
 
 ```powershell
@@ -160,7 +166,8 @@ pnpm run catalog:import:dev
 # 3. Seed canonical catalog and sample orders into development collections
 pnpm run schema:seed:dev
 
-# 4. Purge all development documents safely without touching production
+# 4. Purge AND reseed development collections safely without touching production
+#    (maps to --purge-and-seed --force --env=dev — it re-creates the fixtures, not just wipe)
 pnpm run schema:purge:dev
 
 # --- PRODUCTION ENVIRONMENT (Strict Safeguards) ---
@@ -173,40 +180,63 @@ pnpm run catalog:import --confirm-production-import
 # 3. Seed canonical products into production collections
 pnpm run schema:seed
 
-# 4. Purge legacy production collections (Requires explicit --force flag)
-pnpm run schema:purge-and-seed --force
+# 4. Purge legacy production collections (Requires BOTH --force and --confirm-production-wipe;
+#    the script refuses with an explicit usage error if either is missing)
+pnpm run schema:purge-and-seed --force --confirm-production-wipe
 ```
 
 ### 5.2 Batch Operation Chunking Guardrail
+
 Firestore enforces a strict hard limit of 500 operations per `batch.commit()`. The CLI migration and CSV import tools automatically divide bulk operations into safe chunks of 450 documents, preventing `INVALID_ARGUMENT: maximum 500 writes allowed per batch` failures during catalog resets.
 
 ### 5.3 UI Environment Indicator Badge
-The admin topbar ([`src/admin/components/AdminTopbar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminTopbar.tsx)) renders an environment badge:
+
+The admin topbar ([`src/admin/components/AdminTopbar.tsx`](./components/AdminTopbar.tsx)) renders an environment badge:
+
 - In development / preview mode: Displays an amber `🧪 DEV (dev_*)` pill badge so staff immediately know they are operating against test data.
 - In production: Displays a clean emerald `🟢 PROD` badge.
 
 ---
 
-## 📂 6. Directory Map
+## ⚠️ 6. Deliberate Placeholders & Known Issues
+
+### 6.1 "Fase 5" placeholder cards — intentional, not dead code
+
+Two surfaces render greyed `Fase 5` placeholder cards for deferred roadmap work; leave them in place (their roadmap anchors are in `PRODUCTION_READINESS_TODO.md`):
+
+- `AdminDashboard.tsx` — `Visitas Web y Sesiones` (→ Google Tag Manager) and `Tasa de Conversión Checkout` (→ GA4 telemetría).
+- `AdminSettings.tsx` — `Configuración de Tarifas de Envío y Zonas Rurales` (dynamic courier/comuna pricing).
+
+### 6.2 Known issues (as built — fix deliberately, do not opportunistically rewrite)
+
+- **`StockAdjustModal.tsx` — conditional-hooks bug (P1).** The component calls `if (!product) return null` **before** its four `useState` calls, yet `AdminInventory.tsx` mounts it unconditionally (`<StockAdjustModal product={selectedForStock} …>`). While `selectedForStock === null` the component registers zero hooks; the first time a product is selected it calls four — React throws *"Rendered more hooks than during the previous render"* and crashes the view. `ProductEditModal` avoids the same trap by being mounted conditionally (`{selectedForEdit && …}`); `StockAdjustModal` should follow that pattern (or hoist its hooks above the early return).
+- **`ProductEditModal.tsx` — prop→state sync `useEffect`.** Form fields are populated from `product` inside a `useEffect` — the exact synchronous-setState-in-effect pattern `react-hooks/set-state-in-effect` forbids on the storefront (see [src/components/AGENTS.md](../components/AGENTS.md) §2.1). It works today only because the parent remounts the modal per open; a lint sweep or refactor must replace it with the storefront's remount/lazy-initializer convention, not copy it elsewhere.
+- **`var(--primary)` unresolved in `OrderDetailPanel.tsx`** — see §2.3.
+- **`AdminOrders.tsx` header copy** still reads `…depósitos dentales en Melipilla y RM` — there are no RM delivery zones (root [AGENTS.md](../../AGENTS.md) §3.4). Internal-facing, but stale.
+
+---
+
+## 📂 7. Directory Map
 
 | File | Purpose |
 | :--- | :--- |
-| [`src/admin/main.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/main.tsx) | Entry point mounting `AdminApp` to `admin.html`. |
-| [`src/admin/AdminApp.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/AdminApp.tsx) | Auth gate, active tab hash listener, and view router. |
-| [`src/admin/admin.css`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/admin.css) | Scoped admin layout and component stylesheets. |
-| [`src/admin/types.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/types.ts) | Admin dashboard metrics, inventory audit, and filter models. |
-| [`src/admin/services/adminApi.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/services/adminApi.ts) | Authenticated client adapter injecting Firebase Bearer tokens with offline fallbacks. |
-| [`src/admin/components/AdminLayout.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminLayout.tsx) | Fixed sidebar + topbar + main scroll content shell. |
-| [`src/admin/components/AdminSidebar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminSidebar.tsx) | 240px navy navigation sidebar with route indicators. |
-| [`src/admin/components/AdminTopbar.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminTopbar.tsx) | Utility header with breadcrumb, staff email, environment badge (`DEV`/`PROD`), and sign-out button. |
-| [`src/admin/components/AdminDashboard.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminDashboard.tsx) | 4 KPI cards, split orders table (65%), and low-stock alerts (35%). |
-| [`src/admin/components/AdminOrders.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminOrders.tsx) | Order management view with search, filter chips, and table. |
-| [`src/admin/components/OrderTable.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/OrderTable.tsx) | Sortable, paginated order list with quick inspect actions. |
-| [`src/admin/components/OrderDetailPanel.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/OrderDetailPanel.tsx) | 420px slide-over inspector for invoicing, receipts, fulfillment actions, and audit timeline. |
-| [`src/admin/components/AdminInventory.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminInventory.tsx) | Product inventory view with stock counters, dynamic categories, and "+ Nuevo Insumo" trigger. |
-| [`src/admin/components/InventoryTable.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/InventoryTable.tsx) | Real-time product table with decoupled `isActive` and `inStock` states. |
-| [`src/admin/components/StockAdjustModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/StockAdjustModal.tsx) | 420px modal for stock adjustments with audit reason codes. |
-| [`src/admin/components/ProductEditModal.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/ProductEditModal.tsx) | 560px dual-mode modal for creating new supplies and editing clinical product metadata, integer CLP prices, dynamic categories, and synchronized `priceNeto`. |
-| [`src/admin/components/AdminSettings.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/AdminSettings.tsx) | Warehouse location, fulfillment cut-offs, and service integrations. |
-| [`src/admin/components/MetricCard.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/MetricCard.tsx) | Reusable KPI metric card with trend indicators. |
-| [`src/admin/components/StatusBadge.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/admin/components/StatusBadge.tsx) | Standardized badge with Chilean order status coloring. |
+| [`src/admin/main.tsx`](../../src/admin/main.tsx) | Entry point mounting `AdminApp` to `admin.html`. |
+| [`src/admin/AdminApp.tsx`](../../src/admin/AdminApp.tsx) | Auth gate, active tab hash listener, and view router. |
+| [`src/admin/admin.css`](../../src/admin/admin.css) | Scoped admin layout and component stylesheets. |
+| [`src/admin/types.ts`](../../src/admin/types.ts) | Admin dashboard metrics, inventory audit, and filter models. |
+| [`src/admin/services/adminApi.ts`](../../src/admin/services/adminApi.ts) | Authenticated client adapter injecting Firebase Bearer tokens with offline fallbacks. |
+| [`src/admin/components/AdminLayout.tsx`](../../src/admin/components/AdminLayout.tsx) | Fixed sidebar + topbar + main scroll content shell. |
+| [`src/admin/components/AdminLogin.tsx`](../../src/admin/components/AdminLogin.tsx) | Staff sign-in form; verifies the `admin` custom claim via `getIdTokenResult(true)` and signs out non-admin sessions (§3.1). |
+| [`src/admin/components/AdminSidebar.tsx`](../../src/admin/components/AdminSidebar.tsx) | 240px navy navigation sidebar with route indicators. |
+| [`src/admin/components/AdminTopbar.tsx`](../../src/admin/components/AdminTopbar.tsx) | Utility header with breadcrumb, staff email, environment badge (`DEV`/`PROD`), and sign-out button. |
+| [`src/admin/components/AdminDashboard.tsx`](../../src/admin/components/AdminDashboard.tsx) | 4 KPI cards, two "Fase 5" analytics placeholder cards (§6.1), split recent-orders table / low-stock alerts (`2fr 1fr` grid). |
+| [`src/admin/components/AdminOrders.tsx`](../../src/admin/components/AdminOrders.tsx) | Order management view with search, filter chips, and table; accepts `initialOrderId` from the `#orders/<id>` deep link. |
+| [`src/admin/components/OrderTable.tsx`](../../src/admin/components/OrderTable.tsx) | Sortable, paginated order list with quick inspect actions. |
+| [`src/admin/components/OrderDetailPanel.tsx`](../../src/admin/components/OrderDetailPanel.tsx) | 440px slide-over inspector (`.admin-slide-panel`) for invoicing, receipts, fulfillment actions, and audit timeline. |
+| [`src/admin/components/AdminInventory.tsx`](../../src/admin/components/AdminInventory.tsx) | Product inventory view with stock counters, dynamic categories, and "+ Nuevo Insumo" trigger. Mounts `StockAdjustModal` unconditionally — see §6.2. |
+| [`src/admin/components/InventoryTable.tsx`](../../src/admin/components/InventoryTable.tsx) | Real-time product table with decoupled `isActive` and `inStock` states. |
+| [`src/admin/components/StockAdjustModal.tsx`](../../src/admin/components/StockAdjustModal.tsx) | Stock-adjustment modal (default `.admin-modal` 480px) with audit reason codes — contains the conditional-hooks bug documented in §6.2. |
+| [`src/admin/components/ProductEditModal.tsx`](../../src/admin/components/ProductEditModal.tsx) | 580px dual-mode modal for creating new supplies and editing clinical product metadata, integer CLP prices, dynamic categories, and synchronized `priceNeto`. |
+| [`src/admin/components/AdminSettings.tsx`](../../src/admin/components/AdminSettings.tsx) | Branch/legal-identity card (`BANK_DETAILS`: Razón Social, RUT, `Av. Ortúzar 750` bodega, transfer account) + deferred "Fase 5" shipping-rates placeholder (§6.1). |
+| [`src/admin/components/MetricCard.tsx`](../../src/admin/components/MetricCard.tsx) | Reusable KPI card (label, value, subtitle, icon, `accentColor` — danger values auto-color red). |
+| [`src/admin/components/StatusBadge.tsx`](../../src/admin/components/StatusBadge.tsx) | Standardized badge with Chilean order status coloring. |

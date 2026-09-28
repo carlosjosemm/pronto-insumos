@@ -7,18 +7,20 @@ This directory contains the **automated test suite** for PRONTO, powered by **Vi
 ## 🎯 1. Directory Scope & Organization
 
 * **Role:** Ensures regression prevention, verifies business logic calculations (cart totals, Chilean tax, RUT check digits), and validates user interaction flows.
-* **Directory Structure:**
-  * [`setup.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/setup.ts): Test harness configuration, `@testing-library/jest-dom` extensions, and global browser mocks (`matchMedia`, `IntersectionObserver`).
-  * `components/`: Unit and interaction tests for customer storefront components ([`Navbar.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/Navbar.test.tsx), [`ProductCard.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/ProductCard.test.tsx), [`Cart.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/Cart.test.tsx), [`CheckoutModal.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/CheckoutModal.test.tsx), [`CategoryShowcase.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/CategoryShowcase.test.tsx), [`ProductList.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/components/ProductList.test.tsx), etc.). **`PromoStrip.test.tsx` no longer exists** — the component was deleted with the UI/UX overhaul (§10.4); the hero trust row absorbed its messages and `ClinicalStorefront.test.tsx` covers them.
-  * **Task 2.6/2.7 as-built (2026-09-24):** `CheckoutModal.test.tsx` drives the 5-step guided flow through helpers (`fillContactStep`, `fillDespatchStep`, `fillDocumentStep`, `selectZone`, `advance`, `completeDataEntry`) — all 26 pre-existing `it` blocks preserved and re-targeted to the new step paths, plus a `Guided flow stepper & panels` describe (stepper states, back-navigation value preservation, Pago order summary, per-step Enter submit, confirmation header swap). `Navbar.test.tsx` gained a `search submit & clear affordances` describe (form-wrapped submit, exact-string `Buscar` button query, clear/refocus, mobile parity, live-filter preservation).
-  * `admin/`: Test suites for backoffice management UI components ([`AdminApp.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/admin/AdminApp.test.tsx), [`OrderDetailPanel.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/admin/OrderDetailPanel.test.tsx), [`InventoryTable.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/admin/InventoryTable.test.tsx), [`StockAdjustModal.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/admin/StockAdjustModal.test.tsx), etc.).
-  * `api/admin/`: Integration and unit tests for administrative serverless handlers (which live under `api/_lib/admin/` — see [api/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/api/AGENTS.md) §1.2), plus [`admin-router.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/api/admin/admin-router.test.ts) covering the `api/admin/[action].ts` dispatcher (happy path, unknown/missing/empty/non-string action → 404, array normalization, whitespace trim, `OPTIONS` passthrough, all 11 actions mapped, and rejection of inherited prototype keys). Other suites: [`approve-transfer.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/api/admin/approve-transfer.test.ts), [`dashboard-stats.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/api/admin/dashboard-stats.test.ts), [`update-stock.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/api/admin/update-stock.test.ts), [`firestoreEnv.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/api/admin/firestoreEnv.test.ts), etc.
-  * `services/`: Adapter logic, network mocks, and environment resolver verification ([`api.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/services/api.test.ts), [`firestoreEnv.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/services/firestoreEnv.test.ts), [`mercadopago.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/services/mercadopago.test.ts)).
-  * `utils/`: Algorithmic tests for domain calculations ([`rut.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/utils/rut.test.ts), [`tax.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/utils/tax.test.ts), [`currency.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/utils/currency.test.ts), [`categoryAlias.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/utils/categoryAlias.test.ts), [`schemaValidation.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/utils/schemaValidation.test.ts)).
-  * `hooks/`: DOM-behaviour tests for the reusable hooks in `src/hooks/` ([`useFocusTrap.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/hooks/useFocusTrap.test.tsx) — initial focus, Tab/Shift+Tab wrapping, non-Tab keys untouched, focus restored on unmount; [`useIncrementalReveal.test.tsx`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/hooks/useIncrementalReveal.test.tsx) — page reveal/clamp, short-catalog and shrinking-result behaviour; reveal is button-only, the IntersectionObserver sentinel was removed at the owner's request).
-  * `styles/`: stylesheet-content assertions for invariants jsdom cannot evaluate ([`storefrontCss.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/styles/storefrontCss.test.ts) — the ≤560px single-column catalog grid and the surviving 561–768px 2-column rule, read via `readFileSync` like `firestore-rules.test.ts`).
-  * `data/`: Schema integrity validation ([`products.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/data/products.test.ts)).
-  * `security/`: Firestore security rules assertions ([`firestore-rules.test.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/tests/security/firestore-rules.test.ts)).
+* **Directory Structure** (62 suites, 473 tests):
+  * [`setup.ts`](./setup.ts): Test harness — registers `@testing-library/jest-dom`, injects `VITE_FIREBASE_*`/`VITE_WHATSAPP_NUMBER`/`VITE_MERCADOPAGO_PUBLIC_KEY` placeholders into `import.meta.env`, strips `FIRESTORE_ENV`/`VITE_FIRESTORE_ENV` so suites stay deterministic, and installs an in-memory `localStorage` mock. There are **no** `matchMedia`/`IntersectionObserver` globals — mock them per-suite if a component needs them.
+  * `components/` (13 suites): storefront unit & interaction tests — `AppCartPersistence`, `AppPaymentReturn`, `Cart`, `CategoryShowcase`, `CheckoutModal`, `ClinicalStorefront`, `ErrorBoundary`, `Navbar`, `OrderTrackingModal`, `PaymentReturnModal`, `ProductCard`, `ProductDetailModal`, `ProductList`. `CheckoutModal.test.tsx` drives the 5-step guided flow through helpers (`fillContactStep`, `fillDespatchStep`, `fillDocumentStep`, `selectZone`, `advance`, `completeDataEntry`) — reuse them instead of hand-filling fields.
+  * `admin/` (12 suites): backoffice UI tests (`AdminApp`, `AdminDashboard`, `AdminLogin`, `AdminSidebar`, `AdminTopbar`, `InventoryTable`, `MetricCard`, `OrderDetailPanel`, `OrderTable`, `ProductEditModal`, `StatusBadge`, `StockAdjustModal`).
+  * `api/` (7 suites): public serverless endpoints — `create-preference`, `email` (Resend layer), `mercadopago-signature`, `mercadopago-webhook`, `order-confirmation`, `track-order`, `upload-voucher`.
+  * `api/admin/` (10 suites): admin serverless handlers (which live under `api/_lib/admin/` — see [api/AGENTS.md](../../../api/AGENTS.md) §1.2) — `adminAuth`, `approve-transfer`, `create-product`, `dashboard-stats`, `dispatch-order`, `firestoreEnv`, `order-history`, `update-product`, `update-stock`, plus `admin-router` covering the `api/admin/[action].ts` dispatcher (action → 404 mapping, `OPTIONS` passthrough, all 11 actions mapped). **Coverage gap (TODO 4.2):** `orders`, `products`, `mark-delivered`, `toggle-visibility` have no dedicated suite.
+  * `services/` (8 suites): client adapters — `api`, `cartStorage`, `firestoreEnv`, `mercadopago`, `orderConfirmation`, `orderTracking`, `transferVoucher`, `whatsapp`.
+  * `utils/` (5 suites): `rut`, `tax`, `currency`, `categoryAlias`, `schemaValidation`.
+  * `hooks/` (2 suites): `useFocusTrap` (focus wrap/restore), `useIncrementalReveal` (page reveal/clamp; reveal is button-only — there is no IntersectionObserver path).
+  * `config/` (1 suite): `bankDetails` env-override fallbacks.
+  * `data/` (1 suite): `products` schema/fixture integrity (11 items, `unitOfSale` ≤60 chars, integer CLP prices, valid categories).
+  * `scripts/` (1 suite): `syncEnvToVercel` pure plan logic (dry-run/skip/overwrite, per-target `FIRESTORE_ENV`, system-key filter).
+  * `security/` (1 suite): `firestore-rules` — asserts the rules file's allow/deny structure by `readFileSync` content match.
+  * `styles/` (1 suite): `storefrontCss` — stylesheet-content assertions for invariants jsdom cannot evaluate (the ≤560px single-column catalog grid and the surviving 561–768px 2-column rule), read via `readFileSync` like `firestore-rules.test.ts`.
 
 ---
 
@@ -36,7 +38,7 @@ This directory contains the **automated test suite** for PRONTO, powered by **Vi
 4. **Mocking Discipline:**
    * Unit tests must **never** touch live Firebase servers or real Mercado Pago APIs.
    * Mock network calls and external services at the boundary using `vi.fn()` or `vi.spyOn(global, 'fetch')`.
-   * `setup.ts` provides non-empty `VITE_FIREBASE_*` placeholders, so `hasFirebaseConfig` is truthy in tests. Suites exercising `fetchProducts()` must mock `firebase/firestore` with an empty snapshot (`getDocs: vi.fn(async () => ({ empty: true, docs: [] }))`) to stay on the deterministic local-catalog fallback.
+   * `setup.ts` provides non-empty `VITE_FIREBASE_*` placeholders, so `hasFirebaseConfig` is truthy in tests. Suites exercising `fetchProducts()` must mock `firebase/firestore` with an empty snapshot (`getDocs: vi.fn(async () => ({ empty: true, docs: [] }))`) to stay on the deterministic local-catalog fallback. The `VITE_WHATSAPP_NUMBER` placeholder is pinned to `56912345678` — assertions on rendered phone text depend on that literal (see §4.4).
    * Always clean up mocks in `afterEach(() => { vi.clearAllMocks(); })`.
 
 ---
@@ -60,15 +62,15 @@ pnpm test:coverage
 * [ ] Test standard happy path.
 * [ ] Test edge cases (invalid inputs, network error responses, empty arrays).
 * [ ] Run `pnpm test` to verify zero regression across all test suites.
-* [ ] Run `pnpm lint` — test files are **inside** the lint scope (see §5).
+* [ ] Run `pnpm lint` — test files are **inside** the lint scope (see §4).
 
 ---
 
-## 🧷 5. Typing Conventions Under `no-explicit-any`
+## 🧷 4. Typing Conventions Under `no-explicit-any`
 
-`no-explicit-any` is an **error** across `src/tests/**`, so the suites no longer use `any` for mock plumbing. The patterns adopted are load-bearing — prefer them over re-widening a type.
+`no-explicit-any` is an **error** across `src/tests/**`, so the suites do not use `any` for mock plumbing. The patterns below are load-bearing — prefer them over re-widening a type.
 
-### 5.1 Mock return values
+### 4.1 Mock return values
 
 Cast through `unknown` using `ReturnType`/`Awaited` rather than `as any`, so a signature change upstream surfaces as a type error instead of silently passing:
 
@@ -93,7 +95,7 @@ vi.mocked(firebaseAuth.onAuthStateChanged).mockImplementation((_auth, callback: 
 })
 ```
 
-### 5.2 Captured responses and payloads
+### 4.2 Captured responses and payloads
 
 `mockRes.json` captures into `Record<string, unknown>`, and the mock is typed to match:
 
@@ -121,7 +123,7 @@ const capturedProductUpdate: { current: Record<string, unknown> | null } = { cur
 expect(capturedProductUpdate.current?.stockCount).toBe(5)
 ```
 
-### 5.3 Deliberately invalid input
+### 4.3 Deliberately invalid input
 
 When a test intentionally passes a wrong type to prove runtime resilience, use `@ts-expect-error` (not `@ts-ignore`) with a reason, so the suppression fails loudly if the call ever becomes valid:
 
@@ -130,7 +132,7 @@ When a test intentionally passes a wrong type to prove runtime resilience, use `
 expect(formatCLP(null)).toBe('$0')
 ```
 
-### 5.4 `setup.ts` — one load-bearing line, do not "clean it up"
+### 4.4 `setup.ts` — load-bearing details, do not "clean them up"
 
 ```ts
 if (typeof import.meta.env === 'undefined') {
@@ -143,7 +145,8 @@ This assignment is what makes the `Object.assign(import.meta.env, { VITE_FIREBAS
 
 Also note `const mutableEnv = import.meta.env as unknown as Record<string, unknown>` exists purely so `delete mutableEnv.FIRESTORE_ENV` type-checks — `ImportMetaEnv`'s keys are read-only, and `delete` on a read-only property is a type error.
 
-### 5.5 Removed / changed assertions
+And `VITE_WHATSAPP_NUMBER` is re-pinned to `56912345678` **after** the `...import.meta.env` spread — otherwise a developer's real `.env.local` would leak into tests and break every assertion on rendered phone text.
 
-* `src/tests/components/ProductDetailModal.test.tsx` — dropped an unused `rerender` destructuring.
-* `src/tests/components/CategoryShowcase.test.tsx` and `src/tests/utils/categoryAlias.test.ts` — dropped unused imports. `CATEGORY_BANNERS` now lives in `src/components/categoryBanners.ts`; import it from there if a future test needs it.
+### 4.5 Related constants moved out of components
+
+`CATEGORY_BANNERS` lives in `src/components/categoryBanners.ts` (not `CategoryShowcase.tsx`) so the component file exports components only — import it from there if a test needs it.

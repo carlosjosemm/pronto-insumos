@@ -67,12 +67,12 @@ flowchart TD
 
 ### Phase 2: Implementation & Rigorous Verification
 
-All work inside the worktree must strictly observe the **PRONTO Master Guardrails** in [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md):
+All work inside the worktree must strictly observe the **PRONTO Master Guardrails** in [AGENTS.md](../../../AGENTS.md):
 
 1. **Draft `implementation_plan.md`:**
    * Create or overwrite `implementation_plan.md` in the artifact directory.
    * Include the 5 mandatory sections:
-     1. *Context & Problem Statement* (reference [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md)).
+     1. *Context & Problem Statement* (reference [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md)).
      2. *Human Action Items & Credentials* (safe placeholders in `.env.example`).
      3. *Proposed Changes* (categorized by `[NEW]`, `[MODIFY]`, `[DELETE]`).
      4. *Robust Unit Testing Plan* (Vitest test suites in `src/tests/`).
@@ -104,7 +104,7 @@ All work inside the worktree must strictly observe the **PRONTO Master Guardrail
 
 6. **Update Documentation & Checklist:**
    * Update the relevant subdirectory's `AGENTS.md` (e.g., `api/AGENTS.md`, `src/services/AGENTS.md`).
-   * Mark the corresponding item `[x]` in [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
+   * Mark the corresponding item `[x]` in [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md).
 
 ---
 

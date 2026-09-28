@@ -1,135 +1,113 @@
 # PRONTO Client Services & Integration Guide (`src/services/`)
 
-This document is the **authoritative domain and technical reference** for the client-side integration services of PRONTO Insumos Odontológicos. It abstracts external APIs, database queries, payment preferences, browser persistence, and communications away from UI presentation components.
+As-built technical reference for the client-side integration layer of PRONTO Insumos Odontológicos: Firestore queries, payment preference proxying, browser persistence, and WhatsApp communications. UI components never call `fetch()` or query Firestore directly — they invoke the typed adapters in this directory.
 
 ---
 
 ## 🎯 1. Directory Scope & Service Architecture
 
-- **Role:** Acts as the data and integration adapter layer. UI components never call `fetch()` or query Firestore directly; they invoke dedicated, typed service functions in this directory.
-- **Philosophy:** Zero heavy client state or query libraries (no Axios, no TanStack Query, no Apollo). Pure TypeScript, native `fetch()`, and resilient defensive error handling with local fallback fixtures.
+- **Role:** Data and integration adapter layer between UI components and external boundaries.
+- **Philosophy:** No client state/query libraries (no Axios, TanStack Query, Apollo). Pure TypeScript + native `fetch()` with defensive `catch (err: unknown)` degradation (§5).
+- **Runtime:** Browser (Vite). Only `import.meta.env.VITE_*` variables — never server secrets.
 
-### 1.1 Summary of Client Service Adapters
+### 1.1 Service Adapters & File Map
 
-| Service Module | Purpose & Domain Responsibility | External Integrations |
+| Service Module | Purpose & Domain Responsibility | Boundary |
 | :--- | :--- | :--- |
-| [`api.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/api.ts) | Storefront product catalog queries, category filters, canonical Order ID generation (`PRONTO-XXXXXX`), and order registration in Firestore. | Firebase Web SDK Firestore & local catalog fixtures |
-| [`cartStorage.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/cartStorage.ts) | Persistent shopping cart storage in browser `localStorage`. Enforces schema versioning (`pronto_cart_v1`), 7-day TTL retention, quota defense, and catalog stock revalidation upon hydration. | Browser `localStorage` API |
-| [`firebase.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/firebase.ts) | Initializes Google Firebase Web Client SDK (`initializeApp`, `getFirestore`, `getAuth`) using Vite public environment variables (`VITE_FIREBASE_*`). | Google Firebase Client SDK |
-| [`firestoreEnv.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/firestoreEnv.ts) | Client-side environment resolver determining whether to target production (`orders`, `products`) or isolated development collections (`dev_orders`, `dev_products`). | Client environment detector |
-| [`mercadopago.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/mercadopago.ts) | Dispatches payment preference creation requests to `/api/create-preference`, obtaining the secure Mercado Pago Checkout Pro redirect URL. | Serverless `/api/create-preference` |
-| [`orderConfirmation.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/orderConfirmation.ts) | Fire-and-forget proxy to `/api/order-confirmation` triggering the "order received" transactional email for bank transfer & WhatsApp quote orders. Never throws — email delivery failures degrade silently. | Serverless `/api/order-confirmation` |
-| [`orderTracking.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/orderTracking.ts) | Client proxy querying `/api/track-order` to retrieve fulfillment progress using Order ID and customer RUT. | Serverless `/api/track-order` |
-| [`transferVoucher.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/services/transferVoucher.ts) | File validation (PDF, PNG, JPG <= 5MB), Base64 data URL conversion, and dispatch to `/api/upload-voucher`. | Serverless `/api/upload-voucher` |
-| [`whatsapp.ts`](file:///c:/ecmv2/Documents/PRONTO/src/services/whatsapp.ts) | Generates pre-formatted WhatsApp clinical quote URLs (`https://wa.me/569...`) with itemized SKU lists and tax breakdowns. Reads the number from `import.meta.env.VITE_WHATSAPP_NUMBER` with its own `56929831595` fallback. | WhatsApp Click-to-Chat API |
+| [`api.ts`](./api.ts) | `fetchProducts()` catalog queries with offline fallback, `generateOrderId()`, `submitOrder()` Firestore order registration, `validatePromo()` against static `MOCK_PROMOS`. | Firebase Web SDK Firestore + `../data/products` fixtures |
+| [`cartStorage.ts`](./cartStorage.ts) | Persistent cart in `localStorage` (`pronto_cart_v1`): schema versioning, 7-day TTL, quota defense, duplicate consolidation, live-catalog revalidation. | Browser `localStorage` |
+| [`firebase.ts`](./firebase.ts) | Firebase Web SDK init (`initializeApp`, `getFirestore`, `getAuth`) from `VITE_FIREBASE_*`. Also exports `seedProductsToFirestore()` — **retained but uncalled** (the public seed button was removed; catalog seeding now goes through `pnpm run schema:seed*`). | Google Firebase Client SDK |
+| [`firestoreEnv.ts`](./firestoreEnv.ts) | Client-side resolver: production (`orders`, `products`) vs isolated `dev_*` collections. | `import.meta.env` detector |
+| [`mercadopago.ts`](./mercadopago.ts) | `createMercadoPagoPreference()` → `POST /api/create-preference`; `processMercadoPagoPayment()` redirects to Checkout Pro `initPoint`. Also exports `MERCADOPAGO_PUBLIC_KEY` (`VITE_MERCADOPAGO_PUBLIC_KEY`). | Serverless `/api/create-preference` |
+| [`orderConfirmation.ts`](./orderConfirmation.ts) | Fire-and-forget proxy to `/api/order-confirmation` for transfer & WhatsApp-quote orders. Never throws; returns `boolean`. | Serverless `/api/order-confirmation` |
+| [`orderTracking.ts`](./orderTracking.ts) | `fetchOrderTracking()` → `/api/track-order` with client-side `validateRut` Modulo-11 gate first. | Serverless `/api/track-order` |
+| [`transferVoucher.ts`](./transferVoucher.ts) | `validateVoucherFile()` (PDF/PNG/JPG ≤ 5 MB — the **only** place these are enforced), `fileToDataUrl()`, `uploadTransferVoucher()` → `/api/upload-voucher`. | Serverless `/api/upload-voucher` |
+| [`whatsapp.ts`](./whatsapp.ts) | `generateWhatsAppQuoteUrl()`: pre-formatted `wa.me` quote with itemized list, tax-inclusive total, and SIS registry line. Reads `import.meta.env?.VITE_WHATSAPP_NUMBER` with its own `56929831595` fallback. | WhatsApp Click-to-Chat |
 
 ---
 
-## 📦 2. Deep Dive: Catalog Data & Order Registration Operations (`api.ts`)
+## 📦 2. Catalog Data & Order Registration (`api.ts`)
 
-### 2.1 Canonical Order ID & Direct Document Key Alignment
+### 2.1 Canonical Order ID & Document-Key Alignment
 
-Every order placed in PRONTO is assigned a human-readable, canonical Order ID generated by `generateOrderId()`:
+`generateOrderId()` produces the canonical order code — **`PRONTO-` + six digits** (as built):
 
 ```typescript
 export function generateOrderId(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Omit confusing I, O, 0, 1
-  let result = "PRONTO-";
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+  return 'PRONTO-' + Math.floor(100000 + Math.random() * 900000)
 }
 ```
 
-- **Direct Document Key Storage:** When `submitOrder()` writes to Firestore, it executes:
-  ```typescript
-  await setDoc(doc(db, getCollectionName("orders"), order.orderId), cleanOrder);
-  ```
-  This guarantees that the Firestore **Document ID exactly matches the canonical Order ID** (e.g., `PRONTO-8N4K2P`), enabling instant $O(1)$ key lookups by admin and serverless endpoints without requiring expensive collection scans.
-- **Shared Reference:** The exact same `orderId` is used across the Firestore document key, Mercado Pago `external_reference`, bank transfer voucher filenames, and WhatsApp message text.
+- **Direct Document Key Storage:** `submitOrder()` writes with
+  `setDoc(doc(db, getCollectionName('orders'), orderId), payload)`, so the Firestore **Document ID equals the canonical Order ID** (e.g. `PRONTO-483921`) — O(1) lookups for admin/serverless endpoints, with the `where('orderId','==')` fallback documented in `api/AGENTS.md` §8.1.
+- **Shared Reference:** the same `orderId` is reused as the Firestore doc key, Mercado Pago `external_reference`, voucher filenames, and WhatsApp message text.
 
-### 2.2 Resilient Catalog Fetching with Offline Fallbacks
+### 2.2 Resilient Catalog Fetching (`fetchProducts()`)
 
-When `fetchProducts()` is called:
-
-1. Queries the Google Firestore `products` (or `dev_products`) collection.
-2. If Firebase credentials are missing (local development without `.env.local`) or network connectivity fails, it **automatically falls back to `PRODUCTS`** from [src/data/products.ts](file:///c:/Users/ecmv2/Documents/PRONTO/src/data/products.ts) while logging an informative console warning.
-3. In-stock products are always partitioned ahead of out-of-stock products (stable order), so depleted supplies sink to the bottom of any sort criterion without disturbing the requested ordering within each partition.
-4. This architecture guarantees that the development server, automated tests, and offline demos never crash due to network or credential unavailability.
+1. Requires `VITE_FIREBASE_PROJECT_ID` + `VITE_FIREBASE_API_KEY`; without them it returns the local `PRODUCTS` fixture immediately.
+2. Races the Firestore `getDocs` against a **2.5 s timeout** — a hung SDK read falls back to `PRODUCTS` with a `console.warn`.
+3. Firestore results are filtered to `isActive !== false`; an **empty snapshot** also falls back to the local fixture.
+4. After client-side `category`/`search`/`inStockOnly`/`sortBy` filtering, in-stock products are always partitioned ahead of out-of-stock (stable) so depleted supplies sink to the bottom without disturbing the requested ordering.
 
 ### 2.3 Dynamic Collection Namespacing (`firestoreEnv.ts`)
 
-Client services never hardcode collection names:
+`getCollectionName('products')` resolves the environment-scoped collection. Resolution order (as built):
 
-- Instead of calling `collection(db, 'products')` or `collection(db, 'orders')`, they invoke `collection(db, getCollectionName('products'))`.
-- In development mode (`import.meta.env.MODE === 'development'` or `VITE_FIRESTORE_ENV === 'development'`), calls are redirected to `dev_products` and `dev_orders`.
-- In production, calls target canonical `products` and `orders`.
-- In unit testing (`import.meta.env.MODE === 'test'`), it strictly targets canonical collections to maintain test determinism across all Vitest suites.
+1. Explicit `VITE_FIRESTORE_ENV` (`development`/`dev`, `production`/`prod`, `test`).
+2. `import.meta.env.MODE === 'test'` → `test` (canonical names for Vitest determinism).
+3. `import.meta.env.DEV` → `development` (`dev_*`).
+4. `import.meta.env.VITE_VERCEL_ENV === 'preview'` → `development`. This define is injected by `vite.config.ts` from `process.env.VERCEL_ENV`; in practice `env:sync` already sets `VITE_FIRESTORE_ENV=development` on Preview targets, making this a second safety net.
+5. Default → `production` (canonical names).
+
+⚠️ `VITE_VERCEL_ENV` is not listed in `.env.example` (it is a build-time `define`, not a real env read).
+
+### 2.4 Order Registration (`submitOrder()`)
+
+- Maps `paymentMethod` → `PENDIENTE_PAGO_MERCADOPAGO` / `PENDIENTE_TRANSFERENCIA` / `COTIZACION_SOLICITADA_WHATSAPP` — the only statuses `firestore.rules` `isValidOrderCreate()` accepts.
+- Builds the `billing` block (defaults `calculateTaxBreakdown(total)` + `PENDIENTE_EMISION_SII`) and snapshots `items` as `{ productId, name, quantity, price }`.
+- ⚠️ **The Firestore write is swallowed:** `setDoc` failures (rules denial, offline) are caught, logged, and the function still returns `success: true`. `CheckoutModal` therefore proceeds to payment/confirmation even when the order was never persisted. See §6.
 
 ---
 
-## 💾 3. Deep Dive: Cart Persistence & Revalidation (`cartStorage.ts`)
+## 💾 3. Cart Persistence & Revalidation (`cartStorage.ts`)
 
-### 3.1 The Clinical Procurement Reality
+- **Storage Key & Schema:** `pronto_cart_v1`, wrapper:
 
-In a dental clinic, the procurement manager or dental assistant frequently adds items to the cart throughout the week (e.g. running low on alginate, needing extra composite shade A2, checking autoclave pouches).
-If the cart lived only in ephemeral React component memory, closing the browser tab or refreshing would destroy their order preparation.
-
-### 3.2 Storage Architecture & Rules
-
-- **Storage Key & Versioning:** Stored under `pronto_cart_v1` with a wrapper structure:
   ```typescript
   interface StoredCartData {
-    version: number;
-    savedAt: string; // ISO timestamp
-    items: CartItem[];
-    appliedPromo?: PromoCode | null;
+    version: number          // === CART_STORAGE_VERSION (1)
+    savedAt: number          // epoch ms (Date.now())
+    items: CartItem[]
+    appliedPromo: PromoCode | null   // required key, null when none
   }
   ```
-- **7-Day TTL Retention:** Dental supplies prices and distributor inventory fluctuate. Stored carts older than 7 days are considered stale and discarded on load.
-- **Defensive Storage Guardrails:** Safeguards against `QuotaExceededError` (common in mobile Safari private browsing), corrupted JSON strings, and SSR environments where `window` is undefined.
 
-### 3.3 Catalog Stock & Price Revalidation
-
-When the customer returns to the site, `revalidateCartAgainstCatalog(storedItems, liveCatalog)` runs automatically:
-
-1. **Discontinued Products:** Items no longer present in the live catalog or marked `inStock === false` are removed.
-2. **Stock Clamping:** If a clinic saved 10 units of an item but only 4 remain in the warehouse, the quantity is automatically clamped to 4.
-3. **Price Synchronization:** Live prices and promotional tags are refreshed against current catalog definitions.
-4. **Clinical Notification:** Returns an adjustment flag so the UI can display a friendly toast informing the user that inventory was refreshed.
+- **7-Day TTL:** `Date.now() - savedAt > CART_MAX_TTL_MS` → entry purged.
+- **Defensive guards:** `window`/storage absence, `QuotaExceededError`, corrupt JSON → purge + `null`.
+- **Load-time consolidation:** duplicate `product.id` lines are merged by summing quantities; invalid items filtered.
+- **`revalidateCartAgainstCatalog()`** on catalog arrival: removes discontinued/`!inStock`/zero-stock items, clamps quantity to live `stockCount` (default ceiling 99 when `stockCount` is absent), swaps in the live product object (price/spec sync), and returns `{ items, removedCount, adjustedCount, hasChanges }` for the UI toast.
 
 ---
 
 ## 🔒 4. Security & Inventory Protection Rules
 
-1. **Browser Isolation (Vite Public Variables Only):**
-   - Services in `src/services/` execute inside the browser.
-   - Only environment variables prefixed with `VITE_` are accessed (e.g. `import.meta.env.VITE_WHATSAPP_NUMBER`, `import.meta.env.VITE_FIREBASE_API_KEY`).
-   - ❌ **FORBIDDEN:** Referencing server secrets (`MERCADOPAGO_ACCESS_TOKEN`, `FIREBASE_PRIVATE_KEY`) here.
-2. **Zero Client-Side Stock Decrement:**
-   - ❌ `submitOrder()` in `api.ts` **NEVER** calls inventory decrements.
-   - Initial order documents are always saved with pending statuses (`'PENDIENTE_PAGO_MERCADOPAGO'` or `'PENDIENTE_TRANSFERENCIA'`).
-   - Stock decrement authority is strictly restricted to serverless webhooks and authenticated admin transactions.
-3. **Zero Card Input Handling (PCI-DSS):**
-   * `processMercadoPagoPayment()` in `mercadopago.ts` never accepts or transmits card numbers. It requests a preference URL from `/api/create-preference` and returns the checkout link.
-4. **Commercial contact data lives in [`src/config/contact.ts`](file:///c:/Users/ecmv2/Documents/PRONTO/src/config/contact.ts), not in components:**
-   * `WHATSAPP_NUMBER` (digits only, from `VITE_WHATSAPP_NUMBER`), `WHATSAPP_DISPLAY` (derived `+56 9 XXXX XXXX`) and `whatsappLink(text?)` are the single source of truth.
-   * **No component may hardcode a `wa.me` URL or a phone number again.** Previously `Navbar`, `Hero`, `Footer`, `ProductQuickView` and `ErrorBoundary` each embedded `56912345678` literally, so changing `VITE_WHATSAPP_NUMBER` silently left five stale copies behind. All five now import from `contact.ts`.
-   * **`whatsapp.ts` is a deliberate exception and still reads the env var itself:** it keeps its own `import.meta.env?.VITE_WHATSAPP_NUMBER || '56929831595'` read, independent of `contact.ts` (the `?.` keeps it importable under plain Node/tsx for ops scripts). Consequence to be aware of: the fallback literal and the env lookup now exist in **two** places, so they can drift — a change to the fallback in one file will not propagate to the other. Consolidating `whatsapp.ts` onto `contact.ts` is intentionally out of scope for this pass; when it is done, `contact.ts` becomes the only place that reads the variable.
-   * **Known outstanding exception in the UI layer:** `OrderTrackingModal.tsx` still builds its support link from a literal `56987654321`, which differs from `WHATSAPP_NUMBER`. See [src/components/AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/src/components/AGENTS.md) §4.1.2.
+1. **Browser Isolation (Vite public variables only):** only `import.meta.env.VITE_*` is referenced. ❌ Never server secrets (`MERCADOPAGO_ACCESS_TOKEN`, `FIREBASE_PRIVATE_KEY`).
+2. **Zero Client-Side Stock Decrement:** `submitOrder()` never touches inventory; orders start `PENDIENTE_*`. Decrement authority = the verified webhook + admin transactions.
+3. **Zero Card Handling (PCI-DSS):** `processMercadoPagoPayment()` never accepts card data — it requests a preference URL and redirects to hosted Checkout Pro.
+4. **Commercial contact data lives in [`../config/contact.ts`](../config/contact.ts):**
+   - `WHATSAPP_NUMBER` (digits only, from `VITE_WHATSAPP_NUMBER`), `WHATSAPP_DISPLAY` (`+56 9 XXXX XXXX`), `whatsappLink(text?)` are the single source of truth — no component may hardcode a `wa.me` URL.
+   - **`whatsapp.ts` is a deliberate exception** and keeps its own `import.meta.env?.VITE_WHATSAPP_NUMBER || '56929831595'` read (the `?.` keeps it importable under plain Node/tsx for ops scripts). The fallback literal and env lookup now live in two places and can drift — both currently read `56929831595`; when consolidated, `contact.ts` becomes the only reader.
+   - **Known outstanding exception:** `PaymentReturnModal.tsx` still builds its `wa.me` URL from a literal with a stale `56912345678` fallback (see `src/components/AGENTS.md` §4.1.2).
 5. **`firebase.ts` calls `getAuth(app)` unguarded at module scope — known, deliberately unfixed:**
-   * The call is evaluated at import time, so a **missing or invalid `VITE_FIREBASE_API_KEY` throws `auth/invalid-api-key` and aborts the entire import graph**. `main.tsx` never runs and `#root` stays empty: the storefront renders a blank page instead of falling back to the documented offline catalog that `fetchProducts()` already implements.
-   * This is *not* worked around, because a properly typed fix makes `auth` nullable, which breaks `src/admin/services/adminApi.ts`, `AdminApp.tsx` and `AdminLogin.tsx` — all out of scope. **Do not narrow `auth` unilaterally.** The client/server/admin read paths must be changed together, as its own reviewed task.
-   * Practical consequence today: the repo **requires** a populated `.env.local` (or the equivalent Vercel env vars) for the storefront to render at all. That is why a fresh `git worktree add` appears to render blank until `.env.local` is copied in.
+   - A missing/invalid `VITE_FIREBASE_API_KEY` throws `auth/invalid-api-key` at import time, aborting the whole import graph → blank page instead of the offline catalog fallback.
+   - Not worked around because a proper fix makes `auth` nullable and breaks `src/admin/services/adminApi.ts`, `AdminApp.tsx`, `AdminLogin.tsx`. **Do not narrow `auth` unilaterally** — it is its own reviewed task.
+   - Practical consequence: the repo requires populated `VITE_FIREBASE_*` vars for the storefront to render at all.
 
 ---
 
 ## 🧯 5. Error-Handling Conventions (`catch` clauses)
 
-Every service in this directory degrades gracefully: when a boundary (Firestore, `/api/create-preference`, `/api/track-order`, `/api/upload-voucher`) is unavailable it logs a diagnostic warning and falls back to local simulation or the static catalog. That resilience contract is unchanged — only the *typing* of the caught value was tightened:
-
-* **`catch` parameters are typed `unknown`, never `any`** (`no-explicit-any` is an error). Each site narrows explicitly before reading a message:
+- **`catch` parameters are `unknown`, never `any`** (`no-explicit-any` is an error). Each site narrows before reading a message:
 
   ```ts
   } catch (err: unknown) {
@@ -137,6 +115,21 @@ Every service in this directory degrades gracefully: when a boundary (Firestore,
   }
   ```
 
-* **Why this matters:** the previous `catch (err: any)` form let `err.message` be read on a thrown non-`Error` (a rejected string, a Firestore `FirebaseError` shape change, etc.), which produced `undefined` in the logs and hid the real failure. The `instanceof Error` guard keeps the diagnostic honest.
-* **Applies to:** `api.ts` (`fetchProducts`, `submitOrder`), `firebase.ts` (`seedProductsToFirestore`), `mercadopago.ts`, `orderTracking.ts`, `transferVoucher.ts`.
-* **Do not "simplify" these back to `any`.** If a new boundary needs the original error object, pass it through to `console.warn`/`console.error` as-is (as `firebase.ts` does) rather than widening the type.
+- **Applies to:** `api.ts` (`fetchProducts`, `submitOrder`), `firebase.ts` (`seedProductsToFirestore`), `mercadopago.ts`, `orderTracking.ts`, `orderConfirmation.ts`, `transferVoucher.ts` (`cartStorage` uses untyped catches, which are implicitly `unknown` under strict TS).
+- **Do not "simplify" back to `any`.** Passing the raw error object to `console.warn` (as `firebase.ts` does) is the approved alternative when the original value matters.
+
+---
+
+## ⚠️ 6. Simulated Fallbacks — Known Degradation Contracts
+
+Several adapters respond to endpoint failure by returning **fabricated success payloads** instead of errors. This kept demos/tests alive but means real failures are masked — treat these as deliberate-but-risky as-built behaviour:
+
+| Adapter | Behaviour on failure | Consequence |
+| :--- | :--- | :--- |
+| `submitOrder()` (api.ts) | `setDoc` throw → warn → `success: true` | Checkout proceeds and payment can be initiated for an order that **was never persisted** (webhook then can't find it). |
+| `createMercadoPagoPreference()` / `processMercadoPagoPayment()` (mercadopago.ts) | **Any** fetch failure incl. HTTP 4xx/5xx → `success: true, initPoint: undefined`; the payment call then returns a fabricated `status: 'approved'` record (ignored by `CheckoutModal`, which only awaits it) | A server-side stock rejection (400) produces **no redirect and no error** — the customer lands on the confirmation step with a `PENDIENTE_PAGO_MERCADOPAGO` order that can never be paid. |
+| `fetchOrderTracking()` (orderTracking.ts) | Network/throwable failure → fabricated `PENDIENTE_TRANSFERENCIA` order for the queried ID | A transient outage renders fake tracking data. Non-OK HTTP responses *do* surface the real error message. |
+| `uploadTransferVoucher()` (transferVoucher.ts) | **Any** failure incl. 401 RUT mismatch, 404, 500 → `success: true` with a `simulated-voucher://` URL | Customer sees "Comprobante recepcionado exitosamente" while **nothing was stored** — silent voucher loss. |
+| `sendOrderConfirmationEmail()` (orderConfirmation.ts) | Failure → `false` | Correctly silent by design (fire-and-forget). |
+
+When these are revisited, the direction is: simulated fallback **only** when the endpoint is demonstrably absent (network error in dev), never on real HTTP error responses — and `submitOrder` must propagate persistence failure so checkout can block payment initiation.

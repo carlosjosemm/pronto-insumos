@@ -8,7 +8,7 @@ description: >-
 
 # PRONTO Production Readiness Workflow & Task Execution Protocol
 
-This skill codifies the standard operating procedure for implementing tasks from [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md) in the PRONTO dental storefront repository.
+This skill codifies the standard operating procedure for implementing tasks from [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md) in the PRONTO dental storefront repository.
 
 Any AI agent operating in this repository must follow this sequential protocol strictly to guarantee zero regressions, maintain architectural simplicity, and ensure production readiness.
 
@@ -35,7 +35,7 @@ flowchart TD
 ```
 
 ### Step 1: Select the Next Pending Task
-* Open [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md) and identify the topmost unchecked task `[ ]` in priority order.
+* Open [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md) and identify the topmost unchecked task `[ ]` in priority order.
 * Never skip ahead unless explicitly instructed by the user.
 
 ### Step 2: Dedicated Feature Branch Creation
@@ -59,7 +59,7 @@ flowchart TD
 * The user reviews the plan and clicks **Proceed** (or provides feedback to refine the plan).
 
 ### Step 5: Execute Code & Add Robust Unit Tests
-* Apply the proposed code changes cleanly, following the anti-overshooting guardrails in [AGENTS.md](file:///c:/Users/ecmv2/Documents/PRONTO/AGENTS.md).
+* Apply the proposed code changes cleanly, following the anti-overshooting guardrails in [AGENTS.md](../../../AGENTS.md).
 * If third-party secrets or human credentials are required (e.g., Mercado Pago live keys, Firebase service account keys), use safe mock placeholders and clearly document human action items in `.env.example`.
 * **Implement robust unit tests** covering the new or modified logic in `src/tests/`.
 
@@ -85,7 +85,7 @@ flowchart TD
 * Document what was implemented and any new patterns in the relevant directory's `AGENTS.md` (e.g., `api/AGENTS.md`, `src/components/AGENTS.md`, etc.).
 
 ### Step 10: Update Roadmap Checklist
-* Mark the task as completed `[x]` in [PRODUCTION_READINESS_TODO.md](file:///c:/Users/ecmv2/Documents/PRONTO/PRODUCTION_READINESS_TODO.md).
+* Mark the task as completed `[x]` in [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md).
 
 ### Step 11: Human Wrap-Up Approval & Conventional Git Commit
 * **CRITICAL TIMING RULE:** **NEVER commit prematurely.** Keep changes uncommitted in the working tree until the user explicitly reviews the code-review report and issues the command to **"wrap up and proceed"**.
