@@ -2,7 +2,7 @@
 
 A working task list, not a changelog. Finished work is one line in §2; its as-built detail lives in the `AGENTS.md` of the directory it touches. Open tasks keep their IDs (they are referenced from code comments and `AGENTS.md` files) — do not renumber.
 
-**Last updated:** 2026-09-29 (full audit pass; **Phase 3 suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
+**Last updated:** 2026-09-29 (full audit pass; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
 **Baseline (verified 2026-09-29, after merging PR #22 / Task 2.9):** `pnpm test` 663/663 (72 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict`.
 
 **Priorities:** **P1** = fix before real traffic · **P2** = fix soon after / before a marketed launch · **P3** = polish & DevOps.
@@ -19,7 +19,7 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 0.15 | Admin dispatch crashes without a tracking number (`undefined` in Admin SDK write) | P1 | **Yes** |
 | 0.16 | `track-order` fabricates an order in production when Firebase credentials are missing | P1 | **Yes** |
 | 2.11 | Catalog fallback shows prototype fixtures and wipes the persisted cart | P1 | **Yes** |
-| 3.1 | Per-zone shipping rates below the free-shipping threshold | P1 | **Yes** |
+| 3.1 | Per-zone shipping rates below the free-shipping threshold — **suspended (Phase 3)** | P1 | **Yes** |
 | 7.2 | Custom `.cl` domain + SSL | P1 | **Yes** |
 | 8.8 | Enumeration & abuse throttling on public endpoints | P1 | **Yes** |
 | 2.10 | Last literal `wa.me` / stale phone placeholders | P2 | No |
@@ -39,7 +39,9 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 8.9 · 8.10 · 8.11 | `.env.example` gaps · lint scope · resilient Firebase init | P3 | No |
 | 8.14 · 8.15 | Dependency hygiene · operator-script guardrails | P3 | No |
 
-> **SUSPENDED until further notice (owner decision, 2026-09-29):** **Phase 3 — Logistics & Copy** (**3.2**, **3.3**) is out of the active priority queue — do not select, plan or implement these items. **3.1** (per-zone shipping rates) is a P1 launch blocker grouped under Phase 0 in this document and is **not** covered by the suspension.
+> **SUSPENDED until further notice (owner decision, 2026-09-29; extended to 3.1 the same day):** the whole of **Phase 3 — Logistics & Copy** — **3.1** (per-zone shipping rates), **3.2** (estimated delivery windows) and **3.3** (stale localization copy sweep) — is out of the active priority queue. Do not select, plan or implement these items.
+>
+> **Launch consequence, kept visible on purpose:** 3.1 is the only P1 launch blocker inside the suspension, so while it is suspended the storefront charges **no freight** below `FREE_SHIPPING_THRESHOLD` and PRONTO absorbs the courier cost on those orders.
 
 **Human action items (no agent can close these):**
 
@@ -92,7 +94,7 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 8.6 | `api/` consolidated to 6 functions (Hobby cap 12); ESM `.js` import rule and `jose@^5` override (removal condition: `jwks-rsa` > 4.1.0 ships the lazy-`jose` fix — then re-verify `firebase-admin/auth` on a preview deploy). |
 | 8.7 | Catalog progressive reveal (16 per page, button only). |
 
-Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the verified webhook · [x] abandoned/rejected payments leave stock intact · [x] server secrets only in serverless env · [x] order confirmation email/WhatsApp · [x] Boleta + validated RUT · [x] server-verified amounts (0.9) · [x] consumer legal terms published · [ ] branded `.cl` domain with SSL (7.2) · [ ] all P1 items above closed.
+Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the verified webhook · [x] abandoned/rejected payments leave stock intact · [x] server secrets only in serverless env · [x] order confirmation email/WhatsApp · [x] Boleta + validated RUT · [x] server-verified amounts (0.9) · [x] consumer legal terms published · [ ] branded `.cl` domain with SSL (7.2) · [ ] all P1 items above closed — **standing exception: the suspended Phase 3 set (3.1 freight), which while suspended means sub-threshold orders ship without a freight charge.**
 
 ---
 
@@ -150,10 +152,6 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
   - **Required (lean, no new infra):** return one identical response for "not found" and "RUT mismatch"; per-IP and per-orderId attempt counters with a lockout window (Firestore counter doc or Vercel Edge config); widen the id space with `crypto.getRandomValues` (e.g. `PRONTO-` + 8 base32 chars — check `schemaValidation`/docs that assume 6 digits); dedupe/throttle warehouse emails per order.
   - **Verify:** tests for uniform errors, lockout after N failures, and id format/entropy.
 
-- [ ] **3.1. Dynamic Shipping Rates by Delivery Zone** _(P1 — blocker)_
-  - **State:** the zone selector is built (`DELIVERY_ZONES`: `Melipilla` default same-day before 16:00; `San Antonio` scheduled route, `MIN_ORDER_OUTSIDE_MELIPILLA = 60000`, San Antonio only). `FREE_SHIPPING_THRESHOLD = 150000` applies to both. No pickup, no RM (root `AGENTS.md` §3.4).
-  - **Required:** define per-zone freight for orders **below** the threshold as constants in `src/config/delivery.ts` (never redeclared); add freight to the payable total **server-side** (`orderTotal.ts` → `submitOrder`, `create-preference` line, webhook assertion — the four amounts must stay identical, the 0.9 invariant); include it in the tax/billing breakdown; show a freight line in Cart, Checkout and the pro-forma voucher.
-
 - [ ] **7.2. Custom `.cl` Domain and SSL** _(P1)_
   - Register via NIC Chile (e.g. `prontoinsumos.cl`), configure DNS on Vercel (automatic TLS), replace every `pronto-insumos.vercel.app` (`index.html` `og:url`, `og:image`, `twitter:*`, JSON-LD `url`/`image`; `SITE_URL` in Vercel env for email tracking links). Re-check the Resend sender domain and Mercado Pago `notification_url`/back URLs after the switch.
 
@@ -171,7 +169,11 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
 
 ### Phase 3 — Logistics & Copy — SUSPENDED until further notice (owner decision, 2026-09-29)
 
-> Not in the active priority queue: do not select, plan or implement these two items. IDs and wording are retained for when the suspension is lifted.
+> Not in the active priority queue: do not select, plan or implement these three items. IDs and wording are retained for when the suspension is lifted.
+
+- [ ] **3.1. Dynamic Shipping Rates by Delivery Zone** _(P1 — blocker, suspended)_
+  - **State:** the zone selector is built (`DELIVERY_ZONES`: `Melipilla` default same-day before 16:00; `San Antonio` scheduled route, `MIN_ORDER_OUTSIDE_MELIPILLA = 60000`, San Antonio only). `FREE_SHIPPING_THRESHOLD = 150000` applies to both. No pickup, no RM (root `AGENTS.md` §3.4).
+  - **Required:** define per-zone freight for orders **below** the threshold as constants in `src/config/delivery.ts` (never redeclared); add freight to the payable total **server-side** (`orderTotal.ts` → `submitOrder`, `create-preference` line, webhook assertion — the four amounts must stay identical, the 0.9 invariant); include it in the tax/billing breakdown; show a freight line in Cart, Checkout and the pro-forma voucher.
 
 - [ ] **3.2. Estimated Delivery Time Windows** _(P2)_
   - Show fulfillment estimates in Cart and Checkout: same-day Melipilla for orders confirmed before 16:00; scheduled route for San Antonio. Copy must come from `DELIVERY_ZONES` and add a config constant for the 16:00 cutoff (today it is a literal duplicated in Footer/LegalModal) — never "RM".
