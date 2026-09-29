@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import React from 'react'
 import ProductList from '../../components/ProductList'
@@ -48,6 +48,50 @@ describe('ProductList loading state (D.8)', () => {
 
     expect(screen.getByText('No se encontraron insumos odontológicos')).toBeInTheDocument()
     expect(screen.queryByText('Cargando catálogo')).toBeNull()
+  })
+})
+
+describe('ProductList catalog error state (Task 2.11)', () => {
+  it('renders the retryable error card instead of the empty state when the catalog is unavailable', () => {
+    render(
+      <ProductList
+        products={[]}
+        loading={false}
+        catalogError="No pudimos cargar el catálogo de insumos. Revisa tu conexión y reintenta."
+        onAddToCart={noop}
+        onQuickView={noop}
+      />
+    )
+
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByText('No pudimos cargar el catálogo')).toBeInTheDocument()
+    expect(screen.getByText(/Revisa tu conexión y reintenta/i)).toBeInTheDocument()
+    expect(screen.queryByText('No se encontraron insumos odontológicos')).toBeNull()
+  })
+
+  it('invokes onRetry when the shopper asks for the catalog again', () => {
+    const onRetry = vi.fn()
+    render(
+      <ProductList
+        products={[]}
+        loading={false}
+        catalogError="No pudimos cargar el catálogo."
+        onRetry={onRetry}
+        onAddToCart={noop}
+        onQuickView={noop}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Reintentar/ }))
+
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the plain empty state for genuinely empty results (no catalogError)', () => {
+    render(<ProductList products={[]} loading={false} catalogError={null} onAddToCart={noop} onQuickView={noop} />)
+
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText('No se encontraron insumos odontológicos')).toBeInTheDocument()
   })
 })
 

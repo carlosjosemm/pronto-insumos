@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock Firebase entirely before importing api.ts
 vi.mock('../../services/firebase', () => ({
@@ -16,69 +16,76 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: vi.fn(() => 'mock-timestamp')
 }))
 
-import { fetchProducts, validatePromo, submitOrder, generateOrderId } from '../../services/api'
+import {
+  fetchProducts,
+  validatePromo,
+  submitOrder,
+  generateOrderId,
+  CATALOG_FETCH_TIMEOUT_MS
+} from '../../services/api'
+import { getDocs } from 'firebase/firestore'
 import { PRODUCTS } from '../../data/products'
 import { Product } from '../../types'
 
 describe('fetchProducts - filtering', () => {
   it('should return all products when no filters applied', async () => {
-    const result = await fetchProducts()
-    expect(result.length).toBe(PRODUCTS.length)
+    const { products } = await fetchProducts()
+    expect(products.length).toBe(PRODUCTS.length)
   })
 
   it('should filter by category "INSTRUMENTAL Y ACCESORIOS"', async () => {
-    const result = await fetchProducts({ category: 'INSTRUMENTAL Y ACCESORIOS' })
-    expect(result.length).toBeGreaterThan(0)
-    for (const p of result) {
+    const { products } = await fetchProducts({ category: 'INSTRUMENTAL Y ACCESORIOS' })
+    expect(products.length).toBeGreaterThan(0)
+    for (const p of products) {
       expect(p.category.toLowerCase()).toBe('instrumental y accesorios')
     }
   })
 
   it('should filter by category "OPERATORIA"', async () => {
-    const result = await fetchProducts({ category: 'OPERATORIA' })
-    expect(result.length).toBeGreaterThan(0)
-    for (const p of result) {
+    const { products } = await fetchProducts({ category: 'OPERATORIA' })
+    expect(products.length).toBeGreaterThan(0)
+    for (const p of products) {
       expect(p.category.toLowerCase()).toBe('operatoria')
     }
   })
 
   it('should return all products when category is "all"', async () => {
-    const result = await fetchProducts({ category: 'all' })
-    expect(result.length).toBe(PRODUCTS.length)
+    const { products } = await fetchProducts({ category: 'all' })
+    expect(products.length).toBe(PRODUCTS.length)
   })
 
   it('should return no products for a non-existent category', async () => {
-    const result = await fetchProducts({ category: 'NonExistent' })
-    expect(result.length).toBe(0)
+    const { products } = await fetchProducts({ category: 'NonExistent' })
+    expect(products.length).toBe(0)
   })
 
   it('should filter by search term matching product name', async () => {
-    const result = await fetchProducts({ search: 'turbina' })
-    expect(result.length).toBeGreaterThan(0)
-    expect(result[0].name.toLowerCase()).toContain('turbina')
+    const { products } = await fetchProducts({ search: 'turbina' })
+    expect(products.length).toBeGreaterThan(0)
+    expect(products[0].name.toLowerCase()).toContain('turbina')
   })
 
   it('should filter by search term matching description', async () => {
-    const result = await fetchProducts({ search: 'fotocurado' })
-    expect(result.length).toBeGreaterThan(0)
+    const { products } = await fetchProducts({ search: 'fotocurado' })
+    expect(products.length).toBeGreaterThan(0)
   })
 
   it('should return no products for an unmatched search', async () => {
-    const result = await fetchProducts({ search: 'xyznonexistenttermxyz' })
-    expect(result.length).toBe(0)
+    const { products } = await fetchProducts({ search: 'xyznonexistenttermxyz' })
+    expect(products.length).toBe(0)
   })
 
   it('should filter by inStockOnly', async () => {
-    const result = await fetchProducts({ inStockOnly: true })
-    for (const p of result) {
+    const { products } = await fetchProducts({ inStockOnly: true })
+    for (const p of products) {
       expect(p.inStock).toBe(true)
     }
   })
 
   it('should combine category and search filters', async () => {
-    const result = await fetchProducts({ category: 'INSTRUMENTAL Y ACCESORIOS', search: 'turbina' })
-    expect(result.length).toBeGreaterThan(0)
-    for (const p of result) {
+    const { products } = await fetchProducts({ category: 'INSTRUMENTAL Y ACCESORIOS', search: 'turbina' })
+    expect(products.length).toBeGreaterThan(0)
+    for (const p of products) {
       expect(p.category.toLowerCase()).toBe('instrumental y accesorios')
       expect(p.name.toLowerCase()).toContain('turbina')
     }
@@ -87,30 +94,30 @@ describe('fetchProducts - filtering', () => {
 
 describe('fetchProducts - sorting', () => {
   it('should sort by price low to high', async () => {
-    const result = await fetchProducts({ sortBy: 'price-low' })
-    for (let i = 1; i < result.length; i++) {
-      expect(result[i].price).toBeGreaterThanOrEqual(result[i - 1].price)
+    const { products } = await fetchProducts({ sortBy: 'price-low' })
+    for (let i = 1; i < products.length; i++) {
+      expect(products[i].price).toBeGreaterThanOrEqual(products[i - 1].price)
     }
   })
 
   it('should sort by price high to low', async () => {
-    const result = await fetchProducts({ sortBy: 'price-high' })
-    for (let i = 1; i < result.length; i++) {
-      expect(result[i].price).toBeLessThanOrEqual(result[i - 1].price)
+    const { products } = await fetchProducts({ sortBy: 'price-high' })
+    for (let i = 1; i < products.length; i++) {
+      expect(products[i].price).toBeLessThanOrEqual(products[i - 1].price)
     }
   })
 
   it('should sort by rating descending', async () => {
-    const result = await fetchProducts({ sortBy: 'rating' })
-    for (let i = 1; i < result.length; i++) {
-      expect(result[i].rating).toBeLessThanOrEqual(result[i - 1].rating)
+    const { products } = await fetchProducts({ sortBy: 'rating' })
+    for (let i = 1; i < products.length; i++) {
+      expect(products[i].rating).toBeLessThanOrEqual(products[i - 1].rating)
     }
   })
 
   it('should sort by reviews descending', async () => {
-    const result = await fetchProducts({ sortBy: 'reviews' })
-    for (let i = 1; i < result.length; i++) {
-      expect(result[i].reviewsCount).toBeLessThanOrEqual(result[i - 1].reviewsCount)
+    const { products } = await fetchProducts({ sortBy: 'reviews' })
+    for (let i = 1; i < products.length; i++) {
+      expect(products[i].reviewsCount).toBeLessThanOrEqual(products[i - 1].reviewsCount)
     }
   })
 
@@ -122,16 +129,16 @@ describe('fetchProducts - sorting', () => {
     try {
       PRODUCTS[0].inStock = true
       PRODUCTS[0].stockCount = 10
-      const result = await fetchProducts()
+      const { products } = await fetchProducts()
 
       // The seeded in-stock product must lead the catalog
-      expect(result[0].id).toBe(PRODUCTS[0].id)
-      expect(isAvailable(result[0])).toBe(true)
+      expect(products[0].id).toBe(PRODUCTS[0].id)
+      expect(isAvailable(products[0])).toBe(true)
 
       // Every in-stock product must precede every out-of-stock product
-      const firstOutOfStockIndex = result.findIndex((p) => !isAvailable(p))
+      const firstOutOfStockIndex = products.findIndex((p) => !isAvailable(p))
       if (firstOutOfStockIndex !== -1) {
-        expect(result.slice(firstOutOfStockIndex).every((p) => !isAvailable(p))).toBe(true)
+        expect(products.slice(firstOutOfStockIndex).every((p) => !isAvailable(p))).toBe(true)
       }
     } finally {
       PRODUCTS[0].inStock = originalStock
@@ -146,13 +153,13 @@ describe('fetchProducts - sorting', () => {
         p.inStock = true
         p.stockCount = 10
       })
-      const result = await fetchProducts({ sortBy: 'price-low' })
-      const inStock = result.filter(isAvailable)
+      const { products } = await fetchProducts({ sortBy: 'price-low' })
+      const inStock = products.filter(isAvailable)
 
       expect(inStock.length).toBe(2)
       expect(inStock[0].price).toBeLessThanOrEqual(inStock[1].price)
-      expect(result[0].id).toBe(inStock[0].id)
-      expect(result[1].id).toBe(inStock[1].id)
+      expect(products[0].id).toBe(inStock[0].id)
+      expect(products[1].id).toBe(inStock[1].id)
     } finally {
       PRODUCTS.slice(0, 2).forEach((p, i) => {
         p.inStock = saved[i].inStock
@@ -373,5 +380,137 @@ describe('submitOrder', () => {
     expect(id1).toMatch(/^PRONTO-\d{6}$/)
     expect(id2).toMatch(/^PRONTO-\d{6}$/)
     expect(id1).not.toBe(id2)
+  })
+})
+
+describe('fetchProducts - catalog source (Task 2.11)', () => {
+  beforeEach(() => {
+    vi.mocked(getDocs).mockResolvedValue({ empty: true, docs: [] } as never)
+    vi.unstubAllEnvs()
+  })
+
+  afterEach(() => {
+    // The console spies below must never leak into a later suite: the production
+    // fail-closed paths are asserted through exactly that channel.
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+    vi.useRealTimers()
+  })
+
+  it('serves the local fixture catalog outside production, flagged as fixtures', async () => {
+    vi.stubEnv('VITE_VERCEL_ENV', 'preview')
+
+    const res = await fetchProducts()
+
+    expect(res.source).toBe('fixtures')
+    expect(res.products).toHaveLength(PRODUCTS.length)
+    expect(res.catalog).toHaveLength(PRODUCTS.length)
+  })
+
+  it('reports the unfiltered catalog separately from the filtered products', async () => {
+    vi.stubEnv('VITE_VERCEL_ENV', 'preview')
+
+    const res = await fetchProducts({ category: 'INSTRUMENTAL Y ACCESORIOS' })
+
+    expect(res.source).toBe('fixtures')
+    expect(res.products.length).toBeGreaterThan(0)
+    expect(res.products.length).toBeLessThan(res.catalog.length)
+    expect(res.catalog).toHaveLength(PRODUCTS.length)
+  })
+
+  it('refuses to fabricate a catalog in production when the snapshot is empty', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubEnv('VITE_VERCEL_ENV', 'production')
+
+    const res = await fetchProducts()
+
+    expect(res.source).toBe('unavailable')
+    expect(res.products).toEqual([])
+    expect(res.error).toBeTruthy()
+    expect(errorSpy).toHaveBeenCalled()
+    // The prototype fixtures must never reach a production payload.
+    expect(JSON.stringify(res)).not.toContain('odon-')
+  })
+
+  it('refuses to fabricate a catalog in production when the read rejects', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubEnv('VITE_VERCEL_ENV', 'production')
+    vi.mocked(getDocs).mockRejectedValue(new Error('network down'))
+
+    const res = await fetchProducts()
+
+    expect(res.source).toBe('unavailable')
+    expect(res.products).toEqual([])
+    expect(JSON.stringify(res)).not.toContain('odon-')
+  })
+
+  it('refuses to fabricate a catalog in production when the read exceeds the timeout bound', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.useFakeTimers()
+    vi.stubEnv('VITE_VERCEL_ENV', 'production')
+    vi.mocked(getDocs).mockReturnValue(new Promise(() => {}) as never)
+
+    const pending = fetchProducts()
+    await vi.advanceTimersByTimeAsync(CATALOG_FETCH_TIMEOUT_MS)
+    const res = await pending
+
+    expect(res.source).toBe('unavailable')
+    expect(res.products).toEqual([])
+  })
+
+  it('keeps the fixture fallback in production only with the explicit VITE_ALLOW_SIMULATED_PAYMENTS opt-in', async () => {
+    vi.stubEnv('VITE_VERCEL_ENV', 'production')
+    vi.stubEnv('VITE_ALLOW_SIMULATED_PAYMENTS', 'true')
+
+    const res = await fetchProducts()
+
+    expect(res.source).toBe('fixtures')
+    expect(res.products).toHaveLength(PRODUCTS.length)
+  })
+
+  it('refuses to fabricate a catalog in production when Firebase credentials are absent', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubEnv('VITE_VERCEL_ENV', 'production')
+    vi.stubEnv('VITE_FIREBASE_PROJECT_ID', '')
+    vi.stubEnv('VITE_FIREBASE_API_KEY', '')
+
+    const res = await fetchProducts()
+
+    expect(res.source).toBe('unavailable')
+    expect(res.products).toEqual([])
+  })
+
+  it('does not reject the catalog when a document is missing its text fields (review P3)', async () => {
+    vi.stubEnv('VITE_VERCEL_ENV', 'preview')
+    vi.mocked(getDocs).mockResolvedValue({
+      empty: false,
+      docs: [
+        { id: 'pronto-900', data: () => ({ id: 'pronto-900', category: 'OPERATORIA', isActive: true, inStock: true }) }
+      ]
+    } as never)
+
+    const res = await fetchProducts({ search: 'turbina' })
+
+    expect(res.source).toBe('firestore')
+    expect(res.products).toEqual([])
+    expect(res.catalog).toHaveLength(1)
+  })
+
+  it('returns the live catalog with the firestore source and drops paused documents', async () => {
+    vi.mocked(getDocs).mockResolvedValue({
+      empty: false,
+      docs: [
+        {
+          id: 'pronto-001',
+          data: () => ({ ...PRODUCTS[0], id: 'pronto-001', isActive: true, inStock: true, stockCount: 5 })
+        },
+        { id: 'pronto-002', data: () => ({ ...PRODUCTS[1], id: 'pronto-002', isActive: false }) }
+      ]
+    } as never)
+
+    const res = await fetchProducts()
+
+    expect(res.source).toBe('firestore')
+    expect(res.products.map((p) => p.id)).toEqual(['pronto-001'])
   })
 })

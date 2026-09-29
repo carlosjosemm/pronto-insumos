@@ -3,6 +3,7 @@ import { MOCK_PROMOS, resolvePromoPercent } from '../config/promos'
 import { computeCartTotal } from '../utils/orderTotal'
 import { db } from './firebase'
 import { getCollectionName } from './firestoreEnv'
+import { isSimulatedFallbackAllowed } from './simulationPolicy'
 import { collection, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import {
   BillingInfo,
@@ -25,6 +26,42 @@ export interface FetchProductsOptions {
   inStockOnly?: boolean
 }
 
+/**
+ * Where a catalog response came from (Task 2.11).
+ *
+ *  - `firestore`   — the live catalog; the only source a cart may be revalidated against.
+ *  - `fixtures`    — the local `PRODUCTS` prototype catalog. Development/demo only: it is
+ *                    never served in a production runtime, and it is never authoritative
+ *                    for the cart.
+ *  - `unavailable` — the catalog could not be loaded and fabricating one is not allowed;
+ *                    `error` carries a customer-safe message and the UI offers a retry.
+ */
+export type CatalogSource = 'firestore' | 'fixtures' | 'unavailable'
+
+export interface CatalogResult {
+  /** The filtered/sorted view the grid renders. */
+  products: Product[]
+  /**
+   * The **unfiltered** source set (Firestore documents or the fixture catalog, before
+   * `category`/`search`/`inStockOnly`/`sortBy` are applied). Facet consumers — the category
+   * pills — must count from this, never from `products`, or every unselected pill reads `0`
+   * as soon as a filter is active (review finding F1).
+   */
+  catalog: Product[]
+  source: CatalogSource
+  /** Present only when `source === 'unavailable'`. */
+  error?: string
+}
+
+/**
+ * Bounded wait for the catalog read (Task 2.11). Relaxed from the original 2.5 s, which a
+ * first load on slow Chilean mobile data routinely exceeded — that is what served fixtures
+ * to real shoppers. The Firestore SDK also retries internally, so this only bounds the wait.
+ */
+export const CATALOG_FETCH_TIMEOUT_MS = 10_000
+
+const CATALOG_UNAVAILABLE_MESSAGE = 'No pudimos cargar el catálogo de insumos. Revisa tu conexión y reintenta.'
+
 export interface SubmitOrderOptions {
   orderId?: string
   items: CartItem[]
@@ -44,46 +81,88 @@ export function generateOrderId(): string {
 }
 
 /**
- * Fetch products from Firestore with fallback to local PRODUCTS
+ * Fetch products from Firestore.
+ *
+ * FAIL-CLOSED (Task 2.11): in a production runtime a missing configuration, a rejected read,
+ * an empty snapshot or a timeout all resolve to `source: 'unavailable'` — the prototype
+ * `PRODUCTS` fixtures are never served to real shoppers, and the caller must surface a
+ * retryable error instead of a catalog it cannot trust. Outside production the fixtures
+ * remain the offline fallback, flagged as `source: 'fixtures'` so no caller can mistake
+ * them for live data (and never revalidate a persisted cart against them).
  */
 export async function fetchProducts({
   category = 'all',
   search = '',
   sortBy = 'featured',
   inStockOnly = false
-}: FetchProductsOptions = {}): Promise<Product[]> {
-  let result: Product[]
+}: FetchProductsOptions = {}): Promise<CatalogResult> {
+  let catalog: Product[]
+  let source: CatalogSource
 
   const hasFirebaseConfig = Boolean(import.meta.env.VITE_FIREBASE_PROJECT_ID && import.meta.env.VITE_FIREBASE_API_KEY)
+  const allowFixtureFallback = isSimulatedFallbackAllowed()
 
-  if (hasFirebaseConfig) {
-    try {
-      const fetchPromise = (async () => {
-        const productsRef = collection(db, getCollectionName('products'))
-        const snapshot = await getDocs(productsRef)
-        if (!snapshot.empty) {
-          return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Product).filter((p) => p.isActive !== false)
-        }
-        return [...PRODUCTS]
-      })()
-
-      const timeoutPromise = new Promise<Product[]>((_, reject) =>
-        setTimeout(() => reject(new Error('Firestore response timeout')), 2500)
+  if (!hasFirebaseConfig) {
+    // No Firebase credentials: the local catalog is a development convenience only.
+    // NOTE (review F3): in the browser this branch is only reachable while the Firebase
+    // project id is missing but the API key is present — `src/services/firebase.ts` throws
+    // `auth/invalid-api-key` at import time otherwise (known gap, TODO 8.11). It is kept as
+    // defense-in-depth for the server-side/unit-test boundary.
+    if (!allowFixtureFallback) {
+      console.error(
+        'Firebase credentials are not configured in a production runtime; refusing to serve the local catalog fixtures.'
       )
-
-      result = await Promise.race([fetchPromise, timeoutPromise])
-    } catch (err: unknown) {
-      console.warn('Firestore catalog fallback to local products:', err instanceof Error ? err.message : err)
-      result = [...PRODUCTS]
+      return { products: [], catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
     }
+    catalog = [...PRODUCTS]
+    source = 'fixtures'
   } else {
-    // If Firebase credentials are not filled yet in environment, use PRODUCTS catalog immediately
-    result = [...PRODUCTS]
+    try {
+      const productsRef = collection(db, getCollectionName('products'))
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+      const snapshot = await Promise.race([
+        getDocs(productsRef),
+        new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => reject(new Error('Firestore catalog timeout')), CATALOG_FETCH_TIMEOUT_MS)
+        })
+      ]).finally(() => clearTimeout(timeoutHandle))
+
+      const liveProducts = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }) as Product)
+        .filter((p) => p.isActive !== false)
+
+      if (liveProducts.length > 0) {
+        catalog = liveProducts
+        source = 'firestore'
+      } else if (allowFixtureFallback) {
+        console.warn('Firestore returned an empty catalog; using the local products fixture (non-production runtime).')
+        catalog = [...PRODUCTS]
+        source = 'fixtures'
+      } else {
+        console.error(
+          'Firestore returned an empty catalog in a production runtime; refusing to serve the local fixtures.'
+        )
+        return { products: [], catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
+      }
+    } catch (err: unknown) {
+      if (!allowFixtureFallback) {
+        console.error(
+          'Firestore catalog unavailable in a production runtime; refusing to serve the local fixtures:',
+          err instanceof Error ? err.message : err
+        )
+        return { products: [], catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
+      }
+      console.warn('Firestore catalog fallback to local products:', err instanceof Error ? err.message : err)
+      catalog = [...PRODUCTS]
+      source = 'fixtures'
+    }
   }
+
+  let result = catalog
 
   // Filter by category
   if (category && category !== 'all') {
-    result = result.filter((p) => p.category.toLowerCase() === category.toLowerCase())
+    result = result.filter((p) => (p.category || '').toLowerCase() === category.toLowerCase())
   }
 
   // Filter by search term
@@ -91,10 +170,12 @@ export async function fetchProducts({
     const q = search.toLowerCase().trim()
     result = result.filter(
       (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.description.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q) ||
-        p.tag.toLowerCase().includes(q)
+        // Guarded reads (review P3): a legacy/hand-edited document missing a text field
+        // must not reject the whole catalog read and blank the storefront.
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q) ||
+        (p.category || '').toLowerCase().includes(q) ||
+        (p.tag || '').toLowerCase().includes(q)
     )
   }
 
@@ -122,7 +203,7 @@ export async function fetchProducts({
   const outOfStockList = result.filter((p) => !isAvailableStock(p))
   result = [...inStockList, ...outOfStockList]
 
-  return result
+  return { products: result, catalog, source }
 }
 
 export async function validatePromo(code: string): Promise<{ success: boolean; promo?: PromoCode; error?: string }> {

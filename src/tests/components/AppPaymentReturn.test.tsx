@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 
 vi.mock('../../services/api', () => ({
-  fetchProducts: vi.fn().mockResolvedValue([]),
+  fetchProducts: vi.fn().mockResolvedValue({ products: [], catalog: [], source: 'firestore' }),
   validatePromo: vi.fn().mockResolvedValue({ success: false })
 }))
 

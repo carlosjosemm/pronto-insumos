@@ -14,7 +14,7 @@ As-built technical reference for the client-side integration layer of PRONTO Ins
 
 | Service Module | Purpose & Domain Responsibility | Boundary |
 | :--- | :--- | :--- |
-| [`api.ts`](./api.ts) | `fetchProducts()` catalog queries with offline fallback, `generateOrderId()`, `submitOrder()` Firestore order registration, `validatePromo()` against static `MOCK_PROMOS` (returns the canonical entry from `resolvePromo`). | Firebase Web SDK Firestore + `../data/products` fixtures |
+| [`api.ts`](./api.ts) | `fetchProducts()` catalog queries returning a source-aware `CatalogResult` (`products` filtered view + `catalog` unfiltered set + `source`), `generateOrderId()`, `submitOrder()` Firestore order registration, `validatePromo()` against static `MOCK_PROMOS` (returns the canonical entry from `resolvePromo`). | Firebase Web SDK Firestore + `../data/products` fixtures (dev/demo only since Task 2.11) |
 | [`cartStorage.ts`](./cartStorage.ts) | Persistent cart in `localStorage` (`pronto_cart_v1`): schema versioning, 7-day TTL, quota defense, duplicate consolidation, live-catalog revalidation. | Browser `localStorage` |
 | [`firebase.ts`](./firebase.ts) | Firebase Web SDK init (`initializeApp`, `initializeFirestore` **with `ignoreUndefinedProperties: true`**, `getAuth`) from `VITE_FIREBASE_*`. The Firestore setting is load-bearing: the SDK throws `Unsupported field value: undefined` on the optional domain fields (`razonSocial?`, `giroComercial?`, `sanitaryVerification?`) unless it is set — the Task 0.11 "ghost order" root cause, pinned by `src/tests/services/firebase.test.ts`. Also exports `seedProductsToFirestore()` — **retained but uncalled** (the public seed button was removed; catalog seeding now goes through `pnpm run schema:seed*`). | Google Firebase Client SDK |
 | [`firestoreEnv.ts`](./firestoreEnv.ts) | Client-side resolver: production (`orders`, `products`) vs isolated `dev_*` collections. | `import.meta.env` detector |
@@ -43,12 +43,31 @@ export function generateOrderId(): string {
   `setDoc(doc(db, getCollectionName('orders'), orderId), payload)`, so the Firestore **Document ID equals the canonical Order ID** (e.g. `PRONTO-483921`) — O(1) lookups for admin/serverless endpoints, with the `where('orderId','==')` fallback documented in `api/AGENTS.md` §8.1.
 - **Shared Reference:** the same `orderId` is reused as the Firestore doc key, Mercado Pago `external_reference`, voucher filenames, and WhatsApp message text.
 
-### 2.2 Resilient Catalog Fetching (`fetchProducts()`)
+### 2.2 Resilient Catalog Fetching (`fetchProducts()`) — Task 2.11
 
-1. Requires `VITE_FIREBASE_PROJECT_ID` + `VITE_FIREBASE_API_KEY`; without them it returns the local `PRODUCTS` fixture immediately.
-2. Races the Firestore `getDocs` against a **2.5 s timeout** — a hung SDK read falls back to `PRODUCTS` with a `console.warn`.
-3. Firestore results are filtered to `isActive !== false`; an **empty snapshot** also falls back to the local fixture.
-4. After client-side `category`/`search`/`inStockOnly`/`sortBy` filtering, in-stock products are always partitioned ahead of out-of-stock (stable) so depleted supplies sink to the bottom without disturbing the requested ordering.
+`fetchProducts()` returns a `CatalogResult`, not a bare array, so no caller can mistake fabricated data for live data:
+
+```ts
+interface CatalogResult {
+  products: Product[]            // filtered + sorted view the grid renders
+  catalog: Product[]             // UNFILTERED source set — the category pills count from this
+  source: 'firestore' | 'fixtures' | 'unavailable'
+  error?: string                 // present only when source === 'unavailable'
+}
+```
+
+`source` is `'firestore'` (the live catalog, the **only** source a persisted cart may be revalidated against), `'fixtures'` (the local `PRODUCTS` prototype catalog — development/demo only, never served in production, never authoritative for the cart) or `'unavailable'` (nothing could be loaded and fabricating a catalog is not allowed; `error` carries the customer-safe message).
+
+| Situation | Production (`!isSimulatedFallbackAllowed()`) | Dev / preview (or `VITE_ALLOW_SIMULATED_PAYMENTS=true`) |
+| :--- | :--- | :--- |
+| Firestore returns ≥1 active product | `firestore` | `firestore` |
+| `getDocs` rejects / returns empty / exceeds `CATALOG_FETCH_TIMEOUT_MS` | `unavailable` + `console.error` | `fixtures` + `console.warn` |
+| Missing `VITE_FIREBASE_*` config | `unavailable` + `console.error` (see the caveat below) | `fixtures` |
+
+1. **Bounded wait:** the `getDocs` race carries a **10 s** bound (`CATALOG_FETCH_TIMEOUT_MS`, relaxed from 2.5 s — a first load on slow Chilean mobile data routinely exceeded the old bound, which is what served fixtures to real shoppers). The timer is cleared once the read settles, and the Firestore SDK's own retry behaviour still applies underneath.
+2. **Defensive document reads:** `category`/`search` comparisons read text fields with `?? ''` guards, so one legacy document missing `name`/`description`/`tag` cannot reject the whole catalog read.
+3. After client-side filtering, in-stock products are always partitioned ahead of out-of-stock (stable) so depleted supplies sink to the bottom without disturbing the requested ordering.
+4. ⚠️ **Caveat on the missing-config branch:** in the browser it is only reachable when the Firebase project id is absent while the API key is present — `src/services/firebase.ts` calls `getAuth(app)` unguarded at module scope and throws `auth/invalid-api-key` at import time otherwise (known gap, §4.6 / TODO 8.11). The branch is kept as defense-in-depth and is covered at the unit-test boundary.
 
 ### 2.3 Dynamic Collection Namespacing (`firestoreEnv.ts`)
 
@@ -131,6 +150,7 @@ Adapters simulate **only** when the endpoint is demonstrably absent — a transp
 
 | Adapter | Transport failure (non-production) | Real HTTP 4xx/5xx |
 | :--- | :--- | :--- |
+| `fetchProducts()` (api.ts) | **RESOLVED (Task 2.11):** the fixture fallback is `source: 'fixtures'` and is unreachable in production (`unavailable` + retryable UI); the cart is never revalidated from it | n/a (SDK read) — a rejection/empty snapshot/timeout in production resolves to `source: 'unavailable'` with a customer-safe message |
 | `submitOrder()` (api.ts) | ~~`setDoc` throw → warn → `success: true`~~ **RESOLVED (Task 0.11):** throw → `console.error` → `success: false` | Checkout blocks payment initiation and surfaces the registration error — no ghost orders. |
 | `createMercadoPagoPreference()` / `processMercadoPagoPayment()` (mercadopago.ts) | Dev simulation preserved: `success: true, initPoint: undefined`; the fabricated `approved` record remains a non-authoritative client-side record on any successful preference (ignored by `CheckoutModal`) | `success: false` + the server's `error` message (e.g. the 400 stock rejection); `CheckoutModal` blocks on the Pago step via `submitError` |
 | `uploadTransferVoucher()` (transferVoucher.ts) | Simulated `simulated-voucher://` success **only** when the endpoint is demonstrably absent (non-JSON or network failure) **and** `isSimulatedFallbackAllowed()`; the message states the voucher was not stored. Task 2.9 rewrote the transport: sign → direct PUT (signed `x-goog-content-length-range`) → confirm | `success: false` + the server's message (400/401/409/413/500/503 — e.g. a `409` lifecycle refusal); both call sites (`CheckoutModal`, `OrderTrackingModal`) render `res.error` |

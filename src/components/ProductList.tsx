@@ -7,6 +7,14 @@ import { useIncrementalReveal } from '../hooks/useIncrementalReveal'
 export interface ProductListProps {
   products: Product[]
   loading: boolean
+  /**
+   * Task 2.11 — set when the catalog could not be loaded and the storefront must not
+   * fabricate one. Renders a retryable error card in place of the grid; the normal
+   * empty state stays for the genuinely-empty results of a filter/search.
+   */
+  catalogError?: string | null
+  /** Re-arms the catalog request behind the error card's `Reintentar` button. */
+  onRetry?: () => void
   onAddToCart: (product: Product) => void
   onQuickView: (product: Product) => void
   /** Map of productId → units already in the cart, threaded to the cards. */
@@ -17,6 +25,8 @@ export interface ProductListProps {
 export default function ProductList({
   products,
   loading,
+  catalogError,
+  onRetry,
   onAddToCart,
   onQuickView,
   cartQuantityById,
@@ -36,6 +46,32 @@ export default function ProductList({
             <div className="skeleton-block skeleton-line skeleton-line--short" />
           </div>
         ))}
+      </div>
+    )
+  }
+
+  if (catalogError) {
+    return (
+      <div
+        role="alert"
+        style={{
+          background: 'white',
+          borderRadius: 'var(--radius-lg)',
+          padding: '3.5rem 1.5rem',
+          textAlign: 'center',
+          border: '1px solid var(--border-subtle)'
+        }}
+      >
+        <AlertCircle size={48} style={{ color: 'var(--danger)', marginBottom: '1rem' }} />
+        <h3 style={{ fontSize: '1.25rem', fontWeight: '800', marginBottom: '0.5rem' }}>
+          No pudimos cargar el catálogo
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', maxWidth: '420px', margin: '0 auto 1.5rem' }}>{catalogError}</p>
+        {onRetry && (
+          <button type="button" className="btn-primary" onClick={onRetry} style={{ padding: '0.7rem 1.75rem' }}>
+            Reintentar
+          </button>
+        )}
       </div>
     )
   }
