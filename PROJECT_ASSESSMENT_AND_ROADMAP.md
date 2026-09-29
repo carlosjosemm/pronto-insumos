@@ -20,7 +20,7 @@
 
 ## 2. Brechas Técnicas para Producción (Production-Ready Gaps)
 
-*(Excluyendo la carga de imágenes/activos en Firestore y el onboarding final de productos)*
+(Excluyendo la carga de imágenes/activos en Firestore y el onboarding final de productos)
 
 ### A. Cumplimiento Tributario y B2B Chile (RUT + Boleta / Factura Electrónica)
 Para comerciar legalmente con clínicas dentales y odontólogos en Chile, el checkout debe diferenciar entre **Boleta** (persona natural) y **Factura Electrónica** (empresa/clínica).
