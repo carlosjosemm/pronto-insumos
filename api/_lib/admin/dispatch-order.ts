@@ -50,21 +50,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const currentStatus = doc.data()?.status || null
     const nowIso = new Date().toISOString()
-    const dispatchData = {
-      carrier: carrier.trim(),
-      trackingCode: trackingCode ? String(trackingCode).trim() : undefined,
+    const cleanCarrier = carrier.trim()
+    const cleanTrackingCode =
+      trackingCode === undefined || trackingCode === null ? '' : String(trackingCode).trim()
+
+    const dispatchData: Record<string, unknown> = {
+      carrier: cleanCarrier,
       dispatchedAt: nowIso,
       dispatchedBy: authResult.email || authResult.uid || 'admin'
     }
 
-    const batch = db.batch()
-    batch.update(orderRef, {
+    // Task 0.15: the Admin SDK rejects `undefined` field values, and the local Melipilla
+    // fleet usually ships without a tracking code — so the keys are omitted entirely
+    // instead of written as `undefined` (which 500'd every code-less dispatch).
+    const orderUpdate: Record<string, unknown> = {
       status: 'DESPACHADO',
       dispatch: dispatchData,
-      courier: carrier.trim(),
-      trackingNumber: trackingCode ? String(trackingCode).trim() : undefined,
+      courier: cleanCarrier,
       updatedAt: nowIso
-    })
+    }
+    if (cleanTrackingCode) {
+      dispatchData.trackingCode = cleanTrackingCode
+      orderUpdate.trackingNumber = cleanTrackingCode
+    }
+
+    const batch = db.batch()
+    batch.update(orderRef, orderUpdate)
 
     const historyRef = db.collection(getCollectionName('order_status_history')).doc()
     batch.set(historyRef, {
@@ -76,10 +87,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       changedByEmail: authResult.email || null,
       actorRole: 'ADMIN',
       timestamp: nowIso,
-      reason: `Despachado vía ${carrier.trim()}${trackingCode ? ` (N° Seguimiento: ${trackingCode})` : ''}`,
+      reason: `Despachado vía ${cleanCarrier}${cleanTrackingCode ? ` (N° Seguimiento: ${cleanTrackingCode})` : ''}`,
       metadata: {
-        carrier: carrier.trim(),
-        trackingNumber: trackingCode ? String(trackingCode).trim() : null
+        carrier: cleanCarrier,
+        trackingNumber: cleanTrackingCode || null
       }
     })
 
