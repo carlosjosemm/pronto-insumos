@@ -1,5 +1,6 @@
 import { CartItem, CustomerInfo } from '../types'
 import { formatCLP } from '../utils/currency'
+import { whatsappLink } from '../config/contact'
 
 export interface WhatsAppQuoteParams {
   orderId: string
@@ -12,8 +13,6 @@ export interface WhatsAppQuoteParams {
  * WhatsApp Quote Generator for PRONTO INSUMOS ODONTOLÓGICOS (Melipilla & RM)
  */
 export function generateWhatsAppQuoteUrl({ orderId, customer, items, total }: WhatsAppQuoteParams): string {
-  const phone = import.meta.env?.VITE_WHATSAPP_NUMBER || '56929831595'
-
   const itemsText = items
     .map((i) => `• *${i.quantity}x* ${i.product.name} - ${formatCLP(i.product.price * i.quantity)}`)
     .join('\n')
@@ -37,6 +36,5 @@ ${itemsText}
 ----------------------------------------------
 *Nota:* Por favor confirmar disponibilidad inmediata y condiciones de despacho para Melipilla.`
 
-  const encodedMessage = encodeURIComponent(message)
-  return `https://wa.me/${phone}?text=${encodedMessage}`
+  return whatsappLink(message)
 }

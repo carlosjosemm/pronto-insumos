@@ -2,6 +2,16 @@ import { describe, it, expect, vi } from 'vitest'
 import { generateWhatsAppQuoteUrl } from '../../services/whatsapp'
 import { CartItem, CustomerInfo } from '../../types'
 
+/**
+ * The quote link must come from the shared helper (Task 2.10). The sentinel number
+ * proves the service no longer builds its own wa.me URL from its own env read —
+ * with the pre-consolidation code this mock is bypassed and the href carries the
+ * env placeholder instead.
+ */
+vi.mock('../../config/contact', () => ({
+  whatsappLink: (text?: string) => `https://wa.me/56900000000${text ? `?text=${encodeURIComponent(text)}` : ''}`
+}))
+
 const mockCustomer: CustomerInfo = {
   fullName: 'Dra. Camila Fuentes - Clínica Odontológica Melipilla',
   email: 'contacto@odontomelipilla.cl',
@@ -68,9 +78,7 @@ describe('generateWhatsAppQuoteUrl', () => {
     expect(url).toMatch(/^https:\/\/wa\.me\//)
   })
 
-  it('should include the configured phone number', () => {
-    vi.stubEnv('VITE_WHATSAPP_NUMBER', '56999887766')
-
+  it('builds the link through the shared whatsappLink helper (Task 2.10)', () => {
     const url = generateWhatsAppQuoteUrl({
       orderId: 'PRONTO-123456',
       customer: mockCustomer,
@@ -78,22 +86,7 @@ describe('generateWhatsAppQuoteUrl', () => {
       total: 459970
     })
 
-    expect(url).toContain('wa.me/56999887766')
-    vi.unstubAllEnvs()
-  })
-
-  it('should fall back to the production business number when the env var is unset', () => {
-    vi.stubEnv('VITE_WHATSAPP_NUMBER', '')
-
-    const url = generateWhatsAppQuoteUrl({
-      orderId: 'PRONTO-123456',
-      customer: mockCustomer,
-      items: mockCartItems,
-      total: 459970
-    })
-
-    expect(url).toContain('wa.me/56929831595')
-    vi.unstubAllEnvs()
+    expect(url).toContain('https://wa.me/56900000000')
   })
 
   it('should include the order ID in the encoded message', () => {

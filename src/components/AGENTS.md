@@ -150,7 +150,7 @@ A few strings still advertise Factura or use pre-sweep wording, and **none of th
 
 ~~A related defect that is **not** a copy question — wrong distributor RUT literals~~ **Resolved (Task 1.4, 2026-09-28):** `Footer.tsx` (`RUT Empresa:`) and `CheckoutModal.tsx` (pro-forma `RUT Distribuidor:`) used to hardcode `77.892.410-K`, which fails Modulo 11 (correct check digit: `2`). Both now render `BANK_DETAILS.rut` like the rest of the transfer copy — no fiscal literals remain in components. The stale `-K` assertions in `CheckoutModal.test.tsx` and `ClinicalStorefront.test.tsx` were updated in the same change (the latter stored the RUT as an escaped regex `77\.892\.410-K`, a form plain-text sweeps miss), and a source-content guard (`Fiscal RUT single-source guard` in `src/tests/config/bankDetails.test.ts`) fails the suite if either component reintroduces a hardcoded `77…892…410` literal in any form — plain, escaped-regex, or raw body.
 
-Changing any of the copy strings requires an Appendix C entry first. The same rule applies to the `PaymentReturnModal` WhatsApp fallback in §4.1.2.
+Changing any of the copy strings requires an Appendix C entry first. The same rule applies to the `PaymentReturnModal` WhatsApp message text in §4.1.2 (its phone number now resolves through `whatsappLink()`).
 
 ---
 
@@ -291,11 +291,11 @@ Auto-search behaviour when the caller prefills valid credentials:
 * The auto-search effect performs its state updates **after** the awaited `fetchOrderTracking()` call. The effect body itself must stay free of synchronous `setState` — this is what `react-hooks/set-state-in-effect` enforces, and `pnpm lint` will fail otherwise.
 * `performSearch()` remains the manual path used by the form's *Consultar* button and by the voucher re-fetch; it is a plain function, not a hook.
 
-### 4.1.2 WhatsApp support links — resolved here; one literal remains in `PaymentReturnModal`
+### 4.1.2 WhatsApp support links — every surface resolves through `whatsappLink()`
 
-`getWhatsAppSupportUrl()` resolves its `wa.me` URL through `whatsappLink()` from [src/config/contact.ts](../../src/config/contact.ts) — the same helper every other customer-facing entry point uses (Navbar, Hero, Footer, ProductQuickView, ErrorBoundary; see §7.1 and [src/services/AGENTS.md](../../src/services/AGENTS.md) §4.4). An earlier build hardcoded `wa.me/56987654321`, which reached a different placeholder line than the rest of the store — do not regress it to a literal.
+`getWhatsAppSupportUrl()` resolves its `wa.me` URL through `whatsappLink()` from [src/config/contact.ts](../../src/config/contact.ts) — the same helper every other customer-facing entry point uses (Navbar, Hero, Footer, ProductQuickView, ErrorBoundary, LegalModal; see §7.1 and [src/services/AGENTS.md](../../src/services/AGENTS.md) §4.4). An earlier build hardcoded `wa.me/56987654321`, which reached a different placeholder line than the rest of the store — do not regress it to a literal.
 
-**Last remaining `wa.me` literal:** `PaymentReturnModal.tsx` still builds its URL inline (`import.meta.env.VITE_WHATSAPP_NUMBER || '56912345678'`), and its fallback digits differ from `WHATSAPP_NUMBER`'s `56929831595` fallback — so with the env var unset, the approved-payment coordination link points at a stale placeholder. The invariant "no component may hardcode a phone number or a `wa.me` URL" still misses this one surface. The correct end state is `whatsappLink(…)` with no literal — do not fix it by inventing a number.
+**Resolved (Task 2.10, 2026-09-29):** `PaymentReturnModal.tsx` was the last surface building its own URL inline (`import.meta.env.VITE_WHATSAPP_NUMBER || '56912345678'` — a stale placeholder whose digits differed from `WHATSAPP_NUMBER`'s own fallback). It now calls `whatsappLink(…)`, and `src/tests/config/contact.test.ts` carries a **single-source guard** that fails the suite if any file under `src/components/`, `src/services/` or `src/admin/` reintroduces a `wa.me` URL, a `569…` phone literal or a `VITE_WHATSAPP_NUMBER` read. The modal's message text is unchanged — do not edit it without an Appendix C entry.
 
 ### 4.2 The 5-Stage Fulfillment Timeline
 
@@ -434,7 +434,7 @@ Handles Mercado Pago return redirects (`/?status=approved&collection_id=...`):
 * `approved`: Displays success header, order ID, payment ID, and a WhatsApp delivery-coordination link. The cart reset is owned by `App.tsx` (module-scope `parseUrlBootstrap()` + `clearCartFromStorage()` in the mount effect — see §2.1), not by this modal.
 * `failure`: Explains payment decline, reassures no funds were charged, and offers retry or bank transfer alternatives.
 * `pending`: Informs the customer that the payment is awaiting banking clearance.
-* Its WhatsApp URL is the last literal `wa.me` in the storefront — see §4.1.2.
+* Its WhatsApp URL comes from `whatsappLink()` (Task 2.10) — see §4.1.2.
 
 ### 7.4 `ErrorBoundary.tsx`
 

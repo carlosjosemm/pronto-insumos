@@ -2,8 +2,8 @@
 
 A working task list, not a changelog. Finished work is one line in §2; its as-built detail lives in the `AGENTS.md` of the directory it touches. Open tasks keep their IDs (they are referenced from code comments and `AGENTS.md` files) — do not renumber.
 
-**Last updated:** 2026-09-29 (full audit pass; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
-**Baseline (verified 2026-09-29, after the Task 0.14 and Task 2.11 work):** `pnpm test` 746/746 (78 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
+**Last updated:** 2026-09-29 (Task 2.10 — WhatsApp single source; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
+**Baseline (verified 2026-09-29, after the Task 2.10 work):** `pnpm test` 755/755 (79 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
 
 **Priorities:** **P1** = fix before real traffic · **P2** = fix soon after / before a marketed launch · **P3** = polish & DevOps.
 
@@ -16,7 +16,6 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 3.1 | Per-zone shipping rates below the free-shipping threshold — **suspended (Phase 3)** | P1 | **Yes** |
 | 7.2 | Custom `.cl` domain + SSL | P1 | **Yes** |
 | 8.8 | Enumeration & abuse throttling on public endpoints | P1 | **Yes** |
-| 2.10 | Last literal `wa.me` / stale phone placeholders | P2 | No |
 | 2.12 | Payment-return modal claims "Pago Confirmado" from URL params alone | P2 | No |
 | 2.13 | Internal dispatch reference for courier-less deliveries (auto-generated tracking id) | P2 | No |
 | 2.15 | Voucher storage follow-ups (unconfirmed uploads, legacy base64 docs) | P2 | No |
@@ -72,6 +71,7 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 0.15 | Dispatch accepts a blank tracking code: `dispatch-order` omits absent keys instead of writing `undefined` (which the Admin SDK rejects), and the Admin Firestore instance is now created with `ignoreUndefinedProperties: true` too. The audit confirmed it was the only handler writing `undefined`. |
 | 0.16 | `track-order` fails closed: `500` + loud log in a production runtime when Firestore Admin is unavailable, instead of returning the fabricated "Dra. Andrea Morales" order. The simulated payload is reachable only through `isSimulatedPaymentAllowed()` (dev/preview, or the explicit `ALLOW_SIMULATED_PAYMENTS='true'` opt-in). |
 | 2.11 | `fetchProducts()` returns a source-aware `CatalogResult`: production never serves the `odon-*` fixtures (rejection/empty/timeout → `unavailable` + retryable card, 10 s bound), the persisted cart is revalidated **only** from `source: 'firestore'`, and `CategoryFilter` counts the live unfiltered catalog instead of the prototype fixtures. **Owner decision (A):** the `isActive` filter is _not_ applied to the dev-only fixture fallback — fixtures are unreachable in production after this change, so the filter's purpose is already met. |
+| 2.10 | WhatsApp single source completed: `PaymentReturnModal` (stale `56912345678` fallback) and `src/services/whatsapp.ts` (second env read) now resolve through `whatsappLink()`; `contact.ts` is the only env reader and normalizes a formatted `VITE_WHATSAPP_NUMBER` to digits (digit-free ⇒ canonical fallback); `index.html`'s JSON-LD `telephone` carries `+56929831595`; and the `WhatsApp single-source guard` in `src/tests/config/contact.test.ts` fails on any reintroduced `wa.me` URL, `569…` literal or `VITE_WHATSAPP_NUMBER` read across `src/components/`, `src/services/` and `src/admin/`. |
 | 1.1 | Integer-CLP catalog, `formatCLP`, `Math.round` IVA. |
 | 1.2 | Billing block with tax breakdown, Factura field validation (gated by `FACTURA_ENABLED = false`), printable pro-forma voucher. |
 | 1.3 | ISP/SIS validation for regulated items (`prescriptionRequired`). |
@@ -120,9 +120,6 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
   - Register via NIC Chile (e.g. `prontoinsumos.cl`), configure DNS on Vercel (automatic TLS), replace every `pronto-insumos.vercel.app` (`index.html` `og:url`, `og:image`, `twitter:*`, JSON-LD `url`/`image`; `SITE_URL` in Vercel env for email tracking links). Re-check the Resend sender domain and Mercado Pago `notification_url`/back URLs after the switch.
 
 ### Phase 2 — Checkout, Payment Return & Storefront
-
-- [ ] **2.10. Replace the Last Literal `wa.me` and Stale Phone Placeholders** _(P2)_
-  - `PaymentReturnModal.tsx:38-42` builds its own link with a stale fallback (`56912345678`); route it through `whatsappLink()` (`src/config/contact.ts`). `src/services/whatsapp.ts:15` keeps a second env read (fallback correct, but two places can drift). `index.html:61` JSON-LD `telephone` is still `+56912345678` — use the canonical number (`+56929831595`). Do not invent numbers.
 
 - [ ] **2.12. Payment-Return Modal Claims Success From URL Parameters Alone** _(P2)_
   - `/?status=approved&orderId=…` (trivially forgeable, and also set by Mercado Pago before the webhook runs) opens "¡Pago Confirmado Exitosamente! — Tu transacción ha sido acreditada" (`PaymentReturnModal.tsx:85-88`) and clears the cart (`App.tsx:78,215`). It is harmless to the backend but misleads customers/staff and can clear a cart with no order.
@@ -220,6 +217,7 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
 
 - [ ] **8.15. Operator-Script Guardrails** _(P3)_
   - `pnpm run schema:seed` (prod) writes with no confirmation flag and creates `PRONTO-SAMPLE-001` in the live `orders` collection (counted by dashboard KPIs); `import-catalog-csv.ts:90` treats plain `--force` as production confirmation. Require `--confirm-production-seed`, skip the sample order outside dev, and accept only `--confirm-production-import` for prod imports.
+  - **`scripts/send-test-comms.ts` WhatsApp smoke path throws (found during Task 2.10, 2026-09-29 — pre-existing, reproduced on the pre-2.10 revision).** `TEST_ORDER.items` is shaped `{ name, quantity, price }` but is passed as `items as unknown as CartItem[]` (`:142-151`), while `generateWhatsAppQuoteUrl` reads `i.product.name` / `i.product.price` (`src/services/whatsapp.ts:17`) — so `pnpm dlx tsx scripts/send-test-comms.ts --only=whatsapp` dies with `TypeError: Cannot read properties of undefined (reading 'name')` before printing anything. Shape the fixture as `{ product: { name, price }, quantity }` (or map it) before the call and drop the `as unknown as` cast; the email paths and the `--phone=` override are unaffected. Note the script is also the documented smoke test for `whatsappLink()`/`contact.ts` importability under plain Node/tsx (`src/services/AGENTS.md` §4.4), so it should not be left broken.
 
 ### Phase 9 — Commercial Promotions
 
