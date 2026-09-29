@@ -312,24 +312,69 @@ const WAREHOUSE_EVENT_LABELS: Record<string, string> = {
   TRANSFERENCIA_COMPROBANTE_SUBIDO: 'Comprobante de transferencia recibido',
   TRANSFERENCIA_APROBADA: 'Transferencia aprobada por administración',
   PAGO_EN_REVISION: 'Pago Mercado Pago en revisión — monto inconsistente',
-  CANCELADO: 'Pedido cancelado por administración'
+  CANCELADO: 'Pedido cancelado por administración',
+  // Task 0.14 — reconciliation incidents raised by the Mercado Pago webhook.
+  PAGO_DUPLICADO: 'Doble pago detectado — posible doble cobro',
+  PAGO_ESTADO_INVALIDO: 'Pago aprobado para un pedido que no admite pago',
+  PAGO_REEMBOLSADO: 'Pago reembolsado o contracargado — revisión manual'
+}
+
+const WAREHOUSE_ACTION_HINTS: Record<string, string> = {
+  TRANSFERENCIA_COMPROBANTE_SUBIDO:
+    'Verificar el comprobante contra la cartola de Banco de Chile y aprobar en el portal /admin.',
+  PAGADO_MERCADOPAGO: 'Pago acreditado: preparar y despachar el pedido.',
+  PAGO_EN_REVISION:
+    'El monto pagado no coincide con el total verificado del pedido. NO despachar: conciliar el pago en el portal /admin.',
+  CANCELADO:
+    'Pedido cancelado al conciliar un pago inconsistente. NO despachar: gestionar el reembolso manualmente si corresponde.',
+  PAGO_DUPLICADO:
+    'Ya existe un pago acreditado para este pedido. NO despachar: verificar el segundo cobro y gestionar su reembolso manual.',
+  PAGO_ESTADO_INVALIDO:
+    'El pedido no estaba pendiente de pago cuando se aprobó el cobro. NO despachar: conciliar en el portal /admin antes de continuar.',
+  PAGO_REEMBOLSADO:
+    'El pago fue reembolsado o contracargado. Verificar el pedido en /admin y gestionar el reembolso manualmente (no se procesa en la plataforma).'
+}
+
+const DEFAULT_ACTION_HINT = 'Pedido confirmado: preparar y despachar.'
+
+/**
+ * Stock shortfall detected while deducting an order's inventory (Task 0.14e):
+ * the sale is approved (the money is in) but the warehouse must know that the
+ * physical stock could not cover the line.
+ */
+export interface StockShortfall {
+  productId: string
+  name: string
+  requested: number
+  available: number
 }
 
 /** Internal alert to Melipilla dispatch staff (WAREHOUSE_NOTIFICATION_EMAIL). */
-export function buildWarehouseAlertEmail(data: OrderEmailData, event: string): EmailTemplate {
-  const eventLabel = WAREHOUSE_EVENT_LABELS[event] || event
+export function buildWarehouseAlertEmail(
+  data: OrderEmailData,
+  event: string,
+  shortfalls?: StockShortfall[]
+): EmailTemplate {
+  // Own-property lookups: an event string such as `toString` must never resolve
+  // to an inherited Object.prototype member (the repo guards this pattern in the
+  // admin router and `resolvePromo` too).
+  const eventLabel = Object.prototype.hasOwnProperty.call(WAREHOUSE_EVENT_LABELS, event)
+    ? WAREHOUSE_EVENT_LABELS[event]
+    : event
   const subject = `[Bodega] ${eventLabel} — ${data.orderId}`
 
+  const shortfallHint = (shortfalls || [])
+    .filter((line) => line.requested > line.available)
+    .map((line) => `${line.requested - line.available}× «${line.name}» (disponible ${line.available})`)
+    .join(', ')
+
   const actionHint =
-    event === 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
-      ? 'Verificar el comprobante contra la cartola de Banco de Chile y aprobar en el portal /admin.'
-      : event === 'PAGADO_MERCADOPAGO'
-        ? 'Pago acreditado: preparar y despachar el pedido.'
-        : event === 'PAGO_EN_REVISION'
-          ? 'El monto pagado no coincide con el total verificado del pedido. NO despachar: conciliar el pago en el portal /admin.'
-          : event === 'CANCELADO'
-            ? 'Pedido cancelado al conciliar un pago inconsistente. NO despachar: gestionar el reembolso manualmente si corresponde.'
-            : 'Pedido confirmado: preparar y despachar.'
+    (Object.prototype.hasOwnProperty.call(WAREHOUSE_ACTION_HINTS, event)
+      ? WAREHOUSE_ACTION_HINTS[event]
+      : DEFAULT_ACTION_HINT) +
+    (shortfallHint
+      ? ` Stock insuficiente: faltan ${shortfallHint}. Reponer/coordinar antes del despacho.`
+      : '')
 
   const html = layout(`
     <h2 style="margin:0 0 8px;font-size:20px;color:#102748;">${escapeHtml(eventLabel)}</h2>

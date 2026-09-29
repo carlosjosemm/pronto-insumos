@@ -1,197 +1,175 @@
-# Tasks 0.15 & 0.16: Admin Dispatch `undefined` Crash + `track-order` Production Fail-Closed
+# Task 0.14: Webhook Reconciliation Gaps
 
-**Branch:** `fix/task-0.15-0.16-admin-dispatch-and-track-order-fail-closed` (cut from `main` @ `7a927f1`, verified in sync with `origin/main`; executing in the isolated Windsurf worktree)
+**Branch:** `fix/task-0.14-webhook-reconciliation-gaps` (cut from `main` @ `6c79471`, verified in sync with `origin/main`; executing in the primary working tree)
 **RequestFeedback:** true · **UserFacing:** true
-**Scope decision:** both P1 audit findings are bundled in one branch at the owner's request (same precedent as the merged `fix/task-0.12-0.13-*` branch). They are both single-file serverless fixes with no shared code path, so they stay independently reviewable.
-**Owner decisions:** (1) **both** 0.15 fixes (handler omission + `ignoreUndefinedProperties` guard); (2) **two commits in one PR** (one per task, not one branch per task); (3) the auto-generated internal tracking reference is **not** implemented here — it is added to the roadmap as the new P2 item **2.13** and built in its own cycle (it spans the webhook, `approve-transfer`, `dispatch-order`, the `Order` type and the tracking copy).
-**Status:** Implemented, verified and adversarially reviewed; review findings F1–F6 remediated. Awaiting the explicit **"wrap up and proceed"** command before staging/committing.
+**Status:** Implemented, verified (726/726) and adversarially reviewed; review findings R1–R9 disposed of in §7. Awaiting the explicit **"wrap up and proceed"** command before staging/committing.
+**Owner decisions (approved 2026-09-29):** (1) settled statuses get an incident, not a review flip; (2) the MP-failure `502` is unconditional; (3) the request `items` requirement is dropped; (4) `maxAgeSeconds` stays unset.
 
 ---
 
 ## 1. Context & Problem Statement
 
-Reference: `PRODUCTION_READINESS_TODO.md` → **0.15** and **0.16** (2026-09-29 audit findings, both P1 launch blockers).
+Reference: `PRODUCTION_READINESS_TODO.md` → **0.14 — Webhook reconciliation gaps** _(P1, launch blocker)_, the topmost open item. Seven defects in the payment reconciliation path, all in `api/webhooks/mercadopago.ts` (plus `create-preference` for **g**):
 
-### 0.15 — Admin "Marcar Despachado" crashes without a tracking number
+| Item | Defect | Money consequence |
+| :-- | :-- | :-- |
+| **a** | MP verification failures (revoked token → 401/403, MP 5xx, malformed id) are acked `200` (`:108-116`) | A genuinely paid order is never retried → never reconciled |
+| **b** | The duplicate fast path is keyed on `status === 'PAGADO_MERCADOPAGO'` (`:161-174`), not the payment id | A double charge (two approved payment ids) is silently acked as duplicate → never refunded |
+| **c** | No order-status guard | An approved payment for a `CANCELADO` / `DESPACHADO` / `ENTREGADO` / `TRANSFERENCIA_APROBADA` order flips it to `PAGADO_MERCADOPAGO` and deducts stock **again** |
+| **d** | Only `approved` is processed | A later `refunded` / `charged_back` / `cancelled` leaves the order `PAGADO`, stock deducted, nobody alerted |
+| **e** | `newStock = Math.max(0, current − qty)` (`:247`) hides the shortfall; same clamp in `approve-transfer.ts:130` and `resolve-payment-review.ts:175` | Stock hits 0 between preference and payment; the sale is approved but the warehouse never learns there is a shortfall |
+| **f** | Signature verified against query `data.id` first (`:54-55`) but the payment fetched is `body.data.id` first (`:43-44`) | A replayed delivery with a tampered body id fetches a **different payment** than the one the HMAC covers |
+| **g** | `create-preference` builds preference lines from `req.body.items` (`:117-183`) while the webhook asserts against `order.items` | A mismatched body yields a payable preference that later lands in `PAGO_EN_REVISION` (the Task 0.9 invariant broken on the charge side) |
 
-`api/_lib/admin/dispatch-order.ts:53-67` writes two `undefined` values whenever the admin leaves the tracking-code field empty:
-
-```ts
-trackingCode: trackingCode ? String(trackingCode).trim() : undefined,   // inside `dispatch`
-trackingNumber: trackingCode ? String(trackingCode).trim() : undefined, // top-level
-```
-
-The UI (`src/admin/components/OrderDetailPanel.tsx:97`) sends `trackingCode: trackingCode.trim() || undefined`, and the **default carrier is the local Melipilla fleet**, which normally has no tracking code — so the most common dispatch path is the one that crashes. `firebase-admin` rejects `undefined` (`Cannot use "undefined" as a Firestore value … enable ignoreUndefinedProperties`), the handler's `catch` turns it into a `500`, and the order is never dispatched. The only existing test (`src/tests/api/admin/dispatch-order.test.ts:67`) always supplies a code, which is why the bug shipped.
-
-### 0.16 — `track-order` fabricates an order in production when Firebase credentials are missing
-
-`api/track-order.ts:32-72` returns a fully fabricated order ("Dra. Andrea Morales", `$189.990`, a `factura` with a fake Razón Social) whenever `getAdminFirestore()` is `null` — **in any runtime**. A deploy that loses `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` shows customers plausible-looking fake tracking data instead of an error, and hides the misconfiguration from operators. `upload-voucher` was already fixed in 2.9 by gating the simulated branch behind `isSimulatedPaymentAllowed()`; `track-order` is the remaining endpoint with the old fail-open contract.
-
-### Audit result (required by 0.15: "audit other Admin writes for `undefined`")
-
-Every Firestore write under `api/` was inspected (`grep` for `: undefined` plus a read of each `.set(` / `.update(` payload): `approve-transfer`, `resolve-payment-review`, `mark-delivered`, `update-stock`, `update-product`, `create-product`, `toggle-visibility`, `upload-voucher`, `order-confirmation` and the Mercado Pago webhook all build defined payloads. The two other `undefined` occurrences are **not** Firestore writes: `create-preference.ts:207` builds the Mercado Pago preference body (JSON over `fetch`, dropped by `JSON.stringify`) and `track-order.ts:169` builds the HTTP response. **`dispatch-order.ts` is the only offender** — but nothing structurally prevents the next handler from repeating it, which is why §3.B adds the shared guard.
+Also in scope, per **e**: the identical clamp in the two admin handlers named by the roadmap.
 
 ---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-No new credentials, no new environment variables, no `.env.example` change — both fixes only tighten existing serverless behaviour.
+No new credentials, no new environment variables, no `.env.example` change — every fix tightens existing serverless behaviour.
 
 | # | Action | Where / command |
 | :-- | :--- | :--- |
-| H1 | Confirm the three `FIREBASE_*` Admin credentials are present in **Vercel Production** (after 0.16 a missing one is a loud `500` instead of fake data — correct, but it must not be hit in practice) | `pnpm dlx vercel@latest env ls` |
-| H2 | Manual smoke test on a preview deploy: dispatch a paid order with carrier *Despacho Local Melipilla (Flota Directa)* and an **empty** tracking number → expect `200` + status `DESPACHADO`; then a second dispatch with a code → code persisted | Manual, after deploy |
-| H3 | Manual smoke test: open the tracking modal with a wrong RUT (expect `401`) and, if a preview has Admin credentials removed, confirm the honest `500` message | Manual, after deploy |
-
-`.env.example` is untouched: `ALLOW_SIMULATED_PAYMENTS` (the 0.16 escape hatch) is already documented there from Task 0.10.
+| H1 | Confirm `WAREHOUSE_NOTIFICATION_EMAIL` is set in **Vercel Production** — the new alerts (double payment, refund/chargeback, invalid-status payment, stock shortfall) are warehouse emails | `pnpm dlx vercel@latest env ls` |
+| H2 | After deploy, watch Vercel logs for the new `[Mercado Pago Webhook]` 502 entries: they mean MP is retrying a delivery it could not verify (revoked token / MP outage) — expected until the cause is fixed | Manual, after deploy |
+| H3 | Optional smoke test on a preview deploy: dispatch a paid order whose product stock is 0 (or a transfer approval on a short order) and confirm the warehouse alert carries the `Stock insuficiente` note | Manual, after deploy |
 
 ---
 
 ## 3. Proposed Changes
 
-### 3.A `[MODIFY] api/_lib/admin/dispatch-order.ts` — omit absent keys (root-cause fix)
+### 3.A `[MODIFY] api/webhooks/mercadopago.ts` — (a)(b)(c)(d)(e)(f)
 
-Build the update payload with conditional keys instead of `undefined` values:
+**One normalized payment id (f).** Extract it once — query `data.id`/`id` first (the value the official HMAC manifest `id:[data.id];…` is built from), body `data.id`/`id` as fallback — `String(...).trim()` it, and use that single value for the signature, the MP fetch URL, and every comparison. Today the signature uses query-first and the fetch body-first; after this, a tampered body id can no longer redirect the fetch away from the signed id. `maxAgeSeconds` is **deliberately not passed**: MP retries reuse the original `ts`, so a replay window would reject legitimate retries and re-open gap (a).
+
+**MP verification gate (a).**
 
 ```ts
-const cleanCarrier = carrier.trim()
-const cleanTrackingCode =
-  trackingCode === undefined || trackingCode === null ? '' : String(trackingCode).trim()
-
-const dispatchData: Record<string, unknown> = {
-  carrier: cleanCarrier,
-  dispatchedAt: nowIso,
-  dispatchedBy: authResult.email || authResult.uid || 'admin'
+if (!mpResponse.ok) {
+  if (mpResponse.status === 404) {           // payment does not exist → nothing to reconcile
+    return res.status(200).json({ received: true, note: 'Payment not found at Mercado Pago' })
+  }
+  console.error(/* HTTP status, payment id, "refusing to acknowledge — Mercado Pago will retry" */)
+  return res.status(502).json({ error: 'Mercado Pago verification unavailable' })
 }
-if (cleanTrackingCode) dispatchData.trackingCode = cleanTrackingCode
-
-const orderUpdate: Record<string, unknown> = {
-  status: 'DESPACHADO',
-  dispatch: dispatchData,
-  courier: cleanCarrier,
-  updatedAt: nowIso
-}
-// The Admin SDK rejects `undefined` field values (Task 0.15) and the local Melipilla
-// fleet usually has no tracking code, so the key is omitted rather than nulled.
-if (cleanTrackingCode) orderUpdate.trackingNumber = cleanTrackingCode
-
-batch.update(orderRef, orderUpdate)
 ```
 
-- `String(...)` coercion is kept so a numeric code from any caller still lands as text; empty / whitespace-only values count as absent.
-- Re-dispatching an order without a code now **keeps** the previously stored `trackingNumber` (omitted key = untouched field) — safer than erasing real tracking data.
-- The `order_status_history` event already handled absence correctly (`metadata.trackingNumber: … : null`) and is unchanged, as is the `reason` string.
+`502` is deliberate (upstream failure; 5xx → MP retries). Network failures already reach the outer `catch` → `500`. The 5xx is **unconditional** (not env-gated): money safety first; a dev-mode placeholder token now yields `502` instead of the old permissive ack.
 
-### 3.B `[MODIFY] api/_lib/firebaseAdmin.ts` — one-time `ignoreUndefinedProperties` guard (defense-in-depth)
+**Payability guard (c) — inside the transaction, on the fresh read, replacing the current concurrency check:**
 
 ```ts
-const firestore = getFirestore(app)
-// Defense-in-depth for Task 0.15: the Admin SDK throws on `undefined` field values
-// (what broke dispatch-order). Handlers still omit absent keys; this keeps a stray
-// `undefined` in any of the 11 admin handlers from 500-ing an endpoint.
-// Called immediately after construction — before the instance is first used, which
-// is the only window where Firestore accepts settings.
-firestore.settings({ ignoreUndefinedProperties: true })
+const PAYABLE_STATUSES  = new Set(['PENDIENTE_PAGO_MERCADOPAGO', 'PAGO_EN_REVISION'])
+const SETTLED_STATUSES  = new Set(['PAGADO_MERCADOPAGO', 'TRANSFERENCIA_APROBADA', 'PAGADO_TRANSFERENCIA',
+                                    'EN_PREPARACION', 'DESPACHADO', 'ENTREGADO'])
 ```
 
-- Mirrors the client-side setting added in Task 0.11 (`initializeFirestore(app, { ignoreUndefinedProperties: true })` in `src/services/firebase.ts`), so both SDKs now behave identically.
-- `firebase-admin`'s own `initializeFirestore()` helper is **not** usable here: its `FirestoreSettings` type exposes only `preferRest`, so `ignoreUndefinedProperties` cannot be passed without a cast. `Firestore.settings()` takes the full `@google-cloud/firestore` `Settings` (verified in the installed `@google-cloud/firestore@9.2.0` typings, `types/firestore.d.ts:504`).
-- Trade-off accepted and documented: a stray `undefined` is now skipped instead of throwing, so a handler bug of this class degrades to a missing field rather than a `500`. The handler-level omission in §3.A remains the primary fix.
+1. same payment id already recorded → silent duplicate return (unchanged semantics, now keyed only on the id);
+2. **settled** → *incident*: history event + warehouse alert, **no status change, no stock movement**;
+3. **anything else** (CANCELADO, pending transfer/quote statuses, unknown) → *review*: `status: 'PAGO_EN_REVISION'` + stamp `mercadopagoPaymentId` + history event + warehouse alert, **no stock movement**;
+4. payable → the existing catalog read → amount assertion → approval.
 
-### 3.C `[MODIFY] api/track-order.ts` — fail closed in production (0.16)
+*Why the settled bucket is not flipped to review:* those orders are already paid/shipped — flipping them would regress the customer tracking view (`track-order` reads `DESPACHADO`/`EN_PREPARACION` as fulfilment stages) and would open a double stock-deduction path through `resolve-payment-review`'s **approve** action. The incident is recorded in history and alerted instead. The review flip is reserved for orders whose money/fulfilment state is genuinely unresolved. (If you prefer the literal "anything else → review" reading for settled statuses too, say so — it is a one-line change.)
 
-```ts
-import { isSimulatedPaymentAllowed } from './_lib/simulationPolicy.js'
+**Double payment (b).** A second approved payment id for a settled order (step 2 above, which includes `PAGADO_MERCADOPAGO`) writes an `order_status_history` event (`previousStatus === newStatus`, reason "segundo pago aprobado … posible doble cobro", metadata `{ paymentId, previousPaymentId, transactionAmount }`) and sends the warehouse alert — **without stamping the second id over the original payment** (which would erase which payment settled the order).
 
-const TRACKING_UNAVAILABLE_MESSAGE =
-  'No pudimos consultar el estado del pedido. Escríbenos por WhatsApp y lo revisamos manualmente.'
+**Refunds / chargebacks (d).** Payment status in `{refunded, charged_back, cancelled}` now resolves the order and, only when the stored `mercadopagoPaymentId` matches the refunded payment (or is absent on a legacy doc), runs a transaction:
 
-    const adminDb = getAdminFirestore()
-    if (!adminDb) {
-      if (!isSimulatedPaymentAllowed()) {
-        console.error(
-          '[track-order] Firestore Admin unavailable in a production runtime — refusing to fabricate tracking data.'
-        )
-        return res.status(500).json({ error: TRACKING_UNAVAILABLE_MESSAGE })
-      }
-      console.warn('Firestore Admin not available. Returning simulated order tracking response.')
-      return res.status(200).json({ /* existing simulated payload, unchanged */ })
-    }
-```
+- `PAGADO_MERCADOPAGO` → `PAGO_EN_REVISION` + history + alert;
+- `EN_PREPARACION` / `DESPACHADO` / `ENTREGADO` → incident (history + alert, no flip — tracking regression, same rationale);
+- anything else (already review/cancelled, or a refund of the *second* payment of a double charge) → silent ack.
 
-- Reuses the single shared gate `isSimulatedPaymentAllowed()` (`VERCEL_ENV !== 'production'`, or the strict `ALLOW_SIMULATED_PAYMENTS='true'` opt-in) — the same definition `create-preference` (0.9/0.10) and `upload-voucher` (2.9) already use, so the policy cannot drift.
-- The simulated payload itself is left byte-for-byte identical (dev/demo behaviour preserved); only its reachability changes.
-- No client change needed: `src/services/orderTracking.ts` already surfaces a real HTTP error message and only simulates on a *transport* failure outside production.
+No stock movement on refunds (restocking is off-platform, `src/types/AGENTS.md` §2.1).
+
+**Shortfall recording (e).** Inside the approval transaction, per line: `shortfall = max(0, previousStock − 0 − qty)` is recorded in the `inventory_audit_logs` metadata (`stockShortfall` only when > 0) and the order-history metadata (`stockShortfalls: [{ productId, name, requested, available }]` only when non-empty). The warehouse alert gains a shortfall sentence (3.C). The clamp itself (`Math.max(0, …)`) stays — the money is taken, the order is approved, the shortfall is surfaced.
+
+**Structure.** The `orderId` resolution + `getAdminFirestore()` + 0.10 fail-closed gate are hoisted so the approved and refund branches share one copy; the approved branch keeps its existing transaction/email flow.
+
+### 3.B `[MODIFY] api/create-preference.ts` — (g)
+
+Build `rebuiltItems` from **`orderData.items`** (the document `submitOrder` wrote), not `req.body.items`:
+
+- line source becomes the order document; `productId || id`, `normalizeQuantity(quantity)` and `item.name` as before — prices still come from the **current** Firestore catalog with the order's promo percent (Task 0.9 unchanged);
+- an order whose `items` are missing/empty → `400` (`El pedido no tiene insumos registrados…`), instead of building an empty MP preference;
+- the request contract becomes `orderId` (+ optional `customer` for the payer block): `items` is no longer required or read. The client keeps sending it (no client change); the server ignores it.
+
+### 3.C `[MODIFY] api/_lib/emailTemplates.ts` — new warehouse events + shortfall hint
+
+- `WAREHOUSE_EVENT_LABELS` + the action-hint chain (converted from nested ternaries to a `Record<string, string>` map, same copy for existing keys) gain: **`PAGO_DUPLICADO`**, **`PAGO_ESTADO_INVALIDO`**, **`PAGO_REEMBOLSADO`**.
+- `buildWarehouseAlertEmail(data, event, shortfalls?: StockShortfall[])` — new optional third parameter appends `Stock insuficiente: faltan 2× «Turbina» (disponible 0)…` to the action hint. Exported `StockShortfall` type. Backward compatible: every existing call site keeps working.
+
+### 3.D `[MODIFY] api/_lib/admin/approve-transfer.ts` + `api/_lib/admin/resolve-payment-review.ts` — (e)
+
+Same shortfall recording as 3.A (per-line `stockShortfall` in the audit metadata, `stockShortfalls` in the history metadata, shortfall sentence in the warehouse alert they already send). No behavioural change otherwise.
 
 ### Explicitly NOT done (scope guardrails)
 
-- No new serverless function (Hobby slot count stays **6/12**), no new dependency, no Firestore schema/rules change, no UI/CSS change.
-- No 0.12/0.14 webhook work, no refactor of the other admin handlers, no shared "sanitize payload" utility (one guard in one place is enough — anti-overshooting).
-- No change to the `dispatch` map's existing field names or to the tracking-modal payload shape.
+- No new serverless function (6/12 Hobby slots unchanged), no new dependency, no Firestore rules/schema change, no client change.
+- No `resolve-payment-review` status-guard rework (that is Task **4.3**), no rate limiting (Task **8.8**), no pending-order cleanup (Task **8.13**), no `maxAgeSeconds`.
+- No re-stamping of `mercadopagoPaymentId` on incidents, no new order fields.
 
 ---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-All boundaries mocked (`firebase-admin/app`, `firebase-admin/firestore`, `api/_lib/firebaseAdmin`, `api/_lib/adminAuth`); no live Firebase calls.
+All boundaries mocked (`firebase-admin/app`, `firebase-admin/firestore`, `api/_lib/firebaseAdmin`, `global.fetch`); no live calls.
 
-**`[MODIFY] src/tests/api/admin/dispatch-order.test.ts`** (+3; the 2 existing tests are kept untouched → 5)
+**`[MODIFY] src/tests/api/mercadopago-webhook.test.ts`** (32 tests today; **+20** measured — 15 in the first pass, 5 added by the review remediation):
 
-- **Regression for the crash:** POST without `trackingCode` → `200` + `status: 'DESPACHADO'`; the captured `batch.update` payload is deep-scanned for `undefined` (a recursive helper — `JSON.stringify` would silently drop it) and asserts the **`trackingNumber` key is absent** and `dispatch.trackingCode` is absent, while `dispatch.carrier` / `dispatchedAt` / `dispatchedBy` are present. History event asserts `metadata.trackingNumber === null`.
-- **Absent-value edge cases:** `trackingCode: ''`, `'   '` (whitespace) → treated as absent, no `undefined`, no empty-string key; `trackingCode: 998877` (number) → coerced to `'998877'`.
-- Existing happy path (code supplied ⇒ `trackingNumber: 'STK-998877'`) and the doc-id→field-query fallback test stay green.
+- **(a)** MP 500 → `502` + `console.error` + no order lookup; MP 401 → `502`; 404 → `200` (the two existing 404 tests are re-pointed to the new note); production + real credentials + MP 500 → `502` (the old "known gap #5" test is rewritten — the pointer comment in it is removed).
+- **(b)** paid order + different payment id → `200`, one history `set` with the double-payment reason/metadata, warehouse email sent, **no** order/stock update; same-id redelivery stays a silent duplicate.
+- **(c)** `CANCELADO` + approved → `PAGO_EN_REVISION` + history + alert, no stock; `DESPACHADO` + approved → no status change, no stock, incident history + alert; `TRANSFERENCIA_APROBADA` + approved → incident; `PENDIENTE_TRANSFERENCIA` + approved → review flip.
+- **(d)** `refunded` on a `PAGADO_MERCADOPAGO` order (matching id) → `PAGO_EN_REVISION` + history + alert, no stock; `charged_back` on a `DESPACHADO` order → incident, no flip; refund of a *different* payment id → silent ack, no writes.
+- **(e)** stock 1 vs qty 3 → approved, stock `0`, history metadata `stockShortfalls` `[{ requested: 3, available: 1 }]`, audit metadata `stockShortfall: 2`, warehouse email contains `Stock insuficiente`; a clean approval asserts `stockShortfalls` is **absent**.
+- **(f)** query `data.id = A`, body `data.id = B`, signature valid over **A** → the MP fetch URL contains `A` and not `B`.
 
-**`[MODIFY] src/tests/api/track-order.test.ts`** (+3; the 8 existing tests are kept untouched → 11)
+**`[MODIFY] src/tests/api/create-preference.test.ts`** (23 tests today; +~3): every order fixture gains its `items` (the current `'any'` default shape can no longer satisfy the endpoint); the 400 test becomes "orderId missing" plus a new "order without items → 400"; new: body items tampered/divergent (different product, different quantity) → the **order document's lines** are charged; body `items` omitted entirely → still `200`.
 
-- Adds the 0.10-style env backup: `delete process.env.VERCEL_ENV` / `ALLOW_SIMULATED_PAYMENTS` in `beforeEach`, restored in `afterEach` (a developer shell can never flip the gate).
-- **Production fail-closed:** `VERCEL_ENV=production` + `getAdminFirestore()` → `null` ⇒ `500` + `console.error` spy called; the response body is asserted to contain **no fabricated data** (`JSON.stringify(res.json.calls[0][0])` must not contain `Dra. Andrea Morales`, `189990` or `factura`).
-- **Escape hatch:** `VERCEL_ENV=production` + `ALLOW_SIMULATED_PAYMENTS='true'` ⇒ `200` simulated payload (documented demo path).
-- **Dev/preview contract pinned:** `VERCEL_ENV` unset + Admin `null` ⇒ `200` simulated payload (`simulated` behaviour preserved for local work).
-- The existing 404 / 401 / happy-path / legacy-Base64-voucher tests (which mock a real Admin double) are unaffected.
+**`[MODIFY] src/tests/api/admin/approve-transfer.test.ts`** (+1) and **`src/tests/api/admin/resolve-payment-review.test.ts`** (+3 — shortfall + the two R1 guards): shortfall recorded in audit + history metadata and surfaced in the warehouse alert; the review approve is refused (`409`) on an already-settled order while cancel still resolves it.
 
-**`[NEW] src/tests/api/firebaseAdmin.test.ts`** (+3) — pins §3.B the same way `src/tests/services/firebase.test.ts` pins the client setting:
+**`[MODIFY] src/tests/api/email.test.ts`** (+2, added during implementation): the three new warehouse event labels/hints and the shortfall sentence in both the HTML and text parts.
 
-- `getAdminFirestore()` calls `settings({ ignoreUndefinedProperties: true })` exactly once, on the instance it returns (fresh module via `vi.resetModules()` + dynamic import so the module singleton is exercised per case).
-- Missing credentials ⇒ `null` (existing degradation contract unchanged) and `getFirestore` never called.
-- `initializeApp` rejection ⇒ `null` + `console.error` (init-failure path preserved).
-
-**Zero-regression target:** `pnpm test` — **663 tests / 72 suites** on `main` → **measured 672 tests / 73 suites** after this change (+9: dispatch +3, track-order +3, the new `firebaseAdmin` suite +3) → **697 tests / 76 suites** after rebasing onto the merged 0.12 + 0.13 work, all green, plus `pnpm build`, `pnpm lint`, `pnpm format:check` and `pnpm exec tsc --noEmit` clean (and the `api/` strict type-check from TODO 8.2 re-run on the three touched files).
+**Zero-regression target:** `pnpm test` — baseline **697/697 (76 suites)** on `main`; measured **726/726 (76 suites)** after this branch (+29: webhook +20, create-preference +3, email +2, approve-transfer +1, resolve-payment-review +3), plus `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` and the `api/` strict type-check clean.
 
 ---
 
-## 5. As-Built Documentation & Roadmap Sync Plan
+## 5. As-Built Documentation & Roadmap Sync (executed)
 
-- **`api/AGENTS.md`:** §1 `firebaseAdmin` bullet gains the `ignoreUndefinedProperties: true` note; §3.1 `track-order` — the "⚠️ simulated fallback fabricates a plausible order" warning is replaced by the as-built fail-closed contract (`500` in production, `isSimulatedPaymentAllowed()` escape hatch); the admin-handler section records the omit-absent-keys dispatch contract.
-- **`src/admin/AGENTS.md`:** §1 *Marcar Despachado* — the tracking number is optional and absent keys are omitted from the Admin SDK write (the crash documented as fixed).
-- **`src/tests/AGENTS.md`:** suite/test counts (refreshed to the measured baseline — 697/76 after the rebase), the new `firebaseAdmin` suite in the `api/` inventory, the dispatch/track-order additions — **and a one-line hygiene fix**: the file carried a stray leftover `<<<<<<< HEAD` conflict marker at line 30 (shipped on `main` by the 2.9 commit). It is deleted here; flagging it explicitly rather than silently.
-- **Root `AGENTS.md`:** the three test-count references (operational state, test command comment, pre-flight step) are refreshed to the measured baseline (697/76 after the rebase) — the counts live here too.
-- **`PRODUCTION_READINESS_TODO.md`:** 0.15 and 0.16 are removed from §3 and recorded as one-line outcomes in §2, their rows dropped from the §1 glance table, the new **2.13** item added to Phase 2, the baseline header refreshed (697/76), and the two `api/track-order.ts` line references elsewhere in the file shifted by the +13 lines this change adds.
-- **Commit split (owner decision):** two commits, one PR. Commit 1 = Task 0.15 (code, tests, `src/admin/AGENTS.md`). Commit 2 = Task 0.16 (code, tests) **plus the shared as-built docs** (`api/AGENTS.md`, `src/tests/AGENTS.md`, root `AGENTS.md`, `PRODUCTION_READINESS_TODO.md`, this plan) — those files carry both tasks' updates and cannot be split without partial staging, so they travel together in the second commit rather than being fragmented.
+- **`api/AGENTS.md`:** §2.2 webhook sequence + prose (verification gate 404/502, payability guard, refunds, double payment, shortfall, single signed id); §2.3 idempotency (fast path keyed on the payment id); §3.2/email table gains the three new warehouse events; **§8.5 item 5 is marked RESOLVED (Task 0.14)** and item 3/4 stay untouched (2.9 / 8.8).
+- **`src/admin/AGENTS.md`:** §4.3 atomic decrement + §4.3b review note the shortfall metadata and the new alert events.
+- **`src/tests/AGENTS.md`:** suite/test counts and the new cases per suite.
+- **Root `AGENTS.md`:** the §4 payment bullet gains the new webhook guarantees; the three test-count references are refreshed.
+- **`PRODUCTION_READINESS_TODO.md`:** 0.14 removed from §1/§3 and recorded in §2; baseline header refreshed.
+- **Commit:** single conventional commit on the task branch, after the human "wrap up and proceed".
 
 ---
 
 ## 6. Verification Sequence (workflow steps 6 → 8) — executed
 
-1. `pnpm test` — **697/697 tests across 76 suites, green** after rebasing onto the merged 0.12 + 0.13 work (+9 from this branch, zero regressions).
-2. **Negative verification:** the buggy `HEAD` sources were temporarily restored and the new suites re-run — 4 of the new tests fail (dispatch without a code, blank/whitespace code, the Admin `settings` contract, the production `500`), proving they are real regression guards, not tautologies. The fixed versions were then restored and `diff`-verified byte-for-byte.
-3. `pnpm build` — production bundle compiles (only the pre-existing chunk-size warning).
-4. `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` — all clean; the three touched `api/` files also pass the TODO 8.2 strict check (`tsc --noEmit --strict --module esnext --moduleResolution bundler --types node`).
-5. Adversarial read-only code review (independent reviewer, `git diff HEAD` + contract docs + an empirical reproduction against real `firebase-admin`): verdict **approve with findings**; F1–F6 (stale as-built docs, unclosed roadmap entry, stale test counts, shifted line refs, a pre-existing blanket claim, plan bookkeeping) all remediated, plus the stray `<<<<< HEAD` marker removed. No findings left open.
-6. Stop for human wrap-up; commit only on explicit **"wrap up and proceed"**.
+1. `pnpm test` — **726/726 across 76 suites**, zero regressions (baseline 697/697).
+2. **Negative verification:** the `api/` changes were stashed and the new suites re-run against `HEAD` — **22 of the 23 new/re-pointed tests failed** (the 23rd, the `PENDIENTE_TRANSFERENCIA` review case, was tightened with a matching `totalAmount` so it now fails too, and the R4 `cancelled` test was re-verified against the intermediate version that still listed `cancelled`). The remediation guards were re-verified the same way (R1/R5/R6 fail on the pre-remediation source; R4 fails against the intermediate one).
+3. `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` and the `api/` strict type-check (`--strict --target es2022 --module esnext --moduleResolution bundler --types node --skipLibCheck`) — all clean.
+4. Adversarial read-only code review (independent reviewer) — verdict *BLOCK* on one introduced defect, remediated in §7; all gates re-run green afterwards.
+5. Stop for human wrap-up; commit/push/PR only on the explicit **"wrap up and proceed"**.
 
 ---
 
-## 7. Rebase onto the Merged 0.12 + 0.13 Work (post-review)
+## 7. Adversarial Review Disposition (post-implementation)
 
-`origin/main` advanced to the merge of PR #23 (Tasks 0.12 + 0.13) while this branch was under review. The rebase applied commit 1 cleanly and produced six conflicts in commit 2, all resolved by hand:
+Verdict: **BLOCK** (one blocker + four minors + three nits + one pre-existing note). All valid findings remediated in the working tree; gates re-run green.
 
-| File | Conflict | Resolution |
-| :--- | :--- | :--- |
-| `api/track-order.ts` | Import block — their `resolveOrderByCanonicalId` helper vs. my `isSimulatedPaymentAllowed` + message constant | Both kept; `getCollectionName` dropped (the shared resolver owns the collection lookup now) |
-| `src/tests/api/track-order.test.ts` | Both sides appended tests at the same anchor | Both kept — the two Task 0.12 cases and my Task 0.16 describe block; 13 tests in the file, green |
-| `AGENTS.md` | Firestore-rules bullet + three test-count references | Took their 0.12 bullet (it already carries the backtick fix), then re-measured the counts |
-| `PRODUCTION_READINESS_TODO.md` | §2 resolved-table rows | All four rows kept (0.12, 0.13, 0.15, 0.16) |
-| `src/tests/AGENTS.md` | `api/` suite inventory + counts | Their base, with `firebaseAdmin` added to the list and the 0.15/0.16 paragraph appended |
-| `implementation_plan.md` | Whole-file (both tasks rewrote it) | Took this task's version — the file is a per-task volatile artifact by convention |
+| # | Sev | Finding | Disposition |
+| :-- | :-- | :--- | :--- |
+| R1 | BLOCKER | A refund parks an already-deducted order in the *payable* `PAGO_EN_REVISION`, so a later approved payment (or an admin approve) could deduct stock a second time | **Fixed** — an order's lines are deducted **at most once**: the webhook records an incident (not an approval) when the fresh order already carries `paidAt`/`approvedAt`, and `resolve-payment-review`'s approve is refused with `409` while cancel stays available. 3 new tests. |
+| R2 | MAJOR | As-built docs still described the pre-0.14 contract | **Fixed** — `api/AGENTS.md` (§2.2/§2.3/§3.2/§8.5 item 5), `src/admin/AGENTS.md` (§4.3/§4.3b), `src/tests/AGENTS.md`, root `AGENTS.md` and `PRODUCTION_READINESS_TODO.md` updated; this plan's status/counts corrected. |
+| R3 | MINOR | Incident branches are at-least-once (redelivery duplicates history + alert) | **Documented as accepted** — `api/AGENTS.md` §2.3 states the semantics and stops promising "duplicates never re-notify" for those two branches; no order field is added (the original payment id must be preserved). |
+| R4 | MINOR | `cancelled` treated as a reversal although MP only cancels unpaid payments | **Fixed** — `cancelled` dropped from the reversal set with the rationale in code + docs; the test pins the contract (verified to fail against the intermediate version). |
+| R5 | MINOR | A refund of a payment parked in review was invisible | **Fixed** — the reversal branch now records the incident for `PAGO_EN_REVISION` orders (no status change) + test. |
+| R6 | MINOR | `TRANSFERENCIA_APROBADA`/`ENTREGADO` incident cases promised by §4 were untested | **Fixed** — both fixtures added (2 tests). |
+| R7 | NIT | Prototype-key lookup in the warehouse hint/label maps | **Fixed** — own-property lookups, mirroring the admin router and `resolvePromo`. |
+| R8 | NIT | The new test describe deleted `MERCADOPAGO_*` env vars without restoring them | **Fixed** — backup/restore like the email describe. |
+| R9 | NIT | Partial refunds are invisible (MP keeps the payment `approved`) | **Documented** — recorded as a known limitation in `api/AGENTS.md` §2.2. |
+| P1 | pre-existing | Fractional `quantity` is not rounded before the stock write (all three consolidation loops) | **Deliberately not fixed** (out of scope; pre-existing, untouched by this diff). |
 
-Post-rebase verification: `pnpm test` **697/697 (76 suites)**, plus `pnpm lint`, `pnpm build`, `pnpm format:check` and `tsc --noEmit` clean. Every count reference in the repo was re-measured, not carried over.
+**Owner-visible deviation from the approved plan:** the roadmap's (d) listed `cancelled` as a reversal status; the review's MP documentation evidence (cancellations only apply to pending/in-process payments — no money collected) shows it can only create a false positive, so it was dropped and the rationale recorded in `api/AGENTS.md` §2.2.

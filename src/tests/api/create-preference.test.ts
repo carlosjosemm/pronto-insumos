@@ -26,15 +26,17 @@ function createMockRes() {
 /**
  * Firestore Admin double answering order + product lookups from fixture maps.
  *
- * `products` is keyed by product id, `orders` by order document id. When `orders`
- * is left as `'any'`, every order lookup resolves to a registered order carrying no
- * promo code (full price) — the shape the pre-promo assertions expect. Passing an
- * explicit map also exercises the `where('orderId','==')` fallback, because a
- * fixture may key the document by an id that differs from its `orderId` field.
+ * `products` is keyed by product id, `orders` by order document id. Every order
+ * fixture must carry its own `items`: since Task 0.14g the endpoint builds the
+ * preference lines from the ORDER DOCUMENT, never from the request body — the
+ * order is the same document the webhook later asserts the payment against.
+ * Passing an explicit map also exercises the `where('orderId','==')` fallback,
+ * because a fixture may key the document by an id that differs from its
+ * `orderId` field.
  */
 function mockAdminDbWithProducts(
   products: Record<string, Record<string, unknown>>,
-  orders: Record<string, Record<string, unknown>> | 'any' = 'any'
+  orders: Record<string, Record<string, unknown>> = {}
 ) {
   return {
     collection: vi.fn().mockImplementation((collectionName: string) => {
@@ -42,7 +44,6 @@ function mockAdminDbWithProducts(
       return {
         doc: vi.fn().mockImplementation((id: string) => ({
           get: vi.fn().mockImplementation(async () => {
-            if (source === 'any') return { exists: true, data: () => ({ orderId: id }) }
             const data = source[id]
             if (data === undefined) return { exists: false, data: () => null }
             return { exists: true, data: () => data }
@@ -51,7 +52,6 @@ function mockAdminDbWithProducts(
         where: vi.fn().mockImplementation((field: string, _op: string, value: unknown) => ({
           limit: vi.fn().mockReturnValue({
             get: vi.fn().mockImplementation(async () => {
-              if (source === 'any') return { empty: true, docs: [] }
               const hit = Object.entries(source).find(([, doc]) => doc[field] === value)
               if (!hit) return { empty: true, docs: [] }
               const [id, data] = hit
@@ -117,7 +117,9 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     expect(res.json).toHaveBeenCalledWith({ error: 'Method not allowed' })
   })
 
-  it('should return 400 Bad Request when orderId or items are missing', async () => {
+  it('should return 400 Bad Request when orderId is missing', async () => {
+    // Since Task 0.14g the request `items` are ignored (the order document owns
+    // the lines), so the only required parameter is the order id.
     const req = {
       method: 'POST',
       body: { items: [] }
@@ -179,9 +181,10 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       })
     } as Response)
 
-    const mockAdminDb = mockAdminDbWithProducts({
-      'odon-100': { name: 'Turbina LED', price: 189990, stockCount: 10, inStock: true }
-    })
+    const mockAdminDb = mockAdminDbWithProducts(
+      { 'odon-100': { name: 'Turbina LED', price: 189990, stockCount: 10, inStock: true } },
+      { 'PRONTO-777888': { orderId: 'PRONTO-777888', items: [{ productId: 'odon-100', quantity: 2 }] } }
+    )
     vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
@@ -234,9 +237,10 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       })
     } as Response)
 
-    const mockAdminDb = mockAdminDbWithProducts({
-      'odon-1': { name: 'Item', price: 10000, stockCount: 10, inStock: true }
-    })
+    const mockAdminDb = mockAdminDbWithProducts(
+      { 'odon-1': { name: 'Item', price: 10000, stockCount: 10, inStock: true } },
+      { 'PRONTO-LOWERCASE-123': { orderId: 'PRONTO-LOWERCASE-123', items: [{ productId: 'odon-1', quantity: 1 }] } }
+    )
     vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
     const req = {
@@ -267,10 +271,16 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       inStock: true
     }
 
-    function mockHappyCatalog(orderId: string = 'PRONTO-100001', promoCode?: string) {
+    function mockHappyCatalog(orderId: string = 'PRONTO-100001', promoCode?: string, quantity: number = 1) {
       const mockAdminDb = mockAdminDbWithProducts(
         { 'odon-101': catalogTurbine },
-        { [orderId]: { orderId, ...(promoCode ? { promoCode } : {}) } }
+        {
+          [orderId]: {
+            orderId,
+            ...(promoCode ? { promoCode } : {}),
+            items: [{ productId: 'odon-101', quantity }]
+          }
+        }
       )
       vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
       process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
@@ -304,7 +314,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     })
 
     it('should apply the discount stored on the ORDER document, not the request body', async () => {
-      const fetchSpy = mockHappyCatalog('PRONTO-100003', 'PRONTO10')
+      const fetchSpy = mockHappyCatalog('PRONTO-100003', 'PRONTO10', 2)
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       const req = {
@@ -374,10 +384,98 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       consoleSpy.mockRestore()
     })
 
+    it('should charge the ORDER DOCUMENT lines even when the request body diverges (Task 0.14g)', async () => {
+      // The order says 2 units of odon-101; the body claims 1 unit of a different
+      // (cheaper) product. Before 0.14g the body priced the preference, which the
+      // webhook then refused as an amount mismatch; now the order wins outright.
+      const fetchSpy = mockHappyCatalog('PRONTO-100010', undefined, 2)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'pronto-insumos.cl' },
+        body: {
+          orderId: 'PRONTO-100010',
+          items: [{ product: { id: 'odon-999', name: 'Otro insumo', price: 1 }, quantity: 1 }],
+          customer: { fullName: 'Dr. Test' }
+        }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      const sentPayload = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+      expect(sentPayload.items).toHaveLength(1)
+      expect(sentPayload.items[0]).toMatchObject({ id: 'odon-101', quantity: 2, unit_price: 189990 })
+      consoleSpy.mockRestore()
+    })
+
+    it('should build the preference from the order document when the request omits items entirely', async () => {
+      const fetchSpy = mockHappyCatalog('PRONTO-100011')
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'pronto-insumos.cl' },
+        body: {
+          orderId: 'PRONTO-100011',
+          customer: { fullName: 'Dr. Test' }
+        }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      const sentPayload = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+      expect(sentPayload.items[0]).toMatchObject({ id: 'odon-101', quantity: 1, unit_price: 189990 })
+      consoleSpy.mockRestore()
+    })
+
+    it('should refuse with 400 when the order document has no registered items', async () => {
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': catalogTurbine },
+        { 'PRONTO-100012': { orderId: 'PRONTO-100012' } }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const fetchSpy = vi.spyOn(global, 'fetch')
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'pronto-insumos.cl' },
+        body: {
+          orderId: 'PRONTO-100012',
+          items: [{ product: { id: 'odon-101', name: 'Turbina', price: 189990 }, quantity: 1 }],
+          customer: { fullName: 'Dr. Test' }
+        }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('no tiene insumos registrados')
+        })
+      )
+      expect(fetchSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
     it('should resolve the order through the orderId field fallback when the doc key differs', async () => {
       const mockAdminDb = mockAdminDbWithProducts(
         { 'odon-101': catalogTurbine },
-        { 'legacy-doc-key': { orderId: 'PRONTO-100008', promoCode: 'DENT20' } }
+        {
+          'legacy-doc-key': {
+            orderId: 'PRONTO-100008',
+            promoCode: 'DENT20',
+            items: [{ productId: 'odon-101', quantity: 1 }]
+          }
+        }
       )
       vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
       process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
@@ -437,9 +535,10 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     })
 
     it('should refuse with 400 when the product is paused (isActive: false)', async () => {
-      const mockAdminDb = mockAdminDbWithProducts({
-        'odon-101': { ...catalogTurbine, isActive: false }
-      })
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': { ...catalogTurbine, isActive: false } },
+        { 'PRONTO-100009': { orderId: 'PRONTO-100009', items: [{ productId: 'odon-101', quantity: 1 }] } }
+      )
       vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
       process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -471,7 +570,10 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
     it('should return 400 when a line carries no resolvable productId (Task 2.3 bypass closed)', async () => {
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const mockAdminDb = mockAdminDbWithProducts({})
+      const mockAdminDb = mockAdminDbWithProducts(
+        {},
+        { 'PRONTO-100005': { orderId: 'PRONTO-100005', items: [{ name: 'Insumo anónimo', quantity: 1 }] } }
+      )
       vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
       const req = {
@@ -523,9 +625,10 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
   describe('Pre-flight inventory validation (Firestore Admin)', () => {
     it('should return 400 Bad Request when requested item quantity exceeds available stock', async () => {
-      const mockAdminDb = mockAdminDbWithProducts({
-        'odon-101': { name: 'Turbina Odontológica LED MasterTorque', price: 189990, stockCount: 3, inStock: true }
-      })
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': { name: 'Turbina Odontológica LED MasterTorque', price: 189990, stockCount: 3, inStock: true } },
+        { 'PRONTO-112233': { orderId: 'PRONTO-112233', items: [{ productId: 'odon-101', quantity: 5 }] } }
+      )
       vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
       const req = {
@@ -555,9 +658,10 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     })
 
     it('should return 400 Bad Request when requested item is marked inStock: false', async () => {
-      const mockAdminDb = mockAdminDbWithProducts({
-        'odon-501': { name: 'Lidocaína 2%', price: 38500, stockCount: 0, inStock: false }
-      })
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-501': { name: 'Lidocaína 2%', price: 38500, stockCount: 0, inStock: false } },
+        { 'PRONTO-112234': { orderId: 'PRONTO-112234', items: [{ productId: 'odon-501', quantity: 1 }] } }
+      )
       vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
       const req = {
@@ -585,7 +689,10 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     })
 
     it('should return 400 Bad Request when requested item does not exist in Firestore', async () => {
-      const mockAdminDb = mockAdminDbWithProducts({})
+      const mockAdminDb = mockAdminDbWithProducts(
+        {},
+        { 'PRONTO-112235': { orderId: 'PRONTO-112235', items: [{ productId: 'odon-ghost', quantity: 1 }] } }
+      )
       vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
       const req = {
@@ -613,9 +720,10 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     })
 
     it('should proceed successfully when stock is available in Firestore Admin', async () => {
-      const mockAdminDb = mockAdminDbWithProducts({
-        'odon-101': { name: 'Turbina Odontológica LED MasterTorque', price: 189990, stockCount: 15, inStock: true }
-      })
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': { name: 'Turbina Odontológica LED MasterTorque', price: 189990, stockCount: 15, inStock: true } },
+        { 'PRONTO-112236': { orderId: 'PRONTO-112236', items: [{ productId: 'odon-101', quantity: 2 }] } }
+      )
       vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
 
       const req = {
@@ -699,6 +807,11 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     it('should keep the simulated fallback in production when ALLOW_SIMULATED_PAYMENTS=true (escape hatch)', async () => {
       process.env.VERCEL_ENV = 'production'
       process.env.ALLOW_SIMULATED_PAYMENTS = 'true'
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-1': { name: 'Turbina', price: 189990, stockCount: 10, inStock: true } },
+        { 'PRONTO-654321': { orderId: 'PRONTO-654321', items: [{ productId: 'odon-1', quantity: 1 }] } }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       const req = {

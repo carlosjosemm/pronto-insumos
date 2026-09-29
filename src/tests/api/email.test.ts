@@ -209,6 +209,29 @@ describe('Email Templates (api/_lib/emailTemplates.ts)', () => {
     expect(tpl.html).toContain('Banco de Chile')
   })
 
+  it('should build warehouse alerts for the Task 0.14 reconciliation events', () => {
+    const duplicate = buildWarehouseAlertEmail(sampleOrderData, 'PAGO_DUPLICADO')
+    expect(duplicate.subject).toContain('Doble pago detectado')
+    expect(duplicate.text).toContain('reembolso')
+
+    const invalidStatus = buildWarehouseAlertEmail(sampleOrderData, 'PAGO_ESTADO_INVALIDO')
+    expect(invalidStatus.subject).toContain('no admite pago')
+
+    const refunded = buildWarehouseAlertEmail(sampleOrderData, 'PAGO_REEMBOLSADO')
+    expect(refunded.subject).toContain('reembolsado')
+    expect(refunded.text).toContain('contracargado')
+  })
+
+  it('should append the stock shortfall sentence to the warehouse alert (Task 0.14e)', () => {
+    const tpl = buildWarehouseAlertEmail(sampleOrderData, 'PAGADO_MERCADOPAGO', [
+      { productId: 'odon-101', name: 'Turbina', requested: 3, available: 1 }
+    ])
+
+    expect(tpl.text).toContain('Stock insuficiente')
+    expect(tpl.text).toContain('2× «Turbina»')
+    expect(tpl.html).toContain('Stock insuficiente')
+  })
+
   it('should HTML-escape malicious customer-supplied values', () => {
     const malicious: OrderEmailData = {
       ...sampleOrderData,

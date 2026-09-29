@@ -17,6 +17,7 @@ interface MockDbOptions {
   productData?: Record<string, unknown> | null
   directLookupMisses?: boolean
   onProductUpdate?: (data: Record<string, unknown>) => void
+  onSet?: (data: Record<string, unknown>) => void
 }
 
 /** Firestore Admin double for the review-resolution transaction. */
@@ -29,7 +30,8 @@ function mockReviewDb(options: MockDbOptions = {}) {
     },
     productData = { stockCount: 10, inStock: true, name: 'Turbina', sku: 'OD-101' },
     directLookupMisses = false,
-    onProductUpdate
+    onProductUpdate,
+    onSet
   } = options
 
   // The handler performs a direct doc read before entering the transaction.
@@ -76,7 +78,9 @@ function mockReviewDb(options: MockDbOptions = {}) {
         update: vi.fn((ref: unknown, data: Record<string, unknown>) => {
           if (ref === mockProductRef) onProductUpdate?.(data)
         }),
-        set: vi.fn()
+        set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
+          onSet?.(data)
+        })
       }
       return await callback(transaction)
     })
@@ -324,6 +328,55 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
     expect(jsonOutput.currentStatus).toBe('PAGADO_MERCADOPAGO')
   })
 
+  it('refuses to approve (409) when the order already carries a settlement marker (R1)', async () => {
+    // A refunded payment parks the order in review while paidAt survives: the
+    // stock was already deducted once, so approving must never deduct again.
+    const captured: { current: Record<string, unknown> | null } = { current: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockReviewDb({
+        orderData: {
+          orderId: 'PRONTO-123456',
+          status: 'PAGO_EN_REVISION',
+          paidAt: '2026-09-01T12:00:00.000Z',
+          items: [{ productId: 'odon-101', quantity: 2 }]
+        },
+        onProductUpdate: (data) => (captured.current = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler(
+      { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+      mockRes as VercelResponse
+    )
+
+    expect(statusOutput).toBe(409)
+    expect(jsonOutput.success).toBe(false)
+    expect(jsonOutput.error).toContain('stock rebajado')
+    expect(captured.current).toBeNull()
+  })
+
+  it('still cancels a settled-in-review order — the correct resolution for a refund (R1)', async () => {
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockReviewDb({
+        orderData: {
+          orderId: 'PRONTO-123456',
+          status: 'PAGO_EN_REVISION',
+          paidAt: '2026-09-01T12:00:00.000Z',
+          items: [{ productId: 'odon-101', quantity: 2 }]
+        }
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler(
+      { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'cancel' } } as VercelRequest,
+      mockRes as VercelResponse
+    )
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.success).toBe(true)
+    expect(jsonOutput.status).toBe('CANCELADO')
+  })
+
   describe('Transactional emails (Resend)', () => {
     let resendKeyBackup: string | undefined
     let warehouseBackup: string | undefined
@@ -403,6 +456,49 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
       expect(resendCalls).toHaveLength(1)
       const recipients = resendCalls.map((c) => (JSON.parse(c[1]?.body as string).to as string[])[0])
       expect(recipients).toEqual(['bodega@prontoinsumos.com'])
+    })
+
+    it('approve records a stock shortfall in the audit/history metadata and the warehouse alert (Task 0.14e)', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
+
+      const setDocs: Array<Record<string, unknown>> = []
+      vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+        mockReviewDb({
+          orderData: {
+            ...orderWithCustomer,
+            totalAmount: 569970,
+            items: [{ productId: 'odon-101', name: 'Turbina', quantity: 3, price: 189990 }]
+          },
+          productData: { stockCount: 1, inStock: true, name: 'Turbina', sku: 'OD-101' },
+          onSet: (data) => setDocs.push(data)
+        }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+      )
+
+      await handler(
+        { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+        mockRes as VercelResponse
+      )
+
+      expect(statusOutput).toBe(200)
+      expect(jsonOutput.success).toBe(true)
+
+      const auditDoc = setDocs.find((doc) => doc.changeType === 'ORDER_FULFILLMENT_DEDUCTION')
+      const historyDoc = setDocs.find((doc) => doc.newStatus === 'PAGADO_MERCADOPAGO')
+      expect(auditDoc?.metadata).toMatchObject({ stockShortfall: 2 })
+      expect(historyDoc?.metadata).toMatchObject({
+        stockShortfalls: [{ productId: 'odon-101', name: 'Turbina', requested: 3, available: 1 }]
+      })
+
+      const warehouseSend = fetchSpy.mock.calls
+        .filter((c) => String(c[0]).includes('api.resend.com'))
+        .find((c) => (JSON.parse(c[1]?.body as string).to as string[])[0] === 'bodega@prontoinsumos.com')
+      expect(warehouseSend).toBeDefined()
+      const payload = JSON.parse(warehouseSend?.[1]?.body as string)
+      expect(payload.text).toContain('Stock insuficiente')
     })
 
     it('still returns 200 when the email provider is down', async () => {

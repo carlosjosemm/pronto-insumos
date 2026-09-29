@@ -335,6 +335,78 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
       expect(recipients).toContain('bodega@prontoinsumos.com')
     })
 
+    it('should record a stock shortfall in the audit/history metadata and the warehouse alert (Task 0.14e)', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
+
+      const mockOrderData = {
+        orderId: 'PRONTO-SHORT',
+        status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+        totalAmount: 284985,
+        items: [{ productId: 'odon-101', name: 'Turbina', quantity: 3, price: 94995 }],
+        customer: {
+          fullName: 'Dra. Andrea',
+          email: 'andrea@clinica.cl',
+          rut: '12345678-5',
+          address: 'Calle 1',
+          city: 'Melipilla'
+        }
+      }
+      const mockOrderRef = { get: vi.fn().mockResolvedValue({ exists: true }) }
+      const mockProductRef = {}
+      const setDocs: Array<Record<string, unknown>> = []
+      const mockDb = {
+        collection: vi.fn((name: string) => {
+          if (name === 'orders') return { doc: vi.fn(() => mockOrderRef) }
+          if (name === 'products') return { doc: vi.fn(() => mockProductRef) }
+          return { doc: vi.fn(() => ({ id: 'mock-id' })) }
+        }),
+        runTransaction: vi.fn(async (callback) => {
+          const mockTransaction = {
+            get: vi.fn(async (ref: unknown) => {
+              if (ref === mockOrderRef) return { exists: true, data: () => mockOrderData }
+              if (ref === mockProductRef) {
+                return { exists: true, data: () => ({ stockCount: 1, inStock: true, name: 'Turbina' }) }
+              }
+              return { exists: false }
+            }),
+            update: vi.fn(),
+            set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
+              setDocs.push(data)
+            })
+          }
+          return await callback(mockTransaction)
+        })
+      }
+      vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+        mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+      )
+
+      const req = { method: 'POST', body: { orderId: 'PRONTO-SHORT' } } as VercelRequest
+      await handler(req, mockRes as VercelResponse)
+
+      expect(statusOutput).toBe(200)
+      expect(jsonOutput.success).toBe(true)
+
+      const auditDoc = setDocs.find((doc) => doc.changeType === 'ORDER_FULFILLMENT_DEDUCTION')
+      const historyDoc = setDocs.find((doc) => doc.newStatus === 'TRANSFERENCIA_APROBADA')
+      expect(auditDoc?.metadata).toMatchObject({ stockShortfall: 2 })
+      expect(historyDoc?.metadata).toMatchObject({
+        stockShortfalls: [{ productId: 'odon-101', name: 'Turbina', requested: 3, available: 1 }]
+      })
+
+      const warehouseSend = fetchSpy.mock.calls
+        .filter((c) => String(c[0]).includes('api.resend.com'))
+        .find((c) => (JSON.parse(c[1]?.body as string).to as string[])[0] === 'bodega@prontoinsumos.com')
+      expect(warehouseSend).toBeDefined()
+      const payload = JSON.parse(warehouseSend?.[1]?.body as string)
+      expect(payload.text).toContain('Stock insuficiente')
+    })
+
     it('should still return 200 when email sending fails (non-blocking)', async () => {
       process.env.RESEND_API_KEY = 're_test_key'
       process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'

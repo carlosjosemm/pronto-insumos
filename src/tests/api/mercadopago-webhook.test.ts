@@ -107,7 +107,9 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     )
   })
 
-  it('should handle failed Mercado Pago payment verification safely', async () => {
+  it('should acknowledge 200 when Mercado Pago reports the payment does not exist (404)', async () => {
+    // Task 0.14a: 404 is the ONE MP failure that is safe to acknowledge — there
+    // is no payment to reconcile. Every other failure is refused with 502.
     vi.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: false,
       status: 404,
@@ -128,7 +130,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         received: true,
-        note: expect.stringContaining('verification failed')
+        note: 'Payment not found at Mercado Pago'
       })
     )
     consoleSpy.mockRestore()
@@ -859,6 +861,117 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
       expect(resendCalls(fetchSpy).length).toBeGreaterThan(0)
     })
+
+    it('should alert the warehouse (and never the customer) on a double payment (Task 0.14b)', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+        if (String(input).includes('api.resend.com')) {
+          return { ok: true, status: 200, json: async () => ({ id: 'email_xyz' }), text: async () => '' } as Response
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'approved',
+            external_reference: 'PRONTO-123456',
+            id: 111111,
+            transaction_amount: 189990
+          })
+        } as Response
+      })
+
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'PAGADO_MERCADOPAGO',
+        mercadopagoPaymentId: '999999',
+        totalAmount: 189990,
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }],
+        customer: { fullName: 'Dra. Andrea', email: 'andrea@clinica.cl', rut: '12345678-5' }
+      }
+      const mockAdminDb = {
+        collection: vi.fn((colName: string) => {
+          if (colName === 'orders') {
+            return orderCollectionMock([
+              { id: 'order-doc-abc', ref: { id: 'order-doc-abc' }, data: () => orderFixture }
+            ])
+          }
+          return { doc: vi.fn().mockReturnValue({ id: 'history-dummy-id' }) }
+        }),
+        runTransaction: vi.fn(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
+          await cb({
+            get: vi.fn().mockResolvedValue({ exists: true, data: () => orderFixture }),
+            update: vi.fn(),
+            set: vi.fn()
+          })
+        })
+      }
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '111111' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      const sends = resendCalls(fetchSpy)
+      expect(sends).toHaveLength(1)
+      expect(resendRecipient(sends[0])).toBe('bodega@prontoinsumos.com')
+      const payload = JSON.parse(((sends[0][1] as RequestInit | undefined)?.body ?? '{}') as string)
+      expect(payload.subject).toContain('Doble pago detectado')
+    })
+
+    it('should surface a stock shortfall in the warehouse payment alert (Task 0.14e)', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      const fetchSpy = mockFetchBoundaries()
+
+      const orderRef = { id: 'order-doc-abc' }
+      const productRef = { id: 'prod-turbine-1' }
+      const orderData = {
+        orderId: 'PRONTO-123456',
+        status: 'PENDIENTE_PAGO_MERCADOPAGO',
+        totalAmount: 189990,
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }],
+        customer: { fullName: 'Dra. Andrea', email: 'andrea@clinica.cl', rut: '12345678-5' }
+      }
+      const mockAdminDb = {
+        collection: vi.fn((colName: string) => {
+          if (colName === 'orders') {
+            return orderCollectionMock([{ id: 'order-doc-abc', ref: orderRef, data: () => orderData }])
+          }
+          if (colName === 'products') {
+            return { doc: vi.fn().mockReturnValue(productRef) }
+          }
+          return { doc: vi.fn().mockReturnValue({ id: 'audit-dummy-id' }) }
+        }),
+        runTransaction: vi.fn(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
+          await cb({
+            get: vi.fn().mockImplementation((ref: { id?: string }) =>
+              ref?.id === 'order-doc-abc'
+                ? Promise.resolve({ exists: true, data: () => orderData })
+                : Promise.resolve({
+                    exists: true,
+                    data: () => ({ stockCount: 1, inStock: true, price: 94995, name: 'Turbina' })
+                  })
+            ),
+            update: vi.fn(),
+            set: vi.fn()
+          })
+        })
+      }
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      const warehouseSend = resendCalls(fetchSpy).find((call) => resendRecipient(call) === 'bodega@prontoinsumos.com')
+      expect(warehouseSend).toBeDefined()
+      const payload = JSON.parse(((warehouseSend?.[1] as RequestInit | undefined)?.body ?? '{}') as string)
+      expect(payload.text).toContain('Stock insuficiente')
+    })
   })
 
   describe('Server-side amount verification (Task 0.9 — underpayment exploit)', () => {
@@ -1131,6 +1244,606 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     })
   })
 
+  describe('Reconciliation guards (Task 0.14)', () => {
+    let resendKeyBackup: string | undefined
+    let warehouseBackup: string | undefined
+    let webhookSecretBackup: string | undefined
+    let accessTokenBackup: string | undefined
+
+    beforeEach(() => {
+      resendKeyBackup = process.env.RESEND_API_KEY
+      warehouseBackup = process.env.WAREHOUSE_NOTIFICATION_EMAIL
+      webhookSecretBackup = process.env.MERCADOPAGO_WEBHOOK_SECRET
+      accessTokenBackup = process.env.MERCADOPAGO_ACCESS_TOKEN
+      delete process.env.RESEND_API_KEY
+      delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
+      delete process.env.MERCADOPAGO_WEBHOOK_SECRET
+      delete process.env.MERCADOPAGO_ACCESS_TOKEN
+    })
+
+    afterEach(() => {
+      if (resendKeyBackup === undefined) delete process.env.RESEND_API_KEY
+      else process.env.RESEND_API_KEY = resendKeyBackup
+      if (warehouseBackup === undefined) delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
+      else process.env.WAREHOUSE_NOTIFICATION_EMAIL = warehouseBackup
+      if (webhookSecretBackup === undefined) delete process.env.MERCADOPAGO_WEBHOOK_SECRET
+      else process.env.MERCADOPAGO_WEBHOOK_SECRET = webhookSecretBackup
+      if (accessTokenBackup === undefined) delete process.env.MERCADOPAGO_ACCESS_TOKEN
+      else process.env.MERCADOPAGO_ACCESS_TOKEN = accessTokenBackup
+    })
+
+    /** Order + product doubles with captured transaction writes. */
+    function mockReconciliationDb(
+      orderFixture: Record<string, unknown>,
+      productFixture: Record<string, unknown> = { stockCount: 5, inStock: true, price: 94995, name: 'Turbina' }
+    ) {
+      const orderRef = { id: 'order-doc-abc' }
+      const productRef = { id: 'prod-turbine-1' }
+      const transactionUpdate = vi.fn()
+      const transactionSet = vi.fn()
+      const transactionGet = vi
+        .fn()
+        .mockImplementation((ref: { id?: string }) =>
+          ref?.id === 'order-doc-abc'
+            ? Promise.resolve({ exists: true, data: () => orderFixture })
+            : Promise.resolve({ exists: true, data: () => productFixture })
+        )
+      const mockAdminDb = {
+        collection: vi.fn((colName: string) => {
+          if (colName === 'orders') {
+            return orderCollectionMock([{ id: 'order-doc-abc', ref: orderRef, data: () => orderFixture }])
+          }
+          if (colName === 'products') {
+            return { doc: vi.fn().mockReturnValue(productRef) }
+          }
+          return { doc: vi.fn().mockReturnValue({ id: 'audit-dummy-id' }) }
+        }),
+        runTransaction: vi.fn(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
+          await cb({ get: transactionGet, update: transactionUpdate, set: transactionSet })
+        })
+      }
+      return { mockAdminDb, orderRef, productRef, transactionUpdate, transactionSet }
+    }
+
+    /** MP API double answering an approved payment with the given id/amount. */
+    function mockApprovedPayment(id: number = 998877, amount: number = 189990) {
+      return vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 'approved',
+          external_reference: 'PRONTO-123456',
+          id,
+          transaction_amount: amount
+        })
+      } as Response)
+    }
+
+    /** MP API double answering a non-approved payment status (refunds etc.). */
+    function mockPaymentStatus(status: string, id: number = 998877, amount: number = 189990) {
+      return vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status,
+          external_reference: 'PRONTO-123456',
+          id,
+          transaction_amount: amount
+        })
+      } as Response)
+    }
+
+    it('should return 502 and refuse to acknowledge when Mercado Pago rejects the verification with 401', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized'
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(502)
+      expect(res.json).toHaveBeenCalledWith({ error: 'Mercado Pago verification unavailable' })
+      expect(getAdminFirestore).not.toHaveBeenCalled()
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('MP verification failed'))
+      consoleSpy.mockRestore()
+    })
+
+    it('should return 502 when the Mercado Pago API itself fails with a 500', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error'
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(502)
+      expect(getAdminFirestore).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('should use the same signed id for the signature and the Mercado Pago fetch (Task 0.14f)', async () => {
+      const testSecret = 'secret_webhook_key_12345'
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = testSecret
+
+      // The signed query id is 998877; the body carries a different id.
+      const requestId = 'req-test-uuid-valid'
+      const ts = '1710372000'
+      const manifest = `id:998877;request-id:${requestId};ts:${ts};`
+      const validHash = (await import('crypto')).default.createHmac('sha256', testSecret).update(manifest).digest('hex')
+
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'rejected', external_reference: 'PRONTO-123456', id: 998877 })
+      } as Response)
+
+      const req = {
+        method: 'POST',
+        headers: { 'x-signature': `ts=${ts},v1=${validHash}`, 'x-request-id': requestId },
+        query: { 'data.id': '998877' },
+        body: { data: { id: '111111' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+      expect(String(fetchSpy.mock.calls[0][0])).toContain('/v1/payments/998877')
+      expect(String(fetchSpy.mock.calls[0][0])).not.toContain('111111')
+      expect(res.status).toHaveBeenCalledWith(200)
+    })
+
+    it('should record a double-payment incident instead of acking a second approved payment as duplicate', async () => {
+      mockApprovedPayment(111111)
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'PAGADO_MERCADOPAGO',
+        mercadopagoPaymentId: '999999',
+        totalAmount: 189990,
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }],
+        customer: { fullName: 'Dra. Andrea', email: 'andrea@clinica.cl' }
+      }
+      const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '111111' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
+      // The payment that settled the order is never overwritten and no stock moves.
+      expect(transactionUpdate).not.toHaveBeenCalled()
+      expect(transactionSet).toHaveBeenCalledTimes(1)
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          previousStatus: 'PAGADO_MERCADOPAGO',
+          newStatus: 'PAGADO_MERCADOPAGO',
+          reason: expect.stringContaining('Segundo pago aprobado'),
+          metadata: expect.objectContaining({
+            event: 'PAGO_DUPLICADO',
+            paymentId: '111111',
+            previousPaymentId: '999999'
+          })
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should park a CANCELADO order in PAGO_EN_REVISION without stock movement when a payment is approved', async () => {
+      mockApprovedPayment()
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'CANCELADO',
+        totalAmount: 189990,
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, orderRef, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      // Exactly one write: the order is parked for review. No product is touched.
+      expect(transactionUpdate).toHaveBeenCalledTimes(1)
+      expect(transactionUpdate).toHaveBeenCalledWith(
+        orderRef,
+        expect.objectContaining({ status: 'PAGO_EN_REVISION', mercadopagoPaymentId: '998877' })
+      )
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          previousStatus: 'CANCELADO',
+          newStatus: 'PAGO_EN_REVISION',
+          metadata: expect.objectContaining({ event: 'PAGO_ESTADO_INVALIDO', paymentId: '998877' })
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should record an incident without a status flip or stock movement for an approved payment on a DESPACHADO order', async () => {
+      mockApprovedPayment()
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'DESPACHADO',
+        mercadopagoPaymentId: '999999',
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      // Fulfilment state is preserved (tracking must not regress) — incident only.
+      expect(transactionUpdate).not.toHaveBeenCalled()
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          previousStatus: 'DESPACHADO',
+          newStatus: 'DESPACHADO',
+          metadata: expect.objectContaining({ event: 'PAGO_DUPLICADO' })
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should park a PENDIENTE_TRANSFERENCIA order in review when an approved payment arrives', async () => {
+      mockApprovedPayment()
+      // The amount matches the catalog exactly: only the ORDER-STATUS GUARD can
+      // stop this payment — the pre-0.14 code would approve it.
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'PENDIENTE_TRANSFERENCIA',
+        totalAmount: 189990,
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, orderRef, transactionUpdate } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(transactionUpdate).toHaveBeenCalledTimes(1)
+      expect(transactionUpdate).toHaveBeenCalledWith(orderRef, expect.objectContaining({ status: 'PAGO_EN_REVISION' }))
+      consoleSpy.mockRestore()
+    })
+
+    it('should record an incident instead of deducting stock again when the order was already settled once (R1)', async () => {
+      // A refunded payment parks the order in PAGO_EN_REVISION while paidAt (and
+      // the first stock deduction) survive. An order's lines are deducted AT MOST
+      // ONCE, so a later approved payment must not run the deduction again.
+      mockApprovedPayment()
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'PAGO_EN_REVISION',
+        paidAt: '2026-09-01T12:00:00.000Z',
+        mercadopagoPaymentId: '999999',
+        totalAmount: 189990,
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      // No order flip and no product update — the incident is recorded only.
+      expect(transactionUpdate).not.toHaveBeenCalled()
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          previousStatus: 'PAGO_EN_REVISION',
+          newStatus: 'PAGO_EN_REVISION',
+          reason: expect.stringContaining('mercadería ya fue rebajada'),
+          metadata: expect.objectContaining({ event: 'PAGO_DUPLICADO' })
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should record a refund incident for a payment parked in review without a status change (R5)', async () => {
+      mockPaymentStatus('refunded')
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'PAGO_EN_REVISION',
+        mercadopagoPaymentId: '998877',
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(transactionUpdate).not.toHaveBeenCalled()
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          previousStatus: 'PAGO_EN_REVISION',
+          newStatus: 'PAGO_EN_REVISION',
+          metadata: expect.objectContaining({ event: 'PAGO_REEMBOLSADO' })
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should ignore a cancelled payment notification — a cancellation never collected money (R4)', async () => {
+      mockPaymentStatus('cancelled')
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'PAGADO_MERCADOPAGO',
+        mercadopagoPaymentId: '998877',
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(transactionUpdate).not.toHaveBeenCalled()
+      expect(transactionSet).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('should record an incident for an approved payment on a TRANSFERENCIA_APROBADA order (R6)', async () => {
+      mockApprovedPayment()
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'TRANSFERENCIA_APROBADA',
+        approvedAt: '2026-09-01T12:00:00.000Z',
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(transactionUpdate).not.toHaveBeenCalled()
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          previousStatus: 'TRANSFERENCIA_APROBADA',
+          newStatus: 'TRANSFERENCIA_APROBADA',
+          metadata: expect.objectContaining({ event: 'PAGO_DUPLICADO' })
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should record an incident for an approved payment on an ENTREGADO order (R6)', async () => {
+      mockApprovedPayment()
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'ENTREGADO',
+        mercadopagoPaymentId: '999999',
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(transactionUpdate).not.toHaveBeenCalled()
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          previousStatus: 'ENTREGADO',
+          newStatus: 'ENTREGADO',
+          metadata: expect.objectContaining({ event: 'PAGO_DUPLICADO' })
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should park a PAGADO_MERCADOPAGO order in PAGO_EN_REVISION when its payment is refunded', async () => {
+      mockPaymentStatus('refunded')
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'PAGADO_MERCADOPAGO',
+        mercadopagoPaymentId: '998877',
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, orderRef, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'refunded' })
+      expect(transactionUpdate).toHaveBeenCalledTimes(1)
+      expect(transactionUpdate).toHaveBeenCalledWith(orderRef, expect.objectContaining({ status: 'PAGO_EN_REVISION' }))
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          previousStatus: 'PAGADO_MERCADOPAGO',
+          newStatus: 'PAGO_EN_REVISION',
+          reason: expect.stringContaining('reembolsado'),
+          metadata: expect.objectContaining({ event: 'PAGO_REEMBOLSADO', paymentId: '998877' })
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should record a chargeback incident without a status flip on a DESPACHADO order', async () => {
+      mockPaymentStatus('charged_back')
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'DESPACHADO',
+        mercadopagoPaymentId: '998877',
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(transactionUpdate).not.toHaveBeenCalled()
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          previousStatus: 'DESPACHADO',
+          newStatus: 'DESPACHADO',
+          reason: expect.stringContaining('contracargado'),
+          metadata: expect.objectContaining({ event: 'PAGO_REEMBOLSADO' })
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should ignore a refund of a payment that did not settle the order', async () => {
+      mockPaymentStatus('refunded', 111111)
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'PAGADO_MERCADOPAGO',
+        mercadopagoPaymentId: '999999',
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '111111' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(transactionUpdate).not.toHaveBeenCalled()
+      expect(transactionSet).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('should approve an oversold order but record the stock shortfall in the history and audit metadata', async () => {
+      // Catalog stock is 1; the order (and the paid amount) says 3 — the sale is
+      // approved (the money is taken) and the 2-unit shortfall is recorded.
+      mockApprovedPayment(998877, 284985)
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'PENDIENTE_PAGO_MERCADOPAGO',
+        totalAmount: 284985,
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 3 }]
+      }
+      const { mockAdminDb, orderRef, productRef, transactionUpdate, transactionSet } = mockReconciliationDb(
+        orderFixture,
+        { stockCount: 1, inStock: true, price: 94995, name: 'Turbina' }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(transactionUpdate).toHaveBeenCalledWith(
+        orderRef,
+        expect.objectContaining({ status: 'PAGADO_MERCADOPAGO' })
+      )
+      expect(transactionUpdate).toHaveBeenCalledWith(
+        productRef,
+        expect.objectContaining({ stockCount: 0, inStock: false })
+      )
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            stockShortfalls: [{ productId: 'prod-turbine-1', name: 'Turbina', requested: 3, available: 1 }]
+          })
+        })
+      )
+      expect(transactionSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          metadata: expect.objectContaining({ stockShortfall: 2 })
+        })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('should not attach shortfall metadata when the catalog covers the order', async () => {
+      mockApprovedPayment()
+      const orderFixture = {
+        orderId: 'PRONTO-123456',
+        status: 'PENDIENTE_PAGO_MERCADOPAGO',
+        totalAmount: 189990,
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+      const { mockAdminDb, transactionSet } = mockReconciliationDb(orderFixture)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      const setDocs = transactionSet.mock.calls.map((call) => call[1] as Record<string, unknown>)
+      const historyDoc = setDocs.find((doc) => doc.newStatus === 'PAGADO_MERCADOPAGO')
+      const auditDoc = setDocs.find((doc) => doc.changeType === 'ORDER_FULFILLMENT_DEDUCTION')
+      expect(historyDoc).toBeDefined()
+      expect(auditDoc).toBeDefined()
+      expect(historyDoc?.metadata).not.toHaveProperty('stockShortfalls')
+      expect(auditDoc?.metadata).not.toHaveProperty('stockShortfall')
+      consoleSpy.mockRestore()
+    })
+  })
+
   describe('Production fail-closed configuration gates (Task 0.10)', () => {
     const testSecret = 'secret_webhook_key_12345'
     const initialSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET
@@ -1238,15 +1951,13 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           received: true,
-          note: expect.stringContaining('verification failed')
+          note: 'Payment not found at Mercado Pago'
         })
       )
       consoleSpy.mockRestore()
     })
 
-    it("should not gate a production runtime with real credentials (MP API failure keeps today's ack)", async () => {
-      // Known gap #5 (api/AGENTS.md §8.5): this permissive ack is still un-gated in
-      // production — update this test when that path is picked up.
+    it('should keep the 404 acknowledgement in production with real credentials (payment does not exist)', async () => {
       process.env.VERCEL_ENV = 'production'
       process.env.MERCADOPAGO_WEBHOOK_SECRET = testSecret
       process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
@@ -1272,9 +1983,37 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           received: true,
-          note: expect.stringContaining('verification failed')
+          note: 'Payment not found at Mercado Pago'
         })
       )
+      consoleSpy.mockRestore()
+    })
+
+    it('should refuse with 502 when the MP API fails in production with real credentials (Task 0.14a)', async () => {
+      process.env.VERCEL_ENV = 'production'
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = testSecret
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error'
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const paymentId = '998877'
+      const req = {
+        method: 'POST',
+        headers: await validSignatureHeaders(paymentId, testSecret),
+        body: { data: { id: paymentId } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(502)
+      expect(res.json).toHaveBeenCalledWith({ error: 'Mercado Pago verification unavailable' })
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('MP verification failed'))
       consoleSpy.mockRestore()
     })
 

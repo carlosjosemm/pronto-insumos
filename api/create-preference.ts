@@ -34,10 +34,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { orderId, items, customer } = req.body || {}
+    // Task 0.14g: the request body contributes ONLY the order id (plus the
+    // optional payer details). The line items are read from the order document —
+    // never from the request — so the charged preference can never diverge from
+    // the order the webhook later asserts the payment against.
+    const { orderId, customer } = req.body || {}
 
-    if (!orderId || !items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'Missing required parameters: orderId and non-empty items array' })
+    if (!orderId) {
+      return res.status(400).json({ error: 'Missing required parameters: orderId' })
     }
 
     const cleanOrderId = String(orderId).trim().toUpperCase()
@@ -99,11 +103,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
-    // SERVER-SIDE PRICE REBUILD — the client payload only contributes product IDs
-    // and quantities. Every unit price comes from the Firestore products catalog;
-    // the promo discount is resolved from the shared PROMO_CODES table using the
-    // order's own code, so a tampered `price`, `total` or `promoCode` cannot change
-    // the charged amount.
+    // SERVER-SIDE PRICE REBUILD — every line comes from the ORDER DOCUMENT
+    // (Task 0.14g), which is the same document the webhook asserts the payment
+    // against, and every unit price from the current Firestore products catalog.
+    // The promo discount is resolved from the shared PROMO_CODES table using the
+    // order's own code, so a tampered request body (`items`, `price`, `total` or
+    // `promoCode`) cannot change the charged amount.
+    const orderItems: Array<Record<string, unknown>> = Array.isArray(orderData.items)
+      ? (orderData.items as Array<Record<string, unknown>>)
+      : []
+
+    if (orderItems.length === 0) {
+      console.warn(
+        `[create-preference] Order "${cleanOrderId}" has no registered items; refusing to build an empty preference.`
+      )
+      return res.status(400).json({
+        error:
+          'El pedido no tiene insumos registrados; no es posible generar el pago. Reintenta la compra o cotiza por WhatsApp.',
+        orderId: cleanOrderId
+      })
+    }
+
     const discountPercent = resolvePromoPercent(orderData.promoCode)
     const rebuiltItems: Array<{
       id: string
@@ -114,8 +134,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }> = []
     const productCache = new Map<string, Record<string, unknown> | null>()
 
-    for (const item of items) {
-      const productId = item?.product?.id || item?.productId || item?.id
+    for (const item of orderItems) {
+      const productId = item?.productId || item?.id
 
       // A line without a resolvable productId can be neither priced nor
       // stock-checked — reject it (closes the Task 2.3 validation bypass).
@@ -133,7 +153,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const productSnap = await adminDb.collection(getCollectionName('products')).doc(productId).get()
         if (!productSnap.exists) {
           return res.status(400).json({
-            error: `El producto "${item?.product?.name || productId}" no fue encontrado en el catálogo de inventario.`,
+            error: `El producto "${item?.name || productId}" no fue encontrado en el catálogo de inventario.`,
             productId,
             availableStock: 0,
             requestedQuantity: quantity

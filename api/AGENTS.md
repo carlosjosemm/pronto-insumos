@@ -73,22 +73,38 @@ sequenceDiagram
     alt Invalid Signature
         WH-->>MP: 401 Unauthorized
     end
-    WH->>MP: GET /v1/payments/{id} (Bearer MERCADOPAGO_ACCESS_TOKEN)
+    WH->>MP: GET /v1/payments/{id} — the SAME signed id (Task 0.14f)
     MP-->>WH: Payment Record (status, external_reference, amount)
-    alt Payment Not Approved
-        WH-->>MP: 200 OK (Acknowledge without inventory mutation)
+    alt 404 — the payment does not exist
+        WH-->>MP: 200 OK (nothing to reconcile)
+    else 401/403/5xx — verification unavailable
+        WH-->>MP: 502 (Mercado Pago retries)
     end
-    WH->>FS: Check Idempotency (status === 'PAGADO_MERCADOPAGO')
-    alt Already Processed
-        WH-->>MP: 200 OK { duplicate: true }
+    WH->>FS: Resolve the order by document key first (Task 0.12)
+    alt Approved payment
+        WH->>FS: Fast path — has THIS payment id already been recorded?
+        alt Same payment
+            WH-->>MP: 200 OK { duplicate: true }
+        end
+        WH->>FS: runTransaction() — status guard + amount assertion (all reads before writes)
+        FS-->>FS: Decrement stockCount (shortfalls recorded) & mark PAGADO_MERCADOPAGO
+        WH-->>MP: 200 OK { received: true, verifiedStatus }
+    else Refunded / charged_back payment
+        WH->>FS: runTransaction() — park a paid order in PAGO_EN_REVISION, or record the incident
+        WH-->>MP: 200 OK { received: true, verifiedStatus }
     end
-    WH->>FS: adminDb.runTransaction() (All Reads before All Writes)
-    FS-->>FS: Decrement stockCount for each item & Update order status to PAGADO_MERCADOPAGO
-    FS-->>WH: Transaction Committed
-    WH-->>MP: 200 OK { received: true, verifiedStatus }
 ```
 
-- **Signature verification** ([`./_lib/mercadopagoSignature.ts`](./_lib/mercadopagoSignature.ts)) builds the official manifest `id:[data.id];request-id:[x-request-id];ts:[ts];`, computes HMAC-SHA256, and compares with `crypto.timingSafeEqual`. Optional `maxAgeSeconds` replay-window support exists but is **not** currently passed by the webhook.
+- **Signature verification** ([`./_lib/mercadopagoSignature.ts`](./_lib/mercadopagoSignature.ts)) builds the official manifest `id:[data.id];request-id:[x-request-id];ts:[ts];`, computes HMAC-SHA256, and compares with `crypto.timingSafeEqual`. **Task 0.14f:** one normalized payment id — the query `data.id` first (the value the official manifest is built from), body fallback — is used for the signature, the MP fetch URL and every comparison, so a tampered body id can no longer redirect the verification to a different payment. Optional `maxAgeSeconds` replay-window support exists but is **deliberately not passed**: Mercado Pago retries reuse the original `ts`, so a replay window would reject legitimate retries.
+- **MP verification gate (Task 0.14a):** a `404` (payment does not exist) is the only MP failure acknowledged with `200`; every other failure — revoked/expired token (`401`/`403`), MP `5xx`, malformed id — returns `502` + a loud `console.error` so Mercado Pago retries and a genuinely paid order is reconciled once the cause is fixed. The 5xx is unconditional (not env-gated).
+- **Reconciliation guards (Task 0.14b–d)** — evaluated on the fresh order document inside the transaction, before any catalog read:
+  - **Payable statuses:** only `PENDIENTE_PAGO_MERCADOPAGO` and `PAGO_EN_REVISION` can be approved.
+  - **At-most-once deduction (R1):** an order whose lines were already deducted (`paidAt` or `approvedAt` present — e.g. the refunded payment that parked it in review) is never deducted again; the delivery becomes an incident instead.
+  - **Settled orders** (`PAGADO_MERCADOPAGO`, `TRANSFERENCIA_APROBADA`, `PAGADO_TRANSFERENCIA`, `EN_PREPARACION`, `DESPACHADO`, `ENTREGADO`) get a **double-payment incident**: an `order_status_history` event (same status, `metadata.event: 'PAGO_DUPLICADO'`) + warehouse alert — **no status flip** (customer tracking must not regress), no stock movement, and the original `mercadopagoPaymentId` is preserved.
+  - **Any other status** (cancelled, pending transfer/quote, unknown) is parked in `PAGO_EN_REVISION` (stamping the payment id) + history event (`metadata.event: 'PAGO_ESTADO_INVALIDO'`) + alert, with **no stock movement**.
+  - **Refunds / chargebacks (`refunded` / `charged_back`):** when the stored `mercadopagoPaymentId` matches (or is absent on a legacy document), a `PAGADO_MERCADOPAGO` order is parked in `PAGO_EN_REVISION`, a fulfilled one (`EN_PREPARACION`/`DESPACHADO`/`ENTREGADO`) and one already parked in review get the incident record only — history + `PAGO_REEMBOLSADO` warehouse alert, no status flip, no stock movement. Refunds stay off-platform (`src/types/AGENTS.md` §2.1). `cancelled` is deliberately **not** treated as a reversal: Mercado Pago only cancels pending/in-process payments, so a cancellation never collected money.
+  - **Known limitation (R9):** partial refunds keep the payment `approved` (`transaction_amount_refunded > 0`), so they are invisible to this status-based detection.
+- **Stock shortfall (Task 0.14e):** the `Math.max(0, current − qty)` clamp still approves an oversold order (the money is taken) but the shortfall is recorded — `stockShortfall` in each `inventory_audit_logs` metadata, a `stockShortfalls: [{ productId, name, requested, available }]` list in the order-history metadata — and surfaced in the warehouse alert (`buildWarehouseAlertEmail`'s optional `shortfalls` parameter). The same recording exists in `approve-transfer` and `resolve-payment-review`.
 - **Fail-closed in production (Task 0.10):** if `MERCADOPAGO_WEBHOOK_SECRET` is missing or the placeholder, the helper still reports `{ valid: true, reason: 'secret_not_configured' }` — it stays a pure crypto utility — but the **webhook refuses the delivery** with `500` + a loud `console.error` whenever `isSimulatedPaymentAllowed()` is false (`VERCEL_ENV === 'production'` without the explicit opt-in). The same gate refuses a missing/placeholder `MERCADOPAGO_ACCESS_TOKEN` *before* the MP API call, and a **verified** payment that cannot be reconciled (Firestore Admin unavailable) is refused the same way — `500` + loud log instead of a silent `200` ack — so a collected payment is never dropped without retries. 5xx is deliberate: Mercado Pago retries, so real deliveries are processed once the credentials/Admin are restored. Outside production (local dev, Vitest, Vercel preview) the permissive behavior is unchanged.
 - **Amount assertion (Task 0.9):** inside the transaction the webhook recomputes the payable total from the **current** catalog (`computeOrderTotal` over the consolidated lines, promo from the order's stored `promoCode`) and requires **both** `paymentData.transaction_amount` **and** `order.totalAmount` to equal it exactly (integer CLP) before marking paid. Any mismatch — underpayment, tampered order total, or lines whose `productId`/catalog price cannot be verified — transitions the order to `PAGO_EN_REVISION` (history event + warehouse alert, **no stock deduction**, no customer "paid" email). The review write stamps `mercadopagoPaymentId`, so redeliveries hit the duplicate fast path; a later, correctly-amounted payment re-enters the transaction and approves normally.
 
@@ -96,8 +112,10 @@ sequenceDiagram
 
 Two layers defend against duplicate webhook deliveries:
 
-1. **Fast-Path Check:** if the order already has `status === 'PAGADO_MERCADOPAGO'` or `mercadopagoPaymentId === paymentId`, the handler acknowledges `200` with `{ duplicate: true }` without any writes.
-2. **Concurrent Transaction Guard:** inside `adminDb.runTransaction()` the order document is re-read; if a concurrent invocation processed the payment in the window, the transaction returns early without touching stock. Emails are gated on the `stockDeducted` flag set inside the transaction, so duplicates never re-notify.
+1. **Fast-Path Check (Task 0.14b):** only the **payment id that settled the order** is a duplicate — `order.mercadopagoPaymentId === paymentId` acknowledges `200` with `{ duplicate: true }` without any writes. A *different* approved payment id for the same order is a double charge, and the status guard turns it into an incident (history + alert) instead of a silent ack.
+2. **Concurrent Transaction Guard:** inside `adminDb.runTransaction()` the order document is re-read; if a concurrent invocation recorded the same payment id in the window, the transaction returns early without touching stock. Emails are gated on the `stockDeducted` flag set inside the transaction, so duplicate approvals never re-notify.
+
+**At-least-once semantics of the incident branches (R3, accepted):** the settled-order double-payment incident and the fulfilled-order reversal incident deliberately do **not** stamp the order — the original payment id must be preserved — so a redelivery of the *same* second-payment or reversal notification writes another history event and another warehouse alert (never a stock movement; MP stops retrying after the `200` ack). The amount-mismatch and invalid-status review branches, by contrast, do stamp `mercadopagoPaymentId`, so their redeliveries hit the fast path.
 
 ---
 
@@ -164,6 +182,11 @@ All templates return `{ subject, html, text }`, escape every user-supplied value
 | Transfer approved by admin | `/api/admin/approve-transfer` | `buildTransferApprovedEmail` | `buildWarehouseAlertEmail('TRANSFERENCIA_APROBADA')` |
 | Payment review flagged (amount mismatch) | `/api/webhooks/mercadopago` | — (never tells the customer the payment succeeded) | `buildWarehouseAlertEmail('PAGO_EN_REVISION')` |
 | Payment review resolved | `/api/admin/resolve-payment-review` | `buildPaymentReviewResolvedEmail` (**approve** only) | `buildWarehouseAlertEmail('PAGADO_MERCADOPAGO')` / `buildWarehouseAlertEmail('CANCELADO')` |
+| Double payment on a settled order (Task 0.14b) | `/api/webhooks/mercadopago` | — | `buildWarehouseAlertEmail('PAGO_DUPLICADO')` |
+| Payment approved for a non-payable order (Task 0.14c) | `/api/webhooks/mercadopago` | — | `buildWarehouseAlertEmail('PAGO_ESTADO_INVALIDO')` |
+| Refund / chargeback (Task 0.14d) | `/api/webhooks/mercadopago` | — | `buildWarehouseAlertEmail('PAGO_REEMBOLSADO')` |
+
+`buildWarehouseAlertEmail(data, event, shortfalls?)` takes an optional `StockShortfall[]` (Task 0.14e) that appends a `Stock insuficiente: faltan N× «producto» …` sentence to the action hint — used by the webhook approval path, `approve-transfer` and `resolve-payment-review`.
 
 ⚠️ The shared `layout()` header still reads `Depósito dental — Melipilla & Región Metropolitana` — stale copy (coverage is Melipilla y San Antonio only).
 
@@ -316,7 +339,7 @@ All product reads precede all writes (Firestore transaction invariant).
 2. **~~Unsigned webhook when secret missing~~ RESOLVED (Task 0.10):** the `secret_not_configured` fail-open is now gated — a production runtime refuses unverifiable deliveries and placeholder access tokens with `500` + a loud log; simulation survives only outside production or with the explicit `ALLOW_SIMULATED_PAYMENTS=true` opt-in. See §2.2 and §5.4.
 3. **Voucher size/MIME unchecked server-side + 1 MiB doc limit + no status guard:** see §3.2.
 4. **No rate limiting** on any endpoint (`track-order`/`upload-voucher`/`order-confirmation` are enumerable-oracle shaped behind RUT match, but nothing throttles attempts).
-5. **Silent MP API verification failure (out of Task 0.10 scope):** when the MP API re-check itself fails (`!mpResponse.ok`) — a transient gateway outage or an invalid (non-placeholder) token — the webhook acks `200 { note: 'Payment verification failed or credentials placeholder' }` in every environment, so Mercado Pago stops retrying and the payment is never reconciled. Task 0.10 gated only *missing* credentials; this path remains a candidate follow-up audit item (its regression test carries a pointer comment).
+5. **~~Silent MP API verification failure~~ RESOLVED (Task 0.14a):** a `404` (payment does not exist) is the only MP failure acked `200`; every other `!mpResponse.ok` — revoked/expired token, MP `5xx`, malformed id — returns `502` + a loud log so Mercado Pago retries and the payment is reconciled once the cause is fixed. See §2.2.
 6. **~~Verified payment whose order document is missing~~ RESOLVED (Task 0.11):** the root cause had two layers — the client Firestore write never persisted (the Web SDK rejects the `undefined` optional fields the checkout payload always carries) and `submitOrder` swallowed the failure. Both are fixed: the client instance now uses `ignoreUndefinedProperties: true`, and a rejected write returns `success: false` so checkout blocks payment initiation. The webhook's defensive ack for a genuinely missing document is unchanged (there is nothing to reconcile, so retries cannot help).
 
 ---

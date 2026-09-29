@@ -9,9 +9,34 @@ import {
   buildWarehouseAlertEmail,
   toOrderEmailData,
 } from "../_lib/emailTemplates.js";
+import type { StockShortfall } from "../_lib/emailTemplates.js";
 import { resolvePromoPercent } from "../../src/config/promos.js";
 import { computeOrderTotal } from "../../src/utils/orderTotal.js";
 import { hasRealMercadoPagoToken, isSimulatedPaymentAllowed } from "../_lib/simulationPolicy.js";
+
+/**
+ * Order-status guard (Task 0.14c): an approved payment may only settle an order
+ * that is genuinely awaiting payment. Anything else is refused — settled orders
+ * get an incident record + warehouse alert, unresolved ones are parked in
+ * PAGO_EN_REVISION — and stock is NEVER deducted for them.
+ */
+const PAYABLE_STATUSES = new Set(["PENDIENTE_PAGO_MERCADOPAGO", "PAGO_EN_REVISION"]);
+const SETTLED_STATUSES = new Set([
+  "PAGADO_MERCADOPAGO",
+  "TRANSFERENCIA_APROBADA",
+  "PAGADO_TRANSFERENCIA",
+  "EN_PREPARACION",
+  "DESPACHADO",
+  "ENTREGADO",
+]);
+/**
+ * Payment statuses that reverse an already-collected charge (Task 0.14d).
+ * `cancelled` is deliberately absent: Mercado Pago only cancels payments that
+ * are still pending/in-process (no money was ever collected), so a cancellation
+ * can never reverse a paid order — including it would only create a
+ * false-positive path for legacy orders with no recorded payment id.
+ */
+const REVERSAL_PAYMENT_STATUSES = new Set(["refunded", "charged_back"]);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MERCADOPAGO_ACCESS_TOKEN =
@@ -39,9 +64,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { body, query: reqQuery } = req;
 
-    // Extract Payment ID from Mercado Pago webhook notification payload
+    // Extract Payment ID from Mercado Pago webhook notification payload.
+    // Task 0.14f: ONE normalized value is used for the signature, the MP fetch
+    // and every comparison. The official HMAC manifest is built from the query
+    // `data.id` (`id:[data.id];request-id:[x-request-id];ts:[ts];`), so the
+    // payment actually fetched must be the one the signature covers — a tampered
+    // body id can no longer redirect the verification to a different payment.
+    // maxAgeSeconds is deliberately NOT passed: Mercado Pago retries reuse the
+    // original `ts`, and a replay window would reject legitimate retries.
+    const rawPaymentId =
+      reqQuery?.["data.id"] || reqQuery?.id || body?.data?.id || body?.id;
     const paymentId =
-      body?.data?.id || body?.id || reqQuery?.["data.id"] || reqQuery?.id;
+      rawPaymentId === undefined || rawPaymentId === null
+        ? ""
+        : String(rawPaymentId).trim();
 
     if (!paymentId) {
       return res
@@ -51,12 +87,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Step 0: CRYPTOGRAPHIC SIGNATURE VERIFICATION (x-signature / x-request-id)
     const headers = req.headers || {};
-    const dataIdForSignature =
-      reqQuery?.["data.id"] || reqQuery?.id || body?.data?.id || body?.id;
     const signatureResult = verifyMercadoPagoSignature({
       signatureHeader: headers["x-signature"],
       requestIdHeader: headers["x-request-id"],
-      dataId: dataIdForSignature,
+      dataId: paymentId,
       secret: MERCADOPAGO_WEBHOOK_SECRET,
     });
 
@@ -106,19 +140,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     if (!mpResponse.ok) {
-      console.warn(
-        `Mercado Pago API verification failed for payment ID ${paymentId}: ${mpResponse.statusText}`,
+      // Task 0.14a: 404 means the payment does not exist — there is nothing to
+      // reconcile, so it is safe to acknowledge. EVERY other failure (revoked or
+      // expired token, MP 5xx, malformed id) must NOT be acked: Mercado Pago
+      // retries 5xx, so a genuinely paid order is reconciled once the cause is
+      // fixed instead of being dropped forever.
+      if (mpResponse.status === 404) {
+        console.warn(
+          `[Mercado Pago Webhook] Payment ${paymentId} not found at Mercado Pago (404); acknowledging.`,
+        );
+        return res
+          .status(200)
+          .json({ received: true, note: "Payment not found at Mercado Pago" });
+      }
+      console.error(
+        `[Mercado Pago Webhook] MP verification failed for payment ${paymentId} (HTTP ${mpResponse.status} ${mpResponse.statusText}). Refusing to acknowledge — Mercado Pago will retry.`,
       );
-      return res.status(200).json({
-        received: true,
-        note: "Payment verification failed or credentials placeholder",
-      });
+      return res
+        .status(502)
+        .json({ error: "Mercado Pago verification unavailable" });
     }
 
     const paymentData = await mpResponse.json();
 
-    // Step 2: VERIFY PAYMENT STATUS IS APPROVED
-    if (paymentData.status === "approved") {
+    // Step 2: VERIFY PAYMENT STATUS — an approved payment is reconciled against
+    // the order; a refund/chargeback of the payment that settled an order parks
+    // it for manual reconciliation instead of leaving it paid forever
+    // (Task 0.14d).
+    const isReversalPayment = REVERSAL_PAYMENT_STATUSES.has(
+      String(paymentData.status),
+    );
+
+    if (paymentData.status === "approved" || isReversalPayment) {
       const orderId = paymentData.external_reference || paymentData.description;
 
       if (orderId) {
@@ -155,15 +208,121 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const orderRef = resolvedOrder.ref;
           const orderData = resolvedOrder.data;
 
-          // Fast-Path Idempotency Check:
-          // If the order has already been marked as PAGADO_MERCADOPAGO or already recorded this payment ID,
-          // acknowledge immediately with HTTP 200 without re-decrementing stock.
-          if (
-            orderData.status === "PAGADO_MERCADOPAGO" ||
-            orderData.mercadopagoPaymentId === String(paymentId)
-          ) {
+          // REFUND / CHARGEBACK (Task 0.14d): a reversal of the payment that
+          // settled this order must park it for manual reconciliation — refunds
+          // stay off-platform (src/types/AGENTS.md §2.1). Only the payment
+          // recorded on the order can reverse it; a reversal of a second
+          // (double) payment is not this order's charge.
+          if (isReversalPayment) {
+            let reversalEvent: string | null = null;
+            let reversalStatus: string | null = null;
+
+            await adminDb.runTransaction(async (transaction) => {
+              // The callback may be re-run by Firestore on contention: reset the
+              // closure state so a stale flag cannot leak into the result.
+              reversalEvent = null;
+              reversalStatus = null;
+
+              const freshOrderSnap = await transaction.get(orderRef);
+              const freshOrderData = freshOrderSnap.data() || {};
+              const freshStatus = String(freshOrderData.status || "");
+              const freshStoredPaymentId = freshOrderData.mercadopagoPaymentId
+                ? String(freshOrderData.mercadopagoPaymentId)
+                : "";
+
+              // Legacy documents carry no recorded payment id — treated as a
+              // match (fail-safe). A recorded, different id belongs to another
+              // payment (e.g. the second charge of a double payment).
+              if (freshStoredPaymentId && freshStoredPaymentId !== paymentId) {
+                return;
+              }
+
+              const isPaid = freshStatus === "PAGADO_MERCADOPAGO";
+              const isFulfilled =
+                freshStatus === "EN_PREPARACION" ||
+                freshStatus === "DESPACHADO" ||
+                freshStatus === "ENTREGADO";
+              // A payment parked in review (amount mismatch / invalid status) can
+              // be refunded too: the incident is recorded so the reconciliation is
+              // never approved on a stale "the money is in" premise.
+              const isInReview = freshStatus === "PAGO_EN_REVISION";
+              if (!isPaid && !isFulfilled && !isInReview) {
+                return;
+              }
+
+              const nowIso = new Date().toISOString();
+
+              // Only a still-paid order is flipped to review: a fulfilled order
+              // keeps its status (customer tracking must not regress) and gets
+              // the incident record only. No stock movement either way.
+              if (isPaid) {
+                transaction.update(orderRef, {
+                  status: "PAGO_EN_REVISION",
+                  updatedAt: nowIso,
+                });
+              }
+
+              const reversalHistoryRef = adminDb
+                .collection(getCollectionName("order_status_history"))
+                .doc();
+              transaction.set(reversalHistoryRef, {
+                id: reversalHistoryRef.id,
+                orderId: cleanOrderId,
+                previousStatus: freshStatus,
+                newStatus: isPaid ? "PAGO_EN_REVISION" : freshStatus,
+                changedBy: "MERCADOPAGO_WEBHOOK",
+                changedByEmail: "webhook@mercadopago.cl",
+                actorRole: "SYSTEM_WEBHOOK",
+                timestamp: nowIso,
+                reason: `Pago ${
+                  paymentData.status === "charged_back"
+                    ? "contracargado"
+                    : paymentData.status === "refunded"
+                      ? "reembolsado"
+                      : "cancelado"
+                } por Mercado Pago (ID: ${paymentId}). Revisión manual requerida; sin movimiento de stock.`,
+                metadata: {
+                  event: "PAGO_REEMBOLSADO",
+                  paymentId,
+                  paymentStatus: paymentData.status,
+                  transactionAmount: paymentData.transaction_amount,
+                },
+              });
+
+              reversalEvent = "PAGO_REEMBOLSADO";
+              reversalStatus = isPaid ? "PAGO_EN_REVISION" : freshStatus;
+            });
+
+            // Never notify the customer on a reversal — alert Melipilla staff only.
+            if (reversalEvent) {
+              const warehouseEmail = getWarehouseEmail();
+              if (warehouseEmail) {
+                await sendEmail({
+                  to: warehouseEmail,
+                  ...buildWarehouseAlertEmail(
+                    toOrderEmailData(cleanOrderId, {
+                      ...orderData,
+                      status: reversalStatus || String(orderData.status || ""),
+                    }),
+                    reversalEvent,
+                  ),
+                });
+              }
+            }
+
+            return res.status(200).json({
+              received: true,
+              verifiedStatus: paymentData.status,
+            });
+          }
+
+          // Fast-Path Idempotency Check (Task 0.14b): ONLY the payment id that
+          // settled the order is a duplicate. A different approved payment for an
+          // order that already recorded one is a double charge — it must be
+          // recorded and alerted, never silently acked as a duplicate.
+          if (orderData.mercadopagoPaymentId === paymentId) {
             console.info(
-              `[Mercado Pago Webhook] Order "${cleanOrderId}" is already processed (status: ${orderData.status}, paymentId: ${orderData.mercadopagoPaymentId}). Skipping duplicate processing.`,
+              `[Mercado Pago Webhook] Order "${cleanOrderId}" already recorded payment ${paymentId} (status: ${orderData.status}). Skipping duplicate processing.`,
             );
             return res.status(200).json({
               received: true,
@@ -176,19 +335,116 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Execute atomic transaction for order status update and stock deduction.
           // In Firestore transactions, all reads MUST precede all writes.
           let stockDeducted = false;
-          let flaggedForReview = false;
+          // Post-transaction warehouse alert (Task 0.14 b/c): the review/incident
+          // event to send when the delivery was not a clean approval.
+          let flaggedEvent: string | null = null;
+          let flaggedStatus: string | null = null;
+          // Task 0.14e — oversold lines recorded on approval.
+          const stockShortfalls: StockShortfall[] = [];
           await adminDb.runTransaction(async (transaction) => {
+            // The callback may be re-run by Firestore on contention: reset the
+            // closure state so a stale flag from a rolled-back attempt can never
+            // leak into the committed result.
+            stockDeducted = false;
+            flaggedEvent = null;
+            flaggedStatus = null;
+            stockShortfalls.length = 0;
+
             const freshOrderSnap = await transaction.get(orderRef);
             const freshOrderData = freshOrderSnap.data();
+            const freshStatus = String(freshOrderData?.status || "");
+            const freshStoredPaymentId = freshOrderData?.mercadopagoPaymentId
+              ? String(freshOrderData.mercadopagoPaymentId)
+              : "";
 
-            // Concurrency Guard: verify order was not updated concurrently
-            if (
-              freshOrderData?.status === "PAGADO_MERCADOPAGO" ||
-              freshOrderData?.mercadopagoPaymentId === String(paymentId)
-            ) {
+            // Concurrency Guard (Task 0.14b): only the same payment id is a
+            // duplicate; a different one falls through to the status guard below.
+            if (freshStoredPaymentId === paymentId) {
               console.info(
                 `[Mercado Pago Webhook] Order "${cleanOrderId}" was marked as paid during concurrent transaction.`,
               );
+              return;
+            }
+
+            const nowIso = new Date().toISOString();
+
+            // ORDER-STATUS GUARD (Task 0.14c): an approved payment may only
+            // settle an order that is genuinely awaiting payment — and an order's
+            // lines are deducted AT MOST ONCE (`paidAt`/`approvedAt` mark an
+            // earlier settlement, e.g. the refunded payment that parked this
+            // order in review). A settled order gets an incident record + alert —
+            // never a second stock deduction, never a status flip that would
+            // regress customer tracking.
+            const settledStatus = SETTLED_STATUSES.has(freshStatus);
+            const alreadyDeducted = Boolean(
+              freshOrderData?.paidAt || freshOrderData?.approvedAt,
+            );
+            if (settledStatus || alreadyDeducted) {
+              console.warn(
+                `[Mercado Pago Webhook] Payment ${paymentId} approved for order "${cleanOrderId}" (status: ${freshStatus}) that was already settled; recording a double-payment incident without stock movement.`,
+              );
+              const incidentHistoryRef = adminDb
+                .collection(getCollectionName("order_status_history"))
+                .doc();
+              transaction.set(incidentHistoryRef, {
+                id: incidentHistoryRef.id,
+                orderId: cleanOrderId,
+                previousStatus: freshStatus,
+                newStatus: freshStatus,
+                changedBy: "MERCADOPAGO_WEBHOOK",
+                changedByEmail: "webhook@mercadopago.cl",
+                actorRole: "SYSTEM_WEBHOOK",
+                timestamp: nowIso,
+                reason: settledStatus
+                  ? `Segundo pago aprobado (ID: ${paymentId}) para un pedido ya resuelto (estado: ${freshStatus}, pago registrado: ${freshStoredPaymentId || "sin registro"}). Posible doble cobro; reembolso manual requerido.`
+                  : `Pago aprobado (ID: ${paymentId}) para un pedido cuya mercadería ya fue rebajada por un pago anterior (estado: ${freshStatus}, pago registrado: ${freshStoredPaymentId || "sin registro"}). Posible doble cobro; reembolso manual requerido.`,
+                metadata: {
+                  event: "PAGO_DUPLICADO",
+                  paymentId,
+                  previousPaymentId: freshStoredPaymentId || null,
+                  paymentStatus: paymentData.status,
+                  transactionAmount: paymentData.transaction_amount,
+                },
+              });
+              flaggedEvent = "PAGO_DUPLICADO";
+              flaggedStatus = freshStatus;
+              return;
+            }
+
+            // Any other non-payable status (cancelled, pending transfer/quote,
+            // unknown) is parked for manual reconciliation — never approved.
+            if (!PAYABLE_STATUSES.has(freshStatus)) {
+              console.warn(
+                `[Mercado Pago Webhook] Payment ${paymentId} approved for non-payable order "${cleanOrderId}" (status: ${freshStatus}); parking in PAGO_EN_REVISION without stock movement.`,
+              );
+              transaction.update(orderRef, {
+                status: "PAGO_EN_REVISION",
+                mercadopagoPaymentId: paymentId,
+                updatedAt: nowIso,
+              });
+              const guardHistoryRef = adminDb
+                .collection(getCollectionName("order_status_history"))
+                .doc();
+              transaction.set(guardHistoryRef, {
+                id: guardHistoryRef.id,
+                orderId: cleanOrderId,
+                previousStatus: freshStatus || orderData.status || null,
+                newStatus: "PAGO_EN_REVISION",
+                changedBy: "MERCADOPAGO_WEBHOOK",
+                changedByEmail: "webhook@mercadopago.cl",
+                actorRole: "SYSTEM_WEBHOOK",
+                timestamp: nowIso,
+                reason: `Pago aprobado (ID: ${paymentId}) para un pedido en estado "${freshStatus || "desconocido"}", que no admite pago automático. Revisión manual requerida; sin movimiento de stock.`,
+                metadata: {
+                  event: "PAGO_ESTADO_INVALIDO",
+                  paymentId,
+                  previousStatus: freshStatus || null,
+                  paymentStatus: paymentData.status,
+                  transactionAmount: paymentData.transaction_amount,
+                },
+              });
+              flaggedEvent = "PAGO_ESTADO_INVALIDO";
+              flaggedStatus = "PAGO_EN_REVISION";
               return;
             }
 
@@ -207,6 +463,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               previousStock: number;
               newStock: number;
               quantity: number;
+              shortfall: number;
               inStock: boolean;
             }> = [];
 
@@ -252,14 +509,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 } else {
                   catalogComplete = false;
                 }
+                const lineName = pData.name || info.name || productId;
+                const shortfall = Math.max(0, info.qty - currentStock);
+                // Task 0.14e: an oversell (stock hit 0 between preference and
+                // payment) is still approved — the money is taken — but the
+                // shortfall is recorded and alerted, never hidden by the clamp.
+                if (shortfall > 0) {
+                  stockShortfalls.push({
+                    productId,
+                    name: lineName,
+                    requested: info.qty,
+                    available: currentStock,
+                  });
+                }
                 productUpdates.push({
                   ref: productRef,
                   productId,
-                  name: pData.name || info.name || productId,
+                  name: lineName,
                   sku: pData.sku || "",
                   previousStock: currentStock,
                   newStock,
                   quantity: info.qty,
+                  shortfall,
                   inStock: newStock > 0 && isActive,
                 });
               } else {
@@ -290,11 +561,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               console.warn(
                 `[Mercado Pago Webhook] Order "${cleanOrderId}" amount verification failed: paid ${String(paymentData.transaction_amount)}, expected ${String(expectedAmount)}. Flagging for manual review; no stock deducted.`,
               );
-              const reviewNowIso = new Date().toISOString();
               transaction.update(orderRef, {
                 status: "PAGO_EN_REVISION",
                 mercadopagoPaymentId: String(paymentId),
-                updatedAt: reviewNowIso,
+                updatedAt: nowIso,
               });
 
               const reviewHistoryRef = adminDb
@@ -309,7 +579,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 changedBy: "MERCADOPAGO_WEBHOOK",
                 changedByEmail: "webhook@mercadopago.cl",
                 actorRole: "SYSTEM_WEBHOOK",
-                timestamp: reviewNowIso,
+                timestamp: nowIso,
                 reason:
                   expectedAmount === null
                     ? `No fue posible verificar el monto del pago (ID: ${paymentId}) contra el catálogo. Revisión manual requerida.`
@@ -321,11 +591,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   expectedAmount,
                 },
               });
-              flaggedForReview = true;
+              flaggedEvent = "PAGO_EN_REVISION";
+              flaggedStatus = "PAGO_EN_REVISION";
               return;
             }
-
-            const nowIso = new Date().toISOString();
 
             // 2. Perform all writes: update order document
             transaction.update(orderRef, {
@@ -354,6 +623,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 paymentId: String(paymentId),
                 paymentStatus: paymentData.status,
                 transactionAmount: paymentData.transaction_amount,
+                // Task 0.14e: oversold lines travel with the approval so the
+                // shortfall is auditable, not just emailed.
+                ...(stockShortfalls.length > 0 ? { stockShortfalls } : {}),
               },
             });
 
@@ -386,6 +658,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 metadata: {
                   orderId: cleanOrderId,
                   paymentId: String(paymentId),
+                  ...(prodUpdate.shortfall > 0
+                    ? { stockShortfall: prodUpdate.shortfall }
+                    : {}),
                 },
               });
             }
@@ -413,21 +688,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (warehouseEmail) {
               await sendEmail({
                 to: warehouseEmail,
-                ...buildWarehouseAlertEmail(emailData, "PAGADO_MERCADOPAGO"),
+                ...buildWarehouseAlertEmail(
+                  emailData,
+                  "PAGADO_MERCADOPAGO",
+                  stockShortfalls,
+                ),
               });
             }
-          } else if (flaggedForReview) {
-            // Amount mismatch: never notify the customer that payment succeeded —
-            // alert Melipilla dispatch staff so the discrepancy is reconciled manually.
-            const reviewEmailData = toOrderEmailData(cleanOrderId, {
+          } else if (flaggedEvent) {
+            // Never notify the customer that payment succeeded: the delivery was
+            // flagged (amount mismatch, settled-order double payment, or a payment
+            // for a non-payable order). Alert Melipilla dispatch staff so the case
+            // is reconciled manually.
+            const flaggedEmailData = toOrderEmailData(cleanOrderId, {
               ...orderData,
-              status: "PAGO_EN_REVISION",
+              status: flaggedStatus || String(orderData.status || ""),
             });
             const warehouseEmail = getWarehouseEmail();
             if (warehouseEmail) {
               await sendEmail({
                 to: warehouseEmail,
-                ...buildWarehouseAlertEmail(reviewEmailData, "PAGO_EN_REVISION"),
+                ...buildWarehouseAlertEmail(flaggedEmailData, flaggedEvent),
               });
             }
           }

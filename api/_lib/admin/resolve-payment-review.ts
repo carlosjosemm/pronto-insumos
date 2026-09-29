@@ -8,6 +8,7 @@ import {
   buildWarehouseAlertEmail,
   toOrderEmailData
 } from '../emailTemplates.js'
+import type { StockShortfall } from '../emailTemplates.js'
 
 const RESOLUTIONS = ['approve', 'cancel'] as const
 const MAX_NOTES_LENGTH = 500
@@ -16,6 +17,7 @@ const MAX_NOTES_LENGTH = 500
 type ReviewOutcome =
   | { outcome: 'duplicate'; currentStatus: string }
   | { outcome: 'conflict'; currentStatus: string }
+  | { outcome: 'settled'; currentStatus: string }
   | { outcome: 'resolved'; resolution: 'approve' | 'cancel'; status: string }
 
 /**
@@ -90,8 +92,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     let orderDataForEmail: Record<string, unknown> | null = null
+    // Task 0.14e — oversold lines recorded on approval. Reset inside the
+    // transaction callback, which Firestore may re-run on contention.
+    const stockShortfalls: StockShortfall[] = []
 
     const result = await db.runTransaction(async (transaction) => {
+      stockShortfalls.length = 0
       const orderDoc = await transaction.get(orderRef)
       if (!orderDoc.exists) {
         throw new Error(`Pedido "${cleanOrderId}" no encontrado en Firestore`)
@@ -112,6 +118,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // double-processing alongside the webhook or a second administrator.
       if (currentStatus !== 'PAGO_EN_REVISION') {
         return { outcome: 'conflict', currentStatus } satisfies ReviewOutcome
+      }
+
+      // Task 0.14 (R1): an order's lines are deducted AT MOST ONCE. `paidAt` /
+      // `approvedAt` mark an earlier settlement — e.g. the refunded payment that
+      // parked this order in review — so approving must not deduct again.
+      // Cancelling stays available: that is the correct resolution for a refund.
+      if (resolution === 'approve' && (orderData.paidAt || orderData.approvedAt)) {
+        return { outcome: 'settled', currentStatus } satisfies ReviewOutcome
       }
 
       const nowIso = new Date().toISOString()
@@ -162,6 +176,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         previousStock: number
         newStock: number
         delta: number
+        shortfall: number
         isActive: boolean
       }> = []
 
@@ -173,15 +188,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const productData = productDoc.data() || {}
           const currentStock = typeof productData.stockCount === 'number' ? productData.stockCount : 0
           const newStock = Math.max(0, currentStock - itemInfo.qty)
+          const lineName = productData.name || itemInfo.name || productId
+          const shortfall = Math.max(0, itemInfo.qty - currentStock)
+          // Task 0.14e: a reconciliation that oversells is still approved (the
+          // money is in) but the shortfall is recorded and alerted — never hidden
+          // by the Math.max clamp.
+          if (shortfall > 0) {
+            stockShortfalls.push({
+              productId,
+              name: lineName,
+              requested: itemInfo.qty,
+              available: currentStock
+            })
+          }
 
           productDocsToUpdate.push({
             ref: productRef,
             productId,
-            name: productData.name || itemInfo.name || productId,
+            name: lineName,
             sku: productData.sku || '',
             previousStock: currentStock,
             newStock,
             delta: -itemInfo.qty,
+            shortfall,
             isActive: productData.isActive !== false
           })
         } else {
@@ -214,7 +243,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           changedByEmail: authResult.email || null,
           actorRole: 'ADMIN',
           timestamp: nowIso,
-          metadata: { orderId: cleanOrderId, resolution: 'approve' }
+          metadata: {
+            orderId: cleanOrderId,
+            resolution: 'approve',
+            ...(update.shortfall > 0 ? { stockShortfall: update.shortfall } : {})
+          }
         })
       }
 
@@ -243,7 +276,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           resolution: 'approve',
           itemsCount: items.length,
           paymentId: orderData.mercadopagoPaymentId || null,
-          orderTotalAmount: orderData.totalAmount ?? null
+          orderTotalAmount: orderData.totalAmount ?? null,
+          // Task 0.14e: oversold lines travel with the approval so the
+          // shortfall is auditable, not just emailed.
+          ...(stockShortfalls.length > 0 ? { stockShortfalls } : {})
         }
       })
 
@@ -254,6 +290,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(409).json({
         success: false,
         error: `El pedido no está en revisión (estado actual: ${result.currentStatus}). Actualiza la lista antes de reintentar.`,
+        currentStatus: result.currentStatus
+      })
+    }
+
+    if (result.outcome === 'settled') {
+      return res.status(409).json({
+        success: false,
+        error:
+          'El pedido ya registra un pago anterior con stock rebajado; no se puede rebajar el stock por segunda vez. Cancela el pedido o concilia el reembolso manualmente.',
         currentStatus: result.currentStatus
       })
     }
@@ -270,7 +315,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await sendEmail({ to: customerEmail, ...buildPaymentReviewResolvedEmail(emailData) })
         }
         if (warehouseEmail) {
-          await sendEmail({ to: warehouseEmail, ...buildWarehouseAlertEmail(emailData, 'PAGADO_MERCADOPAGO') })
+          await sendEmail({
+            to: warehouseEmail,
+            ...buildWarehouseAlertEmail(emailData, 'PAGADO_MERCADOPAGO', stockShortfalls)
+          })
         }
       } else if (warehouseEmail) {
         // No customer email on cancellation: the case is already under manual
