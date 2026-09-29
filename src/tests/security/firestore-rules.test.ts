@@ -42,8 +42,8 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
   it('should strictly limit order creation to pending statuses and never allow client-side approved status', () => {
     const content = fs.readFileSync(rulesPath, 'utf8')
 
-    // Validate isValidOrderCreate function
-    expect(content).toContain('function isValidOrderCreate()')
+    // Validate isValidOrderCreate function (Task 0.12: the path variable is a parameter)
+    expect(content).toContain('function isValidOrderCreate(orderId)')
     expect(content).toContain('PENDIENTE_PAGO_MERCADOPAGO')
     expect(content).toContain('PENDIENTE_TRANSFERENCIA')
     expect(content).toContain('COTIZACION_SOLICITADA_WHATSAPP')
@@ -74,6 +74,79 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     // Ensure client cannot inject payment confirmation attributes upon creation
     expect(content).toContain("!('mercadopagoPaymentId' in data)")
     expect(content).toContain("!('paidAt' in data)")
+  })
+
+  it('should bind the order document to its own id and allowlist the create shape (Task 0.12)', () => {
+    const content = fs.readFileSync(rulesPath, 'utf8')
+
+    // The path variable is passed in — a rules function cannot see the capture
+    // variables of the match block that calls it.
+    expect(content).toContain('function isValidOrderCreate(orderId)')
+    expect(content).toContain('data.orderId == orderId')
+    expect(content).toContain('data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 32')
+
+    // Both the canonical and the isolated dev collections enforce the same contract.
+    for (const collection of ['orders', 'dev_orders']) {
+      const block = content.split(`match /${collection}/{orderId}`)[1].split('}')[0]
+      expect(block).toContain('allow create: if isValidOrderCreate(orderId);')
+    }
+
+    // Top-level allowlist: exactly the shape submitOrder() writes.
+    const rootAllowMatch = content.match(/function isValidOrderCreate\(orderId\)[\s\S]*?hasOnly\(\[([\s\S]*?)\]\)/)
+    expect(rootAllowMatch).not.toBeNull()
+    const rootAllow = [...rootAllowMatch![1].matchAll(/'([^']+)'/g)].map((entry) => entry[1])
+    for (const expected of [
+      'orderId',
+      'createdAt',
+      'paymentMethod',
+      'status',
+      'totalAmount',
+      'customer',
+      'billing',
+      'sanitaryVerification',
+      'items',
+      'promoCode',
+      'discountAmount'
+    ]) {
+      expect(rootAllow).toContain(expected)
+    }
+
+    // Admin-only fields can no longer be pre-injected at create time.
+    for (const adminOnly of [
+      'voucherUrl',
+      'voucherStoragePath',
+      'approvedAt',
+      'approvedBy',
+      'dispatch',
+      'courier',
+      'trackingNumber',
+      'deliveredAt',
+      'confirmationEmailSentAt',
+      'mercadopagoPaymentId',
+      'paidAt'
+    ]) {
+      expect(rootAllow).not.toContain(adminOnly)
+    }
+
+    // Nested allowlists and length caps.
+    expect(content).toContain('function isBoundedString(value, maxLength)')
+    expect(content).toMatch(/function isValidCustomer\(c\)[\s\S]*?hasOnly\(\[/)
+    expect(content).toMatch(/function isValidBilling\(b\)[\s\S]*?hasOnly\(\[/)
+    expect(content).toMatch(/function isValidSanitaryVerification\(s\)[\s\S]*?hasOnly\(\[/)
+    expect(content).toContain("t.keys().hasOnly(['neto', 'iva', 'total'])")
+    expect(content).toContain("item.keys().hasOnly(['productId', 'name', 'quantity', 'price'])")
+    expect(content).toContain('isBoundedString(c.fullName, 120)')
+    expect(content).toContain('isBoundedString(data.promoCode, 32)')
+    // Documented CustomerInfo field: allowlisted (bounded) so a future writer
+    // cannot make its whole payload fail at the rules boundary.
+    expect(content).toContain("'transferReceipt'")
+    expect(content).toContain('isBoundedString(c.transferReceipt, 120)')
+
+    // paymentMethod ↔ status consistency and the server-owned SII emission state.
+    expect(content).toContain("data.paymentMethod == 'mercadopago' && data.status == 'PENDIENTE_PAGO_MERCADOPAGO'")
+    expect(content).toContain("data.paymentMethod == 'transferencia' && data.status == 'PENDIENTE_TRANSFERENCIA'")
+    expect(content).toContain("data.paymentMethod == 'whatsapp' && data.status == 'COTIZACION_SOLICITADA_WHATSAPP'")
+    expect(content).toContain("b.status == 'PENDIENTE_EMISION_SII'")
   })
 
   it('should enforce read-only for admins and write-deny on audit log collections', () => {
@@ -110,7 +183,7 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     // dev_orders rules (valid create only, client read/update/delete blocked)
     expect(content).toMatch(/match\s+\/dev_orders\/\{orderId\}\s*\{/)
     const devOrdersBlock = content.split('match /dev_orders/{orderId}')[1].split('}')[0]
-    expect(devOrdersBlock).toContain('allow create: if isValidOrderCreate();')
+    expect(devOrdersBlock).toContain('allow create: if isValidOrderCreate(orderId);')
     expect(devOrdersBlock).toContain('allow read, update, delete: if false;')
 
     // dev_order_status_history rules (admin read-only, write denied)

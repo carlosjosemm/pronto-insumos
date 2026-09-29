@@ -12,27 +12,119 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.admin == true;
     }
 
-    // Per-line shape guard for order creation (Task 0.9 defense in depth).
+    // Per-line shape guard for order creation (Task 0.9 defense in depth,
+    // tightened by Task 0.12: a line must be EXACTLY the shape submitOrder writes).
     // NOTE: rules cannot join the products catalog to verify prices — the
     // authoritative price/total verification lives in api/create-preference.ts
     // (catalog rebuild) and api/webhooks/mercadopago.ts (amount assertion).
     function isValidOrderItem(item) {
       return item is map
-        && item.productId is string && item.productId.size() > 0
+        && item.keys().hasOnly(['productId', 'name', 'quantity', 'price'])
+        && item.productId is string && item.productId.size() > 0 && item.productId.size() <= 64
+        && item.name is string && item.name.size() <= 200
         && item.quantity is int && item.quantity >= 1
         && item.price is number && item.price >= 0;
     }
 
-    function isValidOrderCreate() {
+    // ── Task 0.12 — the order-create contract ─────────────────────────────────
+    // `orders` is a PUBLIC create (checkout runs client-side), so the rules must
+    // describe EXACTLY the document src/services/api.ts `submitOrder()` writes.
+    // The client Firestore instance runs with `ignoreUndefinedProperties: true`,
+    // so the optional keys below are usually absent rather than null.
+    // Without these guards any visitor could (a) store a decoy document whose
+    // `orderId` field points at another order's id, (b) pre-inject admin-only
+    // fields (voucherUrl, approvedAt, dispatch, trackingNumber, …) or (c) write
+    // ~1 MiB of junk in a single call.
+    function isBoundedString(value, maxLength) {
+      return value is string && value.size() <= maxLength;
+    }
+
+    function isValidTaxBreakdown(t) {
+      return t.keys().hasOnly(['neto', 'iva', 'total'])
+        && t.neto is int && t.iva is int && t.total is int;
+    }
+
+    function isValidSanitaryVerification(s) {
+      return s.keys().hasOnly(['sisRegistryNumber', 'credentialFileName', 'verified', 'regulatoryNote'])
+        && isBoundedString(s.sisRegistryNumber, 40)
+        && s.verified is bool
+        && isBoundedString(s.regulatoryNote, 300)
+        && (!('credentialFileName' in s) || isBoundedString(s.credentialFileName, 200));
+    }
+
+    function isValidCustomer(c) {
+      return c.keys().hasOnly([
+          'fullName', 'email', 'phone', 'rut', 'documentType',
+          'razonSocial', 'giroComercial', 'address', 'city', 'zip',
+          'transferReceipt', 'sanitaryVerification'
+        ])
+        && isBoundedString(c.fullName, 120)
+        && isBoundedString(c.email, 160)
+        && isBoundedString(c.phone, 32)
+        && isBoundedString(c.rut, 16)
+        && c.documentType in ['boleta', 'factura']
+        && isBoundedString(c.address, 200)
+        && isBoundedString(c.city, 80)
+        && isBoundedString(c.zip, 16)
+        // Documented CustomerInfo field; no current writer sets it, but leaving it
+        // out of the allowlist would make any future caller's payload fail wholesale.
+        && (!('transferReceipt' in c) || isBoundedString(c.transferReceipt, 120))
+        && (!('razonSocial' in c) || isBoundedString(c.razonSocial, 160))
+        && (!('giroComercial' in c) || isBoundedString(c.giroComercial, 160))
+        && (!('sanitaryVerification' in c)
+            || (c.sanitaryVerification is map && isValidSanitaryVerification(c.sanitaryVerification)));
+    }
+
+    function isValidBilling(b) {
+      return b.keys().hasOnly([
+          'documentType', 'rut', 'razonSocial', 'giroComercial',
+          'direccionFiscal', 'comunaFiscal', 'taxBreakdown', 'status'
+        ])
+        && b.documentType in ['boleta', 'factura']
+        && isBoundedString(b.rut, 16)
+        && isBoundedString(b.direccionFiscal, 200)
+        && isBoundedString(b.comunaFiscal, 80)
+        && b.taxBreakdown is map && isValidTaxBreakdown(b.taxBreakdown)
+        // The SII emission state is server-owned: a client may only ever open a
+        // document as PENDIENTE_EMISION_SII — never as EMITIDO.
+        && b.status == 'PENDIENTE_EMISION_SII'
+        && (!('razonSocial' in b) || isBoundedString(b.razonSocial, 160))
+        && (!('giroComercial' in b) || isBoundedString(b.giroComercial, 160));
+    }
+
+    // The path variable is passed in: a rules function cannot see the capture
+    // variables of the match block that calls it.
+    function isValidOrderCreate(orderId) {
       let data = request.resource.data;
-      return data.orderId is string && data.orderId.size() > 0
+      return data.keys().hasOnly([
+          'orderId', 'createdAt', 'paymentMethod', 'status', 'totalAmount',
+          'customer', 'billing', 'sanitaryVerification', 'items',
+          'promoCode', 'discountAmount'
+        ])
+        // The document id IS the canonical order id (see api/_lib/orderLookup.ts):
+        // binding the field to the path kills the decoy-document shadowing vector.
+        && data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 32
+        && data.orderId == orderId
+        && 'createdAt' in data
         && data.totalAmount is int && data.totalAmount > 0
+        && data.paymentMethod in ['mercadopago', 'transferencia', 'whatsapp']
         && data.status in [
           'PENDIENTE_PAGO_MERCADOPAGO',
           'PENDIENTE_TRANSFERENCIA',
           'COTIZACION_SOLICITADA_WHATSAPP'
         ]
-        && data.customer is map
+        // submitOrder() derives the status from the payment method — they must agree.
+        && (
+          (data.paymentMethod == 'mercadopago' && data.status == 'PENDIENTE_PAGO_MERCADOPAGO')
+          || (data.paymentMethod == 'transferencia' && data.status == 'PENDIENTE_TRANSFERENCIA')
+          || (data.paymentMethod == 'whatsapp' && data.status == 'COTIZACION_SOLICITADA_WHATSAPP')
+        )
+        && data.customer is map && isValidCustomer(data.customer)
+        && (!('billing' in data) || (data.billing is map && isValidBilling(data.billing)))
+        && (!('sanitaryVerification' in data)
+            || (data.sanitaryVerification is map && isValidSanitaryVerification(data.sanitaryVerification)))
+        && (!('promoCode' in data) || isBoundedString(data.promoCode, 32))
+        && (!('discountAmount' in data) || (data.discountAmount is int && data.discountAmount >= 0))
         && data.items is list
         && data.items.size() > 0
         && data.items.size() <= 25
@@ -65,16 +157,17 @@ service cloud.firestore {
     }
 
     // Orders (Production & Development/QA):
-    // Storefront checkout can create initial pending orders.
+    // Storefront checkout can create initial pending orders, pinned to the exact
+    // `submitOrder()` shape and to the document's own id (Task 0.12).
     // Read, update, and delete are strictly forbidden from client SDKs.
     // Backend updates (payment approvals & inventory deductions) run exclusively
     // via Firebase Admin SDK (which inherently bypasses security rules).
     match /orders/{orderId} {
-      allow create: if isValidOrderCreate();
+      allow create: if isValidOrderCreate(orderId);
       allow read, update, delete: if false;
     }
     match /dev_orders/{orderId} {
-      allow create: if isValidOrderCreate();
+      allow create: if isValidOrderCreate(orderId);
       allow read, update, delete: if false;
     }
 

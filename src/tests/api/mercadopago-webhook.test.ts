@@ -18,6 +18,25 @@ function createMockRes() {
   return res as VercelResponse & { status: ReturnType<typeof vi.fn>; json: ReturnType<typeof vi.fn> }
 }
 
+/**
+ * Orders-collection double for the canonical lookup (Task 0.12): the document key
+ * resolves to the first fixture document — mirroring `resolveOrderByCanonicalId` —
+ * and the legacy `orderId` field query returns the same fixtures.
+ */
+function orderCollectionMock(docs: Array<{ id: string; ref: unknown; data: () => Record<string, unknown> }> = []) {
+  const primary = docs[0]
+  return {
+    doc: vi.fn(() => ({
+      get: vi
+        .fn()
+        .mockResolvedValue(primary ? { exists: true, ref: primary.ref, data: primary.data } : { exists: false })
+    })),
+    where: vi.fn(() => ({
+      limit: vi.fn(() => ({ get: vi.fn().mockResolvedValue({ empty: docs.length === 0, docs }) }))
+    }))
+  }
+}
+
 describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
   const initialVercelEnv = process.env.VERCEL_ENV
   const initialAllowSimulated = process.env.ALLOW_SIMULATED_PAYMENTS
@@ -154,26 +173,17 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     const mockAdminDb = {
       collection: vi.fn((colName: string) => {
         if (colName === 'orders') {
-          return {
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({
-                get: vi.fn().mockResolvedValue({
-                  empty: false,
-                  docs: [
-                    {
-                      id: 'order-doc-abc',
-                      ref: orderRef,
-                      data: () => ({
-                        orderId: 'PRONTO-123456',
-                        status: 'PENDIENTE_PAGO_MERCADOPAGO',
-                        items: [{ productId: 'prod-turbine-1', quantity: 2 }]
-                      })
-                    }
-                  ]
-                })
+          return orderCollectionMock([
+            {
+              id: 'order-doc-abc',
+              ref: orderRef,
+              data: () => ({
+                orderId: 'PRONTO-123456',
+                status: 'PENDIENTE_PAGO_MERCADOPAGO',
+                items: [{ productId: 'prod-turbine-1', quantity: 2 }]
               })
-            })
-          }
+            }
+          ])
         }
         if (colName === 'products') {
           return {
@@ -242,27 +252,18 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     const mockAdminDb = {
       collection: vi.fn((colName: string) => {
         if (colName === 'orders') {
-          return {
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({
-                get: vi.fn().mockResolvedValue({
-                  empty: false,
-                  docs: [
-                    {
-                      id: 'order-doc-abc',
-                      ref: { id: 'order-doc-abc' },
-                      data: () => ({
-                        orderId: 'PRONTO-123456',
-                        status: 'PAGADO_MERCADOPAGO',
-                        mercadopagoPaymentId: '998877',
-                        items: [{ productId: 'prod-turbine-1', quantity: 2 }]
-                      })
-                    }
-                  ]
-                })
+          return orderCollectionMock([
+            {
+              id: 'order-doc-abc',
+              ref: { id: 'order-doc-abc' },
+              data: () => ({
+                orderId: 'PRONTO-123456',
+                status: 'PAGADO_MERCADOPAGO',
+                mercadopagoPaymentId: '998877',
+                items: [{ productId: 'prod-turbine-1', quantity: 2 }]
               })
-            })
-          }
+            }
+          ])
         }
         return {}
       }),
@@ -306,27 +307,18 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     const mockAdminDb = {
       collection: vi.fn((colName: string) => {
         if (colName === 'orders') {
-          return {
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({
-                get: vi.fn().mockResolvedValue({
-                  empty: false,
-                  docs: [
-                    {
-                      id: 'order-doc-abc',
-                      ref: { id: 'order-doc-abc' },
-                      data: () => ({
-                        orderId: 'PRONTO-123456',
-                        status: 'EN_PROCESAMIENTO',
-                        mercadopagoPaymentId: '998877',
-                        items: [{ productId: 'prod-turbine-1', quantity: 2 }]
-                      })
-                    }
-                  ]
-                })
+          return orderCollectionMock([
+            {
+              id: 'order-doc-abc',
+              ref: { id: 'order-doc-abc' },
+              data: () => ({
+                orderId: 'PRONTO-123456',
+                status: 'EN_PROCESAMIENTO',
+                mercadopagoPaymentId: '998877',
+                items: [{ productId: 'prod-turbine-1', quantity: 2 }]
               })
-            })
-          }
+            }
+          ])
         }
         return {}
       }),
@@ -376,25 +368,16 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     const mockAdminDb = {
       collection: vi.fn((colName: string) => {
         if (colName === 'orders') {
-          return {
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({
-                get: vi.fn().mockResolvedValue({
-                  empty: false,
-                  docs: [
-                    {
-                      id: 'order-doc-abc',
-                      ref: orderRef,
-                      data: () => ({
-                        orderId: 'PRONTO-123456',
-                        status: 'PENDIENTE_PAGO_MERCADOPAGO' // initial read was pending
-                      })
-                    }
-                  ]
-                })
+          return orderCollectionMock([
+            {
+              id: 'order-doc-abc',
+              ref: orderRef,
+              data: () => ({
+                orderId: 'PRONTO-123456',
+                status: 'PENDIENTE_PAGO_MERCADOPAGO' // initial read was pending
               })
-            })
-          }
+            }
+          ])
         }
         return {}
       }),
@@ -507,13 +490,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     } as Response)
 
     const mockAdminDb = {
-      collection: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockReturnValue({
-            get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
-          })
-        })
-      }),
+      collection: vi.fn().mockReturnValue(orderCollectionMock()),
       runTransaction: vi.fn()
     }
     vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
@@ -534,6 +511,88 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       expect.stringContaining('Order "PRONTO-NONEXISTENT" not found in Firestore')
     )
     consoleSpy.mockRestore()
+  })
+
+  it('resolves the document key first: a decoy document carrying the same orderId field cannot shadow the real order (Task 0.12)', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        status: 'approved',
+        external_reference: 'PRONTO-123456',
+        id: 998877,
+        transaction_amount: 189990
+      })
+    } as Response)
+
+    const realOrderRef = { id: 'PRONTO-123456' }
+    const decoyRef = { id: 'decoy-doc' }
+    const orderData = {
+      orderId: 'PRONTO-123456',
+      status: 'PENDIENTE_PAGO_MERCADOPAGO',
+      totalAmount: 189990,
+      items: [{ productId: 'prod-turbine-1', quantity: 2 }],
+      customer: { email: 'andrea@clinica.cl' }
+    }
+    const decoyDoc = {
+      id: 'decoy-doc',
+      ref: decoyRef,
+      data: () => ({
+        orderId: 'PRONTO-123456',
+        status: 'ENTREGADO',
+        totalAmount: 1,
+        items: [{ productId: 'prod-turbine-1', quantity: 1 }]
+      })
+    }
+
+    const mockTransactionGet = vi
+      .fn()
+      .mockImplementation((ref: { id?: string }) =>
+        ref?.id === 'PRONTO-123456'
+          ? Promise.resolve({ exists: true, data: () => orderData })
+          : Promise.resolve({ exists: true, data: () => ({ stockCount: 5, inStock: true, price: 94995 }) })
+      )
+    const mockTransactionUpdate = vi.fn()
+    const whereSpy = vi.fn(() => ({
+      limit: vi.fn(() => ({ get: vi.fn().mockResolvedValue({ empty: false, docs: [decoyDoc] }) }))
+    }))
+
+    const mockAdminDb = {
+      collection: vi.fn((colName: string) => {
+        if (colName === 'orders') {
+          return {
+            doc: vi.fn(() => ({
+              get: vi.fn().mockResolvedValue({ exists: true, ref: realOrderRef, data: () => orderData })
+            })),
+            where: whereSpy
+          }
+        }
+        if (colName === 'products') {
+          return { doc: vi.fn().mockReturnValue({ id: 'prod-turbine-1' }) }
+        }
+        return { doc: vi.fn().mockReturnValue({ id: 'audit-dummy-id' }) }
+      }),
+      runTransaction: vi.fn(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
+        await cb({ get: mockTransactionGet, update: mockTransactionUpdate, set: vi.fn() })
+      })
+    }
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+    const res = createMockRes()
+
+    await handler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    // The REAL document is the one marked paid — never the decoy (status ENTREGADO).
+    expect(mockTransactionUpdate).toHaveBeenCalledWith(
+      realOrderRef,
+      expect.objectContaining({ status: 'PAGADO_MERCADOPAGO', mercadopagoPaymentId: '998877' })
+    )
+    expect(mockTransactionUpdate).not.toHaveBeenCalledWith(decoyRef, expect.anything())
+    // The decoy is only reachable through the `orderId` field query, which is never consulted.
+    expect(whereSpy).not.toHaveBeenCalled()
   })
 
   describe('Webhook Cryptographic Signature Verification (x-signature)', () => {
@@ -679,16 +738,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       const mockAdminDb = {
         collection: vi.fn((colName: string) => {
           if (colName === 'orders') {
-            return {
-              where: vi.fn().mockReturnValue({
-                limit: vi.fn().mockReturnValue({
-                  get: vi.fn().mockResolvedValue({
-                    empty: false,
-                    docs: [{ id: 'order-doc-abc', ref: orderRef, data: () => orderData }]
-                  })
-                })
-              })
-            }
+            return orderCollectionMock([{ id: 'order-doc-abc', ref: orderRef, data: () => orderData }])
           }
           if (colName === 'products') {
             return { doc: vi.fn().mockReturnValue(productRef) }
@@ -766,26 +816,17 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
         ...mockAdminDb,
         collection: vi.fn((colName: string) => {
           if (colName === 'orders') {
-            return {
-              where: vi.fn().mockReturnValue({
-                limit: vi.fn().mockReturnValue({
-                  get: vi.fn().mockResolvedValue({
-                    empty: false,
-                    docs: [
-                      {
-                        id: 'order-doc-abc',
-                        ref: { id: 'order-doc-abc' },
-                        data: () => ({
-                          orderId: 'PRONTO-123456',
-                          status: 'PAGADO_MERCADOPAGO',
-                          mercadopagoPaymentId: '998877'
-                        })
-                      }
-                    ]
-                  })
+            return orderCollectionMock([
+              {
+                id: 'order-doc-abc',
+                ref: { id: 'order-doc-abc' },
+                data: () => ({
+                  orderId: 'PRONTO-123456',
+                  status: 'PAGADO_MERCADOPAGO',
+                  mercadopagoPaymentId: '998877'
                 })
-              })
-            }
+              }
+            ])
           }
           return {}
         })
@@ -863,16 +904,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       const mockAdminDb = {
         collection: vi.fn((colName: string) => {
           if (colName === 'orders') {
-            return {
-              where: vi.fn().mockReturnValue({
-                limit: vi.fn().mockReturnValue({
-                  get: vi.fn().mockResolvedValue({
-                    empty: false,
-                    docs: [{ id: 'order-doc-abc', ref: orderRef, data: () => orderData }]
-                  })
-                })
-              })
-            }
+            return orderCollectionMock([{ id: 'order-doc-abc', ref: orderRef, data: () => orderData }])
           }
           if (colName === 'products') {
             return { doc: vi.fn().mockReturnValue(productRef) }
@@ -1061,27 +1093,18 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       const mockAdminDb = {
         collection: vi.fn((colName: string) => {
           if (colName === 'orders') {
-            return {
-              where: vi.fn().mockReturnValue({
-                limit: vi.fn().mockReturnValue({
-                  get: vi.fn().mockResolvedValue({
-                    empty: false,
-                    docs: [
-                      {
-                        id: 'order-doc-abc',
-                        ref: { id: 'order-doc-abc' },
-                        data: () => ({
-                          orderId: 'PRONTO-123456',
-                          status: 'PAGO_EN_REVISION',
-                          mercadopagoPaymentId: '998877',
-                          items: [{ productId: 'prod-turbine-1', quantity: 2 }]
-                        })
-                      }
-                    ]
-                  })
+            return orderCollectionMock([
+              {
+                id: 'order-doc-abc',
+                ref: { id: 'order-doc-abc' },
+                data: () => ({
+                  orderId: 'PRONTO-123456',
+                  status: 'PAGO_EN_REVISION',
+                  mercadopagoPaymentId: '998877',
+                  items: [{ productId: 'prod-turbine-1', quantity: 2 }]
                 })
-              })
-            }
+              }
+            ])
           }
           return {}
         }),

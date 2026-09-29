@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getAdminFirestore } from "./_lib/firebaseAdmin.js";
-import { getCollectionName } from "./_lib/firestoreEnv.js";
+import { resolveOrderByCanonicalId } from "./_lib/orderLookup.js";
 import { sendEmail } from "./_lib/email.js";
 import {
   buildOrderConfirmationEmail,
@@ -66,13 +66,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
     }
 
-    const snapshot = await adminDb
-      .collection(getCollectionName("orders"))
-      .where("orderId", "==", cleanOrderId)
-      .limit(1)
-      .get();
+    // Resolve the order by document key first (Task 0.12); the `orderId` field
+    // query is only a legacy fallback — see api/_lib/orderLookup.ts.
+    const resolvedOrder = await resolveOrderByCanonicalId(adminDb, cleanOrderId);
 
-    if (snapshot.empty) {
+    if (!resolvedOrder) {
       return res
         .status(404)
         .json({
@@ -80,8 +78,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
     }
 
-    const orderDoc = snapshot.docs[0];
-    const orderData = orderDoc.data();
+    const orderRef = resolvedOrder.ref;
+    const orderData = resolvedOrder.data;
 
     // Authorization check: match purchaser's RUT (same contract as /api/track-order)
     const orderCustomerRut = normalizeRut(
@@ -128,7 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (result.sent) {
       try {
         const nowIso = new Date().toISOString();
-        await orderDoc.ref.update({
+        await orderRef.update({
           confirmationEmailSentAt: nowIso,
           updatedAt: nowIso,
         });

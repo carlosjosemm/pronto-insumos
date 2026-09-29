@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import type { Firestore, DocumentReference } from 'firebase-admin/firestore'
+import type { Firestore } from 'firebase-admin/firestore'
 import { getAdminFirestore } from './_lib/firebaseAdmin.js'
 import { getCollectionName } from './_lib/firestoreEnv.js'
+import { resolveOrderByCanonicalId, type ResolvedOrder } from './_lib/orderLookup.js'
 import { sendEmail, getWarehouseEmail } from './_lib/email.js'
 import { buildWarehouseAlertEmail, toOrderEmailData } from './_lib/emailTemplates.js'
 import { isSimulatedPaymentAllowed } from './_lib/simulationPolicy.js'
@@ -34,30 +35,6 @@ const PERSISTENCE_ERROR_MESSAGE =
 
 function normalizeRut(raw: string): string {
   return (raw || '').replace(/[^0-9kK]/g, '').toUpperCase()
-}
-
-interface ResolvedOrder {
-  ref: DocumentReference
-  data: Record<string, unknown>
-}
-
-/**
- * Order lookup: direct document key first (the canonical Order ID IS the document id),
- * then the `where('orderId','==')` fallback for legacy documents.
- */
-async function findOrder(adminDb: Firestore, cleanOrderId: string): Promise<ResolvedOrder | null> {
-  const collection = adminDb.collection(getCollectionName('orders'))
-
-  const direct = await collection.doc(cleanOrderId).get()
-  if (direct.exists) {
-    return { ref: direct.ref, data: (direct.data() || {}) as Record<string, unknown> }
-  }
-
-  const snapshot = await collection.where('orderId', '==', cleanOrderId).limit(1).get()
-  if (snapshot.empty) return null
-
-  const doc = snapshot.docs[0]
-  return { ref: doc.ref, data: (doc.data() || {}) as Record<string, unknown> }
 }
 
 /** Phase 1 — authorize the upload and mint a short-lived V4 signed PUT URL (no bytes, no writes). */
@@ -390,7 +367,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
-    const order = await findOrder(adminDb, cleanOrderId)
+    const order = await resolveOrderByCanonicalId(adminDb, cleanOrderId)
     if (!order) {
       return res.status(404).json({
         error: `No se encontró un pedido con el código "${cleanOrderId}".`
