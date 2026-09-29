@@ -12,6 +12,7 @@ import {
 } from '../services/adminApi'
 import { CARRIER_LABELS, type CarrierType } from '../types'
 import type { Order, OrderStatusHistory } from '../../types'
+import { classifyVoucherUrl, normalizeAllowedVoucherMime, type VoucherLinkKind } from '../../utils/voucherUrl'
 
 interface OrderDetailPanelProps {
   order: Order | null
@@ -50,6 +51,12 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   }, [order?.orderId, order?.status, order?.updatedAt, historyRefreshKey])
 
   if (!order) return null
+
+  // Task 0.13 — the stored voucher URL decides how (or whether) it can be opened:
+  // 'storage' → direct link, 'legacy-data' → Blob conversion behind a MIME gate,
+  // 'unsafe' → plain text, no anchor, no click handler.
+  const voucherUrl = order.voucherUrl
+  const voucherKind: VoucherLinkKind = classifyVoucherUrl(voucherUrl)
 
   const handleApproveTransfer = async () => {
     setActionLoading(true)
@@ -124,16 +131,23 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   /**
    * Legacy (pre-Task 2.9) vouchers were stored as Base64 `data:` URLs, which Chrome
    * refuses to open through top-frame navigation. Convert those to a Blob URL on
-   * click; real HTTPS storage URLs keep opening normally.
+   * click, but ALWAYS re-wrap the bytes with the allowlisted type (Task 0.13): a
+   * `blob:` URL inherits this origin, so an un-typed (or HTML-typed) Blob would
+   * become script running in the ADMIN origin. The `blob.type` check below is
+   * belt-and-braces — for a `data:` URL the fetched type IS the declared one, which
+   * `classifyVoucherUrl` already gated. Storage URLs are linked directly and never
+   * reach this handler.
    */
   const handleOpenVoucher = async (voucherUrl: string) => {
-    if (!voucherUrl.startsWith('data:')) {
-      window.open(voucherUrl, '_blank', 'noopener,noreferrer')
-      return
-    }
+    if (classifyVoucherUrl(voucherUrl) !== 'legacy-data') return
     try {
       const blob = await (await fetch(voucherUrl)).blob()
-      const objectUrl = URL.createObjectURL(blob)
+      const forcedType = normalizeAllowedVoucherMime(blob.type)
+      if (!forcedType) {
+        setActionError('El comprobante almacenado no es un PDF ni una imagen, así que no se abrió.')
+        return
+      }
+      const objectUrl = URL.createObjectURL(new Blob([blob], { type: forcedType }))
       window.open(objectUrl, '_blank', 'noopener,noreferrer')
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
     } catch {
@@ -288,9 +302,9 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
             </div>
           </div>
 
-          {/* Transfer Voucher Section */}
-          {order.voucherUrl && (
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 'var(--radius-sm)', padding: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Transfer Voucher Section (Task 0.13: only allowlisted URLs are openable) */}
+          {voucherUrl && (
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 'var(--radius-sm)', padding: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
               <div>
                 <div style={{ fontWeight: '700', fontSize: '0.825rem', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <FileText size={16} />
@@ -302,22 +316,37 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
                   </div>
                 )}
               </div>
-              <a
-                href={order.voucherUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => {
-                  if (order.voucherUrl?.startsWith('data:')) {
-                    e.preventDefault()
-                    handleOpenVoucher(order.voucherUrl)
-                  }
-                }}
-                className="admin-btn admin-btn-secondary"
-                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
-              >
-                <span>Ver Comprobante</span>
-                <ExternalLink size={13} />
-              </a>
+
+              {voucherKind === 'storage' && (
+                <a
+                  href={voucherUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="admin-btn admin-btn-secondary"
+                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                >
+                  <span>Ver Comprobante</span>
+                  <ExternalLink size={13} />
+                </a>
+              )}
+
+              {voucherKind === 'legacy-data' && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenVoucher(voucherUrl)}
+                  className="admin-btn admin-btn-secondary"
+                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                >
+                  <span>Ver Comprobante</span>
+                  <ExternalLink size={13} />
+                </button>
+              )}
+
+              {voucherKind === 'unsafe' && (
+                <span style={{ fontSize: '0.725rem', fontWeight: '700', color: 'var(--danger)', textAlign: 'right' }}>
+                  Enlace no verificable — revisa el documento en Firestore
+                </span>
+              )}
             </div>
           )}
 
