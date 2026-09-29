@@ -2,7 +2,7 @@
 
 A working task list, not a changelog. Finished work is one line in §2; its as-built detail lives in the `AGENTS.md` of the directory it touches. Open tasks keep their IDs (they are referenced from code comments and `AGENTS.md` files) — do not renumber.
 
-**Last updated:** 2026-09-29 (Task 2.10 — WhatsApp single source; Task 8.8 — public-endpoint enumeration & abuse throttling; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
+**Last updated:** 2026-09-29 (Task 2.10 — WhatsApp single source; Task 8.8 — public-endpoint enumeration & abuse throttling; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision; **Phase 7 — 7.1 legal sign-off & 7.2 custom `.cl` domain — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
 **Baseline (verified 2026-09-29, after the Task 0.14, 2.11, 2.10 and 8.8 work):** `pnpm test` 794/794 (80 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
 
 **Priorities:** **P1** = fix before real traffic · **P2** = fix soon after / before a marketed launch · **P3** = polish & DevOps.
@@ -14,7 +14,7 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | ID | Task | Pri | Launch blocker |
 | :-- | :-- | :-: | :-: |
 | 3.1 | Per-zone shipping rates below the free-shipping threshold — **suspended (Phase 3)** | P1 | **Yes** |
-| 7.2 | Custom `.cl` domain + SSL | P1 | **Yes** |
+| 7.2 | Custom `.cl` domain + SSL — **suspended (owner decision)** | P1 | **Yes** |
 | 2.12 | Payment-return modal claims "Pago Confirmado" from URL params alone | P2 | No |
 | 2.13 | Internal dispatch reference for courier-less deliveries (auto-generated tracking id) | P2 | No |
 | 2.15 | Voucher storage follow-ups (unconfirmed uploads, legacy base64 docs) | P2 | No |
@@ -38,14 +38,18 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 >
 > **Launch consequence, kept visible on purpose:** 3.1 is the only P1 launch blocker inside the suspension, so while it is suspended the storefront charges **no freight** below `FREE_SHIPPING_THRESHOLD` and PRONTO absorbs the courier cost on those orders.
 
+> **SUSPENDED until further notice (owner decision, 2026-09-29):** **Phase 7 — Legal & Domain** — the **7.1** owner/lawyer sign-off on the draft legal copy and **7.2** (custom `.cl` domain + SSL) — is out of the active priority queue. Do not chase the 7.1 legal review (the draft copy stays published as-is), and do not implement 7.2 (NIC Chile registration, the Vercel DNS cut-over, the `pronto-insumos.vercel.app` URL sweep in `index.html`/`SITE_URL`, or the Resend / Mercado Pago URL re-check). IDs and wording are retained for when the suspension is lifted.
+>
+> **Launch consequence, kept visible on purpose:** 7.2 was the last P1 launch blocker outside the Phase 3 suspension, so with both suspended the storefront launches on **`https://pronto-insumos.vercel.app`** — no branded `.cl` domain, no custom-domain TLS, and every canonical/`SITE_URL` link stays on the Vercel host. The 7.1 consequence is that the SERNAC / Ley 19.628 copy ships as the owner-reviewed **draft**, without a lawyer sign-off.
+
 **Human action items (no agent can close these):**
 
 - Deploy Firestore rules — **0.12's last open step**: the code-side hardening (doc-key-first resolution + the URL allowlist) is live-protective, but until this runs the database still accepts decoy documents and pre-injected admin fields. Run `pnpm run deploy:rules`.
 - `pnpm dlx vercel@latest deploy --prod` (8.6's last acceptance box; the `og-preview.jpg` gate is already cleared).
 - Confirm the 2.9 storage provisioning is live on **production** (Blaze plan, bucket, `pnpm run storage:cors -- --apply`, `pnpm run deploy:storage-rules`, and `FIREBASE_STORAGE_BUCKET` in Vercel Production if the bucket is not the default `<project>.firebasestorage.app`). Until then uploads fail closed with a WhatsApp-fallback message.
 - **Task 8.8 TTL policy — PRODUCTION DONE (2026-09-29).** `abuse_counters.expiresAt` is `ACTIVE` in `pronto-insumos` (`gcloud firestore fields ttls update expiresAt --collection-group=abuse_counters --enable-ttl --project=pronto-insumos` → `ttlConfig.state: ACTIVE`), so the throttle counters now self-delete (~24 h after expiry). *Remaining, optional:* the dev twin — `gcloud firestore fields ttls update expiresAt --collection-group=dev_abuse_counters --enable-ttl --project=pronto-insumos`. Context: the throttle writes one (≈200 B) counter document per distinct `{scope, kind, hashed key}` — including **attacker-chosen order ids** — so the policy is what keeps that surface bounded.
-- Register the `.cl` domain (7.2).
-- Owner/lawyer sign-off on the draft legal copy in `LegalModal` (7.1: SERNAC warranty clauses and hygiene-sealed-goods exclusions are a draft, not legal advice).
+- Register the `.cl` domain (7.2) — **SUSPENDED until further notice (owner decision, 2026-09-29):** do not register, configure DNS, sweep the Vercel URLs or re-check the Resend/Mercado Pago URLs until the suspension is lifted.
+- Owner/lawyer sign-off on the draft legal copy in `LegalModal` (7.1: SERNAC warranty clauses and hygiene-sealed-goods exclusions are a draft, not legal advice) — **SUSPENDED until further notice (owner decision, 2026-09-29):** the draft copy stays published as-is; do not schedule or chase the legal review.
 - Optional human-produced assets, never agent-generated: `public/assets/delivery-routes.png` (Appendix B.3) and `public/assets/bodega-ortuzar.jpg` (Appendix B.4) in [UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md](./UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md); if absent the checkout `<figure>` is simply omitted.
 - WhatsApp Business app greeting/away/quick-reply configuration (5.2, operational).
 
@@ -92,13 +96,13 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 5.1 | Resend transactional email (fail-safe, plain `fetch`), domain `prontoinsumos.com` verified. |
 | 5.2 | Production WhatsApp number `56929831595`. |
 | 6.1 | Real catalog photography and gallery. |
-| 7.1 | Terms, SERNAC warranty, privacy (Ley 19.628) and legal ID via `LegalModal` (copy = draft, see human items). |
+| 7.1 | Terms, SERNAC warranty, privacy (Ley 19.628) and legal ID via `LegalModal` (copy = draft; the owner/lawyer sign-off is **suspended** — see human items). |
 | 7.3 | `og-preview.jpg` (1200×630 JPEG) and `favicon.svg` delivered. |
 | 8.3 | Integration tests for the serverless endpoints. |
 | 8.6 | `api/` consolidated to 6 functions (Hobby cap 12); ESM `.js` import rule and `jose@^5` override (removal condition: `jwks-rsa` > 4.1.0 ships the lazy-`jose` fix — then re-verify `firebase-admin/auth` on a preview deploy). |
 | 8.7 | Catalog progressive reveal (16 per page, button only). |
 
-Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the verified webhook · [x] abandoned/rejected payments leave stock intact · [x] server secrets only in serverless env · [x] order confirmation email/WhatsApp · [x] Boleta + validated RUT · [x] server-verified amounts (0.9) · [x] consumer legal terms published · [ ] branded `.cl` domain with SSL (7.2) · [ ] all P1 items above closed — **standing exception: the suspended Phase 3 set (3.1 freight), which while suspended means sub-threshold orders ship without a freight charge.**
+Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the verified webhook · [x] abandoned/rejected payments leave stock intact · [x] server secrets only in serverless env · [x] order confirmation email/WhatsApp · [x] Boleta + validated RUT · [x] server-verified amounts (0.9) · [x] consumer legal terms published (7.1 — draft copy; owner sign-off **suspended**) · [ ] branded `.cl` domain with SSL (7.2 — **suspended**) · [ ] all P1 items above closed — **standing exception: the suspended Phase 3 set (3.1 freight) and the suspended 7.2 (custom domain), so sub-threshold orders ship without a freight charge and the storefront launches on `https://pronto-insumos.vercel.app`.**
 
 ---
 
@@ -112,7 +116,8 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
   - **`voucherUrl` is a permanent capability URL** (Firebase download token; never expires unless the token is rotated). Acceptable today — it is only exposed to the RUT-authenticated customer and admins — but note it if vouchers ever need revocation.
   - **Platform facts (verified 2026-09-28) that shaped the design:** Firestore 1 MiB doc cap and 1 GiB free tier; Vercel 4.5 MB request/response body cap (hence client-direct upload and no bytes through functions); Cloud Storage for Firebase needs Blaze. Sources: [Firestore limits](https://firebase.google.com/docs/firestore/quotas) · [Vercel limits](https://vercel.com/docs/functions/limitations) · [Storage billing change](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024)
 
-- [ ] **7.2. Custom `.cl` Domain and SSL** _(P1)_
+- [ ] **7.2. Custom `.cl` Domain and SSL** _(P1 — **suspended (owner decision, 2026-09-29)**)_
+  - **Not in the active priority queue: do not select, plan or implement this item.** ID and wording are retained for when the suspension is lifted (see the §1 suspension blockquote for the launch consequence).
   - Register via NIC Chile (e.g. `prontoinsumos.cl`), configure DNS on Vercel (automatic TLS), replace every `pronto-insumos.vercel.app` (`index.html` `og:url`, `og:image`, `twitter:*`, JSON-LD `url`/`image`; `SITE_URL` in Vercel env for email tracking links). Re-check the Resend sender domain and Mercado Pago `notification_url`/back URLs after the switch.
 
 ### Phase 2 — Checkout, Payment Return & Storefront
