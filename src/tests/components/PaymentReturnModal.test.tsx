@@ -3,6 +3,15 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import React from 'react'
 import PaymentReturnModal, { PaymentReturnModalProps } from '../../components/PaymentReturnModal'
 
+/**
+ * The approved-state link must come from the shared helper (Task 2.10). The sentinel
+ * number proves the component no longer builds its own wa.me URL — with the old inline
+ * build this mock is bypassed and the href carries the env placeholder instead.
+ */
+vi.mock('../../config/contact', () => ({
+  whatsappLink: (text?: string) => `https://wa.me/56900000000${text ? `?text=${encodeURIComponent(text)}` : ''}`
+}))
+
 describe('PaymentReturnModal Component', () => {
   const defaultProps: PaymentReturnModalProps = {
     isOpen: true,
@@ -32,6 +41,15 @@ describe('PaymentReturnModal Component', () => {
     expect(screen.getByText(/Pago Acreditado \(PAGADO\)/i)).toBeInTheDocument()
     expect(screen.getByText(/Bodega Melipilla/i)).toBeInTheDocument()
     expect(screen.getByText(/Coordinar Despacho por WhatsApp/i)).toBeInTheDocument()
+  })
+
+  it('builds the WhatsApp link through the shared whatsappLink helper (Task 2.10)', () => {
+    render(<PaymentReturnModal {...defaultProps} />)
+
+    const link = screen.getByText('Coordinar Despacho por WhatsApp').closest('a')
+
+    expect(link).toHaveAttribute('href', expect.stringContaining('https://wa.me/56900000000'))
+    expect(decodeURIComponent(link?.getAttribute('href') ?? '')).toContain('PRONTO-982341')
   })
 
   it('should invoke onClose when clicking Continuar en la Tienda on approved state', () => {

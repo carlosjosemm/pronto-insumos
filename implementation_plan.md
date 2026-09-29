@@ -1,185 +1,136 @@
-# Task 2.11: Catalog Fallback Shows Prototype Fixtures and Wipes the Persisted Cart
+# Task 2.10: Replace the Last Literal `wa.me` and Stale Phone Placeholders
 
-**Branch:** `fix/task-2.11-catalog-fallback-cart-wipe` (cut from `main` @ `6c79471` — the merged PR #24 — verified in sync with `origin/main`; executing in the isolated Windsurf worktree)
+**Branch:** `fix/task-2.10-whatsapp-link-single-source` (cut from `main` @ `4065bda` — merged PR #26; `git fetch` confirmed `origin/main` in sync)
 **RequestFeedback:** true · **UserFacing:** true
-**Status:** Implemented, verified, adversarially reviewed (findings F1–F7 remediated — see §7) and awaiting the explicit **"wrap up and proceed"** command.
+**Status:** Implemented, verified (79 suites / 755 tests + all five gates green) and adversarially reviewed — findings F1–F8 triaged, F3/F4/F5/F7/F8 remediated in the working tree (see §7); awaiting the explicit **"wrap up and proceed"** command.
 
 ---
 
 ## 1. Context & Problem Statement
 
-Reference: `PRODUCTION_READINESS_TODO.md` → **2.11** (P1 launch blocker, 2026-09-29 audit).
+Reference: `PRODUCTION_READINESS_TODO.md` → **2.10** (P2 — "Last literal `wa.me` / stale phone placeholders", first item of the non-suspended P2 queue).
 
-`fetchProducts()` (`src/services/api.ts:57-82`) races the Firestore read against a **2.5 s timeout** and, on timeout, rejection **or an empty snapshot**, returns the 11 `odon-*` prototype fixtures. Two defects follow:
+`src/config/contact.ts` is the documented single source for the business WhatsApp line (`WHATSAPP_NUMBER` → `VITE_WHATSAPP_NUMBER`, fallback `56929831595`; `WHATSAPP_DISPLAY`; `whatsappLink(text?)`). `src/config/AGENTS.md` states the invariant: **"No component may hardcode a phone number or a `wa.me` URL — all customer-facing links go through `whatsappLink()`."** Three surfaces still violate it:
 
-| # | Defect (as built) | Consequence |
-| :-- | :--- | :--- |
-| D1 | The fallback is **unconditional** — `isSimulatedFallbackAllowed()` is never consulted (unlike every other simulated path since Task 2.8/0.10) | A production storefront served from a slow or failing Firestore shows **11 prototype items, all `isActive: false` / `inStock: false`** ("all agotado") and no error. A slow 4G first load in Chile is enough to trigger it. |
-| D2 | `App.tsx:154-190` cannot tell a real catalog from the fixture fallback, so it runs `revalidateCartAgainstCatalog(cart, res)` on the **first unfiltered load regardless of source** | Every saved `pronto-*` cart line is absent from the fixture catalog ⇒ classified "discontinued" (`cartStorage.ts:184-196`) ⇒ **the cart is emptied, persisted empty, and a misleading "Se actualizó el carro…" toast is shown**. |
-| D3 | `hasRevalidated.current` is set even when the load fell back | The one-shot revalidation is consumed by the bad load, so a later successful catalog never revalidates the cart in that session. |
+| # | Surface (as built) | Defect | Consequence |
+| :-- | :--- | :--- | :--- |
+| D1 | `src/components/PaymentReturnModal.tsx:38-42` | Builds its own URL: `import.meta.env.VITE_WHATSAPP_NUMBER \|\| '56912345678'`, strips non-digits, hand-builds `https://wa.me/${phone}?text=…` | With the env var unset/misnamed, the **approved-payment** "Coordinar Despacho por WhatsApp" button opens a chat with the **stale prototype placeholder** `56912345678` — a different line than every other surface. It is also the **last literal `wa.me` in the storefront** (recorded in `src/components/AGENTS.md` §4.1.2 and §7.3). |
+| D2 | `src/services/whatsapp.ts:15` | Keeps a **second** `import.meta.env?.VITE_WHATSAPP_NUMBER \|\| '56929831595'` read ("deliberate exception", `src/services/AGENTS.md` §4.4) | Two readers with two fallback literals can drift (the failure mode that once pointed `OrderTrackingModal` at `56987654321`). Both fallbacks are correct today — latent risk, not a live bug. |
+| D3 | `index.html:61` | JSON-LD `"telephone": "+56912345678"` | The local-business structured data (link previews, search surfaces) advertises a **phone line that does not exist**. |
 
-The fixtures themselves are not the bug — `src/data/AGENTS.md` §2.1 documents them as a deliberate **dev/test** artifact ("they never display on the storefront but remain usable by tests and the local offline fallback"). The bug is that production can reach them, and that the cart is mutated from data that was never authoritative.
+**Scope guardrails (what must NOT change):**
+- **No copy edits.** The WhatsApp message strings (PaymentReturnModal's coordination text, `whatsapp.ts`'s quote template) stay byte-identical — storefront copy requires an Appendix C entry first (`src/components/AGENTS.md` §2.5). The `(Melipilla & RM)` wording in `whatsapp.ts:12,38` is **Task 3.3 — suspended**; it is explicitly out of scope here.
+- **No new numbers.** The canonical number is `56929831595` / `+56929831595` (`WHATSAPP_NUMBER`'s own fallback and `.env.example:19`).
+- **No 2.12 scope creep.** The "¡Pago Confirmado!" trust gap (URL-parameter-driven success) is Task 2.12, not this task.
 
 ---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-No new credentials, no new environment variables, no `.env.example` change — this task only tightens client behaviour.
+**None required.** No new credentials, no new env vars, no `.env.example` change — `VITE_WHATSAPP_NUMBER` is already documented at `.env.example:19` (digits-only, `56929831595`) and this task removes readers, not adds them.
 
-| # | Action | Where / command |
+| # | Optional verification | Command / where |
 | :-- | :--- | :--- |
-| H1 | *(Optional)* Verify the new error state on a preview deploy: open the storefront, block Firestore (DevTools → Network → Offline) and reload → expect the retryable "No pudimos cargar el catálogo" card, never the 11 prototype items; a saved cart must survive | Manual, after deploy |
-| H2 | *(Optional)* Confirm `VITE_FIREBASE_*` are present on the Vercel Production target — after this change a missing/blocked catalog shows an honest error instead of fixtures | `pnpm dlx vercel@latest env ls` |
+| H1 | Confirm `VITE_WHATSAPP_NUMBER` is set on the Vercel **Production** target (after this task the code fallback is also correct, so a missing var is no longer a stale-line risk) | `pnpm dlx vercel@latest env ls` |
+| H2 | Re-run the ops smoke test — it exercises the **consolidated** import graph under plain Node/tsx (`scripts/send-test-comms.ts:95` dynamic-imports `src/services/whatsapp`). **As executed:** the importability half is verified (a `pnpm dlx tsx` probe imports `contact.ts` + `whatsapp.ts` with no env and prints `wa.me/56929831595`); the script's `--only=whatsapp` path itself throws on a **pre-existing** fixture-shape bug (`TEST_ORDER.items` lacks `product`), recorded as P1 in §7 — not introduced here, not fixed here | `pnpm dlx tsx scripts/send-test-comms.ts --only=whatsapp` |
 
 ---
 
 ## 3. Proposed Changes
 
-### 3.A `[MODIFY] src/services/api.ts` — a source-aware catalog fetch
+### 3.A `[MODIFY] src/components/PaymentReturnModal.tsx` — route through `whatsappLink()`
 
-New explicit contract (the service currently returns a bare `Product[]`, which is exactly why `App` cannot tell the two apart):
+- Add `import { whatsappLink } from '../config/contact'`.
+- Replace lines 38-42 (env read + `.replace(/[^0-9]/g, '')` + manual template) with a single call:
 
 ```ts
-export type CatalogSource = 'firestore' | 'fixtures' | 'unavailable'
-
-export interface CatalogResult {
-  products: Product[]
-  source: CatalogSource
-  /** Customer-safe Chilean-Spanish message, present only when source === 'unavailable'. */
-  error?: string
-}
-
-/** Bounded wait for the catalog read. Relaxed from 2.5 s (Task 2.11): a first load on
- *  slow Chilean mobile data routinely exceeded it, which is what served fixtures. */
-export const CATALOG_FETCH_TIMEOUT_MS = 10_000
+const whatsappUrl = whatsappLink(
+  `🏥 *COORDINACIÓN DE PEDIDO PAGADO - PRONTO INSUMOS*\n\nHola, acabo de pagar mi pedido *${orderId || 'PRONTO'}* vía Mercado Pago. Quisiera consultar los tiempos y condiciones de entrega para mi clínica.`
+)
 ```
 
-`fetchProducts(options): Promise<CatalogResult>` — same filtering/sorting/partitioning as today, new source semantics:
+Output is byte-identical to today's URL whenever the env var is a digits-only number (`whatsappLink` = `https://wa.me/<digits>?text=<encodeURIComponent(text)>`).
+**Post-review amendment (F5):** the removed `.replace(/[^0-9]/g, '')` **was** re-homed into `contact.ts` after the adversarial review flagged the regression risk — the single source now strips non-digits itself and falls back to `56929831595` when nothing digit-like remains, so a formatted `VITE_WHATSAPP_NUMBER` (`+56 9 2983 1595`, exactly the format the UI displays) can no longer produce a dead link on any surface.
 
-| Situation | Production (`!isSimulatedFallbackAllowed()`) | Dev / preview (or `VITE_ALLOW_SIMULATED_PAYMENTS=true`) |
-| :--- | :--- | :--- |
-| Firestore returns ≥1 active product | `source: 'firestore'` | `source: 'firestore'` |
-| Missing `VITE_FIREBASE_*` config | `source: 'unavailable'` + error | `source: 'fixtures'` |
-| `getDocs` rejects | `source: 'unavailable'` + error | `source: 'fixtures'` + `console.warn` |
-| `getDocs` resolves empty | `source: 'unavailable'` + error | `source: 'fixtures'` |
-| Timeout (> `CATALOG_FETCH_TIMEOUT_MS`) | `source: 'unavailable'` + error | `source: 'fixtures'` + `console.warn` |
+### 3.B `[MODIFY] src/services/whatsapp.ts` — drop the second env read
 
-- Error message (shared constant): `'No pudimos cargar el catálogo de insumos. Revisa tu conexión y reintenta.'`
-- Production failures log via `console.error`; dev fallbacks keep the historical `console.warn` — the same convention Task 2.8 established for the other adapters.
-- `isActive !== false` continues to filter **Firestore** results.
+- Add `import { whatsappLink } from '../config/contact'`; delete `const phone = import.meta.env?.VITE_WHATSAPP_NUMBER || '56929831595'`; `return whatsappLink(message)`.
+- The message template (including the 3.3-owned copy) is untouched.
+- **Node/tsx importability is preserved and was verified today:** `contact.ts` uses the same `import.meta.env?.` optional-chain as `whatsapp.ts` did; a live smoke test (`pnpm dlx tsx`, ESM, inside the repo) imported `contact.ts` + `whatsapp.ts` with no env and printed `NUMBER=56929831595 · LINK=https://wa.me/56929831595?text=hola`. After consolidation the ops-script path (`scripts/send-test-comms.ts:95`) resolves the identical fallback.
 
-### 3.B `[MODIFY] src/App.tsx` — consume the source, protect the cart, offer a retry
+### 3.C `[MODIFY] index.html` — JSON-LD `telephone`
 
-- New state: `catalogError: string | null` and `catalogRetryKey: number`; `catalogRequestKey` gains the retry key (`${category}|${search}|${sortBy}|${inStockOnly}|${retryKey}`) so a retry re-runs the effect **and** re-shows the skeleton (`loading` is derived from that key).
-- `setProducts(res.products)`; `setCatalogError(res.source === 'unavailable' ? res.error : null)`.
-- **Cart protection (D2/D3):** the revalidation block only runs when `res.source === 'firestore'` — and only then is `hasRevalidated.current = true`. Fallback data can therefore never remove, clamp or re-price a saved line, and the one-shot revalidation is preserved for the first *authoritative* catalog of the session.
-- The "Se actualizó el carro…" toast consequently only fires from a real catalog.
+`"telephone": "+56912345678"` → `"telephone": "+56929831595"`. Nothing else in `index.html` is touched (the `pronto-insumos.vercel.app` URLs are Task 7.2, not this task).
 
-### 3.C `[MODIFY] src/components/ProductList.tsx` — retryable catalog error state
+### 3.D `[NEW] src/tests/config/contact.test.ts` — the single-source guard
 
-Two optional props, `catalogError?: string | null` and `onRetry?: () => void`. When `catalogError` is set the component renders an error card **in place of the grid** (same container styling as the existing empty state, `AlertCircle` icon, the service's message, and a `Reintentar` button). The existing "No se encontraron insumos odontológicos" copy stays for the genuinely-empty-results case (e.g. a search with no matches).
+Behavior tests + a `readFileSync` content guard, mirroring the `Fiscal RUT single-source guard` in `src/tests/config/bankDetails.test.ts` and the stylesheet guard in `src/tests/styles/storefrontCss.test.ts` (the repo's established pattern for invariants a jsdom render cannot prove).
 
-### 3.D `[MODIFY] src/components/CategoryFilter.tsx` — stop counting the prototype catalog
+### 3.E `[MODIFY] src/tests/services/whatsapp.test.ts` — env cases move to the resolver
 
-Found while auditing the fixture blast radius, and the same defect family: `CategoryFilter` computes its pill counts from `const catalog = products || PRODUCTS`, but **`App.tsx` never passes `products`** — so `catalog` is *always* the 11 prototype fixtures and every category pill shows a prototype count (`categoryCounts[cat.id] ?? 0`, rendered at `:105`). The counts are wrong today for every real catalog, and the fallback is a second way prototype data reaches the storefront.
+The two `vi.stubEnv` cases currently pass *because* `whatsapp.ts` reads env at call time; after consolidation the module-level `WHATSAPP_NUMBER` const is fixed at import, so those cases are rewritten (see §4) — the env-resolution semantics move to `contact.test.ts` (tested with `vi.resetModules()` + dynamic import, the pattern already used in `src/tests/api/firebaseAdmin.test.ts`).
 
-- `catalog = products ?? []` and the `PRODUCTS` import is **removed from the component entirely**.
-- `App.tsx` passes the live `products` it already holds.
-- With an unavailable/empty catalog the pills still render the canonical `CATEGORIES` taxonomy (a static storefront list, not fixture data) with counts of `0` — which is truthful.
+### 3.F `[MODIFY] src/tests/components/PaymentReturnModal.test.tsx` — discriminating wiring test
 
-### 3.E Decision point — the `isActive` filter on fallback data
-
-The TODO's fix line ends with *"filter `isActive` on fallback data too"*. Taken literally that makes the dev fallback **empty** (all 11 fixtures are `isActive: false` by design), which contradicts their documented role and would rewrite ~15 assertions in `api.test.ts` that pin the 11-item fallback.
-
-**Recommended (A):** keep the fixtures unfiltered for the **dev-only** fallback and document why — after this change fixtures are *unreachable in production*, so the filter's protective purpose is already satisfied; the dev developer sees the prototype catalog as designed.
-
-Alternatives if you prefer: **(B)** apply the filter literally (dev shows the empty state; ~15 test assertions rewritten), or **(C)** flip the 11 fixtures to `isActive: true` so the filter is consistent *and* dev keeps a catalog — a fixture-contract change that `src/data/AGENTS.md` §2.1 and `src/tests/data/products.test.ts` would have to follow.
-
-### 3.F The fixtures themselves — deliberately out of scope (owner question, answered)
-
-The owner asked whether the `odon-*` fixtures should simply be deleted. **Not in this task**, and the audit is the reason: they have six live consumers, not one —
-
-| Consumer | Role |
-| :--- | :--- |
-| `src/services/api.ts` | dev/offline catalog fallback (this task's subject) |
-| `src/components/CategoryFilter.tsx` | pill counts (fixed in §3.D) |
-| `src/admin/services/adminApi.ts:208` | admin inventory fallback (out of scope by owner decision) |
-| `scripts/manage-firestore-schema.ts` | `schema:seed` / `schema:seed:dev` seed the catalog from `canonicalProducts` — a **documented operator command** |
-| `src/services/firebase.ts` | `seedProductsToFirestore()` — retained, uncalled |
-| 4 test suites | `data/products.test.ts` exists *solely* to validate them |
-
-Deleting them is a cross-cutting refactor that first requires a product decision (*what replaces them as the seed source?*), and it would make a P1 bug-fix PR unreviewable. **Proposal:** track it as a new roadmap item (Phase 6 Catalog) so the decision is explicit rather than implicit, and leave the fixtures untouched here.
+Add a case that `vi.mock`s `../../config/contact` with a sentinel `whatsappLink` and asserts the approved-state anchor href uses the sentinel number. This **fails on the current inline build** (which ignores the mocked module) and passes only when the component actually routes through the shared helper.
 
 ### Explicitly NOT done (scope guardrails)
 
-- No new dependency, no new component file, no CSS framework changes (the error card reuses the existing inline-style convention of `ProductList`).
-- **The admin portal's own fixture fallback is out of scope** (`src/admin/services/adminApi.ts` falls back to the local catalog when `/api/admin/products` is unreachable — an internal surface, no cart to destroy). Flagged, not touched; it can become its own item if you want it.
-- No change to `cartStorage.revalidateCartAgainstCatalog` itself (its behaviour is correct given a trustworthy catalog), no change to the checkout/payment paths, no removal of the fixtures.
+- No change to `src/config/contact.ts` (it already exports everything needed).
+- No change to message copy, no `(Melipilla & RM)` sweep (Task 3.3 — suspended), no `PaymentReturnModal` trust-copy change (Task 2.12), no `og:`/`twitter:` URL work (Task 7.2).
+- No new dependencies, no new components, no new config files.
 
 ---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-All boundaries mocked (`firebase/firestore`, `../../services/firebase`); no live Firebase calls.
+| Suite | Cases |
+| :--- | :--- |
+| **`src/tests/config/contact.test.ts`** *(new — 9 cases as built)* | **1.** `WHATSAPP_NUMBER`/`WHATSAPP_DISPLAY` derive from the pinned test number. **2.** `whatsappLink('Hola clínica')` → exact encoded URL (`?text=Hola%20cl%C3%ADnica`); `whatsappLink()` → no `?text=`. **3.** Env resolution: `vi.stubEnv('VITE_WHATSAPP_NUMBER','56999887766')` + `vi.resetModules()` + dynamic `import()` → `WHATSAPP_NUMBER === '56999887766'`. **4.** Canonical fallback: `vi.stubEnv(…, '')` (the empty value exercises the `\|\|` branch; a `delete` would be equivalent) + `vi.resetModules()` + dynamic import → `56929831595`. **5.** Formatted env (`+56 9 2983 1595`) → normalized `56929831595` and a valid `whatsappLink`. **6.** Digit-free env → canonical fallback. **7.** Scan sanity check. **8.** *Single-source guard:* recursive scan of `src/components/**`, `src/services/**` **and `src/admin/**`** → zero matches for `/wa\.me/`, `/\b569\d{7,8}\b/`, `VITE_WHATSAPP_NUMBER` (the regex was widened post-review, F3). **9.** `index.html` contains `"telephone": "+<canonical>"` **derived** from `contact.ts` (F8) and no `+56912345678`. Env restored in `afterEach` (`vi.unstubAllEnvs`). |
+| **`src/tests/services/whatsapp.test.ts`** *(modify)* | The two `vi.stubEnv` cases are replaced by **"builds the link through the shared whatsappLink helper"** — a sentinel `vi.mock('../../config/contact')` (`wa.me/56900000000`) that the pre-consolidation code fails (F4). Every message-content case (order id, itemized names, CLP totals, SIS line, Melipilla reference) is kept. |
+| **`src/tests/components/PaymentReturnModal.test.tsx`** *(modify)* | New: sentinel-mock case proving the approved link is produced by `whatsappLink()` (verified to fail on the pre-change code); plus a decoded-message assertion (order id preserved). All existing cases (open/close, Escape, failure, pending) stay green. |
 
-**`[MODIFY] src/tests/services/api.test.ts`** — migrate to the new contract and add the source matrix (~+7):
-- Existing filter/sort/stock tests updated to `result.products` (mechanical; they run on the deterministic empty-snapshot fallback).
-- **Production + `getDocs` rejection** ⇒ `source: 'unavailable'`, `products: []`, and an assertion that **no `odon-` fixture leaked** into the payload.
-- **Production + empty snapshot** ⇒ `unavailable`; **production + missing config** ⇒ `unavailable`.
-- **Production + timeout** ⇒ `unavailable` (fake timers advanced past `CATALOG_FETCH_TIMEOUT_MS`; the rejected-race branch asserted without real waiting).
-- **Dev/preview** (VERCEL_ENV unset) for rejection and empty snapshot ⇒ `source: 'fixtures'` with all 11 items; **`VITE_ALLOW_SIMULATED_PAYMENTS='true'` in production** ⇒ fixtures (escape hatch pinned).
-- **Firestore success** ⇒ `source: 'firestore'`, `isActive: false` documents excluded.
-- Env hygiene: `vi.unstubAllEnvs()` + `vi.restoreAllMocks()` per test (the console spies must not leak into later suites), and the dev-path cases stub `VITE_VERCEL_ENV` explicitly instead of relying on ambient values.
-
-**`[MODIFY] src/tests/components/AppCartPersistence.test.tsx`** — mock updated to the new shape, plus (~+3):
-- **The regression this task exists for:** production + `source: 'unavailable'` on mount with a saved cart ⇒ the cart is **unchanged** (same badge count, `localStorage` still holds the lines), **no** "Se actualizó el carro…" toast, and the retryable error card is rendered.
-- Production + `source: 'fixtures'` (escape hatch) ⇒ cart still untouched (source gate, not just the env gate).
-- **Retry recovers:** click `Reintentar` ⇒ the next mocked response returns `source: 'firestore'` ⇒ the grid renders and the cart is revalidated normally (proves the one-shot flag was not consumed by the failed load).
-
-**`[MODIFY] src/tests/components/AppPaymentReturn.test.tsx`** — mock updated to the new shape only.
-
-**`[MODIFY] src/tests/components/ProductList.test.tsx`** (+3) — `catalogError` renders the message + `Reintentar` and calls `onRetry`; without it the existing empty state still renders.
-
-**`[NEW] src/tests/components/CategoryFilter.test.tsx`** (+3) — the pills count the catalog they are handed (never the prototype counts), report `0` for an empty catalog, and still surface non-canonical categories.
-
-**`[NEW] src/tests/components/AppCatalog.test.tsx`** (+2) — the App-level wiring: pill counts survive a filter change (review F1) and an unexpected fetch throw renders the retryable card (review F5).
-
-**Zero-regression target:** `pnpm test` — **697 tests / 76 suites** on `main` before this change → **measured 746 / 78** after rebasing onto the merged Task 0.14 work (+20 from this branch), all green, plus `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` and markdownlint (0 warnings) clean.
+**Mocking strategy:** no network, no Firebase, no real `wa.me` navigation — `vi.stubEnv` + `vi.resetModules()` for module-level env semantics, `vi.mock` for the helper wiring, `readFileSync` for the source guard.
+**Regression policy:** full suite `pnpm test` (746 tests / 78 suites baseline) must pass 100% plus the new cases; gates: `pnpm test && pnpm build && pnpm lint && pnpm format:check && pnpm exec tsc --noEmit`. **As built: 755 tests / 79 suites, all five gates green; a revert probe (all four source files restored to `HEAD`) fails exactly the 6 new/changed assertions.**
 
 ---
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-- **`src/services/AGENTS.md`:** §1.1 `api.ts` row, §2.2 rewritten around the `CatalogResult` contract + the source matrix + the 10 s bound, and §6's simulated-fallback table gains the catalog row (dev-only, never authoritative for the cart).
-- **`src/components/AGENTS.md`:** the catalog error/retry state, the two new `ProductList` props, and the `CategoryFilter` live-catalog contract (§3.D).
-- **`src/data/AGENTS.md`:** §2.1 — the fixtures' role restated: dev/test fallback, **unreachable in production** since Task 2.11, plus a pointer to the new roadmap item about their future.
-- **`src/tests/AGENTS.md`:** suite/test counts and the new cases.
-- **`PRODUCTION_READINESS_TODO.md`:** **2.11** moves from §3 to the §2 resolved table and its row is dropped from the §1 glance table; **new item 6.4** (Phase 6 Catalog) records the "decide the fate of the `odon-*` prototype fixtures" question with the six-consumer audit; the baseline header refreshed with the measured counts.
-- **Root `AGENTS.md`:** the three test-count references, if the suite count changes.
+| File | Update |
+| :--- | :--- |
+| `src/components/AGENTS.md` | §4.1.2 "Last remaining `wa.me` literal" → **resolved (Task 2.10)**: `PaymentReturnModal` now calls `whatsappLink()`; §7.3 bullet "Its WhatsApp URL is the last literal…" → resolved; §2.5 line 153 note updated. |
+| `src/services/AGENTS.md` | File-map row for `whatsapp.ts` (no longer "reads `import.meta.env` with its own fallback" → resolves through `config/contact.ts`); §4.4 "deliberate exception" bullet → consolidated, `contact.ts` is the only reader; note the verified Node/tsx importability. |
+| `src/config/AGENTS.md` | §1 invariant example parenthetical ("`PaymentReturnModal` still carries the last literal…") → resolved; §2 `contact.ts` consumers list gains `PaymentReturnModal`. |
+| `src/tests/AGENTS.md` | `config/` suite entry gains `contact` (2 → 3 suites) with its case list; `services/` entry note; §4.4 note on module-level env reads requiring `vi.resetModules()` + dynamic import; refreshed test/suite counts. |
+| `PRODUCTION_READINESS_TODO.md` | Mark **2.10** `[x]`, move its one-liner to §2 Resolved, drop the row from §1 "Open Work at a Glance", refresh the baseline counts + "Last updated" line. |
+| Root `AGENTS.md` | Test-count baseline refreshed to **755 tests / 79 suites** in **all three** places the number appears: §1 (line 14), the §6 `pnpm test` comment (line 137) and the §7.1 pre-flight command (line 206). |
+| `walkthrough.md` | Rewritten at wrap-up: this task's branch/commit/PR/verification/human items + the disposition of every review finding (it currently documents Task 2.11). |
 
 ---
 
-## 6. Verification Sequence (workflow steps 6 → 8)
+## 6. Verification Sequence (workflow steps 5 → 8)
 
-1. `pnpm test` — full suite green, including the ~12 new cases.
-2. **Negative verification** — restore the pre-fix `api.ts`/`App.tsx` behaviour temporarily and confirm the new cart-protection and production-error tests fail, then restore and `diff`-verify.
-3. `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` — clean.
-4. Adversarial read-only code review (defensive guards, runtime separation, observability, test completeness), findings remediated and re-verified.
-5. Stop for human wrap-up; commit only on explicit **"wrap up and proceed"**.
+1. Implement 3.A–3.F; run `pnpm test` (expect ≥ 750 passing, 79 suites), `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit`. ✅ **Executed: 753/753 (pre-remediation) → 755/755 (final), all five gates green.**
+2. Re-run the tsx smoke test on the **consolidated** graph to prove plain-Node importability. ✅ **Executed** — probe prints `NUMBER=56929831595 · LINK=https://wa.me/56929831595?text=hola` (the `--only=whatsapp` ops script itself is broken pre-existing, §7 P1).
+3. Adversarial read-only code review (`code-review` skill) → remediate valid findings → re-run gates. ✅ **Executed** — see §7.
+4. Update as-built docs + roadmap checkbox (step 9/10) and stop for the **"wrap up and proceed"** command. ✅ **Executed** — docs synced, 2.10 ticked and moved to §2 Resolved; awaiting wrap-up.
 
 ---
 
 ## 7. Adversarial Review Findings & Remediation (executed)
 
-An independent read-only reviewer inspected `git diff HEAD`, re-ran every gate and reproduced the guards. Verdict: **approve with findings** — all remediated:
+Independent read-only review (fresh-context reviewer, 2026-09-29): **APPROVE WITH FINDINGS** — "the three source edits are correct, minimal, and verified to work in the real runtime". The reviewer independently reproduced the revert probe (guard + modal case fail on `HEAD`) and the tsx importability claim.
 
-| # | Severity | Finding | Remediation |
-| :-- | :--- | :--- | :--- |
-| F1 | Minor (user-visible) | The pills counted `App`'s **filtered** `products`, so selecting a category zeroed every other pill — and no test pinned the App→pills wiring | `CatalogResult` gained `catalog` (the **unfiltered** source set); `App` keeps it in state and passes it as a now-**required** `catalog` prop; `src/tests/components/AppCatalog.test.tsx` pins it (fails when reverted) |
-| F2 | Major | As-built docs still described the pre-change contract (2.5 s, unconditional fixture fallback) and stale counts | §5 executed: `src/services/AGENTS.md` §1.1/§2.2/§6, `src/components/AGENTS.md` (retry key, `ProductList` error state, pill contract), `src/data/AGENTS.md` §2.1, `src/tests/AGENTS.md`, root `AGENTS.md`, `PRODUCTION_READINESS_TODO.md` — counts measured at 746/78 |
-| F3 | Minor | The "missing credentials" branch is unreachable in a browser (module-scope `getAuth()` throws at import) | Documented as a caveat in `api.ts` and the services guide; kept as defense-in-depth |
-| F4 | Minor | `console.error` spies were never restored; dev-path tests leaned on ambient env | `afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.useRealTimers() })` + explicit `vi.stubEnv('VITE_VERCEL_ENV', …)` in the dev cases |
-| F5 | Minor | An unexpected throw in the effect rendered the misleading empty state | The effect's `catch` now sets the same retryable `catalogError`; pinned by an App-level test |
-| F6 | Minor | Plan bookkeeping mismatched the change set; the new suite was untracked | Plan §4/§7 reconciled; `src/tests/components/CategoryFilter.test.tsx` staged at commit time |
-| F7 | Process | The session runs inside a pre-existing Windsurf worktree while `AGENTS.md:44` retires the worktree protocol | No action in code — flagged to the owner (the guardrail also references a `development-workflow` skill that does not exist in this repo) |
-| P1/P3 | Pre-existing nits | The race timer was never cleared; a malformed document could reject the whole read | Both fixed in `api.ts` (`clearTimeout` in a `finally`, `?? ''` field guards) with a test for the malformed-document case |
+| # | Severity | Finding | Disposition |
+| :-- | :-- | :--- | :--- |
+| F1 | **Major** | 11 as-built doc locations + the roadmap still asserted the pre-change state | **Remediated** — §5 executed in full (components/services/config/tests AGENTS.md, root `AGENTS.md` ×3, roadmap tick + §2 row + glance table + baselines) |
+| F2 | Minor | Plan artifact bookkeeping (status line, `delete` vs `stubEnv('')`, under-scoped §5, H2 unachievable) | **Remediated** — this revision (§2 H2, §3.B, §4, §5) |
+| F3 | Minor | Guard regex `\b569\d{7}\b` matches only 10-digit runs — the repo's numbers are 11 digits, so it caught nothing (detection came from `/wa\.me/` + `VITE_WHATSAPP_NUMBER`) | **Remediated** — widened to `\b569\d{7,8}\b`; revert probe confirms it flags `PaymentReturnModal.tsx` + `whatsapp.ts` |
+| F4 | Minor | The rewritten `whatsapp.test.ts` case passed on pre-change code (non-discriminating) | **Remediated** — sentinel `vi.mock` wiring case; revert probe now fails it |
+| F5 | Minor | Consolidation dropped the modal's digits-only normalization → a formatted `VITE_WHATSAPP_NUMBER` would kill every WhatsApp link at once | **Remediated** — normalization moved into `contact.ts` (digits stripped; digit-free ⇒ canonical fallback) + 2 new tests |
+| F6 | Minor | `src/tests/config/contact.test.ts` untracked (a `git commit -am` would drop the only guard) | **Deferred to wrap-up** — will be staged explicitly with `git add` (no staging before the human wrap-up command, per the protocol) |
+| F7 | Nit | Guard scanned only `src/components` + `src/services` | **Remediated** — `src/admin/**` added (no current offenders) |
+| F8 | Nit | `index.html` assertion re-declared the number instead of deriving it | **Remediated** — expectation derived from `contact.ts`'s canonical constant |
+| P1 | Pre-existing | `scripts/send-test-comms.ts --only=whatsapp` throws: `TEST_ORDER.items` is `{name,quantity,price}` cast `as unknown as CartItem[]`, but the generator reads `i.product.name` | **Not fixed (out of 2.10 scope, reproduced on `HEAD`)** — recorded in the roadmap under **8.15** (operator-script guardrails) with the repro and the fix shape |
+| P2 | Pre-existing | `src/config/AGENTS.md` consumer list omitted `LegalModal` | **Remediated** while editing that row for F1 |

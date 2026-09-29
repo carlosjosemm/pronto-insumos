@@ -2,6 +2,7 @@ import React, { useEffect } from 'react'
 import { CheckCircle2, AlertCircle, Clock, X, MessageSquare, ArrowRight, RefreshCw } from 'lucide-react'
 import { useScrollLock } from '../hooks/useScrollLock'
 import { useFocusTrap } from '../hooks/useFocusTrap'
+import { whatsappLink } from '../config/contact'
 
 export interface PaymentReturnModalProps {
   isOpen: boolean
@@ -35,11 +36,9 @@ export default function PaymentReturnModal({
 
   if (!isOpen || !status) return null
 
-  const rawPhone = import.meta.env.VITE_WHATSAPP_NUMBER || '56912345678'
-  const phone = rawPhone.replace(/[^0-9]/g, '')
-  const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(
+  const whatsappUrl = whatsappLink(
     `🏥 *COORDINACIÓN DE PEDIDO PAGADO - PRONTO INSUMOS*\n\nHola, acabo de pagar mi pedido *${orderId || 'PRONTO'}* vía Mercado Pago. Quisiera consultar los tiempos y condiciones de entrega para mi clínica.`
-  )}`
+  )
 
   return (
     <div
