@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// Cloud Storage for Firebase security rules — PRONTO Insumos Odontológicos (Task 2.9).
+//
+// The voucher bucket is NEVER reached through a client SDK:
+//   * uploads → browser PUT to a short-lived V4 signed URL minted by /api/upload-voucher
+//               (which owns order lookup, RUT match, lifecycle guard, MIME and size checks)
+//   * reads   → Firebase download-token URLs stored on the order document (backoffice,
+//               customer tracking) — a capability URL that does not consult these rules
+//
+// Both paths are enforced by the Storage API itself, so deny-all is the correct posture:
+// it is also the only safe default if the bucket was ever created in "test mode".
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

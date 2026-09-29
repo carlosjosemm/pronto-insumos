@@ -121,6 +121,26 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
     }
   }
 
+  /**
+   * Legacy (pre-Task 2.9) vouchers were stored as Base64 `data:` URLs, which Chrome
+   * refuses to open through top-frame navigation. Convert those to a Blob URL on
+   * click; real HTTPS storage URLs keep opening normally.
+   */
+  const handleOpenVoucher = async (voucherUrl: string) => {
+    if (!voucherUrl.startsWith('data:')) {
+      window.open(voucherUrl, '_blank', 'noopener,noreferrer')
+      return
+    }
+    try {
+      const blob = await (await fetch(voucherUrl)).blob()
+      const objectUrl = URL.createObjectURL(blob)
+      window.open(objectUrl, '_blank', 'noopener,noreferrer')
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+    } catch {
+      setActionError('No fue posible abrir el comprobante almacenado en formato antiguo.')
+    }
+  }
+
   const isPendingTransfer =
     order.status === 'PENDIENTE_TRANSFERENCIA' ||
     order.status === 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
@@ -286,6 +306,12 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
                 href={order.voucherUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={e => {
+                  if (order.voucherUrl?.startsWith('data:')) {
+                    e.preventDefault()
+                    handleOpenVoucher(order.voucherUrl)
+                  }
+                }}
                 className="admin-btn admin-btn-secondary"
                 style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
               >

@@ -95,4 +95,55 @@ describe('OrderDetailPanel Component', () => {
 
     resolveSpy.mockRestore()
   })
+
+  it('links a storage-backed voucher URL directly, without the legacy Blob workaround (Task 2.9)', () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+    const storageUrl = 'https://firebasestorage.googleapis.com/v0/b/bucket/o/vouchers%2Fa.pdf?alt=media&token=tok'
+    const storageOrder: Order = { ...mockOrder, voucherUrl: storageUrl }
+
+    render(<OrderDetailPanel order={storageOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+    const link = screen.getByText('Ver Comprobante').closest('a')
+    expect(link).toHaveAttribute('href', storageUrl)
+    expect(link).toHaveAttribute('target', '_blank')
+
+    fireEvent.click(screen.getByText('Ver Comprobante'))
+    expect(fetchSpy).not.toHaveBeenCalledWith(storageUrl)
+
+    fetchSpy.mockRestore()
+  })
+
+  it('opens a legacy Base64 voucher through a Blob URL instead of navigating to data:', async () => {
+    const legacyDataUrl = 'data:application/pdf;base64,JVBERi0xLjQK'
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['pdf'], { type: 'application/pdf' })
+    } as Response)
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    // jsdom does not implement the object-URL API; restore it afterwards so the
+    // global stays clean for the rest of the suite.
+    const urlStatics = URL as unknown as Record<string, unknown>
+    const originalCreateObjectURL = urlStatics.createObjectURL
+    const originalRevokeObjectURL = urlStatics.revokeObjectURL
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:pronto-legacy'), revokeObjectURL: vi.fn() })
+
+    const legacyOrder: Order = { ...mockOrder, voucherUrl: legacyDataUrl }
+    render(<OrderDetailPanel order={legacyOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+    fireEvent.click(screen.getByText('Ver Comprobante'))
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith('blob:pronto-legacy', '_blank', 'noopener,noreferrer')
+    })
+    expect(fetchSpy).toHaveBeenCalledWith(legacyDataUrl)
+
+    fetchSpy.mockRestore()
+    openSpy.mockRestore()
+    for (const [key, original] of [
+      ['createObjectURL', originalCreateObjectURL],
+      ['revokeObjectURL', originalRevokeObjectURL]
+    ] as const) {
+      if (original === undefined) delete urlStatics[key]
+      else urlStatics[key] = original
+    }
+  })
 })

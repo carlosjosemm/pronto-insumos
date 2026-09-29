@@ -15,7 +15,7 @@ The PRONTO Admin Portal is an internal, lightweight management console designed 
    - Filter by status chips (`PENDIENTE_TRANSFERENCIA`, `PAGADO_MERCADOPAGO`, `DESPACHADO`, `ENTREGADO`, etc.).
    - Inspect clinical orders in a **440px** slide-over panel (`.admin-slide-panel`) displaying Chilean legal invoicing attributes (Factura Electrónica: RUT, Razón Social, Giro Comercial, Dirección Fiscal).
    - Display sanitary verification credentials (SIS / ISP health registry numbers).
-   - View bank transfer payment vouchers uploaded by clinics.
+   - View bank transfer payment vouchers uploaded by clinics (Task 2.9): `voucherUrl` is a Firebase Storage download-token URL opened in a new tab. Legacy pre-2.9 documents hold a Base64 `data:` URL instead — Chrome blocks top-frame navigation to those, so `OrderDetailPanel` converts them to a Blob object URL on click.
    - Execute operational fulfillment transitions:
      * **Aprobar Transferencia:** Clears bank transfer payment and triggers atomic inventory decrement in the Melipilla warehouse.
      * **Marcar Despachado:** Records the carrier (`starken`, `chilexpress`, `blue_express`, `despacho_local_melipilla` — rendered *Despacho Local Melipilla (Flota Directa)*; see `CarrierType` in `src/admin/types.ts`) and tracking number.

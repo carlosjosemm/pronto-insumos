@@ -169,4 +169,62 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
       })
     )
   })
+
+  function mockOrderDb(orderData: Record<string, unknown>) {
+    const mockAdminDb = {
+      collection: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({ empty: false, docs: [{ data: () => orderData }] })
+          })
+        })
+      })
+    }
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+  }
+
+  it('should never echo a legacy Base64 voucher (Task 2.9)', async () => {
+    mockOrderDb({
+      orderId: 'PRONTO-123456',
+      status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+      totalAmount: 189990,
+      items: [],
+      customer: { rut: '12345678-5', fullName: 'Dra. Andrea', email: 'a@b.cl', address: 'x', city: 'Melipilla' },
+      voucherUrl: 'data:application/pdf;base64,JVBERi0xLjQK',
+      voucherFileName: 'comprobante.pdf',
+      voucherUploadedAt: '2026-09-01T10:00:00.000Z'
+    })
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' } } as VercelRequest, res)
+
+    const payload = res.json.mock.calls[0][0]
+    expect(payload.voucher).toMatchObject({
+      uploaded: true,
+      fileName: 'comprobante.pdf',
+      uploadedAt: '2026-09-01T10:00:00.000Z'
+    })
+    expect(payload.voucher.url).toBeUndefined()
+    expect(JSON.stringify(payload)).not.toContain('data:application/pdf')
+  })
+
+  it('should return the storage-backed voucher URL when the order was uploaded after Task 2.9', async () => {
+    const voucherUrl =
+      'https://firebasestorage.googleapis.com/v0/b/pronto-insumos.firebasestorage.app/o/vouchers%2Forders%2FPRONTO-123456%2Fa.pdf?alt=media&token=tok'
+    mockOrderDb({
+      orderId: 'PRONTO-123456',
+      status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+      totalAmount: 189990,
+      items: [],
+      customer: { rut: '12345678-5', fullName: 'Dra. Andrea', email: 'a@b.cl', address: 'x', city: 'Melipilla' },
+      voucherUrl,
+      voucherStoragePath: 'vouchers/orders/PRONTO-123456/a.pdf',
+      voucherFileName: 'comprobante.pdf'
+    })
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' } } as VercelRequest, res)
+
+    expect(res.json.mock.calls[0][0].voucher).toMatchObject({ uploaded: true, url: voucherUrl })
+  })
 })

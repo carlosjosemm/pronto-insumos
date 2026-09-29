@@ -16,6 +16,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "deploy:rules": "pnpm dlx firebase-tools deploy --only firestore:rules",
+    "deploy:storage-rules": "pnpm dlx firebase-tools deploy --only storage",
+    "storage:cors": "pnpm dlx tsx scripts/configure-storage-cors.ts",
     "setup:admin": "pnpm dlx tsx scripts/setup-admin.ts",
     "schema:validate": "pnpm dlx tsx scripts/manage-firestore-schema.ts --validate --env=prod",
     "schema:validate:dev": "pnpm dlx tsx scripts/manage-firestore-schema.ts --validate --env=dev",

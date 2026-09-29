@@ -105,7 +105,8 @@ describe('processMercadoPagoPayment', () => {
       customer: mockCustomer
     })
 
-    const parsed = new Date(result.paidAt)
+    expect(result.paidAt).toBeDefined()
+    const parsed = new Date(result.paidAt as string)
     expect(parsed.getTime()).not.toBeNaN()
   })
 })
