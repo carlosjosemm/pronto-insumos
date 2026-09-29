@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (755 tests across 79 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (794 tests across 80 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -89,6 +89,7 @@ Agents must strictly respect the payment boundaries defined in [PRODUCTION_READI
 * ✅ **Webhook reconciliation guards (Task 0.14):** the Mercado Pago verification itself fails closed — only a `404` is acked (`200`); a revoked token, MP `5xx` or a malformed id returns `502` so MP retries. One normalized signed payment id drives both the HMAC check and the MP fetch. An approved payment may only settle `PENDIENTE_PAGO_MERCADOPAGO`/`PAGO_EN_REVISION`, an order's lines are deducted **at most once** (`paidAt`/`approvedAt` are settlement markers), settled orders get a double-payment incident (history + warehouse alert, never a status flip or a second deduction), other statuses are parked in `PAGO_EN_REVISION`, and `refunded`/`charged_back` payments park the order for manual reconciliation (refunds stay off-platform). Oversell shortfalls are recorded in the history/audit metadata and the warehouse alert instead of being hidden by the `Math.max(0, …)` clamp.
 * ✅ **Promo discounts are derived from the code, never from stored state:** every surface (cart display, `submitOrder`, preference builder, webhook) resolves the percent through `resolvePromo`/`resolvePromoPercent` in `src/config/promos.ts`. A `PromoCode` object hydrated from `localStorage` is a display artifact — `cartStorage` re-resolves it on load and `App`/`Cart` re-derive at render, so a hand-edited cart can never render a discount the payment layer would refuse to charge. The promo **policy** model (expiry, usage limits, redemption audit, product eligibility) is deliberately thin today and tracked as **Task 9.1** in [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 * ✅ **Voucher bytes never live in Firestore (Task 2.9):** bank-transfer vouchers are uploaded **browser → Cloud Storage** over a short-lived V4 signed URL (`x-goog-content-length-range` signed in, so Storage itself rejects anything above 5 MiB), and the order document keeps only `voucherStoragePath` / `voucherUrl` (download-token URL) / `voucherFileName` / `voucherContentType` / `voucherSizeBytes`. `/api/upload-voucher` is the sole authority for the transition, which is allowed **only** from `PENDIENTE_TRANSFERENCIA` / `TRANSFERENCIA_COMPROBANTE_SUBIDO` and is re-asserted inside a transaction. The bucket is deny-all (`storage.rules`; deploy with `pnpm run deploy:storage-rules`) and reached exclusively through signed URLs and download tokens. Never reintroduce a Base64 `data:` voucher transport.
+* ✅ **Public dual-factor endpoints are throttled and no longer enumerate (Task 8.8):** `/api/track-order`, `/api/upload-voucher` and `/api/order-confirmation` return **one identical `404`** for "order not found" *and* "RUT mismatch" (`respondOrderLookupFailed` in `api/_lib/orderLookup.ts`) — the old `404`/`401` split told an attacker which order ids exist, and a company RUT is public. Attempts and failed lookups are budgeted per IP and per order id (`api/_lib/abuseThrottle.ts`: 15-minute window, 15-minute lock, `429` + `Retry-After`, Firestore counters under `abuse_counters`, raw IPs stored only as SHA-256 pseudonyms, **fail-open with a loud log** so a counter outage never takes tracking down). The canonical order id is now **`PRONTO-` + 8 Crockford base32 chars** from `crypto.getRandomValues` (40 bits; legacy `PRONTO-NNNNNN` ids still resolve), which makes the residual distributed probe infeasible. Warehouse "voucher received" alerts are budgeted per order (5-minute cooldown, 5 max, reserved inside the confirm transaction) so a re-upload loop cannot exhaust the Resend quota. The still-unthrottled public `orders` create write path needs Firebase App Check — tracked as **Task 8.16**.
 * ✅ **Firestore Security Rules Enforced (`firestore.rules`):** `products` is public read-only and admin-write only (`request.auth.token.admin == true`). `orders` can only be created with pending statuses without pre-injected payment attributes; client-side reads, updates, and deletes on `orders` are strictly denied (`allow read, update, delete: if false;`). **Task 0.12** additionally binds the document to its own identity and pins the create shape: `data.orderId == orderId` (a decoy document can no longer shadow a real order), a top-level `keys().hasOnly([...])` allowlist of exactly the keys `submitOrder()` writes — so admin-only fields (`voucherUrl`, `approvedAt`, `dispatch`, `trackingNumber`, `confirmationEmailSentAt`, …) cannot be pre-injected — nested allowlists for `customer` / `billing` / `taxBreakdown` / `sanitaryVerification` / item lines, `paymentMethod` ↔ `status` consistency, `billing.status == 'PENDIENTE_EMISION_SII'`, and per-field length caps mirrored by the checkout inputs. Every server endpoint resolves orders through `api/_lib/orderLookup.ts` (document key first, legacy field query as the fallback). Deploy with `pnpm run deploy:rules`.
 
 ```bash
@@ -134,7 +135,7 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 79 suites / 755 tests)
+# Run all automated tests (Vitest, 80 suites / 794 tests)
 pnpm test
 
 # Run tests with live file watcher (or a V8 coverage report)
@@ -203,7 +204,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 755 tests pass
+pnpm test          # Ensure all 794 tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Sync environment variables to Vercel (DRY RUN by default — see §7.1)

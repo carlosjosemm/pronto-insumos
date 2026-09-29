@@ -123,7 +123,10 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
       'deliveredAt',
       'confirmationEmailSentAt',
       'mercadopagoPaymentId',
-      'paidAt'
+      'paidAt',
+      // Task 8.8: the warehouse-alert reservation is written by /api/upload-voucher only.
+      'voucherAlertSentAt',
+      'voucherAlertCount'
     ]) {
       expect(rootAllow).not.toContain(adminOnly)
     }

@@ -12,7 +12,7 @@ The PRONTO Admin Portal is an internal, lightweight management console designed 
 
 1. **Executive Overview (`#dashboard`):** Real-time monitoring of daily revenue (CLP), pending bank transfers awaiting clearance, low-stock supply alerts (<5 units), and monthly order volume.
 2. **Order Management & Fulfillment (`#orders`):**
-   - Search orders by canonical ID (`PRONTO-XXXXXX`), customer/company name, or Chilean RUT.
+   - Search orders by canonical ID (`PRONTO-XXXXXXXX` since Task 8.8; legacy `PRONTO-NNNNNN` ids still resolve), customer/company name, or Chilean RUT.
    - Filter by status chips (`PENDIENTE_TRANSFERENCIA`, `PAGADO_MERCADOPAGO`, `DESPACHADO`, `ENTREGADO`, etc.).
    - Inspect clinical orders in a **440px** slide-over panel (`.admin-slide-panel`) displaying Chilean legal invoicing attributes (Factura Electrónica: RUT, Razón Social, Giro Comercial, Dirección Fiscal).
    - Display sanitary verification credentials (SIS / ISP health registry numbers).

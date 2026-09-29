@@ -258,7 +258,7 @@ The method cards use `.checkout-pay-option` (with `--selected`, `:hover` and `:f
 
 When Transferencia Bancaria is confirmed:
 
-* Generates a canonical Order ID (`PRONTO-XXXXXX`).
+* Generates a canonical Order ID (`PRONTO-XXXXXXXX` — 8 Crockford base32 chars since Task 8.8).
 * Displays the complete Banco de Chile transfer specifications.
 * Renders an **embedded voucher upload widget** allowing immediate attachment of receipts (`.pdf`, `.png`, `.jpg` <= 5MB).
 * Submitting the voucher invokes `uploadTransferVoucher()` (Task 2.9: sign → direct PUT to Firebase Storage → confirm), advancing the order status to `'TRANSFERENCIA_COMPROBANTE_SUBIDO'`. Real server errors (lifecycle refusal, oversized file, storage outage) are rendered from `res.error` — the adapter no longer fabricates success.
@@ -277,7 +277,7 @@ The [`OrderTrackingModal.tsx`](../../src/components/OrderTrackingModal.tsx) comp
 Under [`firestore.rules`](../../firestore.rules), client-side queries against `/orders` are blocked (`allow read, update, delete: if false;`) to protect clinical order privacy.
 
 * **Authentication Contract:** Lookups require two canonical factors:
-  1. **Canonical Order ID:** `PRONTO-XXXXXX`
+  1. **Canonical Order ID:** `PRONTO-XXXXXXXX` (8 Crockford base32 chars — Task 8.8; legacy `PRONTO-NNNNNN` ids still resolve)
   2. **Customer / Clinic Tax ID:** Validated Chilean RUT (Modulo 11) matching the order.
 * **Serverless Proxy:** The modal queries [`/api/track-order`](../../api/track-order.ts), which uses `firebase-admin` to fetch the order and returns a sanitized `OrderTrackingInfo` model without exposing internal tokens, server secrets, or database timestamps.
 

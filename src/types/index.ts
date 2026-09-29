@@ -150,6 +150,12 @@ export interface Order {
   approvedAt?: string
   approvedBy?: string
   confirmationEmailSentAt?: string
+  // Warehouse-alert budget for the "voucher received" email (Task 8.8): server-written.
+  // The stamp is a RESERVATION committed inside the confirm transaction (so concurrent
+  // confirms serialize on the order document) and released best-effort when the Resend
+  // send fails — never written by the client.
+  voucherAlertSentAt?: string
+  voucherAlertCount?: number
   dispatch?: {
     carrier: 'starken' | 'chilexpress' | 'blue_express' | 'despacho_local_melipilla' | string
     trackingCode?: string

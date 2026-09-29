@@ -59,7 +59,7 @@ export function sanitizeVoucherFileName(raw: unknown): string {
   return (cleaned || 'comprobante').slice(0, 120)
 }
 
-/** Canonical, path-safe order id (the canonical form is `PRONTO-NNNNNN`). */
+/** Canonical, path-safe order id (`PRONTO-XXXXXXXX` — 8 Crockford base32 chars since Task 8.8; legacy 6-digit ids still resolve). */
 export function sanitizeOrderIdForPath(orderId: unknown): string {
   return String(orderId ?? '')
     .trim()
@@ -79,7 +79,7 @@ export function randomVoucherToken(length = 32): string {
 }
 
 /**
- * `vouchers/{orders|dev_orders}/{PRONTO-XXXXXX}/{epochMs}-{token}.{ext}`
+ * `vouchers/{orders|dev_orders}/{PRONTO-XXXXXXXX}/{epochMs}-{token}.{ext}`
  * Environment-scoped so production and `dev_*` vouchers can never mix.
  */
 export function buildVoucherStoragePath(

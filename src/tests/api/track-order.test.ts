@@ -8,10 +8,13 @@ vi.mock('../../../api/_lib/firebaseAdmin', () => ({
 
 import handler from '../../../api/track-order'
 import { getAdminFirestore } from '../../../api/_lib/firebaseAdmin'
+import { THROTTLE_MESSAGE, THROTTLE_POLICIES } from '../../../api/_lib/abuseThrottle'
+import { createThrottleCounters } from './helpers/throttleCounters'
 
 function createMockRes() {
   const res: Partial<VercelResponse> = {
     statusCode: 200,
+    setHeader: vi.fn(),
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     end: vi.fn().mockReturnThis()
@@ -20,6 +23,7 @@ function createMockRes() {
     status: ReturnType<typeof vi.fn>
     json: ReturnType<typeof vi.fn>
     end: ReturnType<typeof vi.fn>
+    setHeader: ReturnType<typeof vi.fn>
   }
 }
 
@@ -75,38 +79,35 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
     )
   })
 
-  it('should return 404 when order is not found in Firestore', async () => {
+  it('returns one identical 404 for an unknown order and for a wrong RUT — no enumeration oracle (Task 8.8)', async () => {
     mockOrderDb(null)
+    const unknownRes = createMockRes()
+    await handler(
+      { method: 'POST', body: { orderId: 'PRONTO-999999', rut: '12.345.678-5' } } as VercelRequest,
+      unknownRes
+    )
 
-    const req = {
-      method: 'POST',
-      body: { orderId: 'PRONTO-999999', rut: '12.345.678-5' }
-    } as VercelRequest
-    const res = createMockRes()
-
-    await handler(req, res)
-
-    expect(res.status).toHaveBeenCalledWith(404)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('No se encontró') }))
-  })
-
-  it('should return 401 when customer RUT does not match order record', async () => {
     mockOrderDb({
       orderId: 'PRONTO-123456',
       customer: { rut: '11.111.111-1' },
       status: 'PENDIENTE_TRANSFERENCIA'
     })
+    const mismatchRes = createMockRes()
+    await handler(
+      { method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' } } as VercelRequest,
+      mismatchRes
+    )
 
-    const req = {
-      method: 'POST',
-      body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' }
-    } as VercelRequest
-    const res = createMockRes()
-
-    await handler(req, res)
-
-    expect(res.status).toHaveBeenCalledWith(401)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('no coincide') }))
+    // Same status, byte-identical body: the response cannot be used to tell a real
+    // order id from a wrong RUT, and it never echoes the probed id.
+    expect(unknownRes.status).toHaveBeenCalledWith(404)
+    expect(mismatchRes.status).toHaveBeenCalledWith(404)
+    const payload = unknownRes.json.mock.calls[0][0]
+    expect(mismatchRes.json.mock.calls[0][0]).toEqual(payload)
+    expect(payload.error).toContain('No encontramos un pedido con ese código y RUT')
+    const serialized = JSON.stringify(payload)
+    expect(serialized).not.toContain('PRONTO-999999')
+    expect(serialized).not.toContain('no coincide')
   })
 
   it('should return 200 with mapped fulfillment info when order and RUT match', async () => {
@@ -151,10 +152,148 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
     )
   })
 
+  describe('Abuse throttling (Task 8.8)', () => {
+    const ipHeaders = { 'x-real-ip': '200.83.10.4' }
+    const matchingOrder = {
+      orderId: 'PRONTO-123456',
+      status: 'PENDIENTE_TRANSFERENCIA',
+      totalAmount: 189990,
+      items: [],
+      customer: { rut: '12345678-5', fullName: 'Dra. Andrea', email: 'a@b.cl', address: 'x', city: 'Melipilla' }
+    }
+
+    it('refuses with 429 once the IP budget is locked, without ever reading the order', async () => {
+      const { counters, orderCollection } = mockOrderDb(matchingOrder)
+      counters.seedLocked('track-order', 'ip', '200.83.10.4')
+
+      const res = createMockRes()
+      await handler(
+        {
+          method: 'POST',
+          headers: ipHeaders,
+          body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' }
+        } as unknown as VercelRequest,
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(429)
+      expect(res.json).toHaveBeenCalledWith({ error: THROTTLE_MESSAGE })
+      expect(res.setHeader).toHaveBeenCalledWith('Retry-After', expect.any(String))
+      expect(orderCollection.doc).not.toHaveBeenCalled()
+      expect(orderCollection.where).not.toHaveBeenCalled()
+    })
+
+    it('refuses with 429 once the order budget is locked, without reading the order', async () => {
+      const { counters, orderCollection } = mockOrderDb(matchingOrder)
+      counters.seedLocked('track-order', 'order', 'PRONTO-123456')
+
+      const res = createMockRes()
+      await handler(
+        {
+          method: 'POST',
+          headers: ipHeaders,
+          body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' }
+        } as unknown as VercelRequest,
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(429)
+      expect(res.json).toHaveBeenCalledWith({ error: THROTTLE_MESSAGE })
+      expect(orderCollection.doc).not.toHaveBeenCalled()
+    })
+
+    it('records the failure against both budgets when the lookup fails', async () => {
+      const { counters } = mockOrderDb(null)
+
+      const res = createMockRes()
+      await handler(
+        {
+          method: 'POST',
+          headers: ipHeaders,
+          body: { orderId: 'PRONTO-999999', rut: '12.345.678-5' }
+        } as unknown as VercelRequest,
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(404)
+      expect(counters.read('track-order', 'ip', '200.83.10.4')).toMatchObject({ attempts: 1, failures: 1 })
+      expect(counters.read('track-order', 'order', 'PRONTO-999999')).toMatchObject({ attempts: 1, failures: 1 })
+    })
+
+    it('locks the IP key after N failed lookups and then answers 429 without touching Firestore', async () => {
+      const { counters, orderCollection } = mockOrderDb(null)
+      const maxFailures = THROTTLE_POLICIES['track-order'].ip.maxFailures
+
+      for (let attempt = 0; attempt < maxFailures; attempt += 1) {
+        const res = createMockRes()
+        await handler(
+          {
+            method: 'POST',
+            headers: ipHeaders,
+            body: { orderId: 'PRONTO-999999', rut: '12.345.678-5' }
+          } as unknown as VercelRequest,
+          res
+        )
+        expect(res.status).toHaveBeenCalledWith(404)
+      }
+
+      expect(counters.read('track-order', 'ip', '200.83.10.4')?.lockedUntil).toBeGreaterThan(Date.now() - 1)
+      orderCollection.doc.mockClear()
+      orderCollection.where.mockClear()
+
+      const lockedRes = createMockRes()
+      await handler(
+        {
+          method: 'POST',
+          headers: ipHeaders,
+          body: { orderId: 'PRONTO-999999', rut: '12.345.678-5' }
+        } as unknown as VercelRequest,
+        lockedRes
+      )
+
+      expect(lockedRes.status).toHaveBeenCalledWith(429)
+      expect(orderCollection.doc).not.toHaveBeenCalled()
+      expect(orderCollection.where).not.toHaveBeenCalled()
+    })
+
+    it('consumes attempts but records no failure on a successful lookup', async () => {
+      const { counters } = mockOrderDb(matchingOrder)
+
+      const res = createMockRes()
+      await handler(
+        {
+          method: 'POST',
+          headers: ipHeaders,
+          body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' }
+        } as unknown as VercelRequest,
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(counters.read('track-order', 'ip', '200.83.10.4')).toMatchObject({ attempts: 1, failures: 0 })
+      expect(counters.read('track-order', 'order', 'PRONTO-123456')).toMatchObject({ attempts: 1, failures: 0 })
+    })
+
+    it('never buckets requests that carry no IP header into a shared counter', async () => {
+      const { counters } = mockOrderDb(matchingOrder)
+
+      const res = createMockRes()
+      await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' } } as VercelRequest, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      // Only the order budget exists — no `''` IP document.
+      expect(counters.docs.size).toBe(1)
+      expect(counters.read('track-order', 'order', 'PRONTO-123456')).toMatchObject({ attempts: 1 })
+    })
+  })
+
   /**
    * Admin SDK double for the canonical order lookup (Task 0.12): the document key
    * resolves first; the `orderId` field query is only consulted when the key is
    * missing (or when `legacyFieldOnly` forces the legacy path).
+   *
+   * Since Task 8.8 the same double also backs the `abuse_counters` collection and the
+   * throttling transactions (`counters`), so the real counter code runs.
    */
   function mockOrderDb(
     orderData: Record<string, unknown> | null,
@@ -185,9 +324,15 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
       doc: vi.fn(() => ({ get: directGet })),
       where: vi.fn(() => ({ limit: vi.fn(() => ({ get: whereGet })) }))
     }
-    const mockAdminDb = { collection: vi.fn(() => collectionApi) }
+    const counters = createThrottleCounters()
+    const mockAdminDb = {
+      collection: vi.fn((name?: string) =>
+        String(name).includes('abuse_counters') ? counters.collection(String(name)) : collectionApi
+      ),
+      runTransaction: counters.runTransaction
+    }
     vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
-    return { mockAdminDb }
+    return { mockAdminDb, counters, orderCollection: collectionApi }
   }
 
   it('should never echo a legacy Base64 voucher (Task 2.9)', async () => {

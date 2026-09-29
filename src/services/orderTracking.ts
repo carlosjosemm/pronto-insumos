@@ -19,7 +19,7 @@ export async function fetchOrderTracking({
   const rawRut = (rut || '').trim()
 
   if (!cleanId) {
-    return { success: false, error: 'Por favor ingresa el N° de Pedido (ej: PRONTO-123456).' }
+    return { success: false, error: 'Por favor ingresa el N° de Pedido (ej: PRONTO-7K3M9Q2Z).' }
   }
 
   if (!rawRut) {

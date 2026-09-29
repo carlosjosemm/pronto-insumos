@@ -196,8 +196,8 @@ export default function LegalModal({ section, onClose }: LegalModalProps) {
               <div style={boxStyle}>
                 <div style={boxTitleStyle}>Cómo hacer efectiva la garantía</div>
                 <div>
-                  • Escríbenos por WhatsApp dentro del plazo, indicando tu número de pedido (PRONTO-XXXXXX) y adjuntando
-                  tu boleta electrónica.
+                  • Escríbenos por WhatsApp dentro del plazo, indicando tu número de pedido (PRONTO-XXXXXXXX) y
+                  adjuntando tu boleta electrónica.
                 </div>
                 <div>• El producto se evalúa técnicamente en nuestra bodega de Melipilla.</div>
                 <div>

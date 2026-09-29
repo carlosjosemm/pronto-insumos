@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Firestore } from 'firebase-admin/firestore'
-import { resolveOrderByCanonicalId } from '../../../api/_lib/orderLookup'
+import type { VercelResponse } from '@vercel/node'
+import {
+  ORDER_LOOKUP_FAILED_MESSAGE,
+  ORDER_LOOKUP_FAILED_STATUS,
+  resolveOrderByCanonicalId,
+  respondOrderLookupFailed
+} from '../../../api/_lib/orderLookup'
 
 const ORDER_ID = 'PRONTO-123456'
 
@@ -86,5 +92,21 @@ describe('resolveOrderByCanonicalId (Task 0.12)', () => {
 
     expect(docSpy).not.toHaveBeenCalled()
     expect(whereSpy).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('Uniform lookup-failure contract (Task 8.8)', () => {
+  it('answers one 404 with a single message and never echoes the probed id', () => {
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn().mockReturnThis()
+    } as unknown as VercelResponse & { status: ReturnType<typeof vi.fn>; json: ReturnType<typeof vi.fn> }
+
+    respondOrderLookupFailed(res)
+
+    expect(ORDER_LOOKUP_FAILED_STATUS).toBe(404)
+    expect(res.status).toHaveBeenCalledWith(ORDER_LOOKUP_FAILED_STATUS)
+    expect(res.json).toHaveBeenCalledWith({ error: ORDER_LOOKUP_FAILED_MESSAGE })
+    expect(ORDER_LOOKUP_FAILED_MESSAGE).not.toMatch(/PRONTO-|\d{4,}/)
   })
 })

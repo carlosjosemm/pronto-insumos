@@ -1,11 +1,18 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import type { Firestore } from 'firebase-admin/firestore'
+import { FieldValue } from 'firebase-admin/firestore'
 import { getAdminFirestore } from './_lib/firebaseAdmin.js'
 import { getCollectionName } from './_lib/firestoreEnv.js'
-import { resolveOrderByCanonicalId, type ResolvedOrder } from './_lib/orderLookup.js'
+import { resolveOrderByCanonicalId, respondOrderLookupFailed, type ResolvedOrder } from './_lib/orderLookup.js'
 import { sendEmail, getWarehouseEmail } from './_lib/email.js'
 import { buildWarehouseAlertEmail, toOrderEmailData } from './_lib/emailTemplates.js'
 import { isSimulatedPaymentAllowed } from './_lib/simulationPolicy.js'
+import {
+  consumeThrottleAttempt,
+  getClientIp,
+  recordThrottleFailures,
+  respondThrottled
+} from './_lib/abuseThrottle.js'
 import {
   VOUCHER_MAX_BYTES,
   VOUCHER_MAX_MB,
@@ -32,6 +39,46 @@ const UPLOAD_UNAVAILABLE_MESSAGE =
   'No pudimos preparar la subida segura de tu comprobante. Escríbenos por WhatsApp y lo recibimos manualmente.'
 const PERSISTENCE_ERROR_MESSAGE =
   'No pudimos registrar el comprobante en tu pedido. Por favor reintenta o escríbenos por WhatsApp.'
+
+/**
+ * Warehouse-alert budget for one order (Task 8.8).
+ *
+ * A customer may legitimately replace a voucher while the transfer is still being
+ * verified, and every accepted upload used to email the warehouse again — so a free
+ * self-created order could loop `sign → confirm` and exhaust the Resend quota,
+ * silencing legitimate mail. One alert per cooldown, capped per order.
+ *
+ * The stamp is a **reservation**: `handleConfirm` decides the budget and writes
+ * `voucherAlertSentAt`/`voucherAlertCount` inside the same transaction that stores the
+ * voucher (see the call site), and releases them if the send fails. Writing the stamp
+ * outside the transaction let two concurrent confirms both pass the budget.
+ */
+const VOUCHER_ALERT_COOLDOWN_MS = 5 * 60 * 1000
+const VOUCHER_ALERT_MAX_PER_ORDER = 5
+
+interface VoucherAlertBudget {
+  send: boolean
+  nextCount: number
+  reason?: string
+}
+
+function evaluateVoucherAlertBudget(
+  orderData: Record<string, unknown>,
+  now: number = Date.now()
+): VoucherAlertBudget {
+  const sentCount = Number(orderData.voucherAlertCount) || 0
+  if (sentCount >= VOUCHER_ALERT_MAX_PER_ORDER) {
+    return { send: false, nextCount: sentCount, reason: `per-order alert cap reached (${VOUCHER_ALERT_MAX_PER_ORDER})` }
+  }
+
+  const sentAtRaw = orderData.voucherAlertSentAt
+  const sentAt = typeof sentAtRaw === 'string' ? Date.parse(sentAtRaw) : NaN
+  if (Number.isFinite(sentAt) && now - sentAt < VOUCHER_ALERT_COOLDOWN_MS) {
+    return { send: false, nextCount: sentCount, reason: 'cooldown active' }
+  }
+
+  return { send: true, nextCount: sentCount + 1 }
+}
 
 function normalizeRut(raw: string): string {
   return (raw || '').replace(/[^0-9kK]/g, '').toUpperCase()
@@ -180,7 +227,11 @@ async function handleConfirm(
   // authorization read and this write can never be regressed by a voucher upload.
   let conflictedStatus = ''
   let latestData: Record<string, unknown> = order.data
+  // Task 8.8: the warehouse-alert budget is decided (and reserved) inside the transaction.
+  let alertBudget: VoucherAlertBudget = { send: false, nextCount: 0 }
   let outcome: 'persisted' | 'duplicate' | 'status-changed'
+  // No recipient configured ⇒ never reserve a slot for an alert that cannot be sent.
+  const alertsEnabled = Boolean(getWarehouseEmail())
 
   try {
     outcome = await adminDb.runTransaction(async (transaction) => {
@@ -202,7 +253,16 @@ async function handleConfirm(
         return 'status-changed'
       }
 
-      transaction.update(order.ref, {
+      // Task 8.8 — reserve the warehouse alert here, in the same transaction that stores
+      // the voucher. The decision reads the FRESH document and the stamp is committed with
+      // it, so two concurrent confirms of different objects serialize on the order document
+      // (the SDK retries the losing transaction, which then sees the fresh stamp and skips).
+      // Stamping only after the send let both pass the budget.
+      alertBudget = alertsEnabled
+        ? evaluateVoucherAlertBudget(freshData)
+        : { send: false, nextCount: 0, reason: 'no warehouse recipient configured' }
+
+      const orderUpdate: Record<string, unknown> = {
         voucherUrl,
         voucherStoragePath: storagePath,
         voucherFileName: cleanFileName,
@@ -211,7 +271,12 @@ async function handleConfirm(
         voucherUploadedAt: timestamp,
         status: VOUCHER_SUBMITTED_STATUS,
         updatedAt: timestamp
-      })
+      }
+      if (alertBudget.send) {
+        orderUpdate.voucherAlertSentAt = timestamp
+        orderUpdate.voucherAlertCount = alertBudget.nextCount
+      }
+      transaction.update(order.ref, orderUpdate)
 
       transaction.set(historyRef, {
         id: historyRef.id,
@@ -265,17 +330,59 @@ async function handleConfirm(
     await deleteVoucherObject(bucket, previousStoragePath)
   }
 
-  // Warehouse alert (fail-safe): voucher received — verify against Banco de Chile
+  // Warehouse alert (fail-safe + budgeted, Task 8.8): voucher received — verify against
+  // Banco de Chile. The budget was already reserved inside the transaction above (never
+  // when no recipient is configured); a failed send releases the reservation (best-effort)
+  // so an email outage does not consume the cooldown or a cap slot and the alert stays
+  // retryable.
   const warehouseEmail = getWarehouseEmail()
-  if (warehouseEmail) {
+  if (warehouseEmail && alertBudget.send) {
     const emailData = toOrderEmailData(cleanOrderId, {
       ...order.data,
       status: VOUCHER_SUBMITTED_STATUS
     })
-    await sendEmail({
+    const alertResult = await sendEmail({
       to: warehouseEmail,
       ...buildWarehouseAlertEmail(emailData, VOUCHER_SUBMITTED_STATUS)
     })
+
+    if (!alertResult.sent) {
+      // Release the reservation (best-effort) so an email outage does not consume the
+      // cooldown or a cap slot. Compare-and-swap inside a transaction: a concurrent
+      // confirm may have reserved again (and even sent) meanwhile — never clobber it.
+      const previousSentAt = latestData.voucherAlertSentAt
+      const previousCount = latestData.voucherAlertCount
+      try {
+        await adminDb.runTransaction(async (transaction) => {
+          const fresh = await transaction.get(order.ref)
+          const freshData = (fresh.data() || {}) as Record<string, unknown>
+          const stillOurs =
+            freshData.voucherAlertSentAt === timestamp && freshData.voucherAlertCount === alertBudget.nextCount
+
+          if (!stillOurs) {
+            console.warn(
+              `[upload-voucher] Warehouse-alert reservation for ${cleanOrderId} was superseded by a newer confirm — leaving it in place.`
+            )
+            return
+          }
+
+          transaction.update(order.ref, {
+            voucherAlertSentAt:
+              typeof previousSentAt === 'string' ? previousSentAt : FieldValue.delete(),
+            voucherAlertCount:
+              previousCount === undefined ? FieldValue.delete() : Number(previousCount) || 0
+          })
+        })
+      } catch (rollbackErr: unknown) {
+        console.warn(
+          `[upload-voucher] Failed to release the warehouse-alert reservation for ${cleanOrderId}: ${
+            rollbackErr instanceof Error ? rollbackErr.message : rollbackErr
+          }`
+        )
+      }
+    }
+  } else if (warehouseEmail && !alertBudget.send) {
+    console.warn(`[upload-voucher] Warehouse alert for ${cleanOrderId} suppressed (${alertBudget.reason}).`)
   }
 
   return res.status(200).json({
@@ -367,23 +474,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
-    const order = await resolveOrderByCanonicalId(adminDb, cleanOrderId)
-    if (!order) {
-      return res.status(404).json({
-        error: `No se encontró un pedido con el código "${cleanOrderId}".`
-      })
+    // Abuse throttling (Task 8.8): covers both phases (sign and confirm), so a locked
+    // key never reaches Firestore for the order read and one order cannot mint signed
+    // URLs without bound.
+    const clientIp = getClientIp(req)
+    const ipDecision = await consumeThrottleAttempt(adminDb, 'upload-voucher', 'ip', clientIp)
+    if (!ipDecision.allowed) {
+      return respondThrottled(res, ipDecision.retryAfterSeconds)
     }
 
-    // Authorization check: match purchaser's RUT
+    const orderDecision = await consumeThrottleAttempt(adminDb, 'upload-voucher', 'order', cleanOrderId)
+    if (!orderDecision.allowed) {
+      return respondThrottled(res, orderDecision.retryAfterSeconds)
+    }
+
+    const order = await resolveOrderByCanonicalId(adminDb, cleanOrderId)
+
+    // Uniform failure (Task 8.8): "no such order" and "RUT mismatch" are the SAME
+    // response — the old 404/401 split was an enumeration oracle.
     const orderCustomerRut = normalizeRut(
-      ((order.data.customer as { rut?: string } | undefined)?.rut ||
-        (order.data.billing as { rut?: string } | undefined)?.rut ||
+      ((order?.data.customer as { rut?: string } | undefined)?.rut ||
+        (order?.data.billing as { rut?: string } | undefined)?.rut ||
         '') as string
     )
-    if (orderCustomerRut !== cleanUserRut) {
-      return res.status(401).json({
-        error: 'El RUT ingresado no coincide con el registrado para este pedido.'
-      })
+    if (!order || orderCustomerRut !== cleanUserRut) {
+      await recordThrottleFailures(adminDb, 'upload-voucher', { ip: clientIp, order: cleanOrderId })
+      return respondOrderLookupFailed(res)
     }
 
     // Lifecycle guard: only a pending transfer (or a re-upload of an already submitted voucher)
