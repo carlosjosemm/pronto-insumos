@@ -106,12 +106,18 @@ export default function App() {
   const bootstrap = useMemo(() => parseUrlBootstrap(), [])
 
   const [products, setProducts] = useState<Product[]>([])
+  // Unfiltered catalog for the category pills — counting the filtered `products` would
+  // drop every unselected pill to 0 as soon as a filter is applied (review finding F1).
+  const [catalog, setCatalog] = useState<Product[]>([])
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [catalogRetryKey, setCatalogRetryKey] = useState(0)
   const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null)
   const hasRevalidated = useRef(false)
 
   // `loading` is derived from which request has completed, so a filter change
-  // flips it to true during render instead of via a state-setting effect.
-  const catalogRequestKey = `${selectedCategory}|${search}|${sortBy}|${inStockOnly}`
+  // flips it to true during render instead of via a state-setting effect. The retry
+  // key (Task 2.11) re-arms both the request and the loading state after a failure.
+  const catalogRequestKey = `${selectedCategory}|${search}|${sortBy}|${inStockOnly}|${catalogRetryKey}`
   const loading = loadedRequestKey !== catalogRequestKey
 
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -164,9 +170,16 @@ export default function App() {
         })
         if (!isMounted) return
 
-        setProducts(res)
+        setProducts(res.products)
+        setCatalog(res.catalog)
+        setCatalogError(res.source === 'unavailable' ? res.error || 'No pudimos cargar el catálogo.' : null)
 
+        // Task 2.11: only the live catalog may revalidate the persisted cart — fixture
+        // data (or an unavailable catalog) would otherwise classify every saved line as
+        // "discontinued" and empty the cart. The one-shot flag is consumed only by a
+        // trustworthy load, so a later success still revalidates.
         if (
+          res.source === 'firestore' &&
           !hasRevalidated.current &&
           cartRef.current.length > 0 &&
           selectedCategory === 'all' &&
@@ -174,7 +187,7 @@ export default function App() {
           !inStockOnly
         ) {
           hasRevalidated.current = true
-          const reval = revalidateCartAgainstCatalog(cartRef.current, res)
+          const reval = revalidateCartAgainstCatalog(cartRef.current, res.products)
           if (reval.hasChanges) {
             setCart(reval.items)
             if (reval.removedCount > 0 || reval.adjustedCount > 0) {
@@ -183,7 +196,14 @@ export default function App() {
           }
         }
       } catch (err) {
+        // An unexpected failure (e.g. a malformed catalog document) must surface the same
+        // retryable card as a known failure — never the misleading "no results" empty state.
         console.warn('Error fetching products:', err)
+        if (isMounted) {
+          setProducts([])
+          setCatalog([])
+          setCatalogError('No pudimos cargar el catálogo de insumos. Revisa tu conexión y reintenta.')
+        }
       } finally {
         if (isMounted) setLoadedRequestKey(catalogRequestKey)
       }
@@ -200,6 +220,11 @@ export default function App() {
   useEffect(() => {
     saveCartToStorage(cart, appliedPromo)
   }, [cart, appliedPromo])
+
+  /** Re-arms the catalog request after an unavailable/failed load (Task 2.11). */
+  const handleRetryCatalog = useCallback(() => {
+    setCatalogRetryKey((key) => key + 1)
+  }, [])
 
   const handleOrderSuccess = () => {
     setCart([])
@@ -311,6 +336,7 @@ export default function App() {
           inStockOnly={inStockOnly}
           onToggleInStock={setInStockOnly}
           totalResults={products.length}
+          catalog={catalog}
         />
 
         {/* Visual Category Showcase Hub / Contextual Category Banner */}
@@ -323,6 +349,8 @@ export default function App() {
           key={catalogRequestKey}
           products={products}
           loading={loading}
+          catalogError={catalogError}
+          onRetry={handleRetryCatalog}
           onAddToCart={handleAddToCart}
           onQuickView={setQuickViewProduct}
           cartQuantityById={cartQuantityById}

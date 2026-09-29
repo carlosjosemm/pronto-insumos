@@ -1,175 +1,185 @@
-# Task 0.14: Webhook Reconciliation Gaps
+# Task 2.11: Catalog Fallback Shows Prototype Fixtures and Wipes the Persisted Cart
 
-**Branch:** `fix/task-0.14-webhook-reconciliation-gaps` (cut from `main` @ `6c79471`, verified in sync with `origin/main`; executing in the primary working tree)
+**Branch:** `fix/task-2.11-catalog-fallback-cart-wipe` (cut from `main` @ `6c79471` — the merged PR #24 — verified in sync with `origin/main`; executing in the isolated Windsurf worktree)
 **RequestFeedback:** true · **UserFacing:** true
-**Status:** Implemented, verified (726/726) and adversarially reviewed; review findings R1–R9 disposed of in §7. Awaiting the explicit **"wrap up and proceed"** command before staging/committing.
-**Owner decisions (approved 2026-09-29):** (1) settled statuses get an incident, not a review flip; (2) the MP-failure `502` is unconditional; (3) the request `items` requirement is dropped; (4) `maxAgeSeconds` stays unset.
+**Status:** Implemented, verified, adversarially reviewed (findings F1–F7 remediated — see §7) and awaiting the explicit **"wrap up and proceed"** command.
 
 ---
 
 ## 1. Context & Problem Statement
 
-Reference: `PRODUCTION_READINESS_TODO.md` → **0.14 — Webhook reconciliation gaps** _(P1, launch blocker)_, the topmost open item. Seven defects in the payment reconciliation path, all in `api/webhooks/mercadopago.ts` (plus `create-preference` for **g**):
+Reference: `PRODUCTION_READINESS_TODO.md` → **2.11** (P1 launch blocker, 2026-09-29 audit).
 
-| Item | Defect | Money consequence |
-| :-- | :-- | :-- |
-| **a** | MP verification failures (revoked token → 401/403, MP 5xx, malformed id) are acked `200` (`:108-116`) | A genuinely paid order is never retried → never reconciled |
-| **b** | The duplicate fast path is keyed on `status === 'PAGADO_MERCADOPAGO'` (`:161-174`), not the payment id | A double charge (two approved payment ids) is silently acked as duplicate → never refunded |
-| **c** | No order-status guard | An approved payment for a `CANCELADO` / `DESPACHADO` / `ENTREGADO` / `TRANSFERENCIA_APROBADA` order flips it to `PAGADO_MERCADOPAGO` and deducts stock **again** |
-| **d** | Only `approved` is processed | A later `refunded` / `charged_back` / `cancelled` leaves the order `PAGADO`, stock deducted, nobody alerted |
-| **e** | `newStock = Math.max(0, current − qty)` (`:247`) hides the shortfall; same clamp in `approve-transfer.ts:130` and `resolve-payment-review.ts:175` | Stock hits 0 between preference and payment; the sale is approved but the warehouse never learns there is a shortfall |
-| **f** | Signature verified against query `data.id` first (`:54-55`) but the payment fetched is `body.data.id` first (`:43-44`) | A replayed delivery with a tampered body id fetches a **different payment** than the one the HMAC covers |
-| **g** | `create-preference` builds preference lines from `req.body.items` (`:117-183`) while the webhook asserts against `order.items` | A mismatched body yields a payable preference that later lands in `PAGO_EN_REVISION` (the Task 0.9 invariant broken on the charge side) |
+`fetchProducts()` (`src/services/api.ts:57-82`) races the Firestore read against a **2.5 s timeout** and, on timeout, rejection **or an empty snapshot**, returns the 11 `odon-*` prototype fixtures. Two defects follow:
 
-Also in scope, per **e**: the identical clamp in the two admin handlers named by the roadmap.
+| # | Defect (as built) | Consequence |
+| :-- | :--- | :--- |
+| D1 | The fallback is **unconditional** — `isSimulatedFallbackAllowed()` is never consulted (unlike every other simulated path since Task 2.8/0.10) | A production storefront served from a slow or failing Firestore shows **11 prototype items, all `isActive: false` / `inStock: false`** ("all agotado") and no error. A slow 4G first load in Chile is enough to trigger it. |
+| D2 | `App.tsx:154-190` cannot tell a real catalog from the fixture fallback, so it runs `revalidateCartAgainstCatalog(cart, res)` on the **first unfiltered load regardless of source** | Every saved `pronto-*` cart line is absent from the fixture catalog ⇒ classified "discontinued" (`cartStorage.ts:184-196`) ⇒ **the cart is emptied, persisted empty, and a misleading "Se actualizó el carro…" toast is shown**. |
+| D3 | `hasRevalidated.current` is set even when the load fell back | The one-shot revalidation is consumed by the bad load, so a later successful catalog never revalidates the cart in that session. |
+
+The fixtures themselves are not the bug — `src/data/AGENTS.md` §2.1 documents them as a deliberate **dev/test** artifact ("they never display on the storefront but remain usable by tests and the local offline fallback"). The bug is that production can reach them, and that the cart is mutated from data that was never authoritative.
 
 ---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-No new credentials, no new environment variables, no `.env.example` change — every fix tightens existing serverless behaviour.
+No new credentials, no new environment variables, no `.env.example` change — this task only tightens client behaviour.
 
 | # | Action | Where / command |
 | :-- | :--- | :--- |
-| H1 | Confirm `WAREHOUSE_NOTIFICATION_EMAIL` is set in **Vercel Production** — the new alerts (double payment, refund/chargeback, invalid-status payment, stock shortfall) are warehouse emails | `pnpm dlx vercel@latest env ls` |
-| H2 | After deploy, watch Vercel logs for the new `[Mercado Pago Webhook]` 502 entries: they mean MP is retrying a delivery it could not verify (revoked token / MP outage) — expected until the cause is fixed | Manual, after deploy |
-| H3 | Optional smoke test on a preview deploy: dispatch a paid order whose product stock is 0 (or a transfer approval on a short order) and confirm the warehouse alert carries the `Stock insuficiente` note | Manual, after deploy |
+| H1 | *(Optional)* Verify the new error state on a preview deploy: open the storefront, block Firestore (DevTools → Network → Offline) and reload → expect the retryable "No pudimos cargar el catálogo" card, never the 11 prototype items; a saved cart must survive | Manual, after deploy |
+| H2 | *(Optional)* Confirm `VITE_FIREBASE_*` are present on the Vercel Production target — after this change a missing/blocked catalog shows an honest error instead of fixtures | `pnpm dlx vercel@latest env ls` |
 
 ---
 
 ## 3. Proposed Changes
 
-### 3.A `[MODIFY] api/webhooks/mercadopago.ts` — (a)(b)(c)(d)(e)(f)
+### 3.A `[MODIFY] src/services/api.ts` — a source-aware catalog fetch
 
-**One normalized payment id (f).** Extract it once — query `data.id`/`id` first (the value the official HMAC manifest `id:[data.id];…` is built from), body `data.id`/`id` as fallback — `String(...).trim()` it, and use that single value for the signature, the MP fetch URL, and every comparison. Today the signature uses query-first and the fetch body-first; after this, a tampered body id can no longer redirect the fetch away from the signed id. `maxAgeSeconds` is **deliberately not passed**: MP retries reuse the original `ts`, so a replay window would reject legitimate retries and re-open gap (a).
-
-**MP verification gate (a).**
+New explicit contract (the service currently returns a bare `Product[]`, which is exactly why `App` cannot tell the two apart):
 
 ```ts
-if (!mpResponse.ok) {
-  if (mpResponse.status === 404) {           // payment does not exist → nothing to reconcile
-    return res.status(200).json({ received: true, note: 'Payment not found at Mercado Pago' })
-  }
-  console.error(/* HTTP status, payment id, "refusing to acknowledge — Mercado Pago will retry" */)
-  return res.status(502).json({ error: 'Mercado Pago verification unavailable' })
+export type CatalogSource = 'firestore' | 'fixtures' | 'unavailable'
+
+export interface CatalogResult {
+  products: Product[]
+  source: CatalogSource
+  /** Customer-safe Chilean-Spanish message, present only when source === 'unavailable'. */
+  error?: string
 }
+
+/** Bounded wait for the catalog read. Relaxed from 2.5 s (Task 2.11): a first load on
+ *  slow Chilean mobile data routinely exceeded it, which is what served fixtures. */
+export const CATALOG_FETCH_TIMEOUT_MS = 10_000
 ```
 
-`502` is deliberate (upstream failure; 5xx → MP retries). Network failures already reach the outer `catch` → `500`. The 5xx is **unconditional** (not env-gated): money safety first; a dev-mode placeholder token now yields `502` instead of the old permissive ack.
+`fetchProducts(options): Promise<CatalogResult>` — same filtering/sorting/partitioning as today, new source semantics:
 
-**Payability guard (c) — inside the transaction, on the fresh read, replacing the current concurrency check:**
+| Situation | Production (`!isSimulatedFallbackAllowed()`) | Dev / preview (or `VITE_ALLOW_SIMULATED_PAYMENTS=true`) |
+| :--- | :--- | :--- |
+| Firestore returns ≥1 active product | `source: 'firestore'` | `source: 'firestore'` |
+| Missing `VITE_FIREBASE_*` config | `source: 'unavailable'` + error | `source: 'fixtures'` |
+| `getDocs` rejects | `source: 'unavailable'` + error | `source: 'fixtures'` + `console.warn` |
+| `getDocs` resolves empty | `source: 'unavailable'` + error | `source: 'fixtures'` |
+| Timeout (> `CATALOG_FETCH_TIMEOUT_MS`) | `source: 'unavailable'` + error | `source: 'fixtures'` + `console.warn` |
 
-```ts
-const PAYABLE_STATUSES  = new Set(['PENDIENTE_PAGO_MERCADOPAGO', 'PAGO_EN_REVISION'])
-const SETTLED_STATUSES  = new Set(['PAGADO_MERCADOPAGO', 'TRANSFERENCIA_APROBADA', 'PAGADO_TRANSFERENCIA',
-                                    'EN_PREPARACION', 'DESPACHADO', 'ENTREGADO'])
-```
+- Error message (shared constant): `'No pudimos cargar el catálogo de insumos. Revisa tu conexión y reintenta.'`
+- Production failures log via `console.error`; dev fallbacks keep the historical `console.warn` — the same convention Task 2.8 established for the other adapters.
+- `isActive !== false` continues to filter **Firestore** results.
 
-1. same payment id already recorded → silent duplicate return (unchanged semantics, now keyed only on the id);
-2. **settled** → *incident*: history event + warehouse alert, **no status change, no stock movement**;
-3. **anything else** (CANCELADO, pending transfer/quote statuses, unknown) → *review*: `status: 'PAGO_EN_REVISION'` + stamp `mercadopagoPaymentId` + history event + warehouse alert, **no stock movement**;
-4. payable → the existing catalog read → amount assertion → approval.
+### 3.B `[MODIFY] src/App.tsx` — consume the source, protect the cart, offer a retry
 
-*Why the settled bucket is not flipped to review:* those orders are already paid/shipped — flipping them would regress the customer tracking view (`track-order` reads `DESPACHADO`/`EN_PREPARACION` as fulfilment stages) and would open a double stock-deduction path through `resolve-payment-review`'s **approve** action. The incident is recorded in history and alerted instead. The review flip is reserved for orders whose money/fulfilment state is genuinely unresolved. (If you prefer the literal "anything else → review" reading for settled statuses too, say so — it is a one-line change.)
+- New state: `catalogError: string | null` and `catalogRetryKey: number`; `catalogRequestKey` gains the retry key (`${category}|${search}|${sortBy}|${inStockOnly}|${retryKey}`) so a retry re-runs the effect **and** re-shows the skeleton (`loading` is derived from that key).
+- `setProducts(res.products)`; `setCatalogError(res.source === 'unavailable' ? res.error : null)`.
+- **Cart protection (D2/D3):** the revalidation block only runs when `res.source === 'firestore'` — and only then is `hasRevalidated.current = true`. Fallback data can therefore never remove, clamp or re-price a saved line, and the one-shot revalidation is preserved for the first *authoritative* catalog of the session.
+- The "Se actualizó el carro…" toast consequently only fires from a real catalog.
 
-**Double payment (b).** A second approved payment id for a settled order (step 2 above, which includes `PAGADO_MERCADOPAGO`) writes an `order_status_history` event (`previousStatus === newStatus`, reason "segundo pago aprobado … posible doble cobro", metadata `{ paymentId, previousPaymentId, transactionAmount }`) and sends the warehouse alert — **without stamping the second id over the original payment** (which would erase which payment settled the order).
+### 3.C `[MODIFY] src/components/ProductList.tsx` — retryable catalog error state
 
-**Refunds / chargebacks (d).** Payment status in `{refunded, charged_back, cancelled}` now resolves the order and, only when the stored `mercadopagoPaymentId` matches the refunded payment (or is absent on a legacy doc), runs a transaction:
+Two optional props, `catalogError?: string | null` and `onRetry?: () => void`. When `catalogError` is set the component renders an error card **in place of the grid** (same container styling as the existing empty state, `AlertCircle` icon, the service's message, and a `Reintentar` button). The existing "No se encontraron insumos odontológicos" copy stays for the genuinely-empty-results case (e.g. a search with no matches).
 
-- `PAGADO_MERCADOPAGO` → `PAGO_EN_REVISION` + history + alert;
-- `EN_PREPARACION` / `DESPACHADO` / `ENTREGADO` → incident (history + alert, no flip — tracking regression, same rationale);
-- anything else (already review/cancelled, or a refund of the *second* payment of a double charge) → silent ack.
+### 3.D `[MODIFY] src/components/CategoryFilter.tsx` — stop counting the prototype catalog
 
-No stock movement on refunds (restocking is off-platform, `src/types/AGENTS.md` §2.1).
+Found while auditing the fixture blast radius, and the same defect family: `CategoryFilter` computes its pill counts from `const catalog = products || PRODUCTS`, but **`App.tsx` never passes `products`** — so `catalog` is *always* the 11 prototype fixtures and every category pill shows a prototype count (`categoryCounts[cat.id] ?? 0`, rendered at `:105`). The counts are wrong today for every real catalog, and the fallback is a second way prototype data reaches the storefront.
 
-**Shortfall recording (e).** Inside the approval transaction, per line: `shortfall = max(0, previousStock − 0 − qty)` is recorded in the `inventory_audit_logs` metadata (`stockShortfall` only when > 0) and the order-history metadata (`stockShortfalls: [{ productId, name, requested, available }]` only when non-empty). The warehouse alert gains a shortfall sentence (3.C). The clamp itself (`Math.max(0, …)`) stays — the money is taken, the order is approved, the shortfall is surfaced.
+- `catalog = products ?? []` and the `PRODUCTS` import is **removed from the component entirely**.
+- `App.tsx` passes the live `products` it already holds.
+- With an unavailable/empty catalog the pills still render the canonical `CATEGORIES` taxonomy (a static storefront list, not fixture data) with counts of `0` — which is truthful.
 
-**Structure.** The `orderId` resolution + `getAdminFirestore()` + 0.10 fail-closed gate are hoisted so the approved and refund branches share one copy; the approved branch keeps its existing transaction/email flow.
+### 3.E Decision point — the `isActive` filter on fallback data
 
-### 3.B `[MODIFY] api/create-preference.ts` — (g)
+The TODO's fix line ends with *"filter `isActive` on fallback data too"*. Taken literally that makes the dev fallback **empty** (all 11 fixtures are `isActive: false` by design), which contradicts their documented role and would rewrite ~15 assertions in `api.test.ts` that pin the 11-item fallback.
 
-Build `rebuiltItems` from **`orderData.items`** (the document `submitOrder` wrote), not `req.body.items`:
+**Recommended (A):** keep the fixtures unfiltered for the **dev-only** fallback and document why — after this change fixtures are *unreachable in production*, so the filter's protective purpose is already satisfied; the dev developer sees the prototype catalog as designed.
 
-- line source becomes the order document; `productId || id`, `normalizeQuantity(quantity)` and `item.name` as before — prices still come from the **current** Firestore catalog with the order's promo percent (Task 0.9 unchanged);
-- an order whose `items` are missing/empty → `400` (`El pedido no tiene insumos registrados…`), instead of building an empty MP preference;
-- the request contract becomes `orderId` (+ optional `customer` for the payer block): `items` is no longer required or read. The client keeps sending it (no client change); the server ignores it.
+Alternatives if you prefer: **(B)** apply the filter literally (dev shows the empty state; ~15 test assertions rewritten), or **(C)** flip the 11 fixtures to `isActive: true` so the filter is consistent *and* dev keeps a catalog — a fixture-contract change that `src/data/AGENTS.md` §2.1 and `src/tests/data/products.test.ts` would have to follow.
 
-### 3.C `[MODIFY] api/_lib/emailTemplates.ts` — new warehouse events + shortfall hint
+### 3.F The fixtures themselves — deliberately out of scope (owner question, answered)
 
-- `WAREHOUSE_EVENT_LABELS` + the action-hint chain (converted from nested ternaries to a `Record<string, string>` map, same copy for existing keys) gain: **`PAGO_DUPLICADO`**, **`PAGO_ESTADO_INVALIDO`**, **`PAGO_REEMBOLSADO`**.
-- `buildWarehouseAlertEmail(data, event, shortfalls?: StockShortfall[])` — new optional third parameter appends `Stock insuficiente: faltan 2× «Turbina» (disponible 0)…` to the action hint. Exported `StockShortfall` type. Backward compatible: every existing call site keeps working.
+The owner asked whether the `odon-*` fixtures should simply be deleted. **Not in this task**, and the audit is the reason: they have six live consumers, not one —
 
-### 3.D `[MODIFY] api/_lib/admin/approve-transfer.ts` + `api/_lib/admin/resolve-payment-review.ts` — (e)
+| Consumer | Role |
+| :--- | :--- |
+| `src/services/api.ts` | dev/offline catalog fallback (this task's subject) |
+| `src/components/CategoryFilter.tsx` | pill counts (fixed in §3.D) |
+| `src/admin/services/adminApi.ts:208` | admin inventory fallback (out of scope by owner decision) |
+| `scripts/manage-firestore-schema.ts` | `schema:seed` / `schema:seed:dev` seed the catalog from `canonicalProducts` — a **documented operator command** |
+| `src/services/firebase.ts` | `seedProductsToFirestore()` — retained, uncalled |
+| 4 test suites | `data/products.test.ts` exists *solely* to validate them |
 
-Same shortfall recording as 3.A (per-line `stockShortfall` in the audit metadata, `stockShortfalls` in the history metadata, shortfall sentence in the warehouse alert they already send). No behavioural change otherwise.
+Deleting them is a cross-cutting refactor that first requires a product decision (*what replaces them as the seed source?*), and it would make a P1 bug-fix PR unreviewable. **Proposal:** track it as a new roadmap item (Phase 6 Catalog) so the decision is explicit rather than implicit, and leave the fixtures untouched here.
 
 ### Explicitly NOT done (scope guardrails)
 
-- No new serverless function (6/12 Hobby slots unchanged), no new dependency, no Firestore rules/schema change, no client change.
-- No `resolve-payment-review` status-guard rework (that is Task **4.3**), no rate limiting (Task **8.8**), no pending-order cleanup (Task **8.13**), no `maxAgeSeconds`.
-- No re-stamping of `mercadopagoPaymentId` on incidents, no new order fields.
+- No new dependency, no new component file, no CSS framework changes (the error card reuses the existing inline-style convention of `ProductList`).
+- **The admin portal's own fixture fallback is out of scope** (`src/admin/services/adminApi.ts` falls back to the local catalog when `/api/admin/products` is unreachable — an internal surface, no cart to destroy). Flagged, not touched; it can become its own item if you want it.
+- No change to `cartStorage.revalidateCartAgainstCatalog` itself (its behaviour is correct given a trustworthy catalog), no change to the checkout/payment paths, no removal of the fixtures.
 
 ---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-All boundaries mocked (`firebase-admin/app`, `firebase-admin/firestore`, `api/_lib/firebaseAdmin`, `global.fetch`); no live calls.
+All boundaries mocked (`firebase/firestore`, `../../services/firebase`); no live Firebase calls.
 
-**`[MODIFY] src/tests/api/mercadopago-webhook.test.ts`** (32 tests today; **+20** measured — 15 in the first pass, 5 added by the review remediation):
+**`[MODIFY] src/tests/services/api.test.ts`** — migrate to the new contract and add the source matrix (~+7):
+- Existing filter/sort/stock tests updated to `result.products` (mechanical; they run on the deterministic empty-snapshot fallback).
+- **Production + `getDocs` rejection** ⇒ `source: 'unavailable'`, `products: []`, and an assertion that **no `odon-` fixture leaked** into the payload.
+- **Production + empty snapshot** ⇒ `unavailable`; **production + missing config** ⇒ `unavailable`.
+- **Production + timeout** ⇒ `unavailable` (fake timers advanced past `CATALOG_FETCH_TIMEOUT_MS`; the rejected-race branch asserted without real waiting).
+- **Dev/preview** (VERCEL_ENV unset) for rejection and empty snapshot ⇒ `source: 'fixtures'` with all 11 items; **`VITE_ALLOW_SIMULATED_PAYMENTS='true'` in production** ⇒ fixtures (escape hatch pinned).
+- **Firestore success** ⇒ `source: 'firestore'`, `isActive: false` documents excluded.
+- Env hygiene: `vi.unstubAllEnvs()` + `vi.restoreAllMocks()` per test (the console spies must not leak into later suites), and the dev-path cases stub `VITE_VERCEL_ENV` explicitly instead of relying on ambient values.
 
-- **(a)** MP 500 → `502` + `console.error` + no order lookup; MP 401 → `502`; 404 → `200` (the two existing 404 tests are re-pointed to the new note); production + real credentials + MP 500 → `502` (the old "known gap #5" test is rewritten — the pointer comment in it is removed).
-- **(b)** paid order + different payment id → `200`, one history `set` with the double-payment reason/metadata, warehouse email sent, **no** order/stock update; same-id redelivery stays a silent duplicate.
-- **(c)** `CANCELADO` + approved → `PAGO_EN_REVISION` + history + alert, no stock; `DESPACHADO` + approved → no status change, no stock, incident history + alert; `TRANSFERENCIA_APROBADA` + approved → incident; `PENDIENTE_TRANSFERENCIA` + approved → review flip.
-- **(d)** `refunded` on a `PAGADO_MERCADOPAGO` order (matching id) → `PAGO_EN_REVISION` + history + alert, no stock; `charged_back` on a `DESPACHADO` order → incident, no flip; refund of a *different* payment id → silent ack, no writes.
-- **(e)** stock 1 vs qty 3 → approved, stock `0`, history metadata `stockShortfalls` `[{ requested: 3, available: 1 }]`, audit metadata `stockShortfall: 2`, warehouse email contains `Stock insuficiente`; a clean approval asserts `stockShortfalls` is **absent**.
-- **(f)** query `data.id = A`, body `data.id = B`, signature valid over **A** → the MP fetch URL contains `A` and not `B`.
+**`[MODIFY] src/tests/components/AppCartPersistence.test.tsx`** — mock updated to the new shape, plus (~+3):
+- **The regression this task exists for:** production + `source: 'unavailable'` on mount with a saved cart ⇒ the cart is **unchanged** (same badge count, `localStorage` still holds the lines), **no** "Se actualizó el carro…" toast, and the retryable error card is rendered.
+- Production + `source: 'fixtures'` (escape hatch) ⇒ cart still untouched (source gate, not just the env gate).
+- **Retry recovers:** click `Reintentar` ⇒ the next mocked response returns `source: 'firestore'` ⇒ the grid renders and the cart is revalidated normally (proves the one-shot flag was not consumed by the failed load).
 
-**`[MODIFY] src/tests/api/create-preference.test.ts`** (23 tests today; +~3): every order fixture gains its `items` (the current `'any'` default shape can no longer satisfy the endpoint); the 400 test becomes "orderId missing" plus a new "order without items → 400"; new: body items tampered/divergent (different product, different quantity) → the **order document's lines** are charged; body `items` omitted entirely → still `200`.
+**`[MODIFY] src/tests/components/AppPaymentReturn.test.tsx`** — mock updated to the new shape only.
 
-**`[MODIFY] src/tests/api/admin/approve-transfer.test.ts`** (+1) and **`src/tests/api/admin/resolve-payment-review.test.ts`** (+3 — shortfall + the two R1 guards): shortfall recorded in audit + history metadata and surfaced in the warehouse alert; the review approve is refused (`409`) on an already-settled order while cancel still resolves it.
+**`[MODIFY] src/tests/components/ProductList.test.tsx`** (+3) — `catalogError` renders the message + `Reintentar` and calls `onRetry`; without it the existing empty state still renders.
 
-**`[MODIFY] src/tests/api/email.test.ts`** (+2, added during implementation): the three new warehouse event labels/hints and the shortfall sentence in both the HTML and text parts.
+**`[NEW] src/tests/components/CategoryFilter.test.tsx`** (+3) — the pills count the catalog they are handed (never the prototype counts), report `0` for an empty catalog, and still surface non-canonical categories.
 
-**Zero-regression target:** `pnpm test` — baseline **697/697 (76 suites)** on `main`; measured **726/726 (76 suites)** after this branch (+29: webhook +20, create-preference +3, email +2, approve-transfer +1, resolve-payment-review +3), plus `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` and the `api/` strict type-check clean.
+**`[NEW] src/tests/components/AppCatalog.test.tsx`** (+2) — the App-level wiring: pill counts survive a filter change (review F1) and an unexpected fetch throw renders the retryable card (review F5).
 
----
-
-## 5. As-Built Documentation & Roadmap Sync (executed)
-
-- **`api/AGENTS.md`:** §2.2 webhook sequence + prose (verification gate 404/502, payability guard, refunds, double payment, shortfall, single signed id); §2.3 idempotency (fast path keyed on the payment id); §3.2/email table gains the three new warehouse events; **§8.5 item 5 is marked RESOLVED (Task 0.14)** and item 3/4 stay untouched (2.9 / 8.8).
-- **`src/admin/AGENTS.md`:** §4.3 atomic decrement + §4.3b review note the shortfall metadata and the new alert events.
-- **`src/tests/AGENTS.md`:** suite/test counts and the new cases per suite.
-- **Root `AGENTS.md`:** the §4 payment bullet gains the new webhook guarantees; the three test-count references are refreshed.
-- **`PRODUCTION_READINESS_TODO.md`:** 0.14 removed from §1/§3 and recorded in §2; baseline header refreshed.
-- **Commit:** single conventional commit on the task branch, after the human "wrap up and proceed".
+**Zero-regression target:** `pnpm test` — **697 tests / 76 suites** on `main` before this change → **measured 746 / 78** after rebasing onto the merged Task 0.14 work (+20 from this branch), all green, plus `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` and markdownlint (0 warnings) clean.
 
 ---
 
-## 6. Verification Sequence (workflow steps 6 → 8) — executed
+## 5. As-Built Documentation & Roadmap Sync Plan
 
-1. `pnpm test` — **726/726 across 76 suites**, zero regressions (baseline 697/697).
-2. **Negative verification:** the `api/` changes were stashed and the new suites re-run against `HEAD` — **22 of the 23 new/re-pointed tests failed** (the 23rd, the `PENDIENTE_TRANSFERENCIA` review case, was tightened with a matching `totalAmount` so it now fails too, and the R4 `cancelled` test was re-verified against the intermediate version that still listed `cancelled`). The remediation guards were re-verified the same way (R1/R5/R6 fail on the pre-remediation source; R4 fails against the intermediate one).
-3. `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` and the `api/` strict type-check (`--strict --target es2022 --module esnext --moduleResolution bundler --types node --skipLibCheck`) — all clean.
-4. Adversarial read-only code review (independent reviewer) — verdict *BLOCK* on one introduced defect, remediated in §7; all gates re-run green afterwards.
-5. Stop for human wrap-up; commit/push/PR only on the explicit **"wrap up and proceed"**.
+- **`src/services/AGENTS.md`:** §1.1 `api.ts` row, §2.2 rewritten around the `CatalogResult` contract + the source matrix + the 10 s bound, and §6's simulated-fallback table gains the catalog row (dev-only, never authoritative for the cart).
+- **`src/components/AGENTS.md`:** the catalog error/retry state, the two new `ProductList` props, and the `CategoryFilter` live-catalog contract (§3.D).
+- **`src/data/AGENTS.md`:** §2.1 — the fixtures' role restated: dev/test fallback, **unreachable in production** since Task 2.11, plus a pointer to the new roadmap item about their future.
+- **`src/tests/AGENTS.md`:** suite/test counts and the new cases.
+- **`PRODUCTION_READINESS_TODO.md`:** **2.11** moves from §3 to the §2 resolved table and its row is dropped from the §1 glance table; **new item 6.4** (Phase 6 Catalog) records the "decide the fate of the `odon-*` prototype fixtures" question with the six-consumer audit; the baseline header refreshed with the measured counts.
+- **Root `AGENTS.md`:** the three test-count references, if the suite count changes.
 
 ---
 
-## 7. Adversarial Review Disposition (post-implementation)
+## 6. Verification Sequence (workflow steps 6 → 8)
 
-Verdict: **BLOCK** (one blocker + four minors + three nits + one pre-existing note). All valid findings remediated in the working tree; gates re-run green.
+1. `pnpm test` — full suite green, including the ~12 new cases.
+2. **Negative verification** — restore the pre-fix `api.ts`/`App.tsx` behaviour temporarily and confirm the new cart-protection and production-error tests fail, then restore and `diff`-verify.
+3. `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` — clean.
+4. Adversarial read-only code review (defensive guards, runtime separation, observability, test completeness), findings remediated and re-verified.
+5. Stop for human wrap-up; commit only on explicit **"wrap up and proceed"**.
 
-| # | Sev | Finding | Disposition |
-| :-- | :-- | :--- | :--- |
-| R1 | BLOCKER | A refund parks an already-deducted order in the *payable* `PAGO_EN_REVISION`, so a later approved payment (or an admin approve) could deduct stock a second time | **Fixed** — an order's lines are deducted **at most once**: the webhook records an incident (not an approval) when the fresh order already carries `paidAt`/`approvedAt`, and `resolve-payment-review`'s approve is refused with `409` while cancel stays available. 3 new tests. |
-| R2 | MAJOR | As-built docs still described the pre-0.14 contract | **Fixed** — `api/AGENTS.md` (§2.2/§2.3/§3.2/§8.5 item 5), `src/admin/AGENTS.md` (§4.3/§4.3b), `src/tests/AGENTS.md`, root `AGENTS.md` and `PRODUCTION_READINESS_TODO.md` updated; this plan's status/counts corrected. |
-| R3 | MINOR | Incident branches are at-least-once (redelivery duplicates history + alert) | **Documented as accepted** — `api/AGENTS.md` §2.3 states the semantics and stops promising "duplicates never re-notify" for those two branches; no order field is added (the original payment id must be preserved). |
-| R4 | MINOR | `cancelled` treated as a reversal although MP only cancels unpaid payments | **Fixed** — `cancelled` dropped from the reversal set with the rationale in code + docs; the test pins the contract (verified to fail against the intermediate version). |
-| R5 | MINOR | A refund of a payment parked in review was invisible | **Fixed** — the reversal branch now records the incident for `PAGO_EN_REVISION` orders (no status change) + test. |
-| R6 | MINOR | `TRANSFERENCIA_APROBADA`/`ENTREGADO` incident cases promised by §4 were untested | **Fixed** — both fixtures added (2 tests). |
-| R7 | NIT | Prototype-key lookup in the warehouse hint/label maps | **Fixed** — own-property lookups, mirroring the admin router and `resolvePromo`. |
-| R8 | NIT | The new test describe deleted `MERCADOPAGO_*` env vars without restoring them | **Fixed** — backup/restore like the email describe. |
-| R9 | NIT | Partial refunds are invisible (MP keeps the payment `approved`) | **Documented** — recorded as a known limitation in `api/AGENTS.md` §2.2. |
-| P1 | pre-existing | Fractional `quantity` is not rounded before the stock write (all three consolidation loops) | **Deliberately not fixed** (out of scope; pre-existing, untouched by this diff). |
+---
 
-**Owner-visible deviation from the approved plan:** the roadmap's (d) listed `cancelled` as a reversal status; the review's MP documentation evidence (cancellations only apply to pending/in-process payments — no money collected) shows it can only create a false positive, so it was dropped and the rationale recorded in `api/AGENTS.md` §2.2.
+## 7. Adversarial Review Findings & Remediation (executed)
+
+An independent read-only reviewer inspected `git diff HEAD`, re-ran every gate and reproduced the guards. Verdict: **approve with findings** — all remediated:
+
+| # | Severity | Finding | Remediation |
+| :-- | :--- | :--- | :--- |
+| F1 | Minor (user-visible) | The pills counted `App`'s **filtered** `products`, so selecting a category zeroed every other pill — and no test pinned the App→pills wiring | `CatalogResult` gained `catalog` (the **unfiltered** source set); `App` keeps it in state and passes it as a now-**required** `catalog` prop; `src/tests/components/AppCatalog.test.tsx` pins it (fails when reverted) |
+| F2 | Major | As-built docs still described the pre-change contract (2.5 s, unconditional fixture fallback) and stale counts | §5 executed: `src/services/AGENTS.md` §1.1/§2.2/§6, `src/components/AGENTS.md` (retry key, `ProductList` error state, pill contract), `src/data/AGENTS.md` §2.1, `src/tests/AGENTS.md`, root `AGENTS.md`, `PRODUCTION_READINESS_TODO.md` — counts measured at 746/78 |
+| F3 | Minor | The "missing credentials" branch is unreachable in a browser (module-scope `getAuth()` throws at import) | Documented as a caveat in `api.ts` and the services guide; kept as defense-in-depth |
+| F4 | Minor | `console.error` spies were never restored; dev-path tests leaned on ambient env | `afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.useRealTimers() })` + explicit `vi.stubEnv('VITE_VERCEL_ENV', …)` in the dev cases |
+| F5 | Minor | An unexpected throw in the effect rendered the misleading empty state | The effect's `catch` now sets the same retryable `catalogError`; pinned by an App-level test |
+| F6 | Minor | Plan bookkeeping mismatched the change set; the new suite was untracked | Plan §4/§7 reconciled; `src/tests/components/CategoryFilter.test.tsx` staged at commit time |
+| F7 | Process | The session runs inside a pre-existing Windsurf worktree while `AGENTS.md:44` retires the worktree protocol | No action in code — flagged to the owner (the guardrail also references a `development-workflow` skill that does not exist in this repo) |
+| P1/P3 | Pre-existing nits | The race timer was never cleared; a malformed document could reject the whole read | Both fixed in `api.ts` (`clearTimeout` in a `finally`, `?? ''` field guards) with a test for the malformed-document case |

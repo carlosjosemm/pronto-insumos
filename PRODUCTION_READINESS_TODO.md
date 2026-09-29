@@ -3,7 +3,7 @@
 A working task list, not a changelog. Finished work is one line in §2; its as-built detail lives in the `AGENTS.md` of the directory it touches. Open tasks keep their IDs (they are referenced from code comments and `AGENTS.md` files) — do not renumber.
 
 **Last updated:** 2026-09-29 (full audit pass; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
-**Baseline (verified 2026-09-29, after the Task 0.14 webhook reconciliation work):** `pnpm test` 726/726 (76 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
+**Baseline (verified 2026-09-29, after the Task 0.14 and Task 2.11 work):** `pnpm test` 746/746 (78 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
 
 **Priorities:** **P1** = fix before real traffic · **P2** = fix soon after / before a marketed launch · **P3** = polish & DevOps.
 
@@ -13,7 +13,6 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 
 | ID | Task | Pri | Launch blocker |
 | :-- | :-- | :-: | :-: |
-| 2.11 | Catalog fallback shows prototype fixtures and wipes the persisted cart | P1 | **Yes** |
 | 3.1 | Per-zone shipping rates below the free-shipping threshold — **suspended (Phase 3)** | P1 | **Yes** |
 | 7.2 | Custom `.cl` domain + SSL | P1 | **Yes** |
 | 8.8 | Enumeration & abuse throttling on public endpoints | P1 | **Yes** |
@@ -31,6 +30,7 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 9.1 | Promo data model (expiry, exhaustion, audit, eligibility) | P2 | Only for limited/private campaigns |
 | 2.14 | Decision: public `stockCount` read vs. "confidential stock" rule | P3 | No |
 | 6.2 / 6.3 | Datasheet downloads · catalog expansion by specialty | P3 | No |
+| 6.4 | Decision: fate of the `odon-*` prototype fixtures (seed source + fallback consumers) | P3 | No |
 | 8.1 · 8.2 · 8.5 | Bundle chunks · `api/` in `tsc` · Sentry & GA4 | P3 | No |
 | 8.9 · 8.10 · 8.11 | `.env.example` gaps · lint scope · resilient Firebase init | P3 | No |
 | 8.14 · 8.15 | Dependency hygiene · operator-script guardrails | P3 | No |
@@ -71,12 +71,13 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 0.14 | Webhook reconciliation closed: MP verification failures return `502` (only a `404` is acked), one signed payment id drives signature + fetch, the status guard parks non-payable orders in `PAGO_EN_REVISION` and records settled ones as double-payment incidents (at-most-once stock deduction, never a tracking regression), refunds/chargebacks park the order for manual review, oversell shortfalls are recorded + alerted, and `create-preference` prices the order document's lines (the request body contributes only the order id). |
 | 0.15 | Dispatch accepts a blank tracking code: `dispatch-order` omits absent keys instead of writing `undefined` (which the Admin SDK rejects), and the Admin Firestore instance is now created with `ignoreUndefinedProperties: true` too. The audit confirmed it was the only handler writing `undefined`. |
 | 0.16 | `track-order` fails closed: `500` + loud log in a production runtime when Firestore Admin is unavailable, instead of returning the fabricated "Dra. Andrea Morales" order. The simulated payload is reachable only through `isSimulatedPaymentAllowed()` (dev/preview, or the explicit `ALLOW_SIMULATED_PAYMENTS='true'` opt-in). |
+| 2.11 | `fetchProducts()` returns a source-aware `CatalogResult`: production never serves the `odon-*` fixtures (rejection/empty/timeout → `unavailable` + retryable card, 10 s bound), the persisted cart is revalidated **only** from `source: 'firestore'`, and `CategoryFilter` counts the live unfiltered catalog instead of the prototype fixtures. **Owner decision (A):** the `isActive` filter is _not_ applied to the dev-only fixture fallback — fixtures are unreachable in production after this change, so the filter's purpose is already met. |
 | 1.1 | Integer-CLP catalog, `formatCLP`, `Math.round` IVA. |
 | 1.2 | Billing block with tax breakdown, Factura field validation (gated by `FACTURA_ENABLED = false`), printable pro-forma voucher. |
 | 1.3 | ISP/SIS validation for regulated items (`prescriptionRequired`). |
 | 1.4 | Distributor RUT sourced from `BANK_DETAILS.rut` (single-source guard test). |
 | 2.1 | Mercado Pago return URLs handled (`PaymentReturnModal`) — see 2.12 for the remaining trust gap. |
-| 2.2 | Cart persistence in `localStorage` (`pronto_cart_v1`, 7-day TTL, catalog revalidation) — see 2.11 for a data-loss edge. |
+| 2.2 | Cart persistence in `localStorage` (`pronto_cart_v1`, 7-day TTL, catalog revalidation). The data-loss edge where fallback data emptied the cart was closed by 2.11 (revalidation is `source: 'firestore'` only). |
 | 2.3 | Stock guards in cart, checkout and `create-preference`. |
 | 2.4 | Bank-transfer workflow with voucher upload (storage since reworked by 2.9). |
 | 2.9 | Vouchers go to private Cloud Storage via a two-phase `sign` → direct PUT → `confirm` flow (V4 signed URL with signed 5 MiB cap, server-side MIME/size re-check, lifecycle guard re-asserted in a transaction, deny-all `storage.rules`, `pnpm run storage:cors`); base64 payloads rejected; `upload-voucher` fails closed in production. |
@@ -108,11 +109,6 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
   - **Legacy base64 vouchers still live in pre-2.9 order docs.** `track-order` now hides `data:` URLs, but `api/_lib/admin/orders.ts:48-59` still returns every order document — including any `voucherUrl` base64 (up to ~1 MiB each) — and Vercel caps responses at 4.5 MB, so the admin list breaks once a few legacy vouchers accumulate. Either migrate them to Storage with a one-off operator script (dev by default, `--confirm-production-…` for prod, per 8.15) or have `orders.ts` return `hasVoucher` instead of the URL and fetch the URL only on the detail request. Also see 0.13 for the `data:` handling.
   - **`voucherUrl` is a permanent capability URL** (Firebase download token; never expires unless the token is rotated). Acceptable today — it is only exposed to the RUT-authenticated customer and admins — but note it if vouchers ever need revocation.
   - **Platform facts (verified 2026-09-28) that shaped the design:** Firestore 1 MiB doc cap and 1 GiB free tier; Vercel 4.5 MB request/response body cap (hence client-direct upload and no bytes through functions); Cloud Storage for Firebase needs Blaze. Sources: [Firestore limits](https://firebase.google.com/docs/firestore/quotas) · [Vercel limits](https://vercel.com/docs/functions/limitations) · [Storage billing change](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024)
-
-- [ ] **2.11. Catalog fallback shows prototype fixtures and wipes the persisted cart** _(P1)_
-  - **Evidence:** `src/services/api.ts:57-82` races `getDocs` against a **2.5 s timeout** and on timeout/error/empty snapshot returns `[...PRODUCTS]` (the 11 `odon-*` fixtures — all `isActive: false, inStock: false`, and the `isActive` filter is only applied to Firestore results). In `src/App.tsx:154-190` the first unfiltered fetch runs `revalidateCartAgainstCatalog(cart, res)` and sets `hasRevalidated`; against the fallback catalog every saved `pronto-*` line is "discontinued" (`cartStorage.ts:184-196`), so the cart is emptied, persisted empty, and a misleading "se actualizó el carro" toast shows. A slow 4G first load in Chile is enough; the shopper sees an 11-item all-agotado catalog with no error.
-  - **Fix:** when `!isSimulatedFallbackAllowed()` (production) do not fall back to fixtures — surface a retryable "no pudimos cargar el catálogo" state; never revalidate/mutate the cart from fallback data (flag the result as `source: 'fallback'`); relax/remove the 2.5 s race (Firestore SDK already has its own timeouts); filter `isActive` on fallback data too.
-  - **Verify:** `App`/`api` tests: Firestore timeout in production mode → error state, cart untouched.
 
 - [ ] **8.8. Enumeration & Abuse Throttling on Public Endpoints** _(P1 — was P2; audit raised it)_
   - **Enumeration oracle:** `track-order` / `upload-voucher` / `order-confirmation` return `404` for an unknown id but `401` for a wrong RUT (`track-order.ts:94-107`, `upload-voucher.ts:393-410`), so order ids can be enumerated without any RUT; `generateOrderId()` is `Math.random()` over only 900 000 values (`src/services/api.ts:42-44`). A company RUT is public information, so an attacker can walk the id space against a known clinic RUT and harvest its orders' PII (name, email, address, items). There is also no attempt throttling at all. (Random 6-digit ids also collide as volume grows — a collision surfaces as a generic rules-denied checkout error.)
@@ -183,6 +179,12 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
 
 - [ ] **6.2. Downloadable Technical Documentation** _(P3)_ — "Descargar ficha técnica (PDF)" on product details (datasheets and ISP registration codes for clinic sanitary audits).
 - [ ] **6.3. Expand Catalog SKUs by Specialty** _(P3)_ — Endodontics, Periodontics & Prophylaxis, Restorative & Esthetics, Orthodontics, Surgery & Implants, Sterilization & Infection Control (categories are open strings; use admin `+ Nuevo Insumo` / CSV import).
+
+- [ ] **6.4. Decision: the Fate of the `odon-*` Prototype Fixtures** _(P3 — owner question, 2026-09-29)_
+  - **Question (owner):** "would it be better to remove the fixtures/mocks from the code?" Raised while fixing 2.11, which stops them reaching the production storefront.
+  - **Audit — six consumers, so this is not a deletion but a migration:** `src/services/api.ts` (dev/offline fallback), `src/components/CategoryFilter.tsx` (pill counts, fixed by 2.11), `src/admin/services/adminApi.ts` (admin inventory fallback), `scripts/manage-firestore-schema.ts` (`schema:seed` / `schema:seed:dev` seed the catalog from `canonicalProducts`), `src/services/firebase.ts` (`seedProductsToFirestore()`, retained but uncalled) and four test suites (`data/products.test.ts` exists solely to validate them; `api.test.ts`, `useIncrementalReveal.test.tsx`, `orderCreateContract.test.ts` use them as data).
+  - **Decision required first:** what replaces them as the **seed source** for the documented `schema:seed*` commands (the CSV import is the production path, but the seed commands have no other catalog). Then choose: delete `PRODUCTS` and repoint the test suites to inline fixtures, or keep them as the dev/test artifact and document the boundary (status quo after 2.11).
+  - **Not urgent:** after 2.11 they cannot reach the production storefront and cannot mutate a cart.
 
 ### Phase 8 — Infrastructure, DevOps & Telemetry
 
