@@ -58,7 +58,7 @@ The admin portal is a **completely separate React application entry point** that
 
 The admin portal uses a **fixed sidebar + scrollable main content** layout, distinctly different from the storefront's single-column e-commerce layout.
 
-```
+```text
 ┌──────────────────────────────────────────────────────┐
 │  ┌─────────┐  ┌──────────────────────────────────┐   │
 │  │ SIDEBAR │  │  TOPBAR (page title + user menu) │   │
@@ -385,7 +385,7 @@ These placeholders signal future capability without taking primary visual space.
 
 **Status filter chips:** Horizontally scrollable row of filter buttons:
 
-```
+```text
 [ Todos ] [ Pendiente Pago ] [ Pagado MP ] [ Pend. Transferencia ] [ Cotización WA ] [ Despachado ] [ Entregado ]
 ```
 
@@ -690,7 +690,7 @@ export const CARRIER_LABELS: Record<CarrierType, string> = {
 
 ## 11. File Structure & Module Map
 
-```
+```text
 PRONTO/
 ├── admin.html                          ← [NEW] Admin HTML entry point
 ├── vercel.json                         ← [MODIFY] Add admin rewrite rule
@@ -763,11 +763,11 @@ Create `src/admin/admin.css` that:
 ### 12.2 Token Sharing Options
 
 > **Decision for implementing agent:** Two valid approaches exist:
-> 
+>
 > **Option A (Simpler):** Copy the `:root` tokens block into `admin.css`. ~80 lines of duplication, but zero risk of storefront regressions.
-> 
+>
 > **Option B (DRYer):** Extract tokens into `src/tokens.css`, then have both `src/index.css` and `src/admin/admin.css` `@import './tokens.css'`. Cleaner but requires touching `index.css`.
-> 
+>
 > Either is acceptable. Option A is recommended for Phase 4 since it avoids touching the storefront CSS.
 
 ### 12.3 Admin-Specific CSS Classes (Naming Convention)

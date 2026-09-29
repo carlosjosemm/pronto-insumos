@@ -29,7 +29,7 @@ In **[Vercel Dashboard](https://vercel.com)** → `pronto-insumos` → **Setting
 
 1. In **Mercado Pago Developers** → Your App → **Webhooks / IPN**:
 2. Paste **Notification URL**:
-   ```
+   ```text
    https://pronto-insumos.vercel.app/api/webhooks/mercadopago
    ```
 3. Check event checkboxes: **Pagos** (`payment.created`, `payment.updated`).

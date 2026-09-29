@@ -8,7 +8,8 @@ This document is the **authoritative architectural, design, and operational spec
 
 The PRONTO Admin Portal is an internal, lightweight management console designed exclusively for the store owner, clinical inventory managers, and warehouse staff in **Melipilla, Chile**.
 
-### Core Responsibilities:
+### Core Responsibilities
+
 1. **Executive Overview (`#dashboard`):** Real-time monitoring of daily revenue (CLP), pending bank transfers awaiting clearance, low-stock supply alerts (<5 units), and monthly order volume.
 2. **Order Management & Fulfillment (`#orders`):**
    - Search orders by canonical ID (`PRONTO-XXXXXX`), customer/company name, or Chilean RUT.
@@ -18,9 +19,9 @@ The PRONTO Admin Portal is an internal, lightweight management console designed 
    - View bank transfer payment vouchers uploaded by clinics (Task 2.9): `voucherUrl` is a Firebase Storage download-token URL opened in a new tab. Legacy pre-2.9 documents hold a Base64 `data:` URL instead — Chrome blocks top-frame navigation to those, so `OrderDetailPanel` converts them to a Blob object URL on click.
    - **Voucher-URL allowlist (Task 0.13):** the panel never links a stored string blindly — `order.voucherUrl` was client-writable before 0.12, so this is the render-side half of that fix. [`src/utils/voucherUrl.ts`](../utils/voucherUrl.ts) classifies the value: `storage` (https on the `firebasestorage.googleapis.com` host) renders a real `<a>`; `legacy-data` (declared MIME allowlisted: PDF/PNG/JPEG) renders a `<button>` that opens a Blob re-wrapped with the forced MIME type; **anything else renders plain text with no anchor and no click handler** (`javascript:`, `data:text/html`, foreign hosts, non-strings). The re-wrap is load-bearing: a `blob:` URL inherits the admin origin, so an un-typed Blob would execute HTML there.
    - Execute operational fulfillment transitions:
-     * **Aprobar Transferencia:** Clears bank transfer payment and triggers atomic inventory decrement in the Melipilla warehouse.
-     * **Marcar Despachado:** Records the carrier (`starken`, `chilexpress`, `blue_express`, `despacho_local_melipilla` — rendered *Despacho Local Melipilla (Flota Directa)*; see `CarrierType` in `src/admin/types.ts`) and tracking number.
-     * **Marcar Entregado:** Confirms receipt and closes the fulfillment cycle.
+     - **Aprobar Transferencia:** Clears bank transfer payment and triggers atomic inventory decrement in the Melipilla warehouse.
+     - **Marcar Despachado:** Records the carrier (`starken`, `chilexpress`, `blue_express`, `despacho_local_melipilla` — rendered *Despacho Local Melipilla (Flota Directa)*; see `CarrierType` in `src/admin/types.ts`) and an **optional** tracking number. Leaving the field empty is a valid, supported case (Task 0.15): the UI sends `undefined` and the handler omits the key from the Admin SDK write — the code-less dispatch used to `500`, and the local Melipilla fleet is the default carrier. There is no tracking-number generation anywhere in the system (see Task 2.13).
+     - **Marcar Entregado:** Confirms receipt and closes the fulfillment cycle.
 3. **Inventory & Warehouse Management (`#inventory`):**
    - Live view of product stock levels, categories, and Chilean Peso pricing (Neto and Total con 19% IVA).
    - **Audit-Logged Stock Adjustments:** Modal supporting reason codes (`reposicion`, `merma`, `correccion`, `venta_manual`) and operator notes.

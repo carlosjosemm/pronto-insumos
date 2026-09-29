@@ -3,7 +3,7 @@
 A working task list, not a changelog. Finished work is one line in §2; its as-built detail lives in the `AGENTS.md` of the directory it touches. Open tasks keep their IDs (they are referenced from code comments and `AGENTS.md` files) — do not renumber.
 
 **Last updated:** 2026-09-29 (full audit pass; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
-**Baseline (verified 2026-09-29 on the 0.12 + 0.13 branch):** `pnpm test` 688/688 (75 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
+**Baseline (verified 2026-09-29, after rebasing onto the merged 0.12 + 0.13 work):** `pnpm test` 697/697 (76 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
 
 **Priorities:** **P1** = fix before real traffic · **P2** = fix soon after / before a marketed launch · **P3** = polish & DevOps.
 
@@ -14,14 +14,13 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | ID | Task | Pri | Launch blocker |
 | :-- | :-- | :-: | :-: |
 | 0.14 | Webhook reconciliation gaps (MP 5xx swallowed, double payment, cancelled/refunded orders, oversell) | P1 | **Yes** |
-| 0.15 | Admin dispatch crashes without a tracking number (`undefined` in Admin SDK write) | P1 | **Yes** |
-| 0.16 | `track-order` fabricates an order in production when Firebase credentials are missing | P1 | **Yes** |
 | 2.11 | Catalog fallback shows prototype fixtures and wipes the persisted cart | P1 | **Yes** |
 | 3.1 | Per-zone shipping rates below the free-shipping threshold — **suspended (Phase 3)** | P1 | **Yes** |
 | 7.2 | Custom `.cl` domain + SSL | P1 | **Yes** |
 | 8.8 | Enumeration & abuse throttling on public endpoints | P1 | **Yes** |
 | 2.10 | Last literal `wa.me` / stale phone placeholders | P2 | No |
 | 2.12 | Payment-return modal claims "Pago Confirmado" from URL params alone | P2 | No |
+| 2.13 | Internal dispatch reference for courier-less deliveries (auto-generated tracking id) | P2 | No |
 | 2.15 | Voucher storage follow-ups (unconfirmed uploads, legacy base64 docs) | P2 | No |
 | 3.2 | Estimated delivery windows in cart/checkout — **suspended (Phase 3)** | P2 | No |
 | 3.3 | Stale localization copy sweep (API, services, storefront, admin) — **suspended (Phase 3)** | P2 | **Yes** (wrong coverage claims) |
@@ -70,6 +69,8 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 0.11 | `submitOrder` fails closed; `ignoreUndefinedProperties: true` on the client Firestore instance. |
 | 0.12 | Order documents bound to their own id + `keys().hasOnly` create-shape allowlist (nested maps, `paymentMethod` ↔ `status`, length caps, `PENDIENTE_EMISION_SII`); canonical doc-key-first resolver `api/_lib/orderLookup.ts` wired into the webhook, `track-order`, `order-confirmation` and `upload-voucher`; payload↔rules drift guard. **Rules still need `pnpm run deploy:rules`.** |
 | 0.13 | Voucher URLs allowlisted at the render sink: `src/utils/voucherUrl.ts` (storage host / legacy `data:` MIME / unsafe) + `OrderDetailPanel` opens a re-typed Blob or plain text — closes the admin-origin XSS that 0.12's write-side hole made reachable. |
+| 0.15 | Dispatch accepts a blank tracking code: `dispatch-order` omits absent keys instead of writing `undefined` (which the Admin SDK rejects), and the Admin Firestore instance is now created with `ignoreUndefinedProperties: true` too. The audit confirmed it was the only handler writing `undefined`. |
+| 0.16 | `track-order` fails closed: `500` + loud log in a production runtime when Firestore Admin is unavailable, instead of returning the fabricated "Dra. Andrea Morales" order. The simulated payload is reachable only through `isSimulatedPaymentAllowed()` (dev/preview, or the explicit `ALLOW_SIMULATED_PAYMENTS='true'` opt-in). |
 | 1.1 | Integer-CLP catalog, `formatCLP`, `Math.round` IVA. |
 | 1.2 | Billing block with tax breakdown, Factura field validation (gated by `FACTURA_ENABLED = false`), printable pro-forma voucher. |
 | 1.3 | ISP/SIS validation for regulated items (`prescriptionRequired`). |
@@ -112,16 +113,6 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
   - **(g) `create-preference` prices the request body, not the order:** lines come from `req.body.items` (`api/create-preference.ts:117-183`) while the webhook checks `order.items`. A mismatched body yields a payable preference that later lands in `PAGO_EN_REVISION`. Build the lines from `orderData.items` instead.
   - **Verify:** webhook tests for each branch (MP 500 → 5xx; second payment id → alert; cancelled order → no transition/stock; refund → review; shortfall → alert with approval; mismatched signed id).
 
-- [ ] **0.15. Admin "Marcar Despachado" crashes without a tracking number** _(P1)_
-  - **Evidence:** `api/_lib/admin/dispatch-order.ts:53-67` writes `trackingNumber: undefined` and `dispatch.trackingCode: undefined`; the UI sends no `trackingCode` when the field is empty (`OrderDetailPanel.tsx:97`; the default carrier is the local Melipilla fleet, which usually has none). Reproduced against `firebase-admin`: `Cannot use "undefined" as a Firestore value … enable ignoreUndefinedProperties` → the request 500s. The only test (`dispatch-order.test.ts:67`) always supplies a tracking code.
-  - **Fix:** build the update object with conditional spreads (omit absent keys), or set `ignoreUndefinedProperties` once in `api/_lib/firebaseAdmin.ts` (`getFirestore(app).settings({ ignoreUndefinedProperties: true })` — call before first use). Prefer omitting keys in the handler *and* audit other Admin writes for `undefined`.
-  - **Verify:** dispatch test without `trackingCode` (assert no `undefined` in the update payload).
-
-- [ ] **0.16. `track-order` fabricates an order in production when Firebase credentials are missing** _(P1)_
-  - **Evidence:** when `getAdminFirestore()` is `null`, `api/track-order.ts:33-72` returns a fake order ("Dra. Andrea Morales", `$189.990`) in any runtime — a lost `FIREBASE_*` env var shows customers fake tracking data. (`upload-voucher` was fixed by 2.9: it now returns `500` in production via `isSimulatedPaymentAllowed()`; `order-confirmation` only skips the email, which is acceptable.)
-  - **Fix:** if `!isSimulatedPaymentAllowed()` return `500` + `console.error`, keeping the simulated branch for dev/tests.
-  - **Verify:** tests mirroring the 0.10 / 2.9 production and `ALLOW_SIMULATED_PAYMENTS` cases.
-
 - [ ] **2.15. Voucher Storage Follow-Ups (post-2.9)** _(P2)_
   - **Unconfirmed uploads are never cleaned up.** `sign` hands out signed PUT URLs with no per-order limit and no throttle; an upload that is never `confirm`ed leaves an orphan object of up to 5 MiB under `vouchers/…` (Blaze bills storage). Cap signs per order (e.g. a small counter on the order doc / 8.8 throttling) and add a housekeeping path for objects the order document does not reference (bucket lifecycle rule on a `pending/` prefix that `confirm` moves out of, or an admin sweep action on the existing dispatcher — no new function slot).
   - **Legacy base64 vouchers still live in pre-2.9 order docs.** `track-order` now hides `data:` URLs, but `api/_lib/admin/orders.ts:48-59` still returns every order document — including any `voucherUrl` base64 (up to ~1 MiB each) — and Vercel caps responses at 4.5 MB, so the admin list breaks once a few legacy vouchers accumulate. Either migrate them to Storage with a one-off operator script (dev by default, `--confirm-production-…` for prod, per 8.15) or have `orders.ts` return `hasVoucher` instead of the URL and fetch the URL only on the detail request. Also see 0.13 for the `data:` handling.
@@ -134,7 +125,7 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
   - **Verify:** `App`/`api` tests: Firestore timeout in production mode → error state, cart untouched.
 
 - [ ] **8.8. Enumeration & Abuse Throttling on Public Endpoints** _(P1 — was P2; audit raised it)_
-  - **Enumeration oracle:** `track-order` / `upload-voucher` / `order-confirmation` return `404` for an unknown id but `401` for a wrong RUT (`track-order.ts:81-94`, `upload-voucher.ts:393-410`), so order ids can be enumerated without any RUT; `generateOrderId()` is `Math.random()` over only 900 000 values (`src/services/api.ts:42-44`). A company RUT is public information, so an attacker can walk the id space against a known clinic RUT and harvest its orders' PII (name, email, address, items). There is also no attempt throttling at all. (Random 6-digit ids also collide as volume grows — a collision surfaces as a generic rules-denied checkout error.)
+  - **Enumeration oracle:** `track-order` / `upload-voucher` / `order-confirmation` return `404` for an unknown id but `401` for a wrong RUT (`track-order.ts:94-107`, `upload-voucher.ts:393-410`), so order ids can be enumerated without any RUT; `generateOrderId()` is `Math.random()` over only 900 000 values (`src/services/api.ts:42-44`). A company RUT is public information, so an attacker can walk the id space against a known clinic RUT and harvest its orders' PII (name, email, address, items). There is also no attempt throttling at all. (Random 6-digit ids also collide as volume grows — a collision surfaces as a generic rules-denied checkout error.)
   - **Open write/email abuse:** `orders` create is public and unthrottled (each write counts against the free 20k/day and is billed beyond it now that the project is on Blaze — abuse costs money instead of just failing); `order-confirmation` emails whatever `customer.email` the creator typed; every successful voucher `confirm` (re-upload is allowed while `TRANSFERENCIA_COMPROBANTE_SUBIDO`) emails the warehouse, and a fresh own order costs nothing — Resend's free tier (3 000/month) can be exhausted, silencing legitimate mail. (The 2.9 lifecycle guard already stops uploads on paid/dispatched orders.)
   - **Required (lean, no new infra):** return one identical response for "not found" and "RUT mismatch"; per-IP and per-orderId attempt counters with a lockout window (Firestore counter doc or Vercel Edge config); widen the id space with `crypto.getRandomValues` (e.g. `PRONTO-` + 8 base32 chars — check `schemaValidation`/docs that assume 6 digits); dedupe/throttle warehouse emails per order.
   - **Verify:** tests for uniform errors, lockout after N failures, and id format/entropy.
@@ -150,6 +141,12 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
 - [ ] **2.12. Payment-Return Modal Claims Success From URL Parameters Alone** _(P2)_
   - `/?status=approved&orderId=…` (trivially forgeable, and also set by Mercado Pago before the webhook runs) opens "¡Pago Confirmado Exitosamente! — Tu transacción ha sido acreditada" (`PaymentReturnModal.tsx:85-88`) and clears the cart (`App.tsx:78,215`). It is harmless to the backend but misleads customers/staff and can clear a cart with no order.
   - **Fix:** soften the copy to what is actually known ("Recibimos tu retorno de pago; confirmaremos por correo cuando se acredite") and add the `Ver estado del pedido` action (tracking needs the RUT the customer already typed); clear the cart only when a matching order was just created in this session.
+
+- [ ] **2.13. Internal Dispatch Reference for Courier-less Deliveries** _(P2 — owner idea, 2026-09-29)_
+  - **Gap:** the order tracking number is a **manual, free-text field typed by the warehouse at dispatch time** — nothing in the system generates one, and there is no courier API integration. For the default "Despacho Local Melipilla (Flota Directa)" route the parcel normally has no guía, so the customer-facing tracking step (`fulfillment.statusDescription`) shows the courier with no reference at all.
+  - **Idea (owner):** mint a human-readable internal dispatch reference when the order enters the delivery flow, so the manual dispatch → delivered transitions emulate a courier system until one is integrated.
+  - **Design decisions required before implementing** (why it is not a one-liner): (a) **semantics** — a reference generated before the parcel leaves the warehouse is an internal dispatch code, not a courier guía; (b) **override** — a real Starken/Chilexpress guía must be able to replace it, so the model needs "generated default + admin override" and a way to tell them apart; (c) **generation point** — the payment transition (webhook / `approve-transfer`) vs. the dispatch action (`dispatch-order`, where `dispatch.dispatchedAt` already exists); (d) **customer value** — the tracking modal already shows the order id, courier and timeline, so the reference must add something the order id does not (e.g. a driver route sheet). **Touches:** `api/webhooks/mercadopago.ts` or `api/_lib/admin/approve-transfer.ts`, `api/_lib/admin/dispatch-order.ts`, `Order.trackingNumber`/`dispatch` (`src/types/`), `track-order` copy, admin panel.
+  - **Not a launch blocker.** 0.15 made a blank tracking number a supported state, so the fulfillment flow is complete without it.
 
 - [ ] **2.14. Decision: Public `stockCount` Read vs. the "Confidential Stock" Rule** _(P3)_
   - `firestore.rules` grants public `read` on `products`, so exact `stockCount` is fetchable by anyone even though `src/data/AGENTS.md` §3.2 declares it confidential (the UI only hides it). Either accept and amend that rule, or publish a stock-free projection (e.g. `stockBucket`/`inStock` only) and keep exact counts admin/server-side. Low urgency; do not change opportunistically — it touches `cartStorage` clamping and `create-preference`.
@@ -167,7 +164,7 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
 
 - [ ] **3.3. Stale Localization Copy Sweep** _(P2)_ — wording still references the removed logistics model:
   - `api/_lib/emailTemplates.ts:114` "Melipilla & Región Metropolitana" (every transactional email header).
-  - `api/track-order.ts:133` "…o retirado en Av. Ortúzar 750" (no pickup) and `:180` regional courier fallback `Starken / Chilexpress Regional`; `PENDIENTE_PAGO_MERCADOPAGO` / `PAGO_EN_REVISION` fall into the generic "Pedido Registrado" copy.
+  - `api/track-order.ts:146` "…o retirado en Av. Ortúzar 750" (no pickup) and `:198` regional courier fallback `Starken / Chilexpress Regional`; `PENDIENTE_PAGO_MERCADOPAGO` / `PAGO_EN_REVISION` fall into the generic "Pedido Registrado" copy.
   - `src/services/whatsapp.ts:12,38` "(Melipilla & RM)" and a fixed "despacho para Melipilla" note even for San Antonio buyers.
   - `src/admin/components/AdminOrders.tsx:42` "…depósitos dentales en Melipilla y RM"; also check `AdminSettings.tsx`.
   - Storefront strings catalogued in `src/components/AGENTS.md` §2.5 (Cart "Factura Electrónica B2B" strip, CheckoutModal transfer-card "…emisión de Factura", pro-forma letterhead "Melipilla, Región Metropolitana") — these need an Appendix C–sanctioned replacement before editing; the API/service/admin strings can be fixed directly.

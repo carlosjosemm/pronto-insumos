@@ -36,6 +36,49 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
     }
   })
 
+  /**
+   * Deep scan for `undefined` values. `JSON.stringify` drops them silently, which is
+   * exactly the Task 0.15 failure mode: the Admin SDK rejects the write only when the
+   * raw payload still carries the key.
+   */
+  function containsUndefined(value: unknown): boolean {
+    if (value === undefined) return true
+    if (Array.isArray(value)) return value.some(containsUndefined)
+    if (value !== null && typeof value === 'object') {
+      return Object.values(value as Record<string, unknown>).some(containsUndefined)
+    }
+    return false
+  }
+
+  function mockDispatchDb(status = 'PAGADO_MERCADOPAGO') {
+    const mockBatch = {
+      update: vi.fn(),
+      set: vi.fn(),
+      commit: vi.fn().mockResolvedValue([])
+    }
+    const mockDb = {
+      collection: vi.fn(() => ({
+        doc: vi.fn(() => ({
+          id: 'auto-generated-doc-id',
+          get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ status }) })
+        }))
+      })),
+      batch: vi.fn(() => mockBatch)
+    }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+    return mockBatch
+  }
+
+  function dispatchRequest(body: Record<string, unknown>): VercelRequest {
+    return { method: 'POST', body } as VercelRequest
+  }
+
+  function historyPayloadOf(mockBatch: ReturnType<typeof mockDispatchDb>): Record<string, unknown> {
+    return mockBatch.set.mock.calls[0][1] as Record<string, unknown>
+  }
+
   it('updates order status to DESPACHADO and records carrier information', async () => {
     vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
 
@@ -135,5 +178,66 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.status).toBe('DESPACHADO')
+  })
+
+  it('dispatches without a tracking code and never writes an undefined value (Task 0.15)', async () => {
+    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
+    const mockBatch = mockDispatchDb()
+
+    // The local Melipilla fleet ships without a guía, and the UI omits the field
+    // entirely (`trackingCode.trim() || undefined`) — this is the crash path.
+    await handler(
+      dispatchRequest({ orderId: 'PRONTO-123456', carrier: 'despacho_local_melipilla' }),
+      mockRes as VercelResponse
+    )
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.status).toBe('DESPACHADO')
+
+    const updatePayload = mockBatch.update.mock.calls[0][1] as Record<string, unknown>
+    expect(containsUndefined(updatePayload)).toBe(false)
+    expect(updatePayload).not.toHaveProperty('trackingNumber')
+    expect(updatePayload.courier).toBe('despacho_local_melipilla')
+    expect(updatePayload.dispatch).not.toHaveProperty('trackingCode')
+    expect(updatePayload.dispatch).toMatchObject({ carrier: 'despacho_local_melipilla' })
+
+    const historyPayload = historyPayloadOf(mockBatch)
+    expect(containsUndefined(historyPayload)).toBe(false)
+    expect(historyPayload.metadata).toMatchObject({ trackingNumber: null })
+    expect(historyPayload.reason).toBe('Despachado vía despacho_local_melipilla')
+  })
+
+  it('treats a blank or whitespace-only tracking code as absent (Task 0.15)', async () => {
+    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
+    const mockBatch = mockDispatchDb()
+
+    await handler(
+      dispatchRequest({ orderId: 'PRONTO-123456', carrier: 'starken', trackingCode: '   ' }),
+      mockRes as VercelResponse
+    )
+
+    expect(statusOutput).toBe(200)
+    const updatePayload = mockBatch.update.mock.calls[0][1] as Record<string, unknown>
+    expect(containsUndefined(updatePayload)).toBe(false)
+    expect(updatePayload).not.toHaveProperty('trackingNumber')
+    expect(updatePayload.dispatch).not.toHaveProperty('trackingCode')
+    expect(historyPayloadOf(mockBatch).metadata).toMatchObject({ trackingNumber: null })
+  })
+
+  it('coerces a numeric tracking code into a trimmed string (Task 0.15)', async () => {
+    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
+    const mockBatch = mockDispatchDb()
+
+    await handler(
+      dispatchRequest({ orderId: 'PRONTO-123456', carrier: 'chilexpress', trackingCode: 998877 }),
+      mockRes as VercelResponse
+    )
+
+    expect(statusOutput).toBe(200)
+    const updatePayload = mockBatch.update.mock.calls[0][1] as Record<string, unknown>
+    expect(containsUndefined(updatePayload)).toBe(false)
+    expect(updatePayload.trackingNumber).toBe('998877')
+    expect(updatePayload.dispatch).toMatchObject({ trackingCode: '998877' })
+    expect(historyPayloadOf(mockBatch).metadata).toMatchObject({ trackingNumber: '998877' })
   })
 })

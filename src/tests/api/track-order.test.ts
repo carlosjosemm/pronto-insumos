@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 // Mock firebaseAdmin before importing handler
@@ -24,9 +24,23 @@ function createMockRes() {
 }
 
 describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
+  const envBackup: Record<string, string | undefined> = {}
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.restoreAllMocks()
+    // A developer shell (or CI) must never be able to flip the production gate.
+    for (const key of ['VERCEL_ENV', 'ALLOW_SIMULATED_PAYMENTS']) {
+      envBackup[key] = process.env[key]
+      delete process.env[key]
+    }
+  })
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(envBackup)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
   })
 
   it('should handle OPTIONS preflight with status 200', async () => {
@@ -271,5 +285,55 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
     expect(res.json.mock.calls[0][0].orderId).toBe('PRONTO-123456')
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('orderId field fallback'))
     warnSpy.mockRestore()
+  })
+
+  describe('Fail-closed when Firestore Admin is unavailable (Task 0.16)', () => {
+    const trackingRequest = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' }
+    } as VercelRequest
+
+    it('should refuse with 500 in a production runtime instead of fabricating an order', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      process.env.VERCEL_ENV = 'production'
+      vi.mocked(getAdminFirestore).mockReturnValue(null)
+
+      const res = createMockRes()
+      await handler(trackingRequest, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[track-order]'))
+
+      const payload = res.json.mock.calls[0][0]
+      expect(payload.error).toEqual(expect.stringContaining('WhatsApp'))
+      // No fabricated customer, amount or fiscal document may leak into the response.
+      const serialized = JSON.stringify(payload)
+      expect(serialized).not.toContain('Andrea Morales')
+      expect(serialized).not.toContain('189990')
+      expect(serialized).not.toContain('MORALES SPA')
+    })
+
+    it('should keep the simulated order outside a production runtime (dev and preview)', async () => {
+      vi.mocked(getAdminFirestore).mockReturnValue(null)
+
+      const res = createMockRes()
+      await handler(trackingRequest, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json.mock.calls[0][0].customer.fullName).toBe('Dra. Andrea Morales')
+      expect(res.json.mock.calls[0][0].fulfillment.currentStep).toBe(1)
+    })
+
+    it('should keep the simulated order in production only with the explicit ALLOW_SIMULATED_PAYMENTS opt-in', async () => {
+      process.env.VERCEL_ENV = 'production'
+      process.env.ALLOW_SIMULATED_PAYMENTS = 'true'
+      vi.mocked(getAdminFirestore).mockReturnValue(null)
+
+      const res = createMockRes()
+      await handler(trackingRequest, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json.mock.calls[0][0].customer.fullName).toBe('Dra. Andrea Morales')
+    })
   })
 })
