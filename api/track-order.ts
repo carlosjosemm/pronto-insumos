@@ -1,6 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from './_lib/firebaseAdmin.js'
 import { resolveOrderByCanonicalId } from './_lib/orderLookup.js'
+import { isSimulatedPaymentAllowed } from './_lib/simulationPolicy.js'
+
+const TRACKING_UNAVAILABLE_MESSAGE =
+  'No pudimos consultar el estado del pedido. Escríbenos por WhatsApp y lo revisamos manualmente.'
 
 function normalizeRut(raw: string): string {
   return (raw || '').replace(/[^0-9kK]/g, '').toUpperCase()
@@ -31,6 +35,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const adminDb = getAdminFirestore()
     if (!adminDb) {
+      // FAIL-CLOSED (Task 0.16): a production runtime must never fabricate tracking
+      // data — a lost FIREBASE_* credential would otherwise show customers a fake
+      // order instead of an error. Same shared gate as 0.10 / 2.9.
+      if (!isSimulatedPaymentAllowed()) {
+        console.error(
+          '[track-order] Firestore Admin unavailable in a production runtime — refusing to fabricate a tracking response.'
+        )
+        return res.status(500).json({ error: TRACKING_UNAVAILABLE_MESSAGE })
+      }
       console.warn('Firestore Admin not available. Returning simulated order tracking response.')
       return res.status(200).json({
         orderId: cleanOrderId,
