@@ -1,208 +1,289 @@
-# Task 2.9: Bank-Transfer Voucher Storage & Validation Rework
+# Tasks 0.12 + 0.13: Order-Document Binding & Admin Voucher-URL Hardening
 
-**Branch:** `fix/task-2.9-voucher-storage-validation` (cut from `main` @ `40d7aa2`, synced with `origin/main`; executing in the primary working tree)
-**Status:** Implemented, verified, reviewed and rebased onto `origin/main` (which had merged Tasks 2.8 and 7.1); H1–H6 provisioned and smoke-tested against the live bucket. Awaiting merge of the PR.
-**Owner decisions already taken:** (1) storage design = **Firebase Storage + client-direct signed-URL upload**; (2) lifecycle guard = transition allowed from `PENDIENTE_TRANSFERENCIA` **and** `TRANSFERENCIA_COMPROBANTE_SUBIDO` (same-state re-upload replaces the voucher).
+**Branch:** `fix/task-0.12-0.13-order-binding-and-voucher-xss` (cut from `main` @ `7a927f1`, in sync with `origin/main`; executing in the primary working tree — no worktrees)
+**Status:** **IMPLEMENTED, VERIFIED, REVIEWED — awaiting the owner's wrap-up command.** 688/688 tests (75 suites, +25) · `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` and the `api/` strict type-check all clean · adversarial read-only review returned **APPROVE WITH FINDINGS**; all five findings (F1–F5) remediated — see §7.
+**Owner decisions already taken:** the whole of **Phase 3 is suspended — 3.1, 3.2 and 3.3** (owner decision 2026-09-29, extended to 3.1 the same day). The owner asked for 0.12 and 0.13 to be worked together.
+
+> [!NOTE]
+> **Deliberate deviation from the one-task-per-cycle rule.** `production-readiness-workflow` §Step 1 mandates one roadmap item per run. The owner explicitly asked for both here, and the two items are one attack with two ends: 0.12 closes the *write* side (anyone can inject an arbitrary `voucherUrl` into a new order), 0.13 closes the *render* side (the admin panel turns that string into code in the admin origin). Proposal: **one branch, two commits** (`fix(security): … (Task 0.12)` then `… (Task 0.13)`), one review, one PR. If you prefer two branches/PRs, say so before I start — it is a 2-minute restructure.
 
 ---
 
 ## 1. Context & Problem Statement
 
-Reference: `PRODUCTION_READINESS_TODO.md` → **2.9. Bank-Transfer Voucher Storage & Validation Rework** (audit finding, P1).
+Reference: `PRODUCTION_READINESS_TODO.md` → **0.12** (P1, launch blocker) and **0.13** (P1, launch blocker), both from the 2026-09-29 audit.
 
-As built, `/api/upload-voucher` receives a Base64 `dataUrl` and writes **the whole thing into the order document**:
+### 0.12 — the public `orders` create is under-specified
+
+`firestore.rules` grants `allow create: if isValidOrderCreate();` to **anyone** holding the public web API key (by design — checkout runs client-side), but the guard does not pin the document to its own identity:
 
 | # | Defect (as built) | Consequence |
 | :-- | :--- | :--- |
-| D1 | Bytes stored in the Firestore order doc | > ~750 KB voucher ⇒ Firestore's 1 MiB document cap ⇒ `batch.commit()` 500 (and the client used to report that as success — Task 2.8) |
-| D2 | Even sub-1 MiB vouchers occupy the **shared 1 GiB Spark free tier** | A few hundred vouchers exhaust it; writes then fail until the daily reset |
-| D3 | MIME/size validated **client-side only** (`transferVoucher.ts`) | Any caller can store any byte stream / any size |
-| D4 | No lifecycle guard | Anyone with `orderId` + RUT can overwrite a voucher and regress `PAGADO_MERCADOPAGO` / `DESPACHADO` / `ENTREGADO` → `TRANSFERENCIA_COMPROBANTE_SUBIDO` |
-| D5 | Vouchers are Base64 **data URLs** | Chrome blocks top-frame navigation to `data:` ⇒ the admin portal's *Ver Comprobante* link is dead; `/api/track-order` also echoes the full Base64 blob in its JSON |
+| D1 | No `data.orderId == orderId` binding (`firestore.rules:26-53`) | A decoy doc `orders/<anything>` carrying `orderId: "PRONTO-<victim>"` can be written. The webhook, `/api/track-order` and `/api/order-confirmation` resolve orders with `where('orderId','==',…).limit(1)` **only** (`api/webhooks/mercadopago.ts:150-154`, `api/track-order.ts:75-79`, `api/order-confirmation.ts:69-73`) and can pick the decoy instead of the real order. |
+| D2 | Only `mercadopagoPaymentId` / `paidAt` are blocked (`:51-52`) | Every other admin-only field (`voucherUrl`, `voucherStoragePath`, `approvedAt`, `approvedBy`, `dispatch`, `courier`, `trackingNumber`, `deliveredAt`, `confirmationEmailSentAt`, `discountAmount`, `promoCode`, …) can be **pre-injected at create time** — this is what makes 0.13 reachable with nothing but the public API key. |
+| D3 | No key allowlist, no length caps | One public `create` can store ~1 MiB of junk; string fields are unbounded. |
+| D4 | `paymentMethod` and `status` are independent | `{ paymentMethod: 'transferencia', status: 'PENDIENTE_PAGO_MERCADOPAGO' }` is accepted; the admin UI and the webhook both branch on these two fields. |
 
-**Verified platform constraints** (recorded in the TODO on 2026-09-28, re-verified here): Firestore 1 MiB/doc + 1 GiB shared Spark storage; Vercel Functions cap request bodies at 4.5 MB (a 5 MB voucher as Base64 ≈ 6.7 MB can never transit); Cloud Storage for Firebase requires **Blaze** (Spark has no bucket access at all).
+Verified in code: `submitOrder()` (`src/services/api.ts:144-215`) is the **only** rules-governed writer of `orders` — every other writer (webhook, admin handlers, CLI scripts) runs through the Admin SDK, which bypasses rules. The payload shape is therefore fully knowable and can be pinned exactly. `src/tests/security/firestore-rules.test.ts` today only asserts the *presence* of fragments; nothing pins the shape.
 
-**Chosen design (owner decision):** client-direct upload — the serverless function handles **authorization, MIME/size validation and metadata only**; bytes go **browser → bucket** over a short-lived V4 signed PUT URL. No Base64 anywhere, no Firestore document bloat, and `voucherUrl` becomes a real HTTPS link.
+### 0.13 — stored XSS in the admin origin
+
+`OrderDetailPanel.tsx` renders `<a href={order.voucherUrl} target="_blank">` for whatever string is stored (`:305-320`), and `handleOpenVoucher` (`:129-142`) `fetch`es **any** `data:` URL into a `Blob` and opens it as an object URL. Because a `blob:` URL inherits the **creator's origin**, a `data:text/html,<script>…</script>` value stored by any anonymous visitor becomes script running on the admin origin — it can read the Firebase Auth session and call every `/api/admin/*` action (approve transfers, dispatch, adjust stock). Two paths follow:
+
+- `javascript:` → default anchor navigation (browser-dependent under `target=_blank`).
+- `data:` → **reliable** today thanks to 2.9's Blob handler, which never inspects `blob.type`.
+
+The 2.9 upload path only ever writes server-built `https://firebasestorage.googleapis.com/…` URLs, so the *write* side is safe for honest clients — but 0.12/D2 leaves the field open to everyone else. 0.13 is the defense-in-depth at the render sink; 0.12 removes the injection.
+
+**Scope check performed:** `OrderDetailPanel.tsx` is the **only** place in `src/` that links a stored URL. `/api/track-order` already refuses to echo legacy `data:` values, and `OrderTrackingModal` renders no voucher link (it only offers upload) — so no storefront change is required; the new validator is exported for reuse if that ever changes.
 
 ---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-> [!IMPORTANT]
-> **Enable Blaze BEFORE merging/deploying this branch.** Until the bucket exists, production voucher uploads fail closed with a 500 (the customer sees an honest error + WhatsApp fallback instead of a fabricated success). No Firestore document limit is hit either way.
-
 | # | Action | Where / command |
 | :-- | :--- | :--- |
-| H1 | Enable the **Blaze** plan (no-cost tiers remain: 5 GB stored, 1 GB/day download, 20k uploads/day; it also lifts the Firestore 1 GiB cap) | Firebase Console → `pronto-insumos` → Usage & billing → Modify plan |
-| H2 | Create/enable the default **Storage bucket** (pick the region closest to Chile, e.g. `southamerica-east1`) | Console → Build → Storage → *Get started* |
-| H3 | Set `FIREBASE_STORAGE_BUCKET` (server-side) in `.env.local` **and** Vercel (Production + Preview) to the **exact bucket name shown in the console** — the `${FIREBASE_PROJECT_ID}.firebasestorage.app` default only holds for projects created after Oct 2024 (legacy buckets are `.appspot.com`); see R5 | `pnpm run env:sync -- --target production --apply` (new key synced automatically) |
-| H4 | Apply the **bucket CORS** config so the browser `PUT` to the signed URL passes preflight | `pnpm run storage:cors -- --apply` (dry run by default) — added during execution because this machine has no Cloud SDK; the equivalent `gcloud storage buckets update gs://<bucket> --cors-file=scripts/storage-cors.json` remains documented |
-| H5 | Deploy the new **storage rules** (deny-all; all access is Admin-SDK / signed / token URLs) | `pnpm run deploy:storage-rules` |
-| H6 | Smoke test one real voucher upload on a preview deploy (sign → PUT → confirm → admin *Ver Comprobante*) | Manual, after H1–H5 |
+| H1 | **Deploy the tightened rules** (already an open human item in the TODO, now blocking) | `pnpm run deploy:rules` (needs `pnpm dlx firebase-tools login` once per machine) |
+| H2 | Smoke-test one real checkout on a **preview** deploy after the rules land (the allowlist must not reject the production payload) | Preview URL → one transfer order + one Mercado Pago order |
+| H3 | Optional but recommended: after H1, confirm in the console that the deployed ruleset is the new revision | Firebase Console → Firestore → Rules |
 
-New placeholder in `.env.example`: `FIREBASE_STORAGE_BUCKET=YOUR_PROJECT_ID.firebasestorage.app` (non-secret, optional override).
+**No new environment variables, no new dependencies, no placeholders to fill.** The rules are validated by the Firebase backend at deploy time (syntax) — the new unit test in §4.6 exists precisely because a *semantically* wrong allowlist would otherwise only be discovered by a customer.
 
-**No new npm dependency.** `@google-cloud/storage@8.2.0` is already installed as firebase-admin's optional dependency (verified resolvable from `firebase-admin`'s context, `getSignedUrl` available).
+> [!IMPORTANT]
+> Until H1 runs, the code-side fixes (doc-id-first resolution + URL allowlist) are already live-protective, but the database still accepts decoy documents and pre-injected fields. The rules deploy is what closes the write side.
 
 ---
 
 ## 3. Proposed Changes
 
-### 3.A `[NEW] api/_lib/voucherStorage.ts` — pure helpers + bucket accessor
+### 3.A `[MODIFY] firestore.rules` — bind the document, allowlist the shape
 
-Single place for every voucher constant/derivation (mirrors how `src/config/delivery.ts` owns its thresholds):
+New helpers + rewritten `isValidOrderCreate(orderId)`. The path wildcard must be passed as an argument (rules functions cannot see a caller's capture variables), so both match blocks change to `allow create: if isValidOrderCreate(orderId);`.
 
-```ts
-export const VOUCHER_MAX_BYTES = 5 * 1024 * 1024          // 5 MiB — client-direct, no Vercel body cap involved
-export const VOUCHER_UPLOAD_URL_TTL_MS = 10 * 60 * 1000   // signed PUT validity
-export const ALLOWED_VOUCHER_CONTENT_TYPES = ['application/pdf', 'image/png', 'image/jpeg'] as const
+```firestore
+function isBoundedString(value, maxLength) {
+  return value is string && value.size() <= maxLength;
+}
 
-export function normalizeVoucherContentType(raw: unknown): string | null   // strips ';charset', lowercases, image/jpg → image/jpeg
-export function extensionForVoucherContentType(ct: string): 'pdf' | 'png' | 'jpg'
-export function sanitizeVoucherFileName(raw: unknown): string              // no separators/control chars, ≤120 chars
-export function sanitizeOrderIdForPath(orderId: string): string            // [A-Z0-9-] only
-export function buildVoucherStoragePath(collectionName, orderId, contentType, now, token): string
-export function isVoucherStoragePathForOrder(path, collectionName, orderId): boolean  // prefix assertion
-export function buildVoucherDownloadUrl(bucketName, storagePath, token): string
-export function validateVoucherFileMetadata(meta: { size?: unknown; contentType?: unknown }): { valid: boolean; error?: string }
-export function getVoucherBucket(): Bucket | null                          // getAdminApp() + bucket name (env override or derived)
+function isValidTaxBreakdown(t) {
+  return t.keys().hasOnly(['neto', 'iva', 'total'])
+    && t.neto is int && t.iva is int && t.total is int;
+}
+
+function isValidSanitaryVerification(s) {
+  return s.keys().hasOnly(['sisRegistryNumber', 'credentialFileName', 'verified', 'regulatoryNote'])
+    && isBoundedString(s.sisRegistryNumber, 40)
+    && s.verified is bool
+    && isBoundedString(s.regulatoryNote, 300)
+    && (!('credentialFileName' in s) || isBoundedString(s.credentialFileName, 200));
+}
+
+function isValidCustomer(c) {
+  return c.keys().hasOnly([
+      'fullName', 'email', 'phone', 'rut', 'documentType',
+      'razonSocial', 'giroComercial', 'address', 'city', 'zip',
+      'sanitaryVerification'
+    ])
+    && isBoundedString(c.fullName, 120)
+    && isBoundedString(c.email, 160)
+    && isBoundedString(c.phone, 32)
+    && isBoundedString(c.rut, 16)
+    && c.documentType in ['boleta', 'factura']
+    && isBoundedString(c.address, 200)
+    && isBoundedString(c.city, 80)
+    && isBoundedString(c.zip, 16)
+    && (!('razonSocial' in c) || isBoundedString(c.razonSocial, 160))
+    && (!('giroComercial' in c) || isBoundedString(c.giroComercial, 160))
+    && (!('sanitaryVerification' in c)
+        || (c.sanitaryVerification is map && isValidSanitaryVerification(c.sanitaryVerification)));
+}
+
+function isValidBilling(b) {
+  return b.keys().hasOnly([
+      'documentType', 'rut', 'razonSocial', 'giroComercial',
+      'direccionFiscal', 'comunaFiscal', 'taxBreakdown', 'status'
+    ])
+    && b.documentType in ['boleta', 'factura']
+    && isBoundedString(b.rut, 16)
+    && isBoundedString(b.direccionFiscal, 200)
+    && isBoundedString(b.comunaFiscal, 80)
+    && b.taxBreakdown is map && isValidTaxBreakdown(b.taxBreakdown)
+    // The SII emission state is server-owned: a client may only open a document
+    // as PENDIENTE_EMISION_SII — never as EMITIDO.
+    && b.status == 'PENDIENTE_EMISION_SII'
+    && (!('razonSocial' in b) || isBoundedString(b.razonSocial, 160))
+    && (!('giroComercial' in b) || isBoundedString(b.giroComercial, 160));
+}
+
+function isValidOrderItem(item) {
+  return item is map
+    && item.keys().hasOnly(['productId', 'name', 'quantity', 'price'])
+    && item.productId is string && item.productId.size() > 0 && item.productId.size() <= 64
+    && isBoundedString(item.name, 200)
+    && item.quantity is int && item.quantity >= 1
+    && item.price is number && item.price >= 0;
+}
+
+function isValidOrderCreate(orderId) {
+  let data = request.resource.data;
+  return data.keys().hasOnly([
+      'orderId', 'createdAt', 'paymentMethod', 'status', 'totalAmount',
+      'customer', 'billing', 'sanitaryVerification', 'items',
+      'promoCode', 'discountAmount'
+    ])
+    // The document id IS the canonical order id (see api/_lib/orderLookup.ts):
+    // binding the field to the path kills the decoy-document shadowing vector.
+    && data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 32
+    && data.orderId == orderId
+    && 'createdAt' in data
+    && data.totalAmount is int && data.totalAmount > 0
+    && data.paymentMethod in ['mercadopago', 'transferencia', 'whatsapp']
+    && data.status in [
+      'PENDIENTE_PAGO_MERCADOPAGO',
+      'PENDIENTE_TRANSFERENCIA',
+      'COTIZACION_SOLICITADA_WHATSAPP'
+    ]
+    // submitOrder() derives the status from the method — the two must agree.
+    && (
+      (data.paymentMethod == 'mercadopago' && data.status == 'PENDIENTE_PAGO_MERCADOPAGO')
+      || (data.paymentMethod == 'transferencia' && data.status == 'PENDIENTE_TRANSFERENCIA')
+      || (data.paymentMethod == 'whatsapp' && data.status == 'COTIZACION_SOLICITADA_WHATSAPP')
+    )
+    && data.customer is map && isValidCustomer(data.customer)
+    && (!('billing' in data) || (data.billing is map && isValidBilling(data.billing)))
+    && (!('sanitaryVerification' in data)
+        || (data.sanitaryVerification is map && isValidSanitaryVerification(data.sanitaryVerification)))
+    && (!('promoCode' in data) || isBoundedString(data.promoCode, 32))
+    && (!('discountAmount' in data) || (data.discountAmount is int && data.discountAmount >= 0))
+    && data.items is list
+    && data.items.size() > 0
+    && data.items.size() <= 25
+    // … the existing index-guarded isValidOrderItem(data.items[0..9]) chain …
+    && !('mercadopagoPaymentId' in data)
+    && !('paidAt' in data);
+}
 ```
 
-- Path layout: `vouchers/{orders|dev_orders}/{PRONTO-XXXXXX}/{epochMs}-{8 hex}.{ext}` — mirrors the environment-scoped collection (`getCollectionName('orders')`), so prod and dev vouchers never mix.
-- Download URL uses the Firebase convention (`…/o/{encodeURIComponent(path)}?alt=media&token=…`) with a 128-bit random token stored as `firebaseStorageDownloadTokens` metadata — the same shape `firebase-admin`'s `getDownloadURL()` produces, composed locally (no extra round trip) and unit-testable.
-- `getVoucherBucket()` returns `null` when Admin credentials are missing (same degradation contract as `getAdminFirestore()`).
+Design notes (checked against the official limits page — function depth 20, ≤7 args, 1,000 expressions/request, 256 KB ruleset; this file stays ~1/20th of every bound):
 
-### 3.B `[MODIFY] api/upload-voucher.ts` — two-phase, action-dispatched endpoint
+- **`createdAt` is only required to exist**, not type-checked: the write uses a `serverTimestamp()` sentinel, and a type assertion there is the one thing that could silently deny every real checkout. The key is always written by `submitOrder`.
+- **Optional keys stay optional** (`razonSocial`, `giroComercial`, `billing`, `sanitaryVerification`, `promoCode`, `discountAmount`) because the client Firestore instance runs `ignoreUndefinedProperties: true` — absent keys are the normal case, not the exception.
+- **Items 11–25 keep the existing treatment** (shape-checked for the first 10, catalog-recomputed server-side for all): the webhook already fails closed (`PAGO_EN_REVISION`, no stock) when any line cannot be priced, so the residual is noise, not money. Extending the chain to 25 lines is possible but is 15 more near-identical expressions for no security gain — deliberately not done.
+- **Applied to `dev_orders` automatically** (shared helper; each block passes its own path variable).
 
-**No new serverless function** (Hobby slot count stays 6/12). `req.body.action` selects the phase:
+### 3.B `[NEW] api/_lib/orderLookup.ts` — one canonical resolver
 
-| Phase | Request | Server work | 200 response |
-| :--- | :--- | :--- | :--- |
-| `sign` | `{ action:'sign', orderId, rut, fileName, contentType, sizeBytes }` | presence checks → RUT normalize → order lookup (doc-id, then `where('orderId','==')` fallback) → RUT equality (`401`) → **lifecycle guard** (`409` unless `PENDIENTE_TRANSFERENCIA` / `TRANSFERENCIA_COMPROBANTE_SUBIDO`) → MIME allowlist (`400`) → declared size `0 < n ≤ 5 MiB` (`400`) → `getSignedUrl({ version:'v4', action:'write', expires, contentType })` | `{ success, orderId, uploadUrl, storagePath, contentType, expiresAt }` |
-| `confirm` | `{ action:'confirm', orderId, rut, storagePath, fileName }` | same auth + lifecycle guard → `isVoucherStoragePathForOrder` prefix assertion (`400`) → `getMetadata()` → **authoritative** size/contentType re-validation (violation ⇒ delete object + `400`) → idempotent fast path (same `voucherStoragePath` + status already `TRANSFERENCIA_COMPROBANTE_SUBIDO` ⇒ `{ duplicate: true }`, no write/email) → batch: order doc + `order_status_history` → best-effort delete of the **previous** object → warehouse alert email | `{ success, orderId, voucherUrl, voucherFileName, voucherUploadedAt, status:'TRANSFERENCIA_COMPROBANTE_SUBIDO', message }` |
+```ts
+export interface ResolvedOrder { ref: DocumentReference; data: Record<string, unknown> }
 
-- **Order document written at confirm:** `voucherUrl` (HTTPS download-token URL — never `data:`), `voucherStoragePath`, `voucherFileName` (sanitized), `voucherContentType` (normalized), `voucherSizeBytes` (actual, from Storage metadata), `voucherUploadedAt`, `status`, `updatedAt`.
-- **Write-then-delete ordering:** the doc write commits first; the replaced object is deleted only afterwards (best-effort, `console.warn` on failure) so a failed write can never destroy the existing voucher.
-- **Fail-closed in a production runtime** (reuses `isSimulatedPaymentAllowed()` from `api/_lib/simulationPolicy.ts` — one shared gate definition, per Task 0.10): Admin unavailable, bucket/signing failure, or metadata failure ⇒ `500` + loud `console.error` with a customer-safe message pointing at WhatsApp. Outside production the existing simulated path is kept, now explicitly flagged `simulated: true` in the payload (it fabricates no URL, so the client cannot mistake it for a real upload).
-- A body carrying `dataUrl` is rejected with a dedicated `400` ("el envío en base64 ya no está soportado") so a stale cached bundle logs a precise cause instead of a generic failure.
-- Existing behavior preserved: `OPTIONS` → 200, non-POST → 405, warehouse alert is fail-safe/non-blocking.
+/** Document key first (the canonical id IS the key), field query only as a legacy fallback. */
+export async function resolveOrderByCanonicalId(db: Firestore, cleanOrderId: string): Promise<ResolvedOrder | null>
+```
 
-### 3.C `[MODIFY] src/services/transferVoucher.ts` — three-step client orchestration
+- Doc-id hit → return it. Miss → `where('orderId','==',cleanOrderId).limit(1)` fallback **with a `console.warn`** so a legacy/decoy resolution is visible in the logs (observability requirement of the workflow's review step). Both miss → `null`.
+- `[MODIFY] api/webhooks/mercadopago.ts` — replace the inline `where(…)` lookup (`:150-158`) with the helper.
+- `[MODIFY] api/track-order.ts` — same (`:75-85`).
+- `[MODIFY] api/order-confirmation.ts` — same (`:69-84`).
+- `[MODIFY] api/upload-voucher.ts` — delete the local `findOrder` duplicate (`:44-61`) and import the shared helper (identical semantics; its tests already cover doc-first + fallback).
+- **Not touched:** `create-preference.ts` and the `api/_lib/admin/*` order handlers already prefer the document key (verified site-by-site — note `api/_lib/admin/order-history.ts` resolves **no order document** at all; it queries `order_status_history` by `orderId`, which is correct for its purpose). Consolidating their inline copies onto the helper is a mechanical follow-up with zero security delta — deliberately out of scope here (anti-overshooting).
 
-`uploadTransferVoucher()` becomes: local validation → `POST {action:'sign'}` → `PUT` the raw `File` to `uploadUrl` → `POST {action:'confirm'}` → typed result.
+### 3.C `[NEW] src/utils/voucherUrl.ts` + `[MODIFY] src/admin/components/OrderDetailPanel.tsx`
 
-- `fileToDataUrl()` and the whole Base64 path are **deleted** (no consumer left after this change).
-- `validateVoucherFile()` stays (same 5 MB cap / PDF-PNG-JPG copy) — still the UX gate for both upload surfaces.
-- New small helper `resolveVoucherContentType(file)` (declared MIME, else derived from the extension) so the signed URL binds a content type even when the browser reports an empty `file.type`.
-- **Real HTTP errors surface** (400/401/409/413/500/503 ⇒ `{ success:false, error }` with the server's Chilean-Spanish message): the previous "any failure ⇒ simulated success" contract is what makes D1/D4 invisible, and Task 2.8's direction is explicit that only a *demonstrably absent* endpoint may simulate. Simulation now requires `import.meta.env.DEV` **and** a non-JSON failure (Vite dev server without `vercel dev`), and its message is honest (`modo desarrollo — no se almacenó`). This pre-empts the `uploadTransferVoucher` row of Task 2.8 (the other rows — `mercadopago`, `orderTracking` — stay open; §5 records the split).
+Pure validator (fits the `src/utils/` "no DOM, no side effects" contract, unit-testable without rendering):
 
-### 3.D `[MODIFY] src/types/index.ts` — order contract
+```ts
+export type VoucherLinkKind = 'storage' | 'legacy-data' | 'unsafe'
+export const ALLOWED_VOUCHER_DATA_TYPES = ['application/pdf', 'image/png', 'image/jpeg'] as const
 
-Add `voucherStoragePath?: string`, `voucherContentType?: string`, `voucherSizeBytes?: number` to `Order` (documented in `src/types/AGENTS.md` §2.4c). `UploadVoucherResult` is unchanged.
+/** 'storage'  → https://firebasestorage.googleapis.com/…  (the only URL shape we ever write)
+ *  'legacy-data' → data:<allowed mime>;base64,… (pre-2.9 vouchers, declared type must be allowlisted)
+ *  'unsafe'   → everything else: javascript:, data:text/html, foreign https hosts, relative, non-string */
+export function classifyVoucherUrl(raw: unknown): VoucherLinkKind
+export function normalizeAllowedVoucherMime(type: string): string | null   // 'image/jpg' → 'image/jpeg'
+```
 
-### 3.E `[MODIFY] api/track-order.ts` — stop echoing Base64 blobs
-
-`voucher.url` is returned only when it is a real URL (`data:` payloads are omitted; `uploaded` / `fileName` / `uploadedAt` unchanged). Legacy orders therefore no longer ship a ~1 MiB Base64 blob to the tracking modal.
-
-### 3.F `[MODIFY] src/components/OrderTrackingModal.tsx` — make re-upload reachable
-
-The voucher widget currently renders only for `PENDIENTE_TRANSFERENCIA`, so the owner-approved "replace a wrong voucher" path would be unreachable from the UI. The widget now also renders for `TRANSFERENCIA_COMPROBANTE_SUBIDO` with adjusted copy ("Ya recibimos tu comprobante. Si te equivocaste de archivo, puedes reemplazarlo aquí."). Same markup/classes, no CSS work. `CheckoutModal` needs **no** change (its copy "PDF, PNG, JPG - máx 5MB" stays accurate).
-
-### 3.G `[MODIFY] src/admin/components/OrderDetailPanel.tsx` — legacy voucher viewing
-
-*Ver Comprobante* is an `<a href={voucherUrl} target="_blank">`; Chrome refuses top-frame `data:` navigation, so pre-2.9 vouchers are unviewable. Clicking now converts a legacy `data:` URL to a Blob object-URL before opening (real HTTPS URLs keep the plain link, unchanged). ~10 lines, no dependency; the existing test fixture (`https://example.com/receipt.pdf`) is unaffected.
-
-### 3.H `[NEW] storage.rules` + `[NEW] scripts/configure-storage-cors.ts` + `[MODIFY] firebase.json`, `package.json`, `.env.example`, `[NEW] scripts/storage-cors.json`
-
-- `storage.rules`: `allow read, write: if false;` — the bucket is **never** touched by client SDKs; signed PUTs (Admin SDK signature) and download-token URLs do not consult these rules, so deny-all is the correct posture and closes any "test-mode bucket" exposure.
-- `firebase.json`: register `"storage": { "rules": "storage.rules" }`.
-- `package.json`: new `deploy:storage-rules` script. `deploy:rules` is left untouched (it would start failing on Spark, where a storage-rules deploy is impossible).
-- `scripts/storage-cors.json`: PUT + `Content-Type` + `x-goog-content-length-range` preflight config (origins `*` — the signed URL is the capability, expires in 10 min, and CORS is not an auth boundary). GCS answers the preflight's `Access-Control-Allow-Headers` from this list, so both headers must stay.
-- `scripts/configure-storage-cors.ts` (+ `pnpm run storage:cors`, **added during execution**): applies that file through the Admin SDK credentials in `.env.local`, for machines without the Cloud SDK. Dry run by default, validates the PUT method and both required headers before writing, verifies the bucket exists (reporting the Blaze prerequisite otherwise) and is idempotent. Pinned by `src/tests/scripts/configureStorageCors.test.ts` (9 cases).
-- `.env.example`: `FIREBASE_STORAGE_BUCKET` with the Blaze prerequisite noted.
-
-### 3.I `[MODIFY]` tests — see §4.
-
-### Explicitly NOT done (scope guardrails)
-
-- No data migration of existing vouchers (legacy `data:` URLs stay readable via §3.G); no Firestore schema/collection changes; no new serverless function; no new npm dependency; no client-side image compression (unnecessary once the 4.5 MB function cap is bypassed); no `order_status_history` schema change; no changes to the admin order list/history endpoints.
-- Orphan objects from an abandoned sign→confirm window are accepted as bounded waste (≤5 MiB, 10-min signed URLs) and documented — no lifecycle/cleanup cron (that would be new infrastructure).
+Component changes:
+- `classifyVoucherUrl` decides the render: `storage` → real `<a href>` (unchanged UX); `legacy-data` → **`<button>`** that runs the Blob path; `unsafe` → plain non-interactive text (`Comprobante no verificable — revisar el documento en Firestore`), no anchor, no click handler.
+- `handleOpenVoucher` keeps the Blob conversion but adds the post-fetch gate the audit asks for: `blob.type` must normalize to an allowed MIME, otherwise refuse with the existing error slot; the object URL is always built from a **re-wrapped** `new Blob([blob], { type: forcedType })`, so the browser can never treat the bytes as HTML. `window.open` keeps `noopener,noreferrer`; the 60 s revoke stays.
+- No CSS/design-system change; the "Ver Comprobante" affordance keeps its existing classes.
 
 ---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-All boundaries mocked (`firebaseAdmin`, `firebase-admin/storage`, `global.fetch`); no live Firebase/Storage/Resend calls.
+All new/updated suites are hermetic (Firestore, Storage, `fetch` and `window.open` mocked at the boundary; no network, no emulator, no new dependency).
 
-**`[NEW] src/tests/api/voucher-storage.test.ts`** (~10 tests) — pure helpers: content-type normalization (`image/jpg`→`image/jpeg`, `; charset` stripping, garbage ⇒ `null`), extension mapping, path building (env-scoped prefix, sanitized orderId, extension from MIME), prefix assertion (accepts same order, rejects another order / traversal / partial match), download-URL composition (encoded path + token), `validateVoucherFileMetadata` boundaries (0, exactly 5 MiB, 5 MiB + 1, unknown/oversized types), filename sanitization.
+**4.1 `[MODIFY] src/tests/security/firestore-rules.test.ts`** — content assertions for the new contract:
+- `isValidOrderCreate(orderId)` is called with the path variable in **both** `orders` and `dev_orders` (the existing `dev_orders` assertion `allow create: if isValidOrderCreate();` must be updated — expected, the signature changed).
+- `data.orderId == orderId` present; top-level `keys().hasOnly([...])` parsed and asserted to contain exactly the 11 documented keys.
+- **Negative assertions:** the allowlist must **not** contain `voucherUrl`, `voucherStoragePath`, `approvedAt`, `approvedBy`, `dispatch`, `courier`, `trackingNumber`, `deliveredAt`, `confirmationEmailSentAt`, `mercadopagoPaymentId`, `paidAt`.
+- `paymentMethod`/`status` consistency block present; `billing.status == 'PENDIENTE_EMISION_SII'` present; nested `hasOnly` for customer / billing / taxBreakdown / sanitaryVerification / item keys; caps present for the representative fields.
 
-**`[MODIFY] src/tests/api/upload-voucher.test.ts`** (~20 tests, rewritten around the two phases):
-- Transport: `OPTIONS` → 200; `GET` → 405; unknown/missing `action` → 400; `dataUrl` in body → 400 with the Base64-deprecation message.
-- `sign`: missing `orderId`/`rut`/`fileName`/`contentType`/`sizeBytes` → 400; invalid MIME → 400; `sizeBytes` 0 / negative / > 5 MiB → 400; unknown order → 404; RUT mismatch → 401; **status guard**: `PENDIENTE_TRANSFERENCIA` ✅, `TRANSFERENCIA_COMPROBANTE_SUBIDO` ✅ (re-upload), `PAGADO_MERCADOPAGO` / `PAGADO_TRANSFERENCIA` / `DESPACHADO` / `ENTREGADO` / `CANCELADO` / `COTIZACION_SOLICITADA_WHATSAPP` → 409; happy path returns `uploadUrl`/`storagePath` under the order prefix and **writes nothing to Firestore** (no `batch.commit`, no order update) and stores **no bytes**.
-- `confirm`: path belonging to another order → 400; object missing (`getMetadata` rejects) → 400/404; object over the cap → object deleted + 400; object with a disallowed content type → object deleted + 400; happy path writes `voucherStoragePath`/`voucherUrl`/`voucherSizeBytes`/normalized type + history event + warehouse email, and **the order payload contains no `data:` value** (the core D1 regression guard); re-upload deletes the previous object *after* the commit; duplicate confirm (same path, already `TRANSFERENCIA_COMPROBANTE_SUBIDO`) ⇒ `{ duplicate:true }` with no second write/email.
-- Fail-closed: Admin unavailable → 500 in a production runtime (`VERCEL_ENV=production`), simulated `{ simulated:true }` otherwise; `getSignedUrl` rejection → 500 in production / simulated in dev; warehouse-email failure still returns 200.
+**4.2 `[NEW] src/tests/security/orderCreateContract.test.ts`** — the drift guard (the most valuable test here, because there is no rules emulator):
+- Drive the **real** `submitOrder()` with mocked `firebase/firestore` (`setDoc` capture, the pattern already used in `src/tests/services/api.test.ts`), for three payload variants: boleta + no promo, factura + sanitary verification, and promo applied.
+- Parse the four `hasOnly([...])` lists out of `firestore.rules` and assert, for every variant, `Object.keys(payload) ⊆ allowed` at each level (root, `customer`, `billing`, `taxBreakdown`, `items[]`).
+- Failure mode this prevents: someone adds a field to the order payload (or renames one) and the rules silently start denying **every** checkout in production — the one regression class this task could otherwise introduce.
 
-**`[MODIFY] src/tests/services/transferVoucher.test.ts`** (~9 tests) — local validation (unchanged cases); happy path asserts the **3-call contract** (sign body has no bytes; PUT carries the raw `File` with the bound `Content-Type`; confirm body carries `storagePath`); sign 409 ⇒ `success:false` with the server message and **no** `simulated-voucher://` URL; PUT 403 ⇒ error surfaced; confirm 500 ⇒ error surfaced; non-JSON/network failure ⇒ simulated only with `vi.stubEnv('DEV', true)` (and **not** when `DEV` is false); invalid RUT/empty orderId short-circuit before any fetch.
+**4.3 `[MODIFY] src/tests/api/mercadopago-webhook.test.ts`** — decoy-document test:
+- `collection('orders').doc('PRONTO-123456').get()` → the real order; `where('orderId','==',…)` → a decoy with a different ref.
+- Assert the transaction reads/writes the **real** ref (status → `PAGADO_MERCADOPAGO`, stock deducted once) and the decoy is never touched. Plus the existing suites' mocks updated to the doc-first contract.
 
-**`[MODIFY] src/tests/components/OrderTrackingModal.test.tsx`** (+1) — the upload widget renders for `TRANSFERENCIA_COMPROBANTE_SUBIDO` with the replace copy and still calls `uploadTransferVoucher`.
+**4.4 `[MODIFY] src/tests/api/track-order.test.ts` + `order-confirmation.test.ts`** — mocks gain `.doc()`; new cases: doc-id hit wins over a decoy field match; legacy doc (no id match) still resolves through the fallback.
 
-**`[MODIFY] src/tests/api/track-order.test.ts`** (+1) — a legacy `data:` `voucherUrl` is not echoed in `voucher.url`, while `uploaded`/`fileName`/`uploadedAt` still are.
+**4.5 `[NEW] src/tests/api/orderLookup.test.ts`** — helper contract: doc hit → returns `{ref,data}`; miss + field hit → returns the fallback **and warns**; both miss → `null`.
 
-**`[MODIFY] src/tests/admin/OrderDetailPanel.test.tsx`** (+1) — legacy `data:` voucher renders and opens via the Blob path (HTTPS URL unchanged).
+**4.6 `[NEW] src/tests/utils/voucherUrl.test.ts`** — `classifyVoucherUrl`: real storage URL → `storage`; `https://firebasestorage.googleapis.com.evil.com/…`, `https://evil.com/x.pdf`, `http://…` (not https), `javascript:alert(1)`, `data:text/html,…`, `data:application/pdf;base64,…` → correct buckets; relative/garbage/`null`/number → `unsafe`; MIME normalization (`image/jpg` → `image/jpeg`, `APPLICATION/PDF` → allowed, `text/html` → rejected).
 
-**`[NEW] src/tests/security/storage-rules.test.ts`** (~4 tests) — content assertions on `storage.rules` (deny-all read/write, no `allow write: if true`, rules_version 2) and `firebase.json` registration, mirroring the existing `firestore-rules` suite.
+**4.7 `[MODIFY] src/tests/admin/OrderDetailPanel.test.tsx`** —
+- storage URL → anchor with `href`/`target` (existing test kept);
+- legacy `data:image/png` → Blob path, and the Blob handed to `createObjectURL` carries the **forced** MIME (existing test extended);
+- `javascript:alert(1)` → no anchor, `window.open` never called, non-interactive text rendered;
+- `data:text/html,<script>…</script>` → `fetch` never called, nothing opened;
+- `https://evil.com/comprobante.pdf` → no anchor, nothing opened;
+- post-fetch mismatch (`data:application/pdf` whose body reports `text/html`) → refused, nothing opened;
+- the `mockOrder` fixture's `voucherUrl: 'https://example.com/receipt.pdf'` is replaced by a real storage URL (it was never a shape the app writes) — the first test's `Ver Comprobante` assertion is updated accordingly.
 
-**Zero-regression target:** `pnpm test` — **663 tests / 72 suites** after rebasing onto `main` (which brought Task 2.8's `simulationPolicy` suite and Task 7.1's legal-page suites) — plus `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit`, all green.
+**Gates (all five, per `parallel-worktree-workflow`):** `pnpm test` · `pnpm build` · `pnpm lint` · `pnpm format:check` · `pnpm exec tsc --noEmit`, plus the `api/` strict type-check (`pnpm exec tsc --noEmit --strict --module esnext --moduleResolution bundler --types node` over `api/**`, the invocation recorded in TODO 8.2). Zero-regression policy: the 663 existing tests stay green; expected new total ≈ 690 (real counts recorded at wrap-up).
 
 ---
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-- **`api/AGENTS.md`:** §1.1 table row for `/api/upload-voucher` (two-phase contract, no bytes in the doc, function count still 6); §3.2 rewritten as-built (signed-URL flow, lifecycle guard, authoritative metadata validation, fail-closed gate, orphan caveat); §4.2 env list (`FIREBASE_STORAGE_BUCKET`); §5 CORS/rules note.
-- **`src/services/AGENTS.md`:** §1.1 row (`transferVoucher` = 3-step orchestration, `fileToDataUrl` removed); §6 table — the `uploadTransferVoucher` row is marked **RESOLVED (Task 2.9, pre-empts the 2.8 row for this adapter)** and the closing direction sentence updated.
-- **`src/types/AGENTS.md`:** §2.4c order contract gains the three new voucher fields (with the "bytes never live in Firestore" invariant).
-- **`src/components/AGENTS.md`:** voucher widget re-upload affordance; `src/admin/AGENTS.md`: legacy `data:` voucher viewer note.
-- **Root `AGENTS.md`:** §4 iron rules — new bullet: voucher bytes are never written to Firestore documents and the upload transition is lifecycle-guarded; §6 commands — `deploy:storage-rules`.
-- **`PRODUCTION_READINESS_TODO.md`:** mark **2.9** `[x]` with the as-built record; keep main's resolved **2.8** entry and add the one-line note that its `uploadTransferVoucher` row was superseded by this task; refresh the repository-state header counts.
-- **`src/tests/AGENTS.md`:** suite/test counts + the new suites.
+| File | Update |
+| :--- | :--- |
+| `api/AGENTS.md` | §8.1 order lookup: the canonical `resolveOrderByCanonicalId` rule (document key first, field query only for legacy docs) + the decoy rationale; note the rules now bind `orderId` to the path. |
+| `src/admin/AGENTS.md` | Voucher display contract: URL allowlist (storage host only) + the legacy `data:` MIME gate and why the Blob re-wrap exists. |
+| `src/utils/AGENTS.md` | Add `voucherUrl.ts` to the module map (pure validator). |
+| `src/tests/AGENTS.md` | Suite counts + one line per new suite; remove the stale conflict marker at line 30 (approved by the owner for this branch — see the note below). |
+| root `AGENTS.md` §4 | Extend the `firestore.rules` bullet: order docs bound to their id, field allowlist, `paymentMethod`/`status` consistency, length caps. |
+| `PRODUCTION_READINESS_TODO.md` | Move 0.12 and 0.13 to §2 as one-line resolved rows; drop them from §1; refresh the baseline test counts; keep the `pnpm run deploy:rules` human item (now the last step for 0.12). |
+| `implementation_plan.md` / `walkthrough.md` | Status → implemented/verified; walkthrough written at wrap-up (gitignored). |
+
+**Unrelated defect folded into this branch (owner-approved 2026-09-29):** `src/tests/AGENTS.md:30` carries a committed merge-conflict marker (`<<<<<<< HEAD`) left behind by an earlier merge — the surrounding text is otherwise resolved and the marker is the only one in the repository (verified by a repo-wide search). Fix = delete the single line, in the same doc pass as the suite-count update. It rides in its own commit (`docs(tests): remove a stray merge-conflict marker from the test guide`) so the security commits stay clean.
 
 ---
 
-## 6. Verification Sequence (workflow steps 6 → 8)
+## 6. Execution Order (after approval)
 
-1. `pnpm test` — full suite green (no regressions).
-2. `pnpm build` — production bundle compiles.
-3. `pnpm lint` + `pnpm format:check` + `pnpm exec tsc --noEmit`.
-4. Adversarial read-only code review (fresh-context subagent per the `code-review` skill): signed-URL scope/TTL, path traversal, TOCTOU between sign and confirm, idempotency, production fail-closed, payload-size guarantees, negative assertions.
-5. Remediate findings, re-run 1–3, then update the as-built docs and the roadmap checkbox.
-
----
-
-## 7. Open Risks Recorded for the Owner
-
-| # | Risk | Mitigation / disposition |
-| :-- | :--- | :--- |
-| R1 | Branch merged before Blaze is enabled ⇒ production voucher uploads return 500 | H1–H5 are sequenced **before** merge; the customer sees an honest error + WhatsApp fallback, never a fabricated success. |
-| R2 | Signed URL leaks ⇒ ≤5 MiB written to one order-scoped path within 10 min | Path is prefix-bound to the order, the confirm phase re-validates metadata and the lifecycle guard, and the object is deleted on any validation failure. |
-| R3 | Abandoned sign→confirm leaves an orphan object | Bounded to **≤5 MiB**: `x-goog-content-length-range` is signed into the URL and echoed by the browser, so Storage itself refuses oversized PUTs even when `confirm` is never called (review F1). One object per attempt, documented; no cleanup infrastructure added. |
-| R4 | Download-token URL is a long-lived capability | 128-bit random token, bucket otherwise deny-all; revocation = clearing `firebaseStorageDownloadTokens`. Same exposure level as the previous RUT+orderId path. |
-| R5 | Preview deploys without `FIREBASE_STORAGE_BUCKET` set fall back to the derived default | `.env.example` placeholders are now rejected as *unconfigured* (⇒ production `500` + loud log, review F4). A wrong-but-well-formed bucket name is **not** detectable at sign time (`getSignedUrl` signs locally) — it surfaces as a `PUT 404` in the browser, so **H3 must be verified against the console value** (`.firebasestorage.app` vs legacy `.appspot.com`). |
+1. Commit A — 0.12: `firestore.rules` + `api/_lib/orderLookup.ts` + the 4 API consumers + §4.1–4.5 tests.
+2. Commit B — 0.13: `src/utils/voucherUrl.ts` + `OrderDetailPanel.tsx` + §4.6–4.7 tests.
+3. Gates → adversarial read-only code review (`/code-review`) → remediate → as-built docs → roadmap sync.
+4. **Stop.** Commit/push/PR only on your explicit "wrap up and proceed" (then H1 `pnpm run deploy:rules` remains the human close-out).
 
 ---
 
-## 8. Adversarial Review Disposition (fresh-context reviewer, read-only)
+## 7. Adversarial Review Disposition (fresh-context read-only reviewer, 2026-09-29)
 
-Verdict: **APPROVE WITH FINDINGS** — 7 findings, no blocker. All were addressed in the working tree; the full-suite gate was re-run afterwards (now **663/663**, 72 suites, after the rebase onto `main`).
+Verdict: **APPROVE WITH FINDINGS** — "no blocker: the two fixes are real, correctly targeted and the checkout payload provably fits the new rules allowlists". Every finding was introduced by this change and every one is now remediated:
 
-| # | Sev | Finding | Disposition |
-| :-- | :--- | :--- | :--- |
-| F1 | Major | The signed PUT URL did not bound the upload size — the documented "≤5 MiB orphan" claim was false (only `content-type` + `host` were signed) | **Fixed** — `x-goog-content-length-range: 0,5242880` is now signed via `extensionHeaders`, echoed by the browser (`maxBytes` from the sign response, so the value can never drift), and listed in the CORS `responseHeader` (GCS builds `Access-Control-Allow-Headers` from it). Tests pin both halves. |
-| F2 | Major | As-built guides + roadmap still described the pre-2.9 pipeline; every test count stale | **Fixed** — §5 executed: `api/AGENTS.md` §1.1/§1.2/§3.2/§4.2/§8.1, `src/services/AGENTS.md` (§1.1, §4 rule 5, §6), `src/types/AGENTS.md` (§2.4c + tracking), `src/components/AGENTS.md` (§3.x, §4.3), `src/admin/AGENTS.md` (§1), root `AGENTS.md` (§1 counts, §4 iron rule, §6 command), `src/tests/AGENTS.md`, TODO 2.9 `[x]` + 2.8 annotation, plan status/R3/R5. |
-| F3 | Minor | Lifecycle guard asserted outside the write — a concurrent admin approval could be regressed by `confirm` (TOCTOU) | **Fixed** — `confirm` now runs in `adminDb.runTransaction()`, re-reads the order, re-asserts the guard, and deletes the object + returns `409` when the status changed. A retried confirm of the same object short-circuits **before** any side effect (no token rotation). Both paths are pinned by tests. |
-| F4 | Minor | Bucket-name default is an unverified guess; `.env.example` placeholders accepted as real; the wrong-name failure mode was misdescribed | **Fixed (partially, by design)** — placeholder-shaped values are rejected as unconfigured (⇒ production `500` + loud log), R5/H3 now state the real failure mode (`PUT 404`, not a server 500) and require verifying the console bucket name. `bucket.exists()` was considered and rejected: a service account without `storage.buckets.get` would produce a false negative that breaks *working* uploads. |
-| F5 | Minor | `cert()` does not populate `app.options.projectId`, so the unit test asserted a shape production cannot produce | **Fixed** — `resolveVoucherBucketName` documents the real coupling (env first, app options as a fallback); the suite now mocks `{ options: {} }` with `FIREBASE_PROJECT_ID` set, i.e. the production shape. |
-| F6 | Nit | The legacy-voucher test mutated the global `URL` without restoring it | **Fixed** — the object-URL statics are captured and restored after the assertions. |
-| F7 | Nit | `VOUCHER_MAX_FILE_BYTES` exported with no consumer | **Fixed** — `voucher-storage.test.ts` now asserts the client cap equals the server cap (and pins the signed header value), making the cross-runtime contract explicit. |
-| P1 | Minor (pre-existing) | Raw internal error messages echoed to unauthenticated callers on the 500 path | **Fixed for this endpoint** — the outer catch logs the raw cause and returns the customer-safe message. The same house pattern in `create-preference` / `track-order` / `order-confirmation` is unchanged and remains a separate follow-up. |
+| # | Sev | Finding | Remediation |
+| :-- | :-- | :--- | :--- |
+| F1 | MINOR | The new doc-key-first lookup made `CollectionReference.doc()` throw for ids containing `/`, turning malformed public input into a `500` echoing SDK internals | `resolveOrderByCanonicalId` skips the document-key attempt when the id is empty or contains `/` (the field query can never throw) → clean `404`; pinned by a new `orderLookup` case |
+| F2 | MINOR | The new rules length caps had no client-side counterpart, so an over-long field would dead-end checkout with "reintenta" | `FIELD_MAX_LENGTH` in `CheckoutModal` mirrors every cap (`maxLength` on the inputs, file-name clamp for `credentialFileName`); the drift guard asserts the rules↔client pairing |
+| F3 | MINOR | `CustomerInfo.transferReceipt` is a documented field that the new customer allowlist would have rejected wholesale | Allowlisted (bounded at 120) with a comment; asserted in the rules content test |
+| F4 | MAJOR | As-built docs still described the pre-fix lookup (`api/AGENTS.md` §8.1 said the webhook/track-order/order-confirmation use the field query *only*) | Executed plan §5: `api/AGENTS.md` §3.1/§3.2/§8.1, `src/admin/AGENTS.md`, `src/utils/AGENTS.md` (+ new §2.7), `src/tests/AGENTS.md`, root `AGENTS.md` §1/§4/§6, roadmap §1/§2/baseline, this plan |
+| F5 | MINOR | The post-fetch `blob.type` re-check is vacuous for `data:` URLs (the fetched type *is* the declared one) and the test did not fail if the load-bearing re-wrap were deleted | Comments corrected in `voucherUrl.ts` + `OrderDetailPanel` (the re-wrap is the control, the check is belt-and-braces); the legacy test now opens an `image/jpg` Blob and asserts the forced `image/jpeg`, so deleting the re-wrap fails it; the mismatch case is marked defensive-only |
 
-**Also recorded:** the owner-approved deviation from the TODO's literal "only from `PENDIENTE_TRANSFERENCIA`" (same-state re-upload is allowed by design, and the tracking modal exposes it) — documented in `api/AGENTS.md` §3.2 and `src/components/AGENTS.md` §4.3. The H4 CORS step ships as `scripts/configure-storage-cors.ts` (owner-approved addition, this machine has no `gcloud`); the gcloud command remains the documented alternative. Final gate after that addition and the rebase onto `main`: **663/663 tests / 72 suites**, build, lint, format:check and tsc all green.
+Pre-existing items the reviewer surfaced were **not** fixed here (out of scope, tracked): the raw-error echo in `track-order`/`order-confirmation`/`create-preference` (P4), the arbitrary legacy-doc choice under duplicate `orderId` fields (P5, NIT), and `upload-voucher`'s identical `/`-in-id exposure (P1) — that last one is **closed as a side effect**, because `upload-voucher` now shares the guarded resolver. The reviewer's P2 (the TODO 8.2 `api/` tsc invocation missing `--target es2022`) and P3 (the `src/tests/AGENTS.md` conflict marker) are both fixed in this branch.
+
+Two additional pre-existing doc defects were repaired while in the files: the committed merge-conflict marker in `src/tests/AGENTS.md` and a broken code fence in root `AGENTS.md` §4 that had swallowed the `deploy:*` command block into the rules bullet.

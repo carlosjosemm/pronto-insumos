@@ -14,7 +14,7 @@ This document is the **authoritative algorithmic and technical guide** for the p
   * Given identical input arguments, they must always return identical outputs.
 * **Where hooks live:** anything that needs React state or a DOM side effect belongs in [`src/hooks/`](../hooks) (`useScrollLock`, `useFocusTrap`, `useIncrementalReveal`), **not** here. That directory exists precisely to keep this purity contract intact.
 * **Zero External Dependencies:** No `lodash`, `moment.js`, or external math libraries. Built entirely with modern ECMAScript standards.
-* **File map:** [`rut.ts`](./rut.ts) (RUT Modulo 11), [`currency.ts`](./currency.ts) (CLP formatting/parsing + IVA), [`tax.ts`](./tax.ts) (gross→neto IVA breakdown + Factura field validation), [`schemaValidation.ts`](./schemaValidation.ts) (untrusted Firestore document validators), [`categoryAlias.ts`](./categoryAlias.ts) (category display names), [`orderTotal.ts`](./orderTotal.ts) (server-authoritative payable-total math — Task 0.9).
+* **File map:** [`rut.ts`](./rut.ts) (RUT Modulo 11), [`currency.ts`](./currency.ts) (CLP formatting/parsing + IVA), [`tax.ts`](./tax.ts) (gross→neto IVA breakdown + Factura field validation), [`schemaValidation.ts`](./schemaValidation.ts) (untrusted Firestore document validators), [`categoryAlias.ts`](./categoryAlias.ts) (category display names), [`orderTotal.ts`](./orderTotal.ts) (server-authoritative payable-total math — Task 0.9), [`voucherUrl.ts`](./voucherUrl.ts) (voucher-URL allowlist: storage / legacy-data / unsafe — Task 0.13).
 
 ---
 
@@ -156,3 +156,15 @@ The single source of truth for "how much does this order cost" — integer CLP, 
 * **Rounding iron rule:** `Math.round` at every step; CLP has no cents; floating residues are a gateway/SII rejection risk.
 * **Consumers:** `App.tsx` (`cartTotal`), `Cart.tsx` (drawer total), `src/services/api.ts` (`submitOrder`), `api/create-preference.ts` (preference lines), `api/webhooks/mercadopago.ts` (amount assertion).
 * **Purity Contract:** No DOM, no network, no `import.meta.env` — importable from Node (`api/`) and tsx scripts.
+
+---
+
+### 2.7 Voucher-URL Allowlist (`src/utils/voucherUrl.ts`) — Task 0.13
+
+`classifyVoucherUrl(raw): 'storage' | 'legacy-data' | 'unsafe'` is the single policy for "may this stored voucher value be opened?". It exists because `order.voucherUrl` is a client-writable string and the admin panel used to open whatever it found — a `javascript:` link, or a `data:` URL turned into a same-origin `blob:` page, i.e. script execution inside the admin origin.
+
+* **`storage`** — `https:` on the `firebasestorage.googleapis.com` host only (the one URL shape `api/_lib/voucherStorage.ts` builds). `http:`, a foreign host, `firebasestorage.googleapis.com.evil.com`, a protocol-relative or relative path, a `blob:`/`javascript:` scheme and non-string/empty values are all `unsafe`.
+* **`legacy-data`** — a pre-2.9 `data:` voucher whose **declared** MIME is allowlisted (`ALLOWED_VOUCHER_DATA_TYPES` = PDF/PNG/JPEG). `normalizeAllowedVoucherMime()` also maps the non-standard `image/jpg` → `image/jpeg`; it returns `null` for everything else (incl. `text/html`, `image/svg+xml`).
+* **Consumers:** `src/admin/components/OrderDetailPanel.tsx` (real `<a>` / Blob-opening `<button>` / plain text). Any future surface that links a stored voucher URL — e.g. the storefront tracking modal, which renders none today — must use this classifier.
+* **Load-bearing detail:** a `blob:` URL inherits the creator's origin, so the Blob must always be re-wrapped with the forced allowlisted type (`new Blob([blob], { type })`) and never passed through untyped. For a `data:` URL the fetched `blob.type` *is* the declared type, so the post-fetch check is belt-and-braces, not the control.
+* **Purity:** string/URL parsing only — no DOM, no network, no `import.meta.env`.
