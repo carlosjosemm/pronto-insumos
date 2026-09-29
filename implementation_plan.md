@@ -1,6 +1,6 @@
-# Task 2.8: Simulated-Success Fallbacks Must Not Mask Real HTTP Errors
+# Task 7.1: Mandatory Legal Pages (Chilean Consumer Law N° 19.496)
 
-**Branch:** `fix/task-2.8-simulated-success-fallbacks` (cut from `main` @ `9d938ce`, which already includes the merged Task 1.4; executing in the primary worktree — no separate worktree, per explicit user instruction)
+**Branch:** `fix/task-7.1-legal-pages` (cut from `main` @ `b081b72`, which already includes the merged Tasks 1.4, 0.11 and 2.8; executing in the primary worktree — no separate worktree, per the retired worktree protocol)
 **Status:** Awaiting user approval — no source code changes until approved.
 **RequestFeedback:** true
 **UserFacing:** true
@@ -9,122 +9,73 @@
 
 ## 1. Context & Problem Statement
 
-Reference: `PRODUCTION_READINESS_TODO.md` → **2.8. Simulated-Success Fallbacks Must Not Mask Real HTTP Errors** (P1 · High; audit finding — full contract in `src/services/AGENTS.md` §6).
+Reference: `PRODUCTION_READINESS_TODO.md` → **7.1. Mandatory Legal Pages (Chilean Consumer Law N° 19.496)** (P1 · Legal · required).
 
-Three client adapters respond to endpoint failure by returning **fabricated success**, masking real server rejections from the customer:
+The TODO's stated symptom — "all policy links point to `href="#"`" — is **stale**: today's `Footer.tsx` renders **no links at all** in its policy column. The "Cumplimiento Clínico" list is plain-text bullets, and `Términos y Condiciones de Venta B2B` is a dead `<li>` a shopper cannot open. Net effect: the storefront sells to Chilean clinics with **no reachable** Terms of Sale, no SERNAC warranty statement, and no privacy policy — a legal-compliance gap (Ley 19.496 consumer law, Ley 19.628 data protection) and a trust failure for the B2B audience.
 
-1. **`src/services/mercadopago.ts`** — `createMercadoPagoPreference()` treats *any* failure (including HTTP 4xx/5xx) as the "endpoint not active" dev case: `!response.ok` currently **throws into the same catch** that returns `success: true, initPoint: undefined`, and `processMercadoPagoPayment()` then fabricates a `status: 'approved'` record. The server's **400 stock rejection** (Task 0.9) and the 0.10 fail-closed `500`s therefore produce **no redirect and no error** — the customer lands on the confirmation step for an unpaid `PENDIENTE_PAGO_MERCADOPAGO` order.
-2. **`src/services/transferVoucher.ts`** — `uploadTransferVoucher()` catches *any* failure (401 RUT mismatch, 404, 500) and returns `success: true` with a `simulated-voucher://` URL — silent voucher loss displayed as "Comprobante recepcionado exitosamente".
-3. **`src/services/orderTracking.ts`** — `fetchOrderTracking()` fabricates a plausible order on network failure (its HTTP error path already surfaces correctly).
+**Required Action (from TODO):** publish dedicated policy pages covering (1) Terms and Conditions of Sale, (2) 6-Month Legal Warranty & Return Policy (SERNAC — technical equipment vs hygiene-sealed consumables), (3) Privacy and Data Protection (Ley 19.628), (4) Company Legal Identification (legal name, RUT, Melipilla address, support channels).
 
-**UI readiness (verified):** `OrderTrackingModal` already renders `result.error` for both tracking (l.96-100) and voucher upload (l.160-162); `CheckoutModal`'s voucher upload already renders `res.error` (l.391-395). The **only** blind consumer is the Mercado Pago call site (`CheckoutModal` l.349-356), which ignores the result entirely.
-
-**Out of scope:** `submitOrder`'s swallowed Firestore write — tracked separately as **0.11** (in progress by another agent; touches `src/services/api.ts`, no file overlap with this task).
-
-**Required Action (from TODO):** simulate only when the endpoint is demonstrably absent (dev network error, behind the same env gate as 0.10); real HTTP error responses must surface as errors to the customer.
+**As-built interpretation (deviation flagged for approval):** the app is a router-less Vite SPA (no react-router, and the anti-overshooting guardrails forbid adding one). The lean, idiomatic implementation is a single **`LegalModal`** following the established modal pattern (`modal-overlay` + `useScrollLock` + `useFocusTrap` + Escape handling, as in `PaymentReturnModal`), containing the four policy sections; the footer's policy items become buttons that open the modal directly on the respective section. This satisfies SERNAC's requirement (terms available before purchase, one click from the footer, printable) with zero new dependencies and zero design-token duplication — the alternative (standalone `public/*.html` pages) would require duplicating the design tokens into a separate stylesheet, the exact drift class this repo's guardrails exist to prevent. If the owner prefers literal separate pages, the plan pivots at review.
 
 ---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-- **No new credentials or secrets.**
-- New **optional, non-secret** client env var documented in `.env.example`:
-  - `VITE_ALLOW_SIMULATED_PAYMENTS=false` — client-side escape hatch mirroring Task 0.10's server flag: simulated fallbacks are automatically disabled when the build was produced with `VERCEL_ENV=production`; only the exact string `'true'` opts back in (controlled demos). Leave unset/`false` in Production.
-- **Human check after merge:** confirm `VITE_ALLOW_SIMULATED_PAYMENTS` is absent (or `false`) for the Production build target. `env:sync` only writes variables present in the local env file, so nothing needs to be pushed.
+- **No new credentials, secrets, env vars, or dependencies.**
+- **⚠️ Legal copy is a DRAFT for owner review:** the policy texts are drafted by the agent from the TODO's required-action outline and the storefront's as-built commercial behavior (boleta-only, IVA 19%, delivery zones, payment methods). They are **not legal advice** — the owner (or their lawyer) must review and approve the wording before production, in particular the SERNAC warranty clauses and the hygiene-sealed-goods return exclusions. The modal renders the draft verbatim; owner edits are text-only changes.
+- **Human check after merge:** confirm the company legal identification section matches the SII registration (legal name, RUT) — the values render from `BANK_DETAILS` / `WHATSAPP_*` config, never literals, so a correction is a config edit, not a component hunt.
 
 ---
 
 ## 3. Proposed Changes
 
-### 3.A `[NEW] src/services/simulationPolicy.ts` — client-side gate (mirror of `api/_lib/simulationPolicy.ts`)
+### 3.A `[NEW] src/components/LegalModal.tsx` — the four policy sections
 
-```ts
-export function isSimulatedFallbackAllowed(env: ImportMetaEnv = import.meta.env): boolean {
-  if (env.VITE_ALLOW_SIMULATED_PAYMENTS === 'true') return true
-  return env.VITE_VERCEL_ENV !== 'production'
-}
-```
+- Props: `{ section: LegalSection; onClose: () => void }` where `LegalSection = 'terminos' | 'garantia' | 'privacidad' | 'identificacion'`.
+- Follows the established modal skeleton exactly: `.modal-overlay` (click-to-close) → `.modal-card` → `useScrollLock(true)` + `useFocusTrap<HTMLDivElement>(true)` + `Escape` → `onClose()`, close button with `aria-label="Cerrar ventana"`.
+- Header + a section nav (4 anchor buttons, `aria-current` on the active one) switching the rendered policy; content in es-CL, drafted per §2.
+- **Config-sourced values only:** company name / RUT / email from `BANK_DETAILS`, support phone from `WHATSAPP_DISPLAY`, WhatsApp links via `whatsappLink()` — no new fiscal or contact literals anywhere in the component (the §1 divergence rule).
+- Commercial behavior stated in the copy matches the as-built system exactly: Boleta Electrónica · IVA 19% (Factura via WhatsApp quotation), payment via Mercado Pago Chile or bank transfer, delivery zones `Melipilla` (same day before 16:00) / `San Antonio` (scheduled route, $60.000 minimum), free shipping over $150.000 — sourced from `src/config/delivery.ts` / `src/config/promos.ts` wording where the copy needs it.
 
-- Same semantics as the server gate from Task 0.10: allowed outside a production runtime, strict `'true'` opt-in (`'TRUE'`, `'1'`, `'false'` do **not** enable).
-- Browser-safe: reads the build-time `VITE_VERCEL_ENV` define that `vite.config.ts` injects from `process.env.VERCEL_ENV` (documented in `src/services/AGENTS.md` §2.3) — **no `process.env` in browser code**.
-- Injectable `env` parameter → pure and unit-testable without mutating globals (also sidesteps `ImportMetaEnv`'s read-only keys).
-- In Vitest/local runs `VITE_VERCEL_ENV` is unset → simulation allowed → existing fallback-dependent tests keep working; production-build behavior is what changes.
+### 3.B `[MODIFY] src/components/Footer.tsx` — wire the policy entries
 
-### 3.B `[MODIFY] src/services/mercadopago.ts`
+- The "Cumplimiento Clínico" column's dead `Términos y Condiciones de Venta B2B` `<li>` becomes a button opening `LegalModal` on `terminos`; sibling entries `Garantía Legal 6 Meses (SERNAC)` and `Privacidad y Protección de Datos (Ley 19.628)` are added as buttons for `garantia` / `privacidad` (the TODO requires all policies be reachable).
+- `Footer` owns the `LegalModal` state internally (self-contained, like `CheckoutModal`'s own state) — **no `App.tsx` wiring changes**.
+- Styling: the policy buttons reuse the existing footer link look (`var(--text-on-dark-body)` / `--accent-on-dark` on the navy surface — never `var(--accent)` on dark, per §2's contrast rule).
 
-- **`createMercadoPagoPreference()`** — restructure the error path:
-  - `!response.ok` is handled **explicitly before the catch**: parse the error body (`errData?.error` when available) and return `{ success: false, error }`. Real HTTP errors **never simulate** — this covers the 400 stock rejection, the 0.10 production `500`s, and `503` Admin-down.
-  - The `catch` (network throw — endpoint demonstrably absent) keeps today's simulated shape `{ success: true, initPoint: undefined }` **only when** `isSimulatedFallbackAllowed()`; otherwise returns `{ success: false, error: 'No fue posible contactar al servicio de pagos. Por favor reintenta o cotiza por WhatsApp.' }`.
-- **`processMercadoPagoPayment()`** — if `prefResult.success === false`, return `{ success: false, error, orderId }` immediately: **no fabricated approved record, no redirect attempt**. The success path (initPoint present → redirect + result record) is unchanged; the dev-simulated approved record remains the non-production simulation for the demonstrably-absent case.
-- `MercadoPagoPaymentResult`: add `error?: string`; make `paymentId` / `status` / `statusDetail` / `totalPaid` / `paidAt` optional so the failure return is honest (only the success path populates them; the sole UI consumer checks `success`, and existing tests read them on success paths only).
+### 3.C `[NEW] src/tests/components/LegalModal.test.tsx`
 
-### 3.C `[MODIFY] src/services/transferVoucher.ts`
+- Renders each of the four sections (heading + a SERNAC/Ley-specific marker per section).
+- Opens from the Footer: clicking each policy entry opens the modal on that section (wiring contract).
+- A11y: `role="dialog"` + `aria-modal`, Escape closes, focus is trapped and restored (the `useFocusTrap` contract).
 
-- **`uploadTransferVoucher()`** — `!response.ok` returns `{ success: false, orderId, status: 'PENDIENTE_TRANSFERENCIA', error: <server message> }` directly instead of throwing into the simulation catch. The 401 RUT-mismatch, 404 and 500 cases surface their real server message.
-- The `catch` (network throw) keeps the simulated success **only when** `isSimulatedFallbackAllowed()`; in a production runtime it returns `{ success: false, …, error: 'No fue posible subir el comprobante. Por favor reintenta o envíalo por WhatsApp.' }`.
-- **No UI changes needed** — both call sites already render `res.error`.
+### 3.D `[MODIFY] src/tests/components/ClinicalStorefront.test.tsx`
 
-### 3.D `[MODIFY] src/services/orderTracking.ts`
-
-- The `catch` (network throw) keeps the simulated fallback **only when** `isSimulatedFallbackAllowed()`; in a production runtime it returns `{ success: false, error: 'No fue posible consultar el estado del pedido. Por favor reintenta en unos minutos.' }`.
-- The HTTP error path is already correct — untouched.
-
-### 3.E `[MODIFY] src/components/CheckoutModal.tsx` (minimal — ~6 lines)
-
-- Capture the `processMercadoPagoPayment()` result; on `success: false` → `setSubmitError(result.error || 'No fue posible iniciar el pago...')`, `setIsSubmitting(false)`, and `return` — the customer **stays on the Pago step** (where `submitError` already renders, l.910-924) instead of landing on the confirmation step for an unpaid order.
-- **Parallel-work note:** Task 0.11 (other agent) targets `src/services/api.ts` and the `submitOrder` failure hunk (l.335-340, which already exists); this change is the adjacent l.348-356 hunk — small, reviewable overlap only.
-
-### 3.F `[MODIFY] .env.example`
-
-- New block mirroring the `ALLOW_SIMULATED_PAYMENTS` one: `VITE_ALLOW_SIMULATED_PAYMENTS=false` with an operator warning (client-side, build-time inlined; leave unset/`false` in Production).
+- Extend the existing Footer coverage: the policy entries render as buttons (not dead text), and no `href="#"` placeholder links exist anywhere in the Footer (the regression this task exists to prevent).
 
 ### Explicitly NOT done (scope guardrails)
 
-- **`submitOrder`** — Task 0.11 (other agent).
-- **Voucher storage/server-side validation** — Task 2.9 (this task only stops the client from *masking* the endpoint's errors; the Firestore doc-size and lifecycle-guard rework remains 2.9's scope).
-- No changes to `api/` endpoints, no new dependencies, no copy rewrites beyond the new error strings.
+- **No router, no new dependencies, no standalone HTML pages** (unless the owner pivots at plan review).
+- **No changes to the other footer columns** — the stale `Boleta Electrónica Inmediata` wording in the same column is Task **3.3**'s copy sweep, deliberately untouched here.
+- No `App.tsx` changes; no design-token additions to `src/index.css` (the modal reuses the existing modal + footer classes).
 
 ---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-**`[NEW] src/tests/services/simulationPolicy.test.ts`** (~5 tests; pure — injectable env, no global mutation):
-
-1. `VITE_VERCEL_ENV` unset ⇒ allowed (local dev / Vitest).
-2. `'preview'` / `'development'` ⇒ allowed.
-3. `'production'` ⇒ blocked.
-4. production + `VITE_ALLOW_SIMULATED_PAYMENTS='true'` ⇒ allowed (escape hatch).
-5. production + `'TRUE'` / `'1'` ⇒ still blocked (strict opt-in).
-
-**`[MODIFY] src/tests/services/mercadopago.test.ts`:**
-
-- Existing 6 success tests currently pass via the *network-throw fallback* (jsdom `fetch` to a relative URL throws). They are re-based on an explicit `fetch` mock (`ok: true` + `initPoint`) so they assert the real success contract; assertions unchanged.
-- New: HTTP 400 with `{ error }` body ⇒ `success: false` + server message surfaced (stock-rejection contract); HTTP 500 ⇒ `success: false`; network throw in test env ⇒ simulated `success: true, initPoint: undefined` (dev behavior pinned); network throw with production env ⇒ `success: false`; `processMercadoPagoPayment` propagates a preference failure (`success: false`, **no** fabricated `approved` status).
-
-**`[MODIFY] src/tests/services/transferVoucher.test.ts`:**
-
-- New: HTTP 401 (RUT mismatch) ⇒ `success: false` + server error message; network throw in test env ⇒ simulated `success: true` with `simulated-voucher://` URL (dev behavior pinned); network throw with production env ⇒ `success: false`.
-
-**`[MODIFY] src/tests/services/orderTracking.test.ts`:**
-
-- New: network throw in test env ⇒ simulated fallback (dev behavior pinned); network throw with production env ⇒ `success: false` (no fabricated order).
-
-**`[MODIFY] src/tests/components/CheckoutModal.test.tsx`:**
-
-- New: `processMercadoPagoPayment` mocked to resolve `success: false` ⇒ `submitError` visible on the Pago step and the confirmation step is **not** reached.
-
-**Mocking & hygiene:** boundary mocks only (`vi.spyOn(global, 'fetch')`, existing `vi.mock` service doubles); suites that set `VITE_VERCEL_ENV` / `VITE_ALLOW_SIMULATED_PAYMENTS` restore them in `afterEach` (same env-hygiene pattern the `api/` suites use for `VERCEL_ENV`). The injectable-env design means no `import.meta.env` mutation is needed in the policy tests.
-
-**Zero-regression target:** `pnpm test` (557 → ~568 tests, 66 → 67 suites), `pnpm build`, `pnpm lint`, `pnpm format:check` — all green.
+1. **`LegalModal.test.tsx`** (new suite, ~6 tests): four section-render tests (each policy's heading + a law-specific marker: `19.496` / SERNAC in garantía, `19.628` in privacidad, RUT + Av. Ortúzar in identificación); open-on-section from the Footer for each entry; Escape closes; `role="dialog"`/`aria-modal` present.
+2. **`ClinicalStorefront.test.tsx`** (+1–2 tests): policy entries are buttons wired to the modal; the Footer contains no `href="#"` links.
+3. **Mocking:** none required beyond the suites' existing patterns — no network, Firebase, or payment boundaries are touched (pure render + interaction tests).
+4. **Zero-regression target:** `pnpm test` (577 → ~584 tests, 68 → 69 suites), `pnpm build`, `pnpm lint`, `pnpm format:check` — all green.
 
 ---
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-- **`src/services/AGENTS.md`:** §6 table rewritten from "known degradation contracts" to the as-built per-adapter failure contract (HTTP errors always surface; simulation only on network absence outside production, or with the explicit opt-in); §1 file map gains the `simulationPolicy.ts` row; §2.3 note cross-links the new `VITE_ALLOW_SIMULATED_PAYMENTS` var.
-- **`src/tests/AGENTS.md`:** refresh counts (557 → final count) and the `services/` suite list (+ `simulationPolicy`).
-- **`src/components/AGENTS.md`:** one-line addition to the checkout payment section — MP preference failures surface via `submitError` on the Pago step.
-- **`PRODUCTION_READINESS_TODO.md`:** mark **2.8** `[x]` with an as-built summary; note that the client no longer masks `upload-voucher` failures (motivating 2.9's server-side rework, which stays open).
+- **`src/components/AGENTS.md`:** new `LegalModal` subsection under §7 (Navigation, Layout & Utility Components) + the `Footer.tsx` §7.2 entry updated (policy buttons, modal wiring, no dead links).
+- **`src/tests/AGENTS.md`:** refresh counts (68 → 69 suites, 577 → final test count) and the `components/` list (+ `LegalModal`).
+- **`PRODUCTION_READINESS_TODO.md`:** mark **7.1** `[x]` with an as-built summary, recording the modal-vs-pages deviation and the legal-copy-is-a-draft human action item.
+- **Root `AGENTS.md`:** no change needed (no new invariants — the modal follows the existing pattern; config-sourced values only).
 
 ---
 

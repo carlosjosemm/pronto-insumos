@@ -1,13 +1,16 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Activity, ShieldCheck, RefreshCw, MapPin, Building2, Phone, CreditCard, Truck } from 'lucide-react'
 import { WHATSAPP_DISPLAY, whatsappLink } from '../config/contact'
 import { BANK_DETAILS } from '../config/bankDetails'
+import LegalModal, { LegalSection } from './LegalModal'
 
 export interface FooterProps {
   onOpenTracking?: () => void
 }
 
 export default function Footer({ onOpenTracking }: FooterProps = {}) {
+  const [legalSection, setLegalSection] = useState<LegalSection | null>(null)
+
   return (
     <footer className="footer-container">
       <div className="footer-inner">
@@ -163,7 +166,24 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               <li>• Factura para Clínicas — Cotización por WhatsApp</li>
               <li>• Dispositivos Homologados Registro ISP</li>
               <li>• Fichas de Seguridad de Materiales</li>
-              <li>• Términos y Condiciones de Venta B2B</li>
+              <li>
+                •{' '}
+                <button type="button" aria-haspopup="dialog" onClick={() => setLegalSection('terminos')}>
+                  Términos y Condiciones de Venta B2B
+                </button>
+              </li>
+              <li>
+                •{' '}
+                <button type="button" aria-haspopup="dialog" onClick={() => setLegalSection('garantia')}>
+                  Garantía Legal 6 Meses (SERNAC)
+                </button>
+              </li>
+              <li>
+                •{' '}
+                <button type="button" aria-haspopup="dialog" onClick={() => setLegalSection('privacidad')}>
+                  Privacidad y Protección de Datos (Ley 19.628)
+                </button>
+              </li>
             </ul>
           </div>
 
@@ -243,6 +263,8 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
           </div>
         </div>
       </div>
+
+      {legalSection && <LegalModal key={legalSection} section={legalSection} onClose={() => setLegalSection(null)} />}
     </footer>
   )
 }

@@ -411,6 +411,16 @@ Clinical category pills — the six frozen Chilean keys (`DESECHABLES, ESTERILIZ
 * **Free-shipping figure must match the cart:** the logistics list advertises `Despacho Gratuito sobre $150.000`. It previously said `$100.000` while the cart computed against `150000`, so the storefront contradicted itself. Treat the cart constant as authoritative.
 * **Contact icons use `var(--accent-on-dark)`** — the footer is an `--ink-900` surface, where `--accent` fails contrast. The retired `--brand-accent-green` token must not reappear.
 * **Zero Prototype Buttons:** Administrative wipe/seed buttons are strictly eliminated from public view.
+* **Legal policy buttons (Task 7.1):** the `Cumplimiento Clínico` column's former dead-text `Términos y Condiciones de Venta B2B` `<li>` is now a button, joined by `Garantía Legal 6 Meses (SERNAC)` and `Privacidad y Protección de Datos (Ley 19.628)` — all three open the `LegalModal` (§7.5) on their section. `Footer` owns the modal state internally (`legalSection` + remount-per-section via `key={legalSection}`) — no `App.tsx` wiring. `.footer-links-list button` in `src/index.css` mirrors the footer-link look/hover. `ClinicalStorefront.test.tsx` asserts the wiring and that no `href="#"` placeholder links return.
+
+### 7.5 `LegalModal.tsx`
+
+Task 7.1's legal-compliance surface (Ley 19.496 / Ley 19.628): one modal, four policy sections — `terminos` (Términos y Condiciones de Venta), `garantia` (Garantía Legal 6 Meses SERNAC, incl. the hygiene-sealed-goods exclusion), `privacidad` (Ley 19.628) and `identificacion` (Razón Social, RUT, Av. Ortúzar 750, canales). Contract:
+
+* Render-when-open: the component has **no `isOpen` prop** — the parent conditionally mounts it (`{legalSection && <LegalModal key={legalSection} …/>}`), so `useScrollLock(true)` / `useFocusTrap(true)` are literal and the Escape listener needs no open-guard. The `key` forces a remount when the entry section changes, keeping the seeded `useState(section)` honest.
+* Section nav is plain `aria-pressed` buttons — deliberately **not** `role="tab"` (tabs imply arrow-key navigation this component does not implement).
+* **Config-sourced values only:** Razón Social / RUT / email from `BANK_DETAILS`, phone from `WHATSAPP_DISPLAY`, WhatsApp links via `whatsappLink()`, and the commercial thresholds from [`src/config/delivery.ts`](../config/delivery.ts) — `formatCLP(MIN_ORDER_OUTSIDE_MELIPILLA)` / `formatCLP(FREE_SHIPPING_THRESHOLD)`, never re-declared (the §3.4 iron rule; the independent review caught the literals before merge). The known literals — `Av. Ortúzar 750, Melipilla, Chile`, the `08:30 a 18:30` hours and the `16:00` same-day cutoff (no config constant exists anywhere; `Hero.tsx` literals it too) — mirror the Footer's own copies; consolidating them into a config constant is a recorded follow-up candidate.
+* The copy states the as-built commercial behavior exactly (Boleta Electrónica · IVA 19%, Factura via WhatsApp quotation, Melipilla same-day before 16:00, San Antonio scheduled route with $60.000 minimum, free shipping over $150.000, **no pickup**). ⚠️ The legal text is an owner-reviewed draft, not legal advice — content edits are text-only changes.
 
 ### 7.3 `PaymentReturnModal.tsx`
 

@@ -2758,6 +2758,23 @@ textarea {
   color: var(--accent-on-dark);
 }
 
+/* Footer policy buttons (Task 7.1) — same look and hover as footer links */
+.footer-links-list button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.footer-links-list button:hover {
+  color: var(--accent-on-dark);
+}
+
 /* Footer Trust Badge Certification Row */
 .footer-trust-badges {
   display: flex;
