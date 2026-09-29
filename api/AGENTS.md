@@ -107,7 +107,7 @@ Two layers defend against duplicate webhook deliveries:
 
 - Under [`../firestore.rules`](../firestore.rules), client reads on `/orders/{id}` are denied (`allow read: if false;`), so tracking goes through this serverless proxy:
   - Accepts `{ orderId, rut }`; normalizes the RUT by stripping non `[0-9kK]` characters and upper-casing (local `normalizeRut`, **not** a Modulo-11 check — the official check-digit validation runs client-side via `src/utils/rut.ts`; the server only enforces `length >= 8`).
-  - Looks the order up by `where('orderId', '==', id)` and compares against `customer.rut || billing.rut`. Mismatch → `401 { error: 'El RUT ingresado no coincide con el registrado para este pedido.' }`.
+  - Resolves the order by **document key first** (`resolveOrderByCanonicalId`, Task 0.12) with the `where('orderId','==')` field query as the legacy fallback, then compares against `customer.rut || billing.rut`. Mismatch → `401 { error: 'El RUT ingresado no coincide con el registrado para este pedido.' }`.
   - Returns a sanitized payload (items, customer contact, billing, voucher, 5-stage `fulfillment` block) — no internal payment tokens.
 - ⚠️ Stale copy to fix eventually: the `ENTREGADO` description still says "…o retirado en Av. Ortúzar 750" (pickup was removed) and the non-Melipilla courier fallback is `'Starken / Chilexpress Regional'` (RM delivery was removed).
 - The simulated fallback (returned when `getAdminFirestore()` is `null`) fabricates a plausible order — in a deployed environment a missing Firebase credential would therefore surface fake tracking data instead of an error.
@@ -129,7 +129,7 @@ Two layers defend against duplicate webhook deliveries:
 - **Idempotency:** re-confirming the object already recorded returns `200 { duplicate: true }` with **no** side effects (no token rotation, no second history event, no second warehouse alert).
 - **Fail-closed in production** (same gate as Task 0.10, `isSimulatedPaymentAllowed()`): missing Admin credentials/bucket ⇒ `500` + loud log in a production runtime; outside production the response is explicitly `{ simulated: true }` and the client never mistakes it for a stored voucher. The outer catch logs the raw cause and returns a customer-safe message — this endpoint is unauthenticated.
 - **`dataUrl` is rejected** with a dedicated `400`, so a stale cached bundle logs a precise cause instead of a generic failure.
-- **Legacy documents** (pre-2.9) may still carry a Base64 `data:` URL: `/api/track-order` omits those from its payload and the backoffice converts them to a Blob URL on click (Chrome blocks top-frame `data:` navigation).
+- **Legacy documents** (pre-2.9) may still carry a Base64 `data:` URL: `/api/track-order` omits those from its payload and the backoffice converts them to a Blob URL on click (Chrome blocks top-frame `data:` navigation). Since **Task 0.13** that conversion is gated by [`src/utils/voucherUrl.ts`](../src/utils/voucherUrl.ts): only an allowlisted declared MIME is opened, and the bytes are re-wrapped with the forced type — a `blob:` URL inherits the admin origin, so an HTML-typed Blob would otherwise run as script there.
 - **Orphans:** an abandoned `sign → confirm` window can leave at most one object of ≤5 MiB under an order-scoped path (the signature enforces the cap). No lifecycle/cleanup job is provisioned — bounded waste, deliberately out of scope.
 - **Bucket plumbing:** `FIREBASE_STORAGE_BUCKET` (or the `${FIREBASE_PROJECT_ID}.firebasestorage.app` default) names the bucket; `.env.example` placeholder values are treated as *unconfigured* (⇒ the production `500`, never a signed URL for a non-existent bucket). `storage.rules` is deny-all — the bucket is reached exclusively through signed URLs and download tokens — and the browser PUT needs the bucket CORS config (`scripts/storage-cors.json`, applied with `pnpm run storage:cors -- --apply` — or `gcloud storage buckets update gs://<bucket> --cors-file=…` when the Cloud SDK is installed; the script is a dry run by default and validates the required PUT method + headers before writing). Note GCS builds `Access-Control-Allow-Headers` from that file's `responseHeader` list, which is why `x-goog-content-length-range` must stay in it.
 
@@ -274,9 +274,13 @@ export function getCollectionName(baseName: FirestoreCollectionKey | string): st
 
 ## 🛡️ 8. Key Decisions, Invariants & Known Gaps
 
-### 8.1 Document ID Dual-Lookup Strategy
+### 8.1 Document ID Dual-Lookup Strategy (Task 0.12)
 
-Storefront orders are written with `setDoc(doc(db, col, orderId))`, so the Firestore Document ID **equals** the canonical code (`PRONTO-483921`). Legacy/manual docs may use auto IDs with `orderId` as a field only. `approve-transfer`, `dispatch-order`, `mark-delivered`, and `orders?orderId=` therefore try `doc(orderId)` first and fall back to `where('orderId','==',orderId)`. `upload-voucher` (Task 2.9) and the admin actions try `doc(orderId)` first and fall back to `where('orderId','==',orderId)`. The remaining public endpoints (`track-order`, `order-confirmation`) and the MP webhook use the `orderId`-field query only — both forms resolve either storage style.
+Storefront orders are written with `setDoc(doc(db, col, orderId))`, so the Firestore Document ID **equals** the canonical code (`PRONTO-483921`). Legacy/manual docs may use auto IDs with `orderId` as a field only.
+
+**Every server endpoint resolves orders through [`api/_lib/orderLookup.ts`](./_lib/orderLookup.ts) — `resolveOrderByCanonicalId(db, id)`** — which tries `doc(orderId)` first and falls back to `where('orderId','==',orderId)` (logging a `[orderLookup]` warning, since only pre-0.12 documents should take that path). Resolving through the field query alone let a **decoy document** (any document id, an `orderId` field pointing at a victim's id) shadow the real order for the payment webhook, the tracking endpoint and the confirmation mail; `firestore.rules` now additionally binds `data.orderId == orderId` at create time, so new decoys cannot be written at all. The helper skips the document-key attempt for ids that cannot be a path (empty, or containing `/`) — `CollectionReference.doc()` throws on those, and a malformed public id must degrade to "not found", never to a 500 carrying SDK internals.
+
+Consumers: `webhooks/mercadopago`, `track-order`, `order-confirmation`, `upload-voucher`, `create-preference`, `admin/approve-transfer`, `admin/dispatch-order`, `admin/mark-delivered`, `admin/orders?orderId=`, `admin/resolve-payment-review`. (`admin/order-history` resolves **no order document** — it queries `order_status_history` by `orderId`, which is correct for its purpose.)
 
 ### 8.2 Line-Item Consolidation Before Stock Mutation
 

@@ -51,6 +51,27 @@ const FACTURA_ENABLED = false
 /** Guided-flow step labels (Task 2.6). Step 5 (Confirmación) is outside the stepper. */
 const STEPS = ['Contacto', 'Despacho', 'Documento', 'Pago'] as const
 
+/**
+ * Field length caps mirrored from `firestore.rules` (Task 0.12 — `isValidCustomer`,
+ * `isValidBilling` and `isValidSanitaryVerification`). Firestore rejects the WHOLE
+ * order document when any value exceeds its cap, and `submitOrder` can only report a
+ * generic failure — so the inputs must stop the value before it can dead-end
+ * checkout. Keep both sides in sync; the pairing is pinned by
+ * `src/tests/security/orderCreateContract.test.ts`.
+ */
+const FIELD_MAX_LENGTH = {
+  fullName: 120,
+  email: 160,
+  phone: 32,
+  rut: 16,
+  address: 200,
+  zip: 16,
+  razonSocial: 160,
+  giroComercial: 160,
+  sisRegistryNumber: 40,
+  credentialFileName: 200
+} as const
+
 export interface CheckoutModalProps {
   isOpen: boolean
   onClose: () => void
@@ -461,6 +482,7 @@ export default function CheckoutModal({
                     <input
                       id="ck-fullname"
                       className="checkout-input"
+                      maxLength={FIELD_MAX_LENGTH.fullName}
                       type="text"
                       required
                       placeholder="Ej: Dra. Camila Fuentes"
@@ -475,6 +497,7 @@ export default function CheckoutModal({
                     <input
                       id="ck-email"
                       className="checkout-input"
+                      maxLength={FIELD_MAX_LENGTH.email}
                       type="email"
                       required
                       placeholder="contacto@clinica.cl"
@@ -489,6 +512,7 @@ export default function CheckoutModal({
                     <input
                       id="ck-phone"
                       className="checkout-input"
+                      maxLength={FIELD_MAX_LENGTH.phone}
                       type="tel"
                       inputMode="tel"
                       required
@@ -534,6 +558,7 @@ export default function CheckoutModal({
                     <input
                       id="ck-address"
                       className="checkout-input"
+                      maxLength={FIELD_MAX_LENGTH.address}
                       type="text"
                       required
                       placeholder="Ej: Av. Ortúzar 750, Of. 302"
@@ -579,6 +604,7 @@ export default function CheckoutModal({
                       <input
                         id="ck-zip"
                         className="checkout-input"
+                        maxLength={FIELD_MAX_LENGTH.zip}
                         type="text"
                         inputMode="numeric"
                         required
@@ -641,6 +667,7 @@ export default function CheckoutModal({
                           id="sis-registry-number"
                           type="text"
                           inputMode="text"
+                          maxLength={FIELD_MAX_LENGTH.sisRegistryNumber}
                           placeholder="Ej: 148925"
                           value={sisRegistryNumber}
                           onChange={(e) => {
@@ -690,7 +717,10 @@ export default function CheckoutModal({
                           accept=".pdf,.jpg,.jpeg,.png"
                           onChange={(e) => {
                             if (e.target.files && e.target.files[0]) {
-                              setCredentialFileName(e.target.files[0].name)
+                              // Mirrors the rules cap on sanitaryVerification.credentialFileName.
+                              setCredentialFileName(
+                                e.target.files[0].name.slice(0, FIELD_MAX_LENGTH.credentialFileName)
+                              )
                             }
                           }}
                           style={{
@@ -790,6 +820,7 @@ export default function CheckoutModal({
                   <input
                     id="ck-rut"
                     className={`checkout-input${rutError ? ' checkout-input--error' : ''}`}
+                    maxLength={FIELD_MAX_LENGTH.rut}
                     type="text"
                     inputMode="text"
                     required
@@ -840,6 +871,7 @@ export default function CheckoutModal({
                         </label>
                         <input
                           type="text"
+                          maxLength={FIELD_MAX_LENGTH.razonSocial}
                           placeholder="Ej: Centro Dental San Pedro SpA"
                           value={formData.razonSocial || ''}
                           onChange={(e) => {
@@ -882,6 +914,7 @@ export default function CheckoutModal({
                         </label>
                         <input
                           type="text"
+                          maxLength={FIELD_MAX_LENGTH.giroComercial}
                           placeholder="Ej: Servicios Odontológicos"
                           value={formData.giroComercial || ''}
                           onChange={(e) => {

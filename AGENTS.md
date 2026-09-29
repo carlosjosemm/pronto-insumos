@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (663 tests across 72 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (688 tests across 75 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -88,14 +88,16 @@ Agents must strictly respect the payment boundaries defined in [PRODUCTION_READI
 * ✅ **Server-side price & total verification (Task 0.9):** `/api/create-preference` rebuilds every preference line from the Firestore catalog (client sends only product IDs + quantities) and fails closed (`503`) when Firestore Admin is unavailable with a real token. The applied promo is read from the **order document** — never from the request body — and resolved against `src/config/promos.ts`, so the charge and the webhook's expectation can never disagree on which code applied; paused products (`isActive === false`) and unregistered orders are rejected with `400`. The webhook asserts `paymentData.transaction_amount` **and** `order.totalAmount` against a catalog-recomputed total (`src/utils/orderTotal.ts`) before marking `PAGADO_MERCADOPAGO`; mismatches go to `PAGO_EN_REVISION` with **no** stock deduction and no customer "paid" email.
 * ✅ **Promo discounts are derived from the code, never from stored state:** every surface (cart display, `submitOrder`, preference builder, webhook) resolves the percent through `resolvePromo`/`resolvePromoPercent` in `src/config/promos.ts`. A `PromoCode` object hydrated from `localStorage` is a display artifact — `cartStorage` re-resolves it on load and `App`/`Cart` re-derive at render, so a hand-edited cart can never render a discount the payment layer would refuse to charge. The promo **policy** model (expiry, usage limits, redemption audit, product eligibility) is deliberately thin today and tracked as **Task 9.1** in [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 * ✅ **Voucher bytes never live in Firestore (Task 2.9):** bank-transfer vouchers are uploaded **browser → Cloud Storage** over a short-lived V4 signed URL (`x-goog-content-length-range` signed in, so Storage itself rejects anything above 5 MiB), and the order document keeps only `voucherStoragePath` / `voucherUrl` (download-token URL) / `voucherFileName` / `voucherContentType` / `voucherSizeBytes`. `/api/upload-voucher` is the sole authority for the transition, which is allowed **only** from `PENDIENTE_TRANSFERENCIA` / `TRANSFERENCIA_COMPROBANTE_SUBIDO` and is re-asserted inside a transaction. The bucket is deny-all (`storage.rules`; deploy with `pnpm run deploy:storage-rules`) and reached exclusively through signed URLs and download tokens. Never reintroduce a Base64 `data:` voucher transport.
-* ✅ **Firestore Security Rules Enforced (`firestore.rules`):** `products` is public read-only and admin-write only (`request.auth.token.admin == true`). `orders` can only be created with pending statuses without pre-injected payment attributes; client-side reads, updates, and deletes on `orders` are strictly denied (`allow read, update, delete: if false;`). `isValidOrderCreate` also enforces integer `totalAmount` and per-line shape guards (productId/quantity/price, first 10 lines, ≤25 lines). Deploy with `pnpm run deploy:rules
+* ✅ **Firestore Security Rules Enforced (`firestore.rules`):** `products` is public read-only and admin-write only (`request.auth.token.admin == true`). `orders` can only be created with pending statuses without pre-injected payment attributes; client-side reads, updates, and deletes on `orders` are strictly denied (`allow read, update, delete: if false;`). **Task 0.12** additionally binds the document to its own identity and pins the create shape: `data.orderId == orderId` (a decoy document can no longer shadow a real order), a top-level `keys().hasOnly([...])` allowlist of exactly the keys `submitOrder()` writes — so admin-only fields (`voucherUrl`, `approvedAt`, `dispatch`, `trackingNumber`, `confirmationEmailSentAt`, …) cannot be pre-injected — nested allowlists for `customer` / `billing` / `taxBreakdown` / `sanitaryVerification` / item lines, `paymentMethod` ↔ `status` consistency, `billing.status == 'PENDIENTE_EMISION_SII'`, and per-field length caps mirrored by the checkout inputs. Every server endpoint resolves orders through `api/_lib/orderLookup.ts` (document key first, legacy field query as the fallback). Deploy with `pnpm run deploy:rules`.
 
+```bash
 # Deploy the deny-all Cloud Storage rules for the voucher bucket (requires the Blaze plan)
 pnpm run deploy:storage-rules
 
 # Apply the bucket CORS config the browser-direct voucher upload needs (dry run by default;
 # --apply writes it). Uses the Admin SDK credentials from .env.local — no Cloud SDK required.
-pnpm run storage:cors -- --apply`.
+pnpm run storage:cors -- --apply
+```
 
 ---
 
@@ -131,7 +133,7 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 72 suites / 663 tests)
+# Run all automated tests (Vitest, 75 suites / 688 tests)
 pnpm test
 
 # Run tests with live file watcher (or a V8 coverage report)
@@ -194,7 +196,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 663 tests pass
+pnpm test          # Ensure all 688 tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Sync environment variables to Vercel (DRY RUN by default — see §7.1)

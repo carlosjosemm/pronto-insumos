@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getAdminFirestore } from "../_lib/firebaseAdmin.js";
 import { verifyMercadoPagoSignature } from "../_lib/mercadopagoSignature.js";
 import { getCollectionName } from "../_lib/firestoreEnv.js";
+import { resolveOrderByCanonicalId } from "../_lib/orderLookup.js";
 import { sendEmail, getWarehouseEmail } from "../_lib/email.js";
 import {
   buildPaymentConfirmedEmail,
@@ -146,16 +147,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
-        // Find order in Firestore using Admin SDK
-        const orderSnapshot = await adminDb
-          .collection(getCollectionName("orders"))
-          .where("orderId", "==", cleanOrderId)
-          .limit(1)
-          .get();
+        // Resolve the order by document key first (Task 0.12) — resolving through
+        // the `orderId` field alone lets a decoy document shadow the real order.
+        const resolvedOrder = await resolveOrderByCanonicalId(adminDb, cleanOrderId);
 
-        if (!orderSnapshot.empty) {
-          const orderDoc = orderSnapshot.docs[0];
-          const orderData = orderDoc.data();
+        if (resolvedOrder) {
+          const orderRef = resolvedOrder.ref;
+          const orderData = resolvedOrder.data;
 
           // Fast-Path Idempotency Check:
           // If the order has already been marked as PAGADO_MERCADOPAGO or already recorded this payment ID,
@@ -180,7 +178,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           let stockDeducted = false;
           let flaggedForReview = false;
           await adminDb.runTransaction(async (transaction) => {
-            const freshOrderSnap = await transaction.get(orderDoc.ref);
+            const freshOrderSnap = await transaction.get(orderRef);
             const freshOrderData = freshOrderSnap.data();
 
             // Concurrency Guard: verify order was not updated concurrently
@@ -293,7 +291,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 `[Mercado Pago Webhook] Order "${cleanOrderId}" amount verification failed: paid ${String(paymentData.transaction_amount)}, expected ${String(expectedAmount)}. Flagging for manual review; no stock deducted.`,
               );
               const reviewNowIso = new Date().toISOString();
-              transaction.update(orderDoc.ref, {
+              transaction.update(orderRef, {
                 status: "PAGO_EN_REVISION",
                 mercadopagoPaymentId: String(paymentId),
                 updatedAt: reviewNowIso,
@@ -330,7 +328,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const nowIso = new Date().toISOString();
 
             // 2. Perform all writes: update order document
-            transaction.update(orderDoc.ref, {
+            transaction.update(orderRef, {
               status: "PAGADO_MERCADOPAGO",
               mercadopagoPaymentId: String(paymentId),
               paidAt: nowIso,

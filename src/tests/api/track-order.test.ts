@@ -62,16 +62,7 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
   })
 
   it('should return 404 when order is not found in Firestore', async () => {
-    const mockAdminDb = {
-      collection: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockReturnValue({
-            get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
-          })
-        })
-      })
-    }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+    mockOrderDb(null)
 
     const req = {
       method: 'POST',
@@ -86,23 +77,11 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
   })
 
   it('should return 401 when customer RUT does not match order record', async () => {
-    const mockOrderDoc = {
-      data: () => ({
-        orderId: 'PRONTO-123456',
-        customer: { rut: '11.111.111-1' },
-        status: 'PENDIENTE_TRANSFERENCIA'
-      })
-    }
-    const mockAdminDb = {
-      collection: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockReturnValue({
-            get: vi.fn().mockResolvedValue({ empty: false, docs: [mockOrderDoc] })
-          })
-        })
-      })
-    }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+    mockOrderDb({
+      orderId: 'PRONTO-123456',
+      customer: { rut: '11.111.111-1' },
+      status: 'PENDIENTE_TRANSFERENCIA'
+    })
 
     const req = {
       method: 'POST',
@@ -117,35 +96,23 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
   })
 
   it('should return 200 with mapped fulfillment info when order and RUT match', async () => {
-    const mockOrderDoc = {
-      data: () => ({
-        orderId: 'PRONTO-123456',
-        status: 'EN_PREPARACION',
-        paymentMethod: 'transferencia',
-        totalAmount: 189990,
-        items: [{ productId: 'odon-1', name: 'Turbina', quantity: 1, price: 189990 }],
-        customer: {
-          fullName: 'Dra. Andrea Morales',
-          email: 'andrea@clinica.cl',
-          rut: '12345678-5',
-          address: 'Av. Ortúzar 750',
-          city: 'Melipilla',
-          documentType: 'factura'
-        },
-        courier: 'Despacho Express Melipilla',
-        trackingNumber: 'MEL-1234'
-      })
-    }
-    const mockAdminDb = {
-      collection: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockReturnValue({
-            get: vi.fn().mockResolvedValue({ empty: false, docs: [mockOrderDoc] })
-          })
-        })
-      })
-    }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+    mockOrderDb({
+      orderId: 'PRONTO-123456',
+      status: 'EN_PREPARACION',
+      paymentMethod: 'transferencia',
+      totalAmount: 189990,
+      items: [{ productId: 'odon-1', name: 'Turbina', quantity: 1, price: 189990 }],
+      customer: {
+        fullName: 'Dra. Andrea Morales',
+        email: 'andrea@clinica.cl',
+        rut: '12345678-5',
+        address: 'Av. Ortúzar 750',
+        city: 'Melipilla',
+        documentType: 'factura'
+      },
+      courier: 'Despacho Express Melipilla',
+      trackingNumber: 'MEL-1234'
+    })
 
     const req = {
       method: 'POST',
@@ -170,17 +137,43 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
     )
   })
 
-  function mockOrderDb(orderData: Record<string, unknown>) {
-    const mockAdminDb = {
-      collection: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockReturnValue({
-            get: vi.fn().mockResolvedValue({ empty: false, docs: [{ data: () => orderData }] })
-          })
-        })
-      })
+  /**
+   * Admin SDK double for the canonical order lookup (Task 0.12): the document key
+   * resolves first; the `orderId` field query is only consulted when the key is
+   * missing (or when `legacyFieldOnly` forces the legacy path).
+   */
+  function mockOrderDb(
+    orderData: Record<string, unknown> | null,
+    options: { decoy?: Record<string, unknown>; legacyFieldOnly?: boolean } = {}
+  ) {
+    const orderRef = { id: 'PRONTO-123456' }
+    const orderDoc = orderData ? { id: 'PRONTO-123456', ref: orderRef, data: () => orderData } : null
+    const decoyDoc = options.decoy ? { id: 'decoy-doc', ref: { id: 'decoy-doc' }, data: () => options.decoy } : null
+
+    const directGet = vi
+      .fn()
+      .mockResolvedValue(
+        orderData && !options.legacyFieldOnly
+          ? { exists: true, ref: orderRef, data: () => orderData }
+          : { exists: false, ref: orderRef, data: () => undefined }
+      )
+    const whereGet = vi
+      .fn()
+      .mockResolvedValue(
+        decoyDoc
+          ? { empty: false, docs: [decoyDoc] }
+          : orderDoc
+            ? { empty: false, docs: [orderDoc] }
+            : { empty: true, docs: [] }
+      )
+
+    const collectionApi = {
+      doc: vi.fn(() => ({ get: directGet })),
+      where: vi.fn(() => ({ limit: vi.fn(() => ({ get: whereGet })) }))
     }
+    const mockAdminDb = { collection: vi.fn(() => collectionApi) }
     vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+    return { mockAdminDb }
   }
 
   it('should never echo a legacy Base64 voucher (Task 2.9)', async () => {
@@ -226,5 +219,57 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
     await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' } } as VercelRequest, res)
 
     expect(res.json.mock.calls[0][0].voucher).toMatchObject({ uploaded: true, url: voucherUrl })
+  })
+
+  it('resolves the document key first: a decoy document carrying the same orderId field cannot shadow the real order (Task 0.12)', async () => {
+    const { mockAdminDb } = mockOrderDb(
+      {
+        orderId: 'PRONTO-123456',
+        status: 'PENDIENTE_TRANSFERENCIA',
+        totalAmount: 189990,
+        items: [],
+        customer: { rut: '12345678-5', fullName: 'Dra. Andrea', email: 'a@b.cl', address: 'x', city: 'Melipilla' }
+      },
+      {
+        decoy: {
+          orderId: 'PRONTO-123456',
+          status: 'ENTREGADO',
+          totalAmount: 1,
+          items: [],
+          customer: { rut: '12345678-5', fullName: 'Decoy', email: 'decoy@evil.cl', address: 'x', city: 'Melipilla' }
+        }
+      }
+    )
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' } } as VercelRequest, res)
+
+    const payload = res.json.mock.calls[0][0]
+    expect(payload.status).toBe('PENDIENTE_TRANSFERENCIA')
+    expect(payload.totalAmount).toBe(189990)
+    expect(payload.customer.fullName).toBe('Dra. Andrea')
+    // The field query is never consulted once the document key resolves.
+    expect(mockAdminDb.collection().where).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the orderId field query for legacy documents whose key differs (Task 0.12)', async () => {
+    mockOrderDb(
+      {
+        orderId: 'PRONTO-123456',
+        status: 'PENDIENTE_TRANSFERENCIA',
+        totalAmount: 189990,
+        items: [],
+        customer: { rut: '12345678-5', fullName: 'Dra. Andrea', email: 'a@b.cl', address: 'x', city: 'Melipilla' }
+      },
+      { legacyFieldOnly: true }
+    )
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' } } as VercelRequest, res)
+
+    expect(res.json.mock.calls[0][0].orderId).toBe('PRONTO-123456')
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('orderId field fallback'))
+    warnSpy.mockRestore()
   })
 })

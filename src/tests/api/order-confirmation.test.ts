@@ -24,13 +24,44 @@ function createMockRes() {
   }
 }
 
-function mockDbWithOrder(orderData: Record<string, unknown>, updateSpy = vi.fn().mockResolvedValue({})) {
-  const mockOrderDoc = { data: () => orderData, ref: { update: updateSpy } }
+/**
+ * Admin SDK double for the canonical order lookup (Task 0.12): the document key
+ * resolves first, the `orderId` field query only when the key is missing.
+ */
+function mockDbWithOrder(
+  orderData: Record<string, unknown>,
+  updateSpy = vi.fn().mockResolvedValue({}),
+  options: { legacyFieldOnly?: boolean } = {}
+) {
+  const orderRef = { update: updateSpy }
+  const orderDoc = { id: 'PRONTO-123456', data: () => orderData, ref: orderRef }
   return {
     collection: vi.fn().mockReturnValue({
+      doc: vi.fn().mockReturnValue({
+        get: vi
+          .fn()
+          .mockResolvedValue(
+            options.legacyFieldOnly
+              ? { exists: false, ref: orderRef, data: () => undefined }
+              : { exists: true, ref: orderRef, data: () => orderData }
+          )
+      }),
       where: vi.fn().mockReturnValue({
         limit: vi.fn().mockReturnValue({
-          get: vi.fn().mockResolvedValue({ empty: false, docs: [mockOrderDoc] })
+          get: vi.fn().mockResolvedValue({ empty: false, docs: [orderDoc] })
+        })
+      })
+    })
+  }
+}
+
+function mockDbWithoutOrder() {
+  return {
+    collection: vi.fn().mockReturnValue({
+      doc: vi.fn().mockReturnValue({ get: vi.fn().mockResolvedValue({ exists: false }) }),
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockReturnValue({
+          get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
         })
       })
     })
@@ -115,15 +146,9 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
   })
 
   it('should return 404 when order does not exist', async () => {
-    vi.mocked(getAdminFirestore).mockReturnValue({
-      collection: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockReturnValue({
-            get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
-          })
-        })
-      })
-    } as unknown as ReturnType<typeof getAdminFirestore>)
+    vi.mocked(getAdminFirestore).mockReturnValue(
+      mockDbWithoutOrder() as unknown as ReturnType<typeof getAdminFirestore>
+    )
 
     const req = { method: 'POST', body: { orderId: 'PRONTO-999', rut: '12345678-5' } } as VercelRequest
     const res = createMockRes()
@@ -131,6 +156,26 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
     await handler(req, res)
 
     expect(res.status).toHaveBeenCalledWith(404)
+  })
+
+  it('resolves a legacy document through the orderId field fallback when the document key differs (Task 0.12)', async () => {
+    vi.mocked(getAdminFirestore).mockReturnValue(
+      mockDbWithOrder(validOrder, vi.fn().mockResolvedValue({}), { legacyFieldOnly: true }) as unknown as ReturnType<
+        typeof getAdminFirestore
+      >
+    )
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const req = { method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12345678-5' } } as VercelRequest
+    const res = createMockRes()
+
+    await handler(req, res)
+
+    // No Resend key in this suite → the send is skipped, but the order was resolved.
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ emailSent: false }))
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('orderId field fallback'))
+    warnSpy.mockRestore()
   })
 
   it('should return 401 when RUT does not match the order', async () => {

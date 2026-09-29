@@ -3,7 +3,7 @@
 A working task list, not a changelog. Finished work is one line in §2; its as-built detail lives in the `AGENTS.md` of the directory it touches. Open tasks keep their IDs (they are referenced from code comments and `AGENTS.md` files) — do not renumber.
 
 **Last updated:** 2026-09-29 (full audit pass; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
-**Baseline (verified 2026-09-29, after merging PR #22 / Task 2.9):** `pnpm test` 663/663 (72 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict`.
+**Baseline (verified 2026-09-29 on the 0.12 + 0.13 branch):** `pnpm test` 688/688 (75 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
 
 **Priorities:** **P1** = fix before real traffic · **P2** = fix soon after / before a marketed launch · **P3** = polish & DevOps.
 
@@ -13,8 +13,6 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 
 | ID | Task | Pri | Launch blocker |
 | :-- | :-- | :-: | :-: |
-| 0.12 | Firestore rules: bind order doc to its id + field allowlist | P1 | **Yes** |
-| 0.13 | Stored XSS via `voucherUrl` in the admin panel (made reliable by the 2.9 Blob-URL handler) | P1 | **Yes** |
 | 0.14 | Webhook reconciliation gaps (MP 5xx swallowed, double payment, cancelled/refunded orders, oversell) | P1 | **Yes** |
 | 0.15 | Admin dispatch crashes without a tracking number (`undefined` in Admin SDK write) | P1 | **Yes** |
 | 0.16 | `track-order` fabricates an order in production when Firebase credentials are missing | P1 | **Yes** |
@@ -45,7 +43,7 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 
 **Human action items (no agent can close these):**
 
-- Deploy Firestore rules after 0.12: `pnpm run deploy:rules`.
+- Deploy Firestore rules — **0.12's last open step**: the code-side hardening (doc-key-first resolution + the URL allowlist) is live-protective, but until this runs the database still accepts decoy documents and pre-injected admin fields. Run `pnpm run deploy:rules`.
 - `pnpm dlx vercel@latest deploy --prod` (8.6's last acceptance box; the `og-preview.jpg` gate is already cleared).
 - Confirm the 2.9 storage provisioning is live on **production** (Blaze plan, bucket, `pnpm run storage:cors -- --apply`, `pnpm run deploy:storage-rules`, and `FIREBASE_STORAGE_BUCKET` in Vercel Production if the bucket is not the default `<project>.firebasestorage.app`). Until then uploads fail closed with a WhatsApp-fallback message.
 - Register the `.cl` domain (7.2).
@@ -70,6 +68,8 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 0.9 | Server-side price rebuild in `create-preference` + webhook amount assertion (`PAGO_EN_REVISION` on mismatch) + admin `resolve-payment-review`. |
 | 0.10 | Simulated payment paths gated by `api/_lib/simulationPolicy.ts` (fail closed in production). |
 | 0.11 | `submitOrder` fails closed; `ignoreUndefinedProperties: true` on the client Firestore instance. |
+| 0.12 | Order documents bound to their own id + `keys().hasOnly` create-shape allowlist (nested maps, `paymentMethod` ↔ `status`, length caps, `PENDIENTE_EMISION_SII`); canonical doc-key-first resolver `api/_lib/orderLookup.ts` wired into the webhook, `track-order`, `order-confirmation` and `upload-voucher`; payload↔rules drift guard. **Rules still need `pnpm run deploy:rules`.** |
+| 0.13 | Voucher URLs allowlisted at the render sink: `src/utils/voucherUrl.ts` (storage host / legacy `data:` MIME / unsafe) + `OrderDetailPanel` opens a re-typed Blob or plain text — closes the admin-origin XSS that 0.12's write-side hole made reachable. |
 | 1.1 | Integer-CLP catalog, `formatCLP`, `Math.round` IVA. |
 | 1.2 | Billing block with tax breakdown, Factura field validation (gated by `FACTURA_ENABLED = false`), printable pro-forma voucher. |
 | 1.3 | ISP/SIS validation for regulated items (`prescriptionRequired`). |
@@ -101,19 +101,6 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
 ## 3. Open Tasks
 
 ### Phase 0 — Security & Payment Integrity (2026-09-29 audit)
-
-- [ ] **0.12. Firestore rules: bind the order document to its id and allowlist its fields** _(P1)_
-  - **Evidence:** `firestore.rules:32-59` (`isValidOrderCreate`) and `:87-95` (`orders`/`dev_orders`). The rule never asserts `data.orderId == orderId` (the path variable) and only blocks `mercadopagoPaymentId` / `paidAt` — every other key is client-writable.
-  - **Impact:** (a) a decoy doc `orders/<anything>` with field `orderId: "<victim id>"` can shadow the real order, because the webhook, `track-order` and `order-confirmation` resolve orders with `where('orderId','==',…).limit(1)` only (since 2.9 `upload-voucher` tries the doc id first, but keeps the same field-query fallback) and could pick the decoy; (b) any admin-only field (`voucherUrl`, `approvedAt`, `dispatch`, `courier`, `trackingNumber`, `confirmationEmailSentAt`, …) can be pre-injected at create time (feeds 0.13); (c) no length caps — a single public `create` can be ~1 MiB.
-  - **Fix:** add `data.orderId == orderId`; add `request.resource.data.keys().hasOnly([...])` for the exact shape `submitOrder` writes; require `paymentMethod` consistent with `status`; cap string lengths. Make the webhook, `track-order` and `order-confirmation` resolve by doc id first (as `create-preference` and `upload-voucher` already do), falling back to the field query. Apply to both `orders` and `dev_orders`.
-  - **Verify:** extend `src/tests/security/firestore-rules.test.ts` (content assertions) + a webhook test where a decoy doc with the same `orderId` field exists. Then deploy rules (human item).
-
-- [ ] **0.13. Stored XSS through `voucherUrl` in the admin panel** _(P1)_
-  - **Evidence:** `src/admin/components/OrderDetailPanel.tsx` renders `<a href={order.voucherUrl} target="_blank">` for whatever string is stored. Since 2.9 `upload-voucher` only writes server-built `https://firebasestorage.googleapis.com/…` URLs, but **0.12 still lets anyone write an arbitrary `voucherUrl` straight into a new order through Firestore** (the public API key is enough). Two paths follow:
-    - `javascript:` value → default anchor navigation (browser-dependent whether it runs under `target=_blank`).
-    - **`data:` value → made reliable by 2.9's `handleOpenVoucher`** (`OrderDetailPanel.tsx:129-142`): for any `data:` URL it `fetch`es it into a Blob and opens `URL.createObjectURL(blob)`. A `data:text/html,<script>…</script>` payload becomes a same-origin `blob:` page whose script runs in the **admin origin** (blob URLs inherit the creator's origin; the handler never checks `blob.type`). That script can read the Firebase Auth session and call every `/api/admin/*` action. Not exercised in a browser here, but the logic follows from the code.
-  - **Fix:** open only allowlisted URLs — `https:` to the configured Firebase Storage host; for legacy `data:` vouchers require the Blob's `type` to be `application/pdf` / `image/png` / `image/jpeg` (re-wrap it with that forced type) and refuse everything else; render plain text (no anchor) for any other scheme. Apply the same check anywhere a stored URL is linked (tracking modal). 0.12's field allowlist closes the injection side.
-  - **Verify:** `OrderDetailPanel.test.tsx` — `javascript:`, `data:text/html` and non-storage `https:` values open nothing; legacy `data:image/png` still opens.
 
 - [ ] **0.14. Webhook reconciliation gaps** _(P1)_ — `api/webhooks/mercadopago.ts`
   - **(a) MP verification failures are acknowledged `200`** (`:107-115`): a revoked/expired token, an MP 5xx or a timeout returns 200, so a genuinely paid order is never retried and never reconciled. Return `5xx` for `401/403/5xx/network`; keep `200` only for `404` (payment does not exist).
@@ -228,7 +215,7 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
   - `manualChunks` already split the build: `main` 137 kB, `vendor-react` 141 kB, **`vendor-firebase` 672 kB** (the remaining >500 kB warning). The storefront imports `getAuth` (`src/services/firebase.ts:25`) but only the admin needs Firebase Auth — dropping it from the storefront graph (see 8.11) is the biggest win; then `React.lazy()` for `CheckoutModal` / `ProductQuickView`.
 
 - [ ] **8.2. Type-Check the Serverless Functions** _(P3)_
-  - `tsconfig.json` includes only `src/**/*`. Verified 2026-09-29: `api/**` already passes `tsc --noEmit --strict --module esnext --moduleResolution bundler --types node`, so adding a `tsconfig.server.json` (Node context) and running it in the 8.4 gate is nearly free and will keep it green.
+  - `tsconfig.json` includes only `src/**/*`. Verified 2026-09-29 (on the 0.12 + 0.13 branch): `api/**` passes `pnpm exec tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --types node --skipLibCheck api/*.ts api/_lib/*.ts api/_lib/admin/*.ts api/webhooks/*.ts`. ⚠️ `--target es2022` and `--skipLibCheck` are **required** — without them the invocation fails (`TS2802` on the `MapIterator` loops, `TS18028` in `node_modules`) on the default ES5 target, which is why the earlier "verified" note was misleading. Adding a `tsconfig.server.json` (Node context) that carries those flags and running it in the 8.4 gate is nearly free and will keep it green.
 
 - [ ] **8.9. `.env.example` Completeness** _(P3)_
   - `SITE_URL` (read by `api/_lib/emailTemplates.ts`, defaults to `https://prontoinsumos.com`) is missing; document `VITE_VERCEL_ENV` as a build-time `define` from `vite.config.ts` (not a dashboard variable); verify every var referenced in `api/` and `src/` is represented.
