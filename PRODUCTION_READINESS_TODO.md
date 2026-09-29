@@ -37,7 +37,7 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 > **SUSPENDED until further notice (owner decision, 2026-09-29; extended to 3.1 the same day):** the whole of **Phase 3 — Logistics & Copy** — **3.1** (per-zone shipping rates), **3.2** (estimated delivery windows) and **3.3** (stale localization copy sweep) — is out of the active priority queue. Do not select, plan or implement these items.
 >
 > **Launch consequence, kept visible on purpose:** 3.1 is the only P1 launch blocker inside the suspension, so while it is suspended the storefront charges **no freight** below `FREE_SHIPPING_THRESHOLD` and PRONTO absorbs the courier cost on those orders.
-
+>
 > **SUSPENDED until further notice (owner decision, 2026-09-29):** **Phase 7 — Legal & Domain** — the **7.1** owner/lawyer sign-off on the draft legal copy and **7.2** (custom `.cl` domain + SSL) — is out of the active priority queue. Do not chase the 7.1 legal review (the draft copy stays published as-is), and do not implement 7.2 (NIC Chile registration, the Vercel DNS cut-over, the `pronto-insumos.vercel.app` URL sweep in `index.html`/`SITE_URL`, or the Resend / Mercado Pago URL re-check). IDs and wording are retained for when the suspension is lifted.
 >
 > **Launch consequence, kept visible on purpose:** 7.2 was the last P1 launch blocker outside the Phase 3 suspension, so with both suspended the storefront launches on **`https://pronto-insumos.vercel.app`** — no branded `.cl` domain, no custom-domain TLS, and every canonical/`SITE_URL` link stays on the Vercel host. The 7.1 consequence is that the SERNAC / Ley 19.628 copy ships as the owner-reviewed **draft**, without a lawyer sign-off.
