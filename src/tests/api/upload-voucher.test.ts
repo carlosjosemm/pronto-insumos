@@ -13,10 +13,14 @@ vi.mock('../../../api/_lib/firebaseAdmin', () => ({
 import handler from '../../../api/upload-voucher'
 import { getAdminApp, getAdminFirestore } from '../../../api/_lib/firebaseAdmin'
 import { getStorage } from 'firebase-admin/storage'
+import { FieldValue } from 'firebase-admin/firestore'
+import { THROTTLE_MESSAGE, THROTTLE_POLICIES } from '../../../api/_lib/abuseThrottle'
+import { createThrottleCounters } from './helpers/throttleCounters'
 
 function createMockRes() {
   const res: Partial<VercelResponse> = {
     statusCode: 200,
+    setHeader: vi.fn(),
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     end: vi.fn().mockReturnThis()
@@ -25,6 +29,7 @@ function createMockRes() {
     status: ReturnType<typeof vi.fn>
     json: ReturnType<typeof vi.fn>
     end: ReturnType<typeof vi.fn>
+    setHeader: ReturnType<typeof vi.fn>
   }
 }
 
@@ -46,6 +51,11 @@ const PENDING_ORDER = {
  * Firestore Admin double: direct doc-id lookup, `where` fallback, and a transactional
  * write path. `transactionData` lets a test simulate the order changing between the
  * authorization read and the confirm transaction (Task 2.9 TOCTOU guard).
+ *
+ * Since Task 8.8 the same double also backs the `abuse_counters` collection: the
+ * composite transaction routes counter refs to `counters` and every other ref to
+ * `orderTx` (the order transaction), so `orderTx.get` is the precise "the order
+ * transaction ran" assertion while the throttle keeps working underneath.
  */
 function createMockDb(
   orderData: Record<string, unknown> | null,
@@ -53,34 +63,58 @@ function createMockDb(
 ) {
   const updateSpy = vi.fn()
   const setSpy = vi.fn()
-  const docRef = { id: 'PRONTO-123456', update: updateSpy }
-  const orderDoc = { exists: true, ref: docRef, data: () => orderData }
-  const transactionDoc = {
-    exists: true,
-    ref: docRef,
-    data: () => (options.transactionData === undefined ? orderData : options.transactionData)
+  // `DocumentReference.update(data)` is a bound method in the Admin SDK; the wrapper
+  // keeps the (ref, data) call shape identical to `transaction.update(ref, data)`.
+  const docRef = { id: 'PRONTO-123456' } as {
+    id: string
+    update: (data: Record<string, unknown>) => unknown
   }
+  docRef.update = (data) => updateSpy(docRef, data)
+  const orderDoc = { exists: true, ref: docRef, data: () => orderData }
 
   const directGet = vi
     .fn()
     .mockResolvedValue(orderData ? orderDoc : { exists: false, ref: docRef, data: () => undefined })
   const whereGet = vi.fn().mockResolvedValue(orderData ? { empty: false, docs: [orderDoc] } : { empty: true, docs: [] })
 
+  // The transactional order document is a MUTABLE copy: a transaction update must be
+  // visible to a later transaction read — the Task 8.8 alert-reservation release does a
+  // compare-and-swap against what the confirm transaction wrote. Snapshots return a copy,
+  // like the real SDK, so `latestData` cannot alias the post-update state.
+  const orderState: Record<string, unknown> | null =
+    orderData === null ? null : { ...(options.transactionData === undefined ? orderData : options.transactionData) }
+  const orderSnapshot = () => ({
+    exists: orderState !== null,
+    ref: docRef,
+    data: () => (orderState ? { ...orderState } : undefined)
+  })
+
+  const orderTx = {
+    get: vi.fn(async () => orderSnapshot()),
+    set: vi.fn((ref: unknown, data: Record<string, unknown>) => setSpy(ref, data)),
+    update: vi.fn((ref: unknown, data: Record<string, unknown>) => {
+      if (orderState) Object.assign(orderState, data)
+      updateSpy(ref, data)
+    })
+  }
+  const counters = createThrottleCounters(orderTx)
+
   const collection = vi.fn((name: string) =>
-    name.includes('order_status_history')
-      ? { doc: vi.fn(() => ({ id: 'osh-123' })) }
-      : {
-          doc: vi.fn(() => ({ get: directGet })),
-          where: vi.fn(() => ({ limit: vi.fn(() => ({ get: whereGet })) }))
-        }
+    String(name).includes('abuse_counters')
+      ? counters.collection(name)
+      : name.includes('order_status_history')
+        ? { doc: vi.fn(() => ({ id: 'osh-123' })) }
+        : {
+            doc: vi.fn(() => ({ get: directGet })),
+            where: vi.fn(() => ({ limit: vi.fn(() => ({ get: whereGet })) }))
+          }
   )
 
-  const transaction = { get: vi.fn().mockResolvedValue(transactionDoc), update: updateSpy, set: setSpy }
-  const runTransaction = vi.fn(async (callback: (tx: typeof transaction) => Promise<unknown>) => callback(transaction))
+  const runTransaction = counters.runTransaction
 
   const db = { collection, runTransaction }
 
-  return { db, updateSpy, setSpy, runTransaction }
+  return { db, counters, orderTx, docRef, updateSpy, setSpy, runTransaction }
 }
 
 /** Storage bucket double — one shared file handle so assertions see every operation. */
@@ -262,7 +296,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
       await handler(signRequest(), res)
 
       expect(res.status).toHaveBeenCalledWith(500)
-      expect(db.runTransaction).not.toHaveBeenCalled()
+      expect(db.orderTx.get).not.toHaveBeenCalled()
     })
   })
 
@@ -313,28 +347,79 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
       expect(bucket.fileApi.getSignedUrl).not.toHaveBeenCalled()
     })
 
-    it('should return 404 when the order does not exist', async () => {
+    it('returns one identical 404 for an unknown order and for a wrong RUT — no enumeration oracle (Task 8.8)', async () => {
       const bucket = createMockBucket()
       setupAdmin(null, bucket)
-      const res = createMockRes()
+      const unknownRes = createMockRes()
+      await handler(signRequest({ orderId: 'PRONTO-000000' }), unknownRes)
 
-      await handler(signRequest({ orderId: 'PRONTO-000000' }), res)
+      const mismatchBucket = createMockBucket()
+      setupAdmin({ ...PENDING_ORDER, customer: { ...PENDING_ORDER.customer, rut: '99999999-9' } }, mismatchBucket)
+      const mismatchRes = createMockRes()
+      await handler(signRequest(), mismatchRes)
 
-      expect(res.status).toHaveBeenCalledWith(404)
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ error: expect.stringContaining('No se encontró') })
-      )
+      expect(unknownRes.status).toHaveBeenCalledWith(404)
+      expect(mismatchRes.status).toHaveBeenCalledWith(404)
+      const payload = unknownRes.json.mock.calls[0][0]
+      expect(mismatchRes.json.mock.calls[0][0]).toEqual(payload)
+      expect(payload.error).toContain('No encontramos un pedido con ese código y RUT')
+      expect(JSON.stringify(payload)).not.toContain('PRONTO-000000')
+      // A failed lookup never mints a signed URL.
+      expect(mismatchBucket.fileApi.getSignedUrl).not.toHaveBeenCalled()
     })
 
-    it('should return 401 when the purchaser RUT does not match the order record', async () => {
+    it('refuses with 429 once the IP budget is locked, in both phases (Task 8.8)', async () => {
       const bucket = createMockBucket()
-      setupAdmin({ ...PENDING_ORDER, customer: { ...PENDING_ORDER.customer, rut: '99999999-9' } }, bucket)
-      const res = createMockRes()
+      const db = setupAdmin(PENDING_ORDER, bucket)
+      db.counters.seedLocked('upload-voucher', 'ip', '200.83.10.4')
 
-      await handler(signRequest(), res)
+      const signRes = createMockRes()
+      await handler({ ...signRequest(), headers: { 'x-real-ip': '200.83.10.4' } } as unknown as VercelRequest, signRes)
+      expect(signRes.status).toHaveBeenCalledWith(429)
+      expect(signRes.json).toHaveBeenCalledWith({ error: THROTTLE_MESSAGE })
+      expect(signRes.setHeader).toHaveBeenCalledWith('Retry-After', expect.any(String))
+      expect(bucket.fileApi.getSignedUrl).not.toHaveBeenCalled()
 
-      expect(res.status).toHaveBeenCalledWith(401)
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('no coincide') }))
+      const confirmRes = createMockRes()
+      await handler(
+        { ...confirmRequest(), headers: { 'x-real-ip': '200.83.10.4' } } as unknown as VercelRequest,
+        confirmRes
+      )
+      expect(confirmRes.status).toHaveBeenCalledWith(429)
+      expect(bucket.fileApi.getMetadata).not.toHaveBeenCalled()
+    })
+
+    it('locks the order key after N failed lookups, even from rotating IPs (Task 8.8)', async () => {
+      const bucket = createMockBucket()
+      const db = setupAdmin(null, bucket)
+      const maxFailures = THROTTLE_POLICIES['upload-voucher'].order.maxFailures
+
+      for (let attempt = 0; attempt < maxFailures; attempt += 1) {
+        const res = createMockRes()
+        await handler(
+          {
+            ...signRequest({ orderId: 'PRONTO-000000' }),
+            headers: { 'x-real-ip': `200.83.10.${attempt + 1}` }
+          } as unknown as VercelRequest,
+          res
+        )
+        expect(res.status).toHaveBeenCalledWith(404)
+      }
+
+      // The order budget locks regardless of how many source IPs were used, and each
+      // IP carries its own recorded failure.
+      expect(db.counters.read('upload-voucher', 'order', 'PRONTO-000000')).toMatchObject({ failures: maxFailures })
+      expect(db.counters.read('upload-voucher', 'ip', '200.83.10.1')).toMatchObject({ failures: 1 })
+
+      const lockedRes = createMockRes()
+      await handler(
+        {
+          ...signRequest({ orderId: 'PRONTO-000000' }),
+          headers: { 'x-real-ip': '200.83.10.99' }
+        } as unknown as VercelRequest,
+        lockedRes
+      )
+      expect(lockedRes.status).toHaveBeenCalledWith(429)
     })
 
     it('should refuse every status outside the lifecycle guard with 409', async () => {
@@ -392,7 +477,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
       // No bytes, no metadata and no status change are persisted at signing time
       expect(db.updateSpy).not.toHaveBeenCalled()
       expect(db.setSpy).not.toHaveBeenCalled()
-      expect(db.runTransaction).not.toHaveBeenCalled()
+      expect(db.orderTx.get).not.toHaveBeenCalled()
     })
 
     it('should allow a voucher replacement while the transfer is still pending', async () => {
@@ -486,7 +571,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
       expect(res.status).toHaveBeenCalledWith(400)
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('5 MB') }))
       expect(bucket.fileApi.delete).toHaveBeenCalledWith({ ignoreNotFound: true })
-      expect(db.runTransaction).not.toHaveBeenCalled()
+      expect(db.orderTx.get).not.toHaveBeenCalled()
     })
 
     it('should delete and reject an object whose real content type is not allowed', async () => {
@@ -501,7 +586,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
         expect.objectContaining({ error: expect.stringContaining('Formato no soportado') })
       )
       expect(bucket.fileApi.delete).toHaveBeenCalledWith({ ignoreNotFound: true })
-      expect(db.runTransaction).not.toHaveBeenCalled()
+      expect(db.orderTx.get).not.toHaveBeenCalled()
     })
 
     it('should persist the voucher trail without ever storing Base64 bytes', async () => {
@@ -512,7 +597,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
       await handler(confirmRequest(), res)
 
       expect(res.status).toHaveBeenCalledWith(200)
-      expect(db.runTransaction).toHaveBeenCalledTimes(1)
+      expect(db.orderTx.get).toHaveBeenCalledTimes(1)
 
       const updatePayload = db.updateSpy.mock.calls[0][1] as Record<string, unknown>
       expect(updatePayload).toMatchObject({
@@ -573,7 +658,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
       expect(res.status).toHaveBeenCalledWith(200)
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true, duplicate: true }))
       // Nothing at all happens on a retried confirm: no transaction, no write, no re-tokenization
-      expect(db.runTransaction).not.toHaveBeenCalled()
+      expect(db.orderTx.get).not.toHaveBeenCalled()
       expect(db.updateSpy).not.toHaveBeenCalled()
       expect(bucket.fileApi.setMetadata).not.toHaveBeenCalled()
     })
@@ -619,7 +704,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
         { ...PENDING_ORDER, status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO', voucherStoragePath: previousPath },
         bucket
       )
-      db.runTransaction.mockRejectedValue(new Error('firestore unavailable'))
+      db.orderTx.get.mockRejectedValue(new Error('firestore unavailable'))
       const res = createMockRes()
 
       await handler(confirmRequest(), res)
@@ -667,6 +752,183 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
 
       expect(res.status).toHaveBeenCalledWith(200)
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }))
+    })
+
+    it('suppresses the alert while the per-order cooldown is active (Task 8.8)', async () => {
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const bucket = createMockBucket()
+      const db = setupAdmin(
+        {
+          ...PENDING_ORDER,
+          status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+          voucherAlertSentAt: new Date(Date.now() - 60_000).toISOString(),
+          voucherAlertCount: 1
+        },
+        bucket
+      )
+
+      const res = createMockRes()
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(fetchSpy.mock.calls.filter((c) => String(c[0]).includes('api.resend.com'))).toHaveLength(0)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Warehouse alert'))
+      // No stamp either: nothing was sent.
+      const stampCall = db.updateSpy.mock.calls.find(
+        ([, payload]) => payload && typeof payload === 'object' && 'voucherAlertSentAt' in payload
+      )
+      expect(stampCall).toBeUndefined()
+    })
+
+    it('sends again once the cooldown has passed and increments the per-order counter (Task 8.8)', async () => {
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
+      const bucket = createMockBucket()
+      const db = setupAdmin(
+        {
+          ...PENDING_ORDER,
+          status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+          voucherAlertSentAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+          voucherAlertCount: 1
+        },
+        bucket
+      )
+
+      const res = createMockRes()
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(fetchSpy.mock.calls.filter((c) => String(c[0]).includes('api.resend.com'))).toHaveLength(1)
+
+      const stampCall = db.updateSpy.mock.calls.find(
+        ([, payload]) => payload && typeof payload === 'object' && 'voucherAlertSentAt' in payload
+      )
+      expect(stampCall?.[1]).toMatchObject({ voucherAlertCount: 2, voucherAlertSentAt: expect.any(String) })
+    })
+
+    it('suppresses the alert once the per-order cap is reached (Task 8.8)', async () => {
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const bucket = createMockBucket()
+      setupAdmin(
+        {
+          ...PENDING_ORDER,
+          status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+          voucherAlertSentAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          voucherAlertCount: 5
+        },
+        bucket
+      )
+
+      const res = createMockRes()
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(fetchSpy.mock.calls.filter((c) => String(c[0]).includes('api.resend.com'))).toHaveLength(0)
+    })
+
+    it('releases the reservation when the send fails, keeping the alert retryable', async () => {
+      vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'))
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const bucket = createMockBucket()
+      const db = setupAdmin(PENDING_ORDER, bucket)
+
+      const res = createMockRes()
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      // The transaction reserved the alert (stamped it with the voucher), and the failed
+      // send released the reservation. This order had no previous values, so the release
+      // deletes the fields instead of writing empty placeholders onto the document.
+      const rollbackCall = db.updateSpy.mock.calls.at(-1)
+      const rollbackPayload = rollbackCall?.[1] as Record<string, unknown>
+      expect(FieldValue.delete().isEqual(rollbackPayload.voucherAlertSentAt as FieldValue)).toBe(true)
+      expect(FieldValue.delete().isEqual(rollbackPayload.voucherAlertCount as FieldValue)).toBe(true)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('network down'))
+    })
+
+    it('never clobbers a reservation a concurrent confirm committed meanwhile (Task 8.8)', async () => {
+      vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'))
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const bucket = createMockBucket()
+      const db = setupAdmin(PENDING_ORDER, bucket)
+
+      // First transaction read: the plain order. Second (the release's compare-and-swap):
+      // a NEWER reservation committed by a concurrent confirm.
+      db.orderTx.get
+        .mockResolvedValueOnce({ exists: true, ref: db.docRef, data: () => ({ ...PENDING_ORDER }) })
+        .mockResolvedValueOnce({
+          exists: true,
+          ref: db.docRef,
+          data: () => ({
+            ...PENDING_ORDER,
+            status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+            voucherAlertSentAt: '2026-09-29T22:00:00.000Z',
+            voucherAlertCount: 2
+          })
+        })
+
+      const res = createMockRes()
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('superseded'))
+      // The only order update is the confirm transaction's own — the release never ran.
+      expect(db.updateSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('never reserves an alert slot when no warehouse recipient is configured (Task 8.8)', async () => {
+      // The outer beforeEach deletes WAREHOUSE_NOTIFICATION_EMAIL; make it explicit.
+      delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
+      const bucket = createMockBucket()
+      const db = setupAdmin(PENDING_ORDER, bucket)
+
+      const res = createMockRes()
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(fetchSpy.mock.calls.filter((c) => String(c[0]).includes('api.resend.com'))).toHaveLength(0)
+      const orderUpdate = db.updateSpy.mock.calls[0][1] as Record<string, unknown>
+      expect(orderUpdate).not.toHaveProperty('voucherAlertSentAt')
+      expect(orderUpdate).not.toHaveProperty('voucherAlertCount')
+    })
+
+    it('skips the alert when a concurrent confirm already stamped it inside the transaction window (Task 8.8)', async () => {
+      const fetchSpy = vi
+        .spyOn(global, 'fetch')
+        .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const bucket = createMockBucket()
+      const db = setupAdmin(PENDING_ORDER, bucket, {
+        // The authorization read saw no stamp; by the time the confirm transaction ran,
+        // another confirm of a different object had already committed one.
+        transactionData: {
+          ...PENDING_ORDER,
+          status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+          voucherAlertSentAt: new Date(Date.now() - 30_000).toISOString(),
+          voucherAlertCount: 1
+        }
+      })
+
+      const res = createMockRes()
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(fetchSpy.mock.calls.filter((c) => String(c[0]).includes('api.resend.com'))).toHaveLength(0)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cooldown active'))
+      // The order update carries the voucher but no fresh reservation.
+      const orderUpdate = db.updateSpy.mock.calls[0][1] as Record<string, unknown>
+      expect(orderUpdate).not.toHaveProperty('voucherAlertSentAt')
+      expect(orderUpdate).toMatchObject({ status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO' })
     })
   })
 })

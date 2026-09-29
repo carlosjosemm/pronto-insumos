@@ -8,6 +8,8 @@ vi.mock('../../../api/_lib/firebaseAdmin', () => ({
 
 import handler from '../../../api/order-confirmation'
 import { getAdminFirestore } from '../../../api/_lib/firebaseAdmin'
+import { THROTTLE_MESSAGE, THROTTLE_POLICIES } from '../../../api/_lib/abuseThrottle'
+import { createThrottleCounters } from './helpers/throttleCounters'
 
 function createMockRes() {
   const res: Partial<VercelResponse> = {
@@ -21,12 +23,16 @@ function createMockRes() {
     status: ReturnType<typeof vi.fn>
     json: ReturnType<typeof vi.fn>
     end: ReturnType<typeof vi.fn>
+    setHeader: ReturnType<typeof vi.fn>
   }
 }
 
 /**
  * Admin SDK double for the canonical order lookup (Task 0.12): the document key
  * resolves first, the `orderId` field query only when the key is missing.
+ *
+ * Since Task 8.8 the double also backs the `abuse_counters` collection and the
+ * throttling transactions (`db.counters`), so the real counter code runs.
  */
 function mockDbWithOrder(
   orderData: Record<string, unknown>,
@@ -35,37 +41,53 @@ function mockDbWithOrder(
 ) {
   const orderRef = { update: updateSpy }
   const orderDoc = { id: 'PRONTO-123456', data: () => orderData, ref: orderRef }
-  return {
-    collection: vi.fn().mockReturnValue({
-      doc: vi.fn().mockReturnValue({
-        get: vi
-          .fn()
-          .mockResolvedValue(
-            options.legacyFieldOnly
-              ? { exists: false, ref: orderRef, data: () => undefined }
-              : { exists: true, ref: orderRef, data: () => orderData }
-          )
-      }),
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockReturnValue({
-          get: vi.fn().mockResolvedValue({ empty: false, docs: [orderDoc] })
-        })
-      })
-    })
+  const counters = createThrottleCounters()
+  const db = {
+    counters,
+    collection: vi.fn().mockImplementation((name: string) =>
+      String(name).includes('abuse_counters')
+        ? counters.collection(name)
+        : {
+            doc: vi.fn().mockReturnValue({
+              get: vi
+                .fn()
+                .mockResolvedValue(
+                  options.legacyFieldOnly
+                    ? { exists: false, ref: orderRef, data: () => undefined }
+                    : { exists: true, ref: orderRef, data: () => orderData }
+                )
+            }),
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                get: vi.fn().mockResolvedValue({ empty: false, docs: [orderDoc] })
+              })
+            })
+          }
+    ),
+    runTransaction: counters.runTransaction
   }
+  return db
 }
 
 function mockDbWithoutOrder() {
-  return {
-    collection: vi.fn().mockReturnValue({
-      doc: vi.fn().mockReturnValue({ get: vi.fn().mockResolvedValue({ exists: false }) }),
-      where: vi.fn().mockReturnValue({
-        limit: vi.fn().mockReturnValue({
-          get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
-        })
-      })
-    })
+  const counters = createThrottleCounters()
+  const db = {
+    counters,
+    collection: vi.fn().mockImplementation((name: string) =>
+      String(name).includes('abuse_counters')
+        ? counters.collection(name)
+        : {
+            doc: vi.fn().mockReturnValue({ get: vi.fn().mockResolvedValue({ exists: false }) }),
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
+              })
+            })
+          }
+    ),
+    runTransaction: counters.runTransaction
   }
+  return db
 }
 
 const validOrder = {
@@ -145,17 +167,83 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true, emailSent: false }))
   })
 
-  it('should return 404 when order does not exist', async () => {
+  it('returns one identical 404 for an unknown order and for a wrong RUT — no enumeration oracle (Task 8.8)', async () => {
     vi.mocked(getAdminFirestore).mockReturnValue(
       mockDbWithoutOrder() as unknown as ReturnType<typeof getAdminFirestore>
     )
+    const unknownRes = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-999', rut: '12345678-5' } } as VercelRequest, unknownRes)
 
-    const req = { method: 'POST', body: { orderId: 'PRONTO-999', rut: '12345678-5' } } as VercelRequest
+    vi.mocked(getAdminFirestore).mockReturnValue(
+      mockDbWithOrder(validOrder) as unknown as ReturnType<typeof getAdminFirestore>
+    )
+    const mismatchRes = createMockRes()
+    await handler(
+      { method: 'POST', body: { orderId: 'PRONTO-123456', rut: '99999999-9' } } as VercelRequest,
+      mismatchRes
+    )
+
+    expect(unknownRes.status).toHaveBeenCalledWith(404)
+    expect(mismatchRes.status).toHaveBeenCalledWith(404)
+    const payload = unknownRes.json.mock.calls[0][0]
+    expect(mismatchRes.json.mock.calls[0][0]).toEqual(payload)
+    expect(payload.error).toContain('No encontramos un pedido con ese código y RUT')
+    expect(JSON.stringify(payload)).not.toContain('PRONTO-999')
+  })
+
+  it('refuses with 429 once the IP budget is locked, without reading the order', async () => {
+    const db = mockDbWithoutOrder()
+    db.counters.seedLocked('order-confirmation', 'ip', '200.83.10.4')
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
+
     const res = createMockRes()
+    await handler(
+      {
+        method: 'POST',
+        headers: { 'x-real-ip': '200.83.10.4' },
+        body: { orderId: 'PRONTO-123456', rut: '12345678-5' }
+      } as unknown as VercelRequest,
+      res
+    )
 
-    await handler(req, res)
+    expect(res.status).toHaveBeenCalledWith(429)
+    expect(res.json).toHaveBeenCalledWith({ error: THROTTLE_MESSAGE })
+    expect(res.setHeader).toHaveBeenCalledWith('Retry-After', expect.any(String))
+  })
 
-    expect(res.status).toHaveBeenCalledWith(404)
+  it('locks the order key after N failed lookups (Task 8.8)', async () => {
+    const db = mockDbWithoutOrder()
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
+    const maxFailures = THROTTLE_POLICIES['order-confirmation'].order.maxFailures
+
+    for (let attempt = 0; attempt < maxFailures; attempt += 1) {
+      const res = createMockRes()
+      await handler({ method: 'POST', body: { orderId: 'PRONTO-999', rut: '12345678-5' } } as VercelRequest, res)
+      expect(res.status).toHaveBeenCalledWith(404)
+    }
+
+    expect(db.counters.read('order-confirmation', 'order', 'PRONTO-999')).toMatchObject({
+      failures: maxFailures
+    })
+
+    const lockedRes = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-999', rut: '12345678-5' } } as VercelRequest, lockedRes)
+    expect(lockedRes.status).toHaveBeenCalledWith(429)
+  })
+
+  it('records no failure and sends no second email when the lookup succeeds', async () => {
+    const db = mockDbWithOrder(validOrder)
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12345678-5' } } as VercelRequest, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(db.counters.read('order-confirmation', 'order', 'PRONTO-123456')).toMatchObject({
+      attempts: 1,
+      failures: 0
+    })
   })
 
   it('resolves a legacy document through the orderId field fallback when the document key differs (Task 0.12)', async () => {
@@ -176,19 +264,6 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ emailSent: false }))
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('orderId field fallback'))
     warnSpy.mockRestore()
-  })
-
-  it('should return 401 when RUT does not match the order', async () => {
-    vi.mocked(getAdminFirestore).mockReturnValue(
-      mockDbWithOrder(validOrder) as unknown as ReturnType<typeof getAdminFirestore>
-    )
-
-    const req = { method: 'POST', body: { orderId: 'PRONTO-123456', rut: '99999999-9' } } as VercelRequest
-    const res = createMockRes()
-
-    await handler(req, res)
-
-    expect(res.status).toHaveBeenCalledWith(401)
   })
 
   it('should skip send and return duplicate flag when confirmation was already sent', async () => {

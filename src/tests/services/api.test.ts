@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
 
 // Mock Firebase entirely before importing api.ts
 vi.mock('../../services/firebase', () => ({
@@ -238,7 +240,7 @@ describe('submitOrder', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(result.orderId).toMatch(/^PRONTO-\d{6}$/)
+    expect(result.orderId).toMatch(/^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$/)
     // The persisted/returned total is recomputed from the item lines (IVA incluido),
     // not the client-supplied figure — PRODUCTS[0] at 189990 × 2 = 379980.
     expect(result.total).toBe(379980)
@@ -342,7 +344,7 @@ describe('submitOrder', () => {
       const [docRef] = vi.mocked(setDoc).mock.calls[0] as unknown as [{ id: string }, unknown]
       expect(docRef.id).toBe(result.orderId)
       expect(result.success).toBe(false)
-      expect(result.orderId).toMatch(/^PRONTO-\d{6}$/)
+      expect(result.orderId).toMatch(/^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$/)
       expect(result.total).toBe(379980)
       expect(result.itemsCount).toBe(2)
       expect(consoleSpy).toHaveBeenCalled()
@@ -373,13 +375,48 @@ describe('submitOrder', () => {
     expect(submittedPayload.orderId).toBe(customId)
   })
 
-  it('generateOrderId should return unique identifiers in format PRONTO-XXXXXX', () => {
+  it('generateOrderId should return unique identifiers in format PRONTO-XXXXXXXX', () => {
     const id1 = generateOrderId()
     const id2 = generateOrderId()
 
-    expect(id1).toMatch(/^PRONTO-\d{6}$/)
-    expect(id2).toMatch(/^PRONTO-\d{6}$/)
+    expect(id1).toMatch(/^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$/)
+    expect(id2).toMatch(/^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$/)
     expect(id1).not.toBe(id2)
+  })
+})
+
+describe('Canonical order id entropy (Task 8.8)', () => {
+  const orderIdPattern = /^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$/
+
+  it('never reuses an id across 200 consecutive draws', () => {
+    const ids = new Set(Array.from({ length: 200 }, () => generateOrderId()))
+
+    expect(ids.size).toBe(200)
+    for (const id of ids) expect(id).toMatch(orderIdPattern)
+  })
+
+  it('uses only the unambiguous Crockford base32 alphabet (no I, L, O, U)', () => {
+    const chars = new Set(
+      Array.from({ length: 200 }, () => generateOrderId()).flatMap((id) => id.replace('PRONTO-', '').split(''))
+    )
+
+    for (const char of chars) expect('0123456789ABCDEFGHJKMNPQRSTVWXYZ').toContain(char)
+    expect([...chars].some((char) => 'ILOU'.includes(char))).toBe(false)
+  })
+
+  it('draws from crypto.getRandomValues, never Math.random', () => {
+    // Content guard (same pattern as the bankDetails / firestore-rules suites): the
+    // 900 000-value Math.random space is what made the tracking oracle walkable, so a
+    // future "simplification" back to Math.random must fail here. The slice is bounded
+    // to the function body so unrelated code in the same module cannot trip it.
+    const source = fs.readFileSync(path.resolve(__dirname, '../../services/api.ts'), 'utf8')
+    const start = source.indexOf('export function generateOrderId')
+    const nextExport = source.indexOf('\nexport ', start + 1)
+    const body = source.slice(start, nextExport === -1 ? undefined : nextExport)
+
+    expect(start).toBeGreaterThan(-1)
+    expect(body).toContain('crypto.getRandomValues')
+    expect(body).not.toContain('Math.random')
   })
 })
 

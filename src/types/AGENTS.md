@@ -131,7 +131,7 @@ The canonical Firestore `orders` document. Everything optional below is written 
 
 ```typescript
 export interface Order {
-  orderId: string                      // 'PRONTO-XXXXXX' — also the Firestore document key
+  orderId: string                      // 'PRONTO-XXXXXXXX' (8 Crockford base32 chars, Task 8.8) — also the Firestore document key; legacy 'PRONTO-NNNNNN' ids still resolve
   createdAt?: any                      // see §2.7 — the single permitted `any`
   updatedAt?: string
   paymentMethod: PaymentMethod
@@ -158,6 +158,10 @@ export interface Order {
   mercadopagoPaymentId?: string; paidAt?: string
   approvedAt?: string; approvedBy?: string
   confirmationEmailSentAt?: string     // idempotency flag for /api/order-confirmation
+  // Warehouse "voucher received" alert budget (Task 8.8) — server-written by
+  // /api/upload-voucher inside the confirm transaction (a reservation released
+  // best-effort when the Resend send fails). Never written by the client.
+  voucherAlertSentAt?: string; voucherAlertCount?: number
   dispatch?: { carrier: string; trackingCode?: string; dispatchedAt: string; dispatchedBy: string }
   deliveredAt?: string
 }

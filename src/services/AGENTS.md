@@ -31,16 +31,23 @@ As-built technical reference for the client-side integration layer of PRONTO Ins
 
 ### 2.1 Canonical Order ID & Document-Key Alignment
 
-`generateOrderId()` produces the canonical order code — **`PRONTO-` + six digits** (as built):
+`generateOrderId()` produces the canonical order code — **`PRONTO-` + 8 Crockford base32 characters** (Task 8.8; 40 bits ≈ 1.1 × 10¹² ids):
 
 ```typescript
+const ORDER_ID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ' // Crockford base32: no I, L, O, U
+const ORDER_ID_LENGTH = 8
+
 export function generateOrderId(): string {
-  return 'PRONTO-' + Math.floor(100000 + Math.random() * 900000)
+  const bytes = new Uint8Array(ORDER_ID_LENGTH)
+  crypto.getRandomValues(bytes)          // CSPRNG; 256 % 32 === 0 → zero modulo bias
+  return 'PRONTO-' + Array.from(bytes, (byte) => ORDER_ID_ALPHABET[byte % ORDER_ID_ALPHABET.length]).join('')
 }
 ```
 
+- **Why it changed (Task 8.8):** the previous `PRONTO-` + six `Math.random()` digits covered only 900 000 values, and the public tracking endpoint answered `404` for an unknown id but `401` for a wrong RUT — an enumeration oracle that made the id space walkable against a publicly known clinic RUT (and a collision surfaced as a generic rules-denied checkout error as volume grew). `src/tests/services/api.test.ts` pins the alphabet, the 200-draw uniqueness and a **source guard** that fails if the generator ever returns to `Math.random`.
+- **Legacy ids keep resolving:** nothing parses the format server-side — `resolveOrderByCanonicalId` is an exact document-key/field match, so pre-8.8 `PRONTO-NNNNNN` orders (and the ids in older fixtures) still track, upload vouchers and confirm.
 - **Direct Document Key Storage:** `submitOrder()` writes with
-  `setDoc(doc(db, getCollectionName('orders'), orderId), payload)`, so the Firestore **Document ID equals the canonical Order ID** (e.g. `PRONTO-483921`) — O(1) lookups for admin/serverless endpoints, with the `where('orderId','==')` fallback documented in `api/AGENTS.md` §8.1.
+  `setDoc(doc(db, getCollectionName('orders'), orderId), payload)`, so the Firestore **Document ID equals the canonical Order ID** (e.g. `PRONTO-7K3M9Q2Z`) — O(1) lookups for admin/serverless endpoints, with the `where('orderId','==')` fallback documented in `api/AGENTS.md` §8.1.
 - **Shared Reference:** the same `orderId` is reused as the Firestore doc key, Mercado Pago `external_reference`, voucher filenames, and WhatsApp message text.
 
 ### 2.2 Resilient Catalog Fetching (`fetchProducts()`) — Task 2.11
@@ -152,7 +159,7 @@ Adapters simulate **only** when the endpoint is demonstrably absent — a transp
 | `fetchProducts()` (api.ts) | **RESOLVED (Task 2.11):** the fixture fallback is `source: 'fixtures'` and is unreachable in production (`unavailable` + retryable UI); the cart is never revalidated from it | n/a (SDK read) — a rejection/empty snapshot/timeout in production resolves to `source: 'unavailable'` with a customer-safe message |
 | `submitOrder()` (api.ts) | ~~`setDoc` throw → warn → `success: true`~~ **RESOLVED (Task 0.11):** throw → `console.error` → `success: false` | Checkout blocks payment initiation and surfaces the registration error — no ghost orders. |
 | `createMercadoPagoPreference()` / `processMercadoPagoPayment()` (mercadopago.ts) | Dev simulation preserved: `success: true, initPoint: undefined`; the fabricated `approved` record remains a non-authoritative client-side record on any successful preference (ignored by `CheckoutModal`) | `success: false` + the server's `error` message (e.g. the 400 stock rejection); `CheckoutModal` blocks on the Pago step via `submitError` |
-| `uploadTransferVoucher()` (transferVoucher.ts) | Simulated `simulated-voucher://` success **only** when the endpoint is demonstrably absent (non-JSON or network failure) **and** `isSimulatedFallbackAllowed()`; the message states the voucher was not stored. Task 2.9 rewrote the transport: sign → direct PUT (signed `x-goog-content-length-range`) → confirm | `success: false` + the server's message (400/401/409/413/500/503 — e.g. a `409` lifecycle refusal); both call sites (`CheckoutModal`, `OrderTrackingModal`) render `res.error` |
+| `uploadTransferVoucher()` (transferVoucher.ts) | Simulated `simulated-voucher://` success **only** when the endpoint is demonstrably absent (non-JSON or network failure) **and** `isSimulatedFallbackAllowed()`; the message states the voucher was not stored. Task 2.9 rewrote the transport: sign → direct PUT (signed `x-goog-content-length-range`) → confirm | `success: false` + the server's message (`400/404/409/413/429/500/503` — e.g. a `409` lifecycle refusal, or the **uniform `404`** for an unknown order *and* a RUT mismatch since Task 8.8, plus `429` when the per-IP/per-order budget is locked); both call sites (`CheckoutModal`, `OrderTrackingModal`) render `res.error` |
 | `fetchOrderTracking()` (orderTracking.ts) | Fabricated fallback order (dev/demo only) | Unchanged — already surfaced the real error message |
 | `sendOrderConfirmationEmail()` (orderConfirmation.ts) | Failure → `false` | Correctly silent by design (fire-and-forget). |
 

@@ -74,10 +74,25 @@ export interface SubmitOrderOptions {
 }
 
 /**
- * Generates a canonical order identifier in the format PRONTO-XXXXXX
+ * Crockford base32 alphabet (no I, L, O, U — the characters people mistype).
+ * 32 symbols, so `byte % 32` is exact: `getRandomValues` fills bytes uniformly and
+ * 256 is a multiple of 32, hence zero modulo bias.
+ */
+const ORDER_ID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+const ORDER_ID_LENGTH = 8
+
+/**
+ * Generates the canonical order identifier: `PRONTO-` + 8 Crockford base32 characters
+ * (40 bits of CSPRNG entropy ≈ 1.1 × 10¹² ids — Task 8.8).
+ *
+ * The previous `PRONTO-` + six `Math.random()` digits covered only 900 000 values,
+ * which the public tracking endpoint's 404/401 split made walkable. Legacy
+ * `PRONTO-NNNNNN` ids keep resolving: nothing parses the format server-side.
  */
 export function generateOrderId(): string {
-  return 'PRONTO-' + Math.floor(100000 + Math.random() * 900000)
+  const bytes = new Uint8Array(ORDER_ID_LENGTH)
+  crypto.getRandomValues(bytes)
+  return 'PRONTO-' + Array.from(bytes, (byte) => ORDER_ID_ALPHABET[byte % ORDER_ID_ALPHABET.length]).join('')
 }
 
 /**

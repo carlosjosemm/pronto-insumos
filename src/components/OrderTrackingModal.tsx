@@ -248,7 +248,7 @@ export default function OrderTrackingModal({
                   id="tracking-order-id"
                   type="text"
                   required
-                  placeholder="Ej: PRONTO-738291"
+                  placeholder="Ej: PRONTO-7K3M9Q2Z"
                   value={orderId}
                   onChange={(e) => setOrderId(e.target.value)}
                   style={{

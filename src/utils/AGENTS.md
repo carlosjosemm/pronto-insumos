@@ -101,7 +101,7 @@ To prevent data drift and ensure that all Firestore documents strictly satisfy d
 >
 > **The `customer.rut` check is string-guarded:** `typeof c.rut !== 'string' || !validateRut(c.rut)` — a non-string RUT reports a validation error instead of throwing inside `rut.replace(...)`.
 >
-> **Scope honesty — what the validators do NOT check:** `orderId` is only asserted non-empty (there is no `PRONTO-XXXXXX` format check); `timestamp`/`actorRole`/`changeType` fields in the audit validators are only asserted as present strings (no ISO-8601 parse, no enum-membership check except `newStatus`/`status`/`paymentMethod` on orders); stock deltas (`previousStock`/`newStock`/`delta`) are not validated at all. If you need stricter guarantees, add them here and to the tests together — do not assume coverage that is not in the code.
+> **Scope honesty — what the validators do NOT check:** `orderId` is only asserted non-empty (there is no `PRONTO-XXXXXXXX` format check); `timestamp`/`actorRole`/`changeType` fields in the audit validators are only asserted as present strings (no ISO-8601 parse, no enum-membership check except `newStatus`/`status`/`paymentMethod` on orders); stock deltas (`previousStock`/`newStock`/`delta`) are not validated at all. If you need stricter guarantees, add them here and to the tests together — do not assume coverage that is not in the code.
 
 #### 1. `validateProductSchema(input: unknown): ValidationResult`
 
@@ -114,7 +114,7 @@ To prevent data drift and ensure that all Firestore documents strictly satisfy d
 
 #### 2. `validateOrderSchema(input: unknown): ValidationResult`
 
-* Requires a non-empty string `orderId` (no `PRONTO-XXXXXX` format check — see scope note above).
+* Requires a non-empty string `orderId` (no `PRONTO-XXXXXXXX` format check — see scope note above).
 * Enforces membership in `VALID_ORDER_STATUSES` (all 12 `OrderStatus` values) and `VALID_PAYMENT_METHODS` (`'transferencia' | 'mercadopago' | 'whatsapp'`).
 * Validates `totalAmount`: Must be a positive integer in CLP.
 * Enforces Chilean Modulo 11 RUT validation on `customer.rut` (string-guarded, see above), plus required `fullName`, `email` (must contain `@`), `address`, `city`.

@@ -1,11 +1,17 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getAdminFirestore } from "./_lib/firebaseAdmin.js";
-import { resolveOrderByCanonicalId } from "./_lib/orderLookup.js";
+import { resolveOrderByCanonicalId, respondOrderLookupFailed } from "./_lib/orderLookup.js";
 import { sendEmail } from "./_lib/email.js";
 import {
   buildOrderConfirmationEmail,
   toOrderEmailData,
 } from "./_lib/emailTemplates.js";
+import {
+  consumeThrottleAttempt,
+  getClientIp,
+  recordThrottleFailures,
+  respondThrottled,
+} from "./_lib/abuseThrottle.js";
 
 function normalizeRut(raw: string): string {
   return (raw || "").replace(/[^0-9kK]/g, "").toUpperCase();
@@ -66,31 +72,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
     }
 
+    // Abuse throttling (Task 8.8): this endpoint sends a customer email on success, so
+    // the attempt budgets are also what bounds Resend-quota abuse — an attacker's own
+    // order can trigger at most one confirmation (idempotency), and the IP/order
+    // budgets cap how many such calls one source can make per window.
+    const clientIp = getClientIp(req);
+    const ipDecision = await consumeThrottleAttempt(adminDb, "order-confirmation", "ip", clientIp);
+    if (!ipDecision.allowed) {
+      return respondThrottled(res, ipDecision.retryAfterSeconds);
+    }
+
+    const orderDecision = await consumeThrottleAttempt(adminDb, "order-confirmation", "order", cleanOrderId);
+    if (!orderDecision.allowed) {
+      return respondThrottled(res, orderDecision.retryAfterSeconds);
+    }
+
     // Resolve the order by document key first (Task 0.12); the `orderId` field
     // query is only a legacy fallback — see api/_lib/orderLookup.ts.
     const resolvedOrder = await resolveOrderByCanonicalId(adminDb, cleanOrderId);
 
-    if (!resolvedOrder) {
-      return res
-        .status(404)
-        .json({
-          error: `No se encontró un pedido con el código "${cleanOrderId}".`,
-        });
+    // Uniform failure (Task 8.8): "no such order" and "RUT mismatch" are the SAME
+    // response — the old 404/401 split was an enumeration oracle.
+    const orderCustomerRut = normalizeRut(
+      resolvedOrder?.data.customer?.rut || resolvedOrder?.data.billing?.rut || "",
+    );
+    if (!resolvedOrder || orderCustomerRut !== cleanUserRut) {
+      await recordThrottleFailures(adminDb, "order-confirmation", { ip: clientIp, order: cleanOrderId });
+      return respondOrderLookupFailed(res);
     }
 
     const orderRef = resolvedOrder.ref;
     const orderData = resolvedOrder.data;
-
-    // Authorization check: match purchaser's RUT (same contract as /api/track-order)
-    const orderCustomerRut = normalizeRut(
-      orderData.customer?.rut || orderData.billing?.rut || "",
-    );
-    if (orderCustomerRut !== cleanUserRut) {
-      return res.status(401).json({
-        error:
-          "El RUT ingresado no coincide con el registrado para este pedido.",
-      });
-    }
 
     // Idempotency: confirmation already sent
     if (orderData.confirmationEmailSentAt) {

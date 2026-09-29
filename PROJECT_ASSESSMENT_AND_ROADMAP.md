@@ -42,7 +42,7 @@ Actualmente el flujo simula una respuesta exitosa localmente. Para procesar pago
 ### C. Sistema de Notificaciones Transaccionales (Email Automático)
 Los clientes y la administración de la tienda necesitan confirmación inmediata por email.
 - [ ] **Integración de Email API (Resend / SendGrid / Nodemailer):**
-  - **Email al Cliente:** Resumen del pedido con N° de Orden (`PRONTO-XXXXXX`), detalle con IVA (19%), datos de la cuenta bancaria en caso de transferencia manual y enlace de soporte por WhatsApp.
+  - **Email al Cliente:** Resumen del pedido con N° de Orden (`PRONTO-XXXXXXXX`), detalle con IVA (19%), datos de la cuenta bancaria en caso de transferencia manual y enlace de soporte por WhatsApp.
   - **Email de Alerta a Ventas/Bodega:** Notificación en tiempo real cuando ingresa una venta aprobada o una solicitud de cotización para preparar el despacho en Melipilla/RM.
 
 ### D. Seguridad y Variables de Entorno en Servidor

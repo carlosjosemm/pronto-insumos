@@ -400,7 +400,7 @@ Sortable, paginated table with columns:
 
 | Column | Source Field | Formatting | Sortable |
 |---|---|---|---|
-| ID | `orderId` | Monospace font, e.g. `PRONTO-234567` | ✅ |
+| ID | `orderId` | Monospace font, e.g. `PRONTO-7K3M9Q2Z` | ✅ |
 | Fecha | `createdAt` | Chilean date: `16 sept 2026, 14:30` | ✅ |
 | Cliente / Clínica | `customer.fullName` or `customer.razonSocial` | Truncate at 30 chars | ✅ |
 | RUT | `customer.rut` | Formatted: `76.543.210-K` | ❌ |

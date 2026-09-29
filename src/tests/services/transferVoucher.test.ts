@@ -186,9 +186,14 @@ describe('Transfer Voucher Service (src/services/transferVoucher)', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1)
     })
 
-    it('should surface a 401 RUT mismatch from the endpoint', async () => {
+    it('should surface the uniform 404 lookup failure from the endpoint (Task 8.8)', async () => {
+      // Since Task 8.8 a wrong RUT and an unknown order id are the SAME response — the
+      // old 401 RUT-mismatch contract no longer exists server-side.
       vi.spyOn(global, 'fetch').mockResolvedValueOnce(
-        jsonResponse({ error: 'El RUT ingresado no coincide con el registrado para este pedido.' }, 401)
+        jsonResponse(
+          { error: 'No encontramos un pedido con ese código y RUT. Revisa los datos o escríbenos por WhatsApp.' },
+          404
+        )
       )
 
       const res = await uploadTransferVoucher({
@@ -198,7 +203,7 @@ describe('Transfer Voucher Service (src/services/transferVoucher)', () => {
       })
 
       expect(res.success).toBe(false)
-      expect(res.error).toContain('no coincide')
+      expect(res.error).toContain('No encontramos un pedido con ese código y RUT')
     })
 
     it('should fail when the sign phase returns an incomplete payload', async () => {

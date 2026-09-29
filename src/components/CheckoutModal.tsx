@@ -303,7 +303,7 @@ export default function CheckoutModal({
 
     setIsSubmitting(true)
 
-    // Canonical order identifier PRONTO-XXXXXX
+    // Canonical order identifier PRONTO-XXXXXXXX (8 Crockford base32 chars — Task 8.8)
     const canonicalOrderId = generateOrderId()
 
     const sanitaryVerification: SanitaryVerification | undefined = hasRegulatedItems

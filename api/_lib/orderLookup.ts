@@ -1,5 +1,23 @@
+import type { VercelResponse } from '@vercel/node'
 import type { Firestore, DocumentReference, DocumentData } from 'firebase-admin/firestore'
 import { getCollectionName } from './firestoreEnv.js'
+
+/**
+ * The single lookup-failure response for every public dual-factor endpoint (Task 8.8).
+ *
+ * Before this, `/api/track-order`, `/api/upload-voucher` and `/api/order-confirmation`
+ * answered `404` for an unknown order id but `401` for a wrong RUT — an enumeration
+ * oracle that let an attacker walk the id space against a publicly known clinic RUT
+ * and harvest its orders' PII. Both failure modes now return this exact status and
+ * message, which also never echoes the probed id.
+ */
+export const ORDER_LOOKUP_FAILED_STATUS = 404
+export const ORDER_LOOKUP_FAILED_MESSAGE =
+  'No encontramos un pedido con ese código y RUT. Revisa los datos o escríbenos por WhatsApp.'
+
+export function respondOrderLookupFailed(res: VercelResponse): VercelResponse {
+  return res.status(ORDER_LOOKUP_FAILED_STATUS).json({ error: ORDER_LOOKUP_FAILED_MESSAGE })
+}
 
 export interface ResolvedOrder {
   ref: DocumentReference

@@ -1,7 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from './_lib/firebaseAdmin.js'
-import { resolveOrderByCanonicalId } from './_lib/orderLookup.js'
+import { resolveOrderByCanonicalId, respondOrderLookupFailed } from './_lib/orderLookup.js'
 import { isSimulatedPaymentAllowed } from './_lib/simulationPolicy.js'
+import {
+  consumeThrottleAttempt,
+  getClientIp,
+  recordThrottleFailures,
+  respondThrottled
+} from './_lib/abuseThrottle.js'
 
 const TRACKING_UNAVAILABLE_MESSAGE =
   'No pudimos consultar el estado del pedido. Escríbenos por WhatsApp y lo revisamos manualmente.'
@@ -84,23 +90,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
+    // Abuse throttling (Task 8.8): consume the IP budget first (cheapest rejection),
+    // then the order budget. A locked key is refused before any order read.
+    const clientIp = getClientIp(req)
+    const ipDecision = await consumeThrottleAttempt(adminDb, 'track-order', 'ip', clientIp)
+    if (!ipDecision.allowed) {
+      return respondThrottled(res, ipDecision.retryAfterSeconds)
+    }
+
+    const orderDecision = await consumeThrottleAttempt(adminDb, 'track-order', 'order', cleanOrderId)
+    if (!orderDecision.allowed) {
+      return respondThrottled(res, orderDecision.retryAfterSeconds)
+    }
+
     // Resolve the order by document key first (Task 0.12); the `orderId` field
     // query is only a legacy fallback — see api/_lib/orderLookup.ts.
     const resolvedOrder = await resolveOrderByCanonicalId(adminDb, cleanOrderId)
 
-    if (!resolvedOrder) {
-      return res.status(404).json({ error: `No se encontró un pedido con el código "${cleanOrderId}".` })
+    // Uniform failure (Task 8.8): "no such order" and "RUT mismatch" are the SAME
+    // response — the old 404/401 split was an enumeration oracle.
+    const orderCustomerRut = normalizeRut(
+      resolvedOrder?.data.customer?.rut || resolvedOrder?.data.billing?.rut || ''
+    )
+    if (!resolvedOrder || orderCustomerRut !== cleanUserRut) {
+      await recordThrottleFailures(adminDb, 'track-order', { ip: clientIp, order: cleanOrderId })
+      return respondOrderLookupFailed(res)
     }
 
     const orderData = resolvedOrder.data
-
-    // Authorization check: match purchaser's RUT
-    const orderCustomerRut = normalizeRut(orderData.customer?.rut || orderData.billing?.rut || '')
-    if (orderCustomerRut !== cleanUserRut) {
-      return res.status(401).json({
-        error: 'El RUT ingresado no coincide con el registrado para este pedido.'
-      })
-    }
 
     // Map order status to fulfillment step (1 to 5)
     let currentStep: 1 | 2 | 3 | 4 | 5 = 1
