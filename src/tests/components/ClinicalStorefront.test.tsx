@@ -100,6 +100,20 @@ describe('Clinical Storefront UI/UX Enhancement Tests', () => {
       expect(screen.getByText(/Lunes a Viernes 08:30 – 18:30/i)).toBeInTheDocument()
     })
 
+    it('exposes legal policy buttons that open the LegalModal on the right section (Task 7.1)', () => {
+      render(<Footer />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Términos y Condiciones de Venta B2B' }))
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Términos y Condiciones de Venta' })).toBeInTheDocument()
+    })
+
+    it('must never render dead href="#" placeholder links in the footer', () => {
+      const { container } = render(<Footer />)
+      expect(container.querySelectorAll('a[href="#"]')).toHaveLength(0)
+      expect(container.querySelectorAll('a[href^="https://wa.me"]').length).toBeGreaterThan(0)
+    })
+
     it('must NEVER render the hazardous "🔥 Sembrar Firebase DB" seed button', () => {
       render(<Footer />)
       expect(screen.queryByText(/Sembrar Firebase/i)).not.toBeInTheDocument()

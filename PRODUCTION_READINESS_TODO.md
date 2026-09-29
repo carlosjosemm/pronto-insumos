@@ -3,7 +3,7 @@
 **Last Updated:** September 2026  
 **Target Market:** Melipilla & San Antonio, Chile  
 **Deployment Stack:** Vercel (Frontend React 18 + Serverless Node.js) & Google Firebase / Firestore  
-**Repository State:** Advanced functional storefront with automated test coverage (67 suites / 577 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11) — **all three are resolved** (including 0.9's adversarial-review remediation) — and the distributor-RUT legal fix (1.4) plus the simulated-success fallbacks (2.8) are resolved. A second audit pass on the promo path opened **Phase 9 (commercial promotions & discount governance)**; remaining work covers the promo data model (9.1), per-zone shipping rates, legal compliance, catalog assets, and DevOps polish before go-live.
+**Repository State:** Advanced functional storefront with automated test coverage (69 suites / 585 tests). Phases 0–2, 4 and 5 are resolved; a post-implementation audit added new P0 payment-integrity blockers (0.9–0.11) — **all three are resolved** (including 0.9's adversarial-review remediation) — and the distributor-RUT legal fix (1.4), the simulated-success fallbacks (2.8) and the mandatory legal pages (7.1) are resolved. A second audit pass on the promo path opened **Phase 9 (commercial promotions & discount governance)**; remaining work covers the promo data model (9.1), per-zone shipping rates, catalog assets, and DevOps polish before go-live.
 
 ---
 
@@ -463,13 +463,21 @@ Currently, no administrative interface exists for PRONTO staff to operate the st
 
 ## Phase 7: Legal Compliance, SERNAC Warranty & Customer Trust
 
-- [ ] **7.1. Mandatory Legal Pages (Chilean Consumer Law N° 19.496)**
-  - **Current Issue:** In `Footer.tsx`, all policy links point to `href="#"`.
+- [x] **7.1. Mandatory Legal Pages (Chilean Consumer Law N° 19.496)** ✅ _(Resolved: `LegalModal` with the four policies, opened from Footer policy buttons; legal copy is an owner-reviewed draft)_
+  - ~~**Current Issue:** In `Footer.tsx`, all policy links point to `href="#"`.~~ **Symptom superseded (as found, 2026-09-28):** the redesigned footer rendered **no links at all** — `Términos y Condiciones de Venta B2B` was a dead text `<li>`. The underlying gap was real either way: no reachable Terms, SERNAC warranty or privacy policy.
   - **Required Action:** Publish dedicated policy pages complying with Chilean consumer standards:
     1. **Terms and Conditions of Sale.**
     2. **6-Month Legal Warranty & Return Policy (SERNAC):** Specify technical equipment warranty terms and hygiene requirements for sealed consumable goods.
     3. **Privacy and Data Protection Policy:** Complying with Chilean Law N° 19.628.
     4. **Company Legal Identification:** Legal business name, company RUT, physical address in Melipilla, and customer support channels.
+  - **Fulfilled & Verified (as built):**
+    - **Deviation from the literal "pages" wording (approved at plan review):** the app is a router-less SPA, so the four policies ship as one `LegalModal` (`src/components/LegalModal.tsx`) following the established modal pattern (`useScrollLock` + `useFocusTrap` + Escape) — standalone `public/*.html` pages would have required duplicating the design tokens into a separate stylesheet (the drift class the guardrails forbid).
+    - The Footer's dead `<li>` became a button, joined by `Garantía Legal 6 Meses (SERNAC)` and `Privacidad y Protección de Datos (Ley 19.628)`; each opens the modal directly on its section (`key={legalSection}` remount). Footer owns the modal state — no `App.tsx` changes; `.footer-links-list button` in `src/index.css` mirrors the footer-link look/hover.
+    - **Config-sourced values only:** Razón Social / RUT / email from `BANK_DETAILS`, phone from `WHATSAPP_DISPLAY`, WhatsApp links via `whatsappLink()`, and the commercial thresholds from `src/config/delivery.ts` via `formatCLP` (never re-declared). Known literals (warehouse address + hours + the 16:00 cutoff, which has no config constant anywhere) mirror the Footer's own copies — consolidation into a config constant is a recorded follow-up.
+    - Independent adversarial review (fresh-context subagent): APPROVE-WITH-FIXES — fixed: F1 thresholds re-declared as literals → imported from `delivery.ts` + `formatCLP`; F3 browse-wrap acceptance claim ("declara haberlas leído") softened to the factual "Los pedidos confirmados… se rigen por ellas" (no acknowledgment surface exists in checkout — surfaced for owner/lawyer sign-off alongside the draft-copy caveat); F5 `href="#"` guard strengthened with a real-`wa.me`-anchor assertion. Accepted as-built: F2 (address/hours literals — consolidation follow-up), F4 (`identificacion` reachable via in-modal nav; Footer column 1 already shows RUT/address), F6 (Escape listener re-subscription — symmetric cleanup, established pattern).
+    - Section nav uses plain `aria-pressed` buttons (deliberately not `role="tab"` — tabs imply arrow-key navigation the component does not implement).
+    - ⚠️ **Human action item:** the legal copy is an owner-reviewed **draft**, not legal advice — the SERNAC clauses and hygiene-sealed exclusions need owner/lawyer sign-off before production; edits are text-only.
+    - Tests: new `LegalModal.test.tsx` (6 — four sections incl. config-sourced legal ID, section nav, Escape/overlay close) + `ClinicalStorefront.test.tsx` +2 (policy buttons open the modal; no `href="#"` placeholders). **All 585 tests across 69 suites passing**; `pnpm build`, `pnpm lint`, `pnpm format:check` clean. Also corrected the stale suite counts this merge inherited in root `AGENTS.md` and this file's header (575/67 → the real 577/68 → now 585/69).
 
 - [ ] **7.2. Custom `.cl` Domain and SSL Certificates**
   - Register the official domain via NIC Chile (e.g., `prontoinsumos.cl` or `prontodental.cl`).
