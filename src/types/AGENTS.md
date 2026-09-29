@@ -95,6 +95,8 @@ export interface OrderTrackingInfo {
     documentType: DocumentType; razonSocial?: string;
   };
   billing?: { documentType: DocumentType; status: string; taxBreakdown?: TaxBreakdown };
+  // `url` is omitted for legacy Base64 (`data:`) documents — the tracking endpoint never
+  // echoes voucher bytes or a link Chrome refuses to open (Task 2.9).
   voucher?: { uploaded: boolean; url?: string; fileName?: string; uploadedAt?: string };
   fulfillment: {
     currentStep: 1 | 2 | 3 | 4 | 5;
@@ -139,8 +141,13 @@ export interface Order {
   billing?: BillingInfo
   sanitaryVerification?: SanitaryVerification
   items: { productId: string; name: string; quantity: number; price: number }[]
-  // Bank-transfer voucher trail
-  voucherUrl?: string; voucherFileName?: string; voucherUploadedAt?: string
+  // Bank-transfer voucher trail (Task 2.9): the bytes live in Firebase Storage, never in
+  // this document. `voucherUrl` is a Firebase download-token URL, `voucherStoragePath` the
+  // object key (vouchers/{orders|dev_orders}/{orderId}/…), and `voucherSizeBytes` the real
+  // object size read back from Storage. A `data:` value in `voucherUrl` means a legacy
+  // pre-2.9 document (the backoffice opens those through a Blob URL).
+  voucherUrl?: string; voucherStoragePath?: string; voucherFileName?: string
+  voucherContentType?: string; voucherSizeBytes?: number; voucherUploadedAt?: string
   // Task 0.9 promo trail — written only at order creation so the payment webhook
   // can recompute the verified payable total from the catalog. `promoCode` is the
   // single input `create-preference` charges from (never the request body), and

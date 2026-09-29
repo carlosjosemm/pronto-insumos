@@ -17,7 +17,7 @@ As-built technical reference for the serverless backend layer of PRONTO Insumos 
 | [`/api/create-preference`](./create-preference.ts) | `POST` | Public / Server Secrets | Generates a Mercado Pago Checkout Pro preference. **Rebuilds every line from the Firestore `products` catalog** (client payload contributes only `productId`s + quantities) and pre-checks quantities against live `stockCount`/`inStock`/`isActive`, rejecting with `400` for unknown products, missing `productId`, invalid catalog prices, paused products or insufficient stock. The applied promo is read from the **order document** (never the request body) and resolved from `src/config/promos.ts`; an order that is not registered in Firestore is refused with `400`. **Fail-closed:** returns `503` when Firestore Admin is unavailable and a real token exists (Task 0.9), and `500` in a production runtime when `MERCADOPAGO_ACCESS_TOKEN` is missing/placeholder — every simulated path is gated by [`./_lib/simulationPolicy.ts`](./_lib/simulationPolicy.ts) (Task 0.10). |
 | [`/api/webhooks/mercadopago`](./webhooks/mercadopago.ts) | `POST` (`GET` ping → 200) | HMAC-SHA256 (`x-signature`) | Single authority for payment reconciliation and stock deduction. Verifies the signature, double-checks the payment via `GET /v1/payments/{id}`, then decrements stock inside a Firestore transaction. In a production runtime, a missing/placeholder `MERCADOPAGO_WEBHOOK_SECRET` or `MERCADOPAGO_ACCESS_TOKEN` refuses the delivery with `500` + a loud log (Task 0.10). |
 | [`/api/track-order`](./track-order.ts) | `POST` | Dual factor (Order ID + RUT) | Public order lookup bypassing the client-side Firestore read lock. Compares the order's stored RUT against the normalized request RUT; mismatch → `401`. Returns a sanitized 5-stage fulfillment payload. |
-| [`/api/upload-voucher`](./upload-voucher.ts) | `POST` | Dual factor (Order ID + RUT) | Bank-transfer voucher intake. Stores the Base64 `dataUrl` **inside the order document** and transitions status to `TRANSFERENCIA_COMPROBANTE_SUBIDO`. ⚠️ File size / MIME are validated **client-side only** (see §3.2). |
+| [`/api/upload-voucher`](./upload-voucher.ts) | `POST` | Dual factor (Order ID + RUT) | Bank-transfer voucher intake, **two-phase** via `req.body.action` (Task 2.9): `sign` authorizes and returns a short-lived V4 signed PUT URL; `confirm` re-validates the object's real Storage metadata and persists the order trail. Voucher bytes **never** touch Firestore. |
 | [`/api/order-confirmation`](./order-confirmation.ts) | `POST` | Dual factor (Order ID + RUT) | Sends the "order received" Resend email for client-created orders (bank transfer & WhatsApp quote). Idempotent via the `confirmationEmailSentAt` order flag. |
 
 ### 1.2 Function Layout & the Vercel Hobby Function Cap
@@ -28,7 +28,7 @@ The Vercel **Hobby plan refuses any deployment that adds more than 12 Serverless
 | :--- | :--- | :--- |
 | `api/create-preference.ts`, `api/order-confirmation.ts`, `api/track-order.ts`, `api/upload-voucher.ts`, `api/webhooks/mercadopago.ts` | Public endpoints | ✅ Yes |
 | `api/admin/[action].ts` | **Single routed entry point** for all 12 administrative actions | ✅ Yes |
-| `api/_lib/**` | Shared non-route code (`adminAuth`, `firebaseAdmin`, `firestoreEnv`, `email`, `emailTemplates`, `mercadopagoSignature`, `simulationPolicy`) **and** the 12 admin handler modules under `api/_lib/admin/` | ❌ No — `_`-prefixed segment |
+| `api/_lib/**` | Shared non-route code (`adminAuth`, `firebaseAdmin`, `firestoreEnv`, `email`, `emailTemplates`, `mercadopagoSignature`, `simulationPolicy`, `voucherStorage`) **and** the 12 admin handler modules under `api/_lib/admin/` | ❌ No — `_`-prefixed segment |
 
 **Current function count: 6** (Hobby cap 12 — 6 slots of headroom).
 
@@ -112,12 +112,26 @@ Two layers defend against duplicate webhook deliveries:
 - ⚠️ Stale copy to fix eventually: the `ENTREGADO` description still says "…o retirado en Av. Ortúzar 750" (pickup was removed) and the non-Melipilla courier fallback is `'Starken / Chilexpress Regional'` (RM delivery was removed).
 - The simulated fallback (returned when `getAdminFirestore()` is `null`) fabricates a plausible order — in a deployed environment a missing Firebase credential would therefore surface fake tracking data instead of an error.
 
-### 3.2 Bank Transfer Voucher Intake (`/api/upload-voucher`)
+### 3.2 Bank Transfer Voucher Intake (`/api/upload-voucher`) — Task 2.9
 
-- As built, the endpoint validates: `orderId` + `rut` presence, RUT normalization/length, the same `customer.rut || billing.rut` equality check (`401` on mismatch), and `dataUrl` presence. **It does not validate file size or MIME type** — those checks (`≤5 MB`, PDF/PNG/JPG) live only in `src/services/transferVoucher.ts`.
-- Stores `voucherUrl` (the full Base64 data URL), `voucherFileName`, `voucherContentType`, `voucherUploadedAt` **on the order document**, plus an `order_status_history` event, in one batch — then fires the warehouse alert email.
-- ⚠️ **Firestore document limit risk:** the entire data URL is embedded in the order doc. Firestore caps documents at ~1 MiB, so real vouchers larger than ~750 KB will fail `batch.commit()` with a 500. A storage-backed design (or compression) is needed before the 5 MB client limit is meaningful.
-- ⚠️ **No status guard:** any party holding orderId + RUT can upload a voucher at any lifecycle stage, overwriting a previous voucher and regressing e.g. `PAGADO_MERCADOPAGO`/`DESPACHADO`/`ENTREGADO` back to `TRANSFERENCIA_COMPROBANTE_SUBIDO`.
+**Voucher bytes never live in Firestore.** The order document stores only `voucherUrl` (a Firebase download-token URL), `voucherStoragePath`, `voucherFileName`, `voucherContentType`, `voucherSizeBytes` and `voucherUploadedAt`; the object itself lives in the private Cloud Storage bucket, uploaded **browser → bucket** so neither the 4.5 MB Vercel body cap nor the 1 MiB Firestore document cap applies.
+
+**Two-phase, action-dispatched contract** (one function slot, two phases — `req.body.action`):
+
+| Phase | Request | Server decisions |
+| :--- | :--- | :--- |
+| `sign` | `{ action:'sign', orderId, rut, fileName, contentType, sizeBytes }` | presence → RUT normalize → order lookup (doc-id first, then `where('orderId','==')`) → RUT equality (`401`) → **lifecycle guard** (`409`) → MIME allowlist (`400`) → declared size (`400`) → `getSignedUrl({ version:'v4', action:'write', expires: +10 min, contentType, extensionHeaders: { 'x-goog-content-length-range': '0,5242880' } })`. Response: `{ uploadUrl, storagePath, contentType, maxBytes, expiresAt }`. **Writes nothing.** |
+| `confirm` | `{ action:'confirm', orderId, rut, storagePath, fileName }` | same auth + guard → `storagePath` must be a direct child of `vouchers/{orders\|dev_orders}/{orderId}/` (`400`) → `getMetadata()` (`400` when absent) → **authoritative** size/type re-validation, deleting the object on violation → `runTransaction()` re-read + re-assert → order update + `order_status_history` → warehouse alert. Response: `{ voucherUrl, voucherFileName, voucherUploadedAt, status:'TRANSFERENCIA_COMPROBANTE_SUBIDO' }` |
+
+- **Size is enforced by the storage layer, not just the handler.** `x-goog-content-length-range` is signed into the URL and echoed by the browser, so Storage rejects any oversized PUT even if the client never calls `confirm`; `confirm` then re-verifies the object's real `size`/`contentType` metadata (`api/_lib/voucherStorage.ts`).
+- **Lifecycle guard:** only `PENDIENTE_TRANSFERENCIA` and `TRANSFERENCIA_COMPROBANTE_SUBIDO` may attach a voucher — a paid, approved, dispatched, delivered or cancelled order is refused with `409`. Re-uploading while the transfer is still being verified replaces the voucher (the replaced object is deleted **after** the commit, best-effort, so a failed write can never destroy the existing one).
+- **The guard holds at write time:** the confirm transaction re-reads the order and re-asserts the status, so an admin approval landing inside the upload window cannot be regressed (a changed status ⇒ object deleted + `409`).
+- **Idempotency:** re-confirming the object already recorded returns `200 { duplicate: true }` with **no** side effects (no token rotation, no second history event, no second warehouse alert).
+- **Fail-closed in production** (same gate as Task 0.10, `isSimulatedPaymentAllowed()`): missing Admin credentials/bucket ⇒ `500` + loud log in a production runtime; outside production the response is explicitly `{ simulated: true }` and the client never mistakes it for a stored voucher. The outer catch logs the raw cause and returns a customer-safe message — this endpoint is unauthenticated.
+- **`dataUrl` is rejected** with a dedicated `400`, so a stale cached bundle logs a precise cause instead of a generic failure.
+- **Legacy documents** (pre-2.9) may still carry a Base64 `data:` URL: `/api/track-order` omits those from its payload and the backoffice converts them to a Blob URL on click (Chrome blocks top-frame `data:` navigation).
+- **Orphans:** an abandoned `sign → confirm` window can leave at most one object of ≤5 MiB under an order-scoped path (the signature enforces the cap). No lifecycle/cleanup job is provisioned — bounded waste, deliberately out of scope.
+- **Bucket plumbing:** `FIREBASE_STORAGE_BUCKET` (or the `${FIREBASE_PROJECT_ID}.firebasestorage.app` default) names the bucket; `.env.example` placeholder values are treated as *unconfigured* (⇒ the production `500`, never a signed URL for a non-existent bucket). `storage.rules` is deny-all — the bucket is reached exclusively through signed URLs and download tokens — and the browser PUT needs the bucket CORS config (`scripts/storage-cors.json`, applied with `pnpm run storage:cors -- --apply` — or `gcloud storage buckets update gs://<bucket> --cors-file=…` when the Cloud SDK is installed; the script is a dry run by default and validates the required PUT method + headers before writing). Note GCS builds `Access-Control-Allow-Headers` from that file's `responseHeader` list, which is why `x-goog-content-length-range` must stay in it.
 
 ---
 
@@ -136,6 +150,7 @@ PRONTO sends transactional email via **Resend** — a single `fetch` POST to `ht
 - `WAREHOUSE_NOTIFICATION_EMAIL` — Melipilla dispatch inbox for internal alerts.
 - `SITE_URL` (optional) — Base URL for order-tracking deep links (default `https://prontoinsumos.com`). ⚠️ Not currently listed in `.env.example`.
 - `VITE_BANK_*` — Bank details in emails reuse the same public `VITE_BANK_*` variables as the storefront (non-secret, single source of truth, read here via `process.env`).
+- `FIREBASE_STORAGE_BUCKET` — voucher bucket name for Task 2.9 (non-secret; optional, defaults to `${FIREBASE_PROJECT_ID}.firebasestorage.app`). Requires the **Blaze** plan; `.env.example` placeholders are treated as unconfigured.
 
 ### 4.3 Trigger Points & Templates ([`./_lib/emailTemplates.ts`](./_lib/emailTemplates.ts))
 
@@ -261,7 +276,7 @@ export function getCollectionName(baseName: FirestoreCollectionKey | string): st
 
 ### 8.1 Document ID Dual-Lookup Strategy
 
-Storefront orders are written with `setDoc(doc(db, col, orderId))`, so the Firestore Document ID **equals** the canonical code (`PRONTO-483921`). Legacy/manual docs may use auto IDs with `orderId` as a field only. `approve-transfer`, `dispatch-order`, `mark-delivered`, and `orders?orderId=` therefore try `doc(orderId)` first and fall back to `where('orderId','==',orderId)`. The public endpoints (`track-order`, `upload-voucher`, `order-confirmation`) use the `orderId`-field query only, and the MP webhook does the same — both forms resolve either storage style.
+Storefront orders are written with `setDoc(doc(db, col, orderId))`, so the Firestore Document ID **equals** the canonical code (`PRONTO-483921`). Legacy/manual docs may use auto IDs with `orderId` as a field only. `approve-transfer`, `dispatch-order`, `mark-delivered`, and `orders?orderId=` therefore try `doc(orderId)` first and fall back to `where('orderId','==',orderId)`. `upload-voucher` (Task 2.9) and the admin actions try `doc(orderId)` first and fall back to `where('orderId','==',orderId)`. The remaining public endpoints (`track-order`, `order-confirmation`) and the MP webhook use the `orderId`-field query only — both forms resolve either storage style.
 
 ### 8.2 Line-Item Consolidation Before Stock Mutation
 

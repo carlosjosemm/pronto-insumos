@@ -168,8 +168,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         taxBreakdown: orderData.billing.taxBreakdown
       } : undefined,
       voucher: {
-        uploaded: Boolean(orderData.voucherUrl),
-        url: orderData.voucherUrl,
+        uploaded: Boolean(orderData.voucherUrl || orderData.voucherStoragePath),
+        // Legacy pre-2.9 documents stored the whole voucher as a Base64 `data:` URL;
+        // never echo those bytes (or a `data:` link Chrome refuses to navigate to).
+        url:
+          typeof orderData.voucherUrl === 'string' && orderData.voucherUrl.startsWith('data:')
+            ? undefined
+            : orderData.voucherUrl,
         fileName: orderData.voucherFileName,
         uploadedAt: orderData.voucherUploadedAt
       },

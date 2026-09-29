@@ -256,7 +256,7 @@ When Transferencia Bancaria is confirmed:
 * Generates a canonical Order ID (`PRONTO-XXXXXX`).
 * Displays the complete Banco de Chile transfer specifications.
 * Renders an **embedded voucher upload widget** allowing immediate attachment of receipts (`.pdf`, `.png`, `.jpg` <= 5MB).
-* Submitting the voucher invokes `/api/upload-voucher`, advancing the order status to `'TRANSFERENCIA_COMPROBANTE_SUBIDO'`.
+* Submitting the voucher invokes `uploadTransferVoucher()` (Task 2.9: sign → direct PUT to Firebase Storage → confirm), advancing the order status to `'TRANSFERENCIA_COMPROBANTE_SUBIDO'`. Real server errors (lifecycle refusal, oversized file, storage outage) are rendered from `res.error` — the adapter no longer fabricates success.
 * Provides direct navigation to [`OrderTrackingModal.tsx`](../../src/components/OrderTrackingModal.tsx) for live fulfillment tracking.
 
 Closing the modal on step 5 (`handleClose` — overlay click, ✕ button, Escape, or `Volver a la Tienda`) resets the whole form via `resetForm()`; the gate is `step === 5`.
@@ -314,7 +314,7 @@ stateDiagram-v2
 
 ### 4.3 In-Modal Bank Transfer Voucher Upload
 
-If a customer consults an order that is pending bank transfer (`status === 'PENDIENTE_TRANSFERENCIA'`), the modal dynamically embeds a voucher upload form directly below the timeline, eliminating the need to contact support via email.
+If a customer consults an order whose transfer is pending **or already submitted** (`PENDIENTE_TRANSFERENCIA` / `TRANSFERENCIA_COMPROBANTE_SUBIDO` — the `canUploadVoucher()` helper), the modal dynamically embeds a voucher upload form directly below the timeline, eliminating the need to contact support via email. The submitted state renders replace-copy (`Comprobante Recibido — Puedes Reemplazarlo`) so a wrong or blurry voucher can be corrected in place; paid, dispatched and delivered orders never expose the widget, matching the server-side lifecycle guard (`api/AGENTS.md` §3.2).
 
 ---
 

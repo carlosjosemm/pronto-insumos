@@ -28,6 +28,16 @@ export interface OrderTrackingModalProps {
   initialRut?: string
 }
 
+/**
+ * Statuses where the customer may attach — or replace — a bank-transfer voucher
+ * (Task 2.9 lifecycle guard: paid, dispatched and delivered orders are closed).
+ */
+const VOUCHER_UPLOAD_STATUSES = ['PENDIENTE_TRANSFERENCIA', 'TRANSFERENCIA_COMPROBANTE_SUBIDO']
+
+function canUploadVoucher(status: string): boolean {
+  return VOUCHER_UPLOAD_STATUSES.includes(status)
+}
+
 export default function OrderTrackingModal({
   isOpen,
   onClose,
@@ -479,8 +489,8 @@ export default function OrderTrackingModal({
                 </div>
               </div>
 
-              {/* Bank Transfer Voucher Upload Section if Pending */}
-              {trackingData.status === 'PENDIENTE_TRANSFERENCIA' && (
+              {/* Bank Transfer Voucher Upload Section — pending, or replacing a submitted voucher */}
+              {canUploadVoucher(trackingData.status) && (
                 <div
                   style={{
                     background: 'var(--signal-soft)',
@@ -501,15 +511,25 @@ export default function OrderTrackingModal({
                     }}
                   >
                     <Building2 size={18} style={{ color: 'var(--warning)' }} />
-                    <span>Pendiente de Comprobante de Transferencia Bancaria</span>
+                    <span>
+                      {trackingData.status === 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
+                        ? 'Comprobante Recibido — Puedes Reemplazarlo'
+                        : 'Pendiente de Comprobante de Transferencia Bancaria'}
+                    </span>
                   </div>
 
                   <p
                     style={{ margin: '0 0 0.75rem', fontSize: '0.775rem', color: 'var(--warning)', lineHeight: '1.4' }}
                   >
-                    Para procesar el despacho de tu pedido, realiza la transferencia a nuestra cuenta de{' '}
-                    <strong>{BANK_DETAILS.bankName}</strong> ({BANK_DETAILS.accountType} N° {BANK_DETAILS.accountNumber}
-                    , RUT {BANK_DETAILS.rut}) y adjunta aquí tu comprobante.
+                    {trackingData.status === 'TRANSFERENCIA_COMPROBANTE_SUBIDO' ? (
+                      'Ya recibimos tu comprobante y está en verificación contable. Si te equivocaste de archivo, sube el correcto aquí y reemplazará al anterior.'
+                    ) : (
+                      <>
+                        Para procesar el despacho de tu pedido, realiza la transferencia a nuestra cuenta de{' '}
+                        <strong>{BANK_DETAILS.bankName}</strong> ({BANK_DETAILS.accountType} N°{' '}
+                        {BANK_DETAILS.accountNumber}, RUT {BANK_DETAILS.rut}) y adjunta aquí tu comprobante.
+                      </>
+                    )}
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>

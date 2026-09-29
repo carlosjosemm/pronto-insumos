@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-// Mock firebaseAdmin before importing handler
+// Mock the Firebase boundaries before importing the handler
+vi.mock('firebase-admin/storage', () => ({
+  getStorage: vi.fn()
+}))
 vi.mock('../../../api/_lib/firebaseAdmin', () => ({
-  getAdminFirestore: vi.fn(() => null)
+  getAdminApp: vi.fn(),
+  getAdminFirestore: vi.fn()
 }))
 
 import handler from '../../../api/upload-voucher'
-import { getAdminFirestore } from '../../../api/_lib/firebaseAdmin'
+import { getAdminApp, getAdminFirestore } from '../../../api/_lib/firebaseAdmin'
+import { getStorage } from 'firebase-admin/storage'
 
 function createMockRes() {
   const res: Partial<VercelResponse> = {
@@ -23,37 +28,189 @@ function createMockRes() {
   }
 }
 
+const PENDING_ORDER = {
+  orderId: 'PRONTO-123456',
+  status: 'PENDIENTE_TRANSFERENCIA',
+  totalAmount: 189990,
+  items: [{ productId: 'odon-101', name: 'Turbina', quantity: 1, price: 189990 }],
+  customer: {
+    fullName: 'Dra. Andrea',
+    email: 'andrea@clinica.cl',
+    rut: '12345678-5',
+    address: 'Calle 1',
+    city: 'Melipilla'
+  }
+}
+
+/**
+ * Firestore Admin double: direct doc-id lookup, `where` fallback, and a transactional
+ * write path. `transactionData` lets a test simulate the order changing between the
+ * authorization read and the confirm transaction (Task 2.9 TOCTOU guard).
+ */
+function createMockDb(
+  orderData: Record<string, unknown> | null,
+  options: { transactionData?: Record<string, unknown> | null } = {}
+) {
+  const updateSpy = vi.fn()
+  const setSpy = vi.fn()
+  const docRef = { id: 'PRONTO-123456', update: updateSpy }
+  const orderDoc = { exists: true, ref: docRef, data: () => orderData }
+  const transactionDoc = {
+    exists: true,
+    ref: docRef,
+    data: () => (options.transactionData === undefined ? orderData : options.transactionData)
+  }
+
+  const directGet = vi
+    .fn()
+    .mockResolvedValue(orderData ? orderDoc : { exists: false, ref: docRef, data: () => undefined })
+  const whereGet = vi.fn().mockResolvedValue(orderData ? { empty: false, docs: [orderDoc] } : { empty: true, docs: [] })
+
+  const collection = vi.fn((name: string) =>
+    name.includes('order_status_history')
+      ? { doc: vi.fn(() => ({ id: 'osh-123' })) }
+      : {
+          doc: vi.fn(() => ({ get: directGet })),
+          where: vi.fn(() => ({ limit: vi.fn(() => ({ get: whereGet })) }))
+        }
+  )
+
+  const transaction = { get: vi.fn().mockResolvedValue(transactionDoc), update: updateSpy, set: setSpy }
+  const runTransaction = vi.fn(async (callback: (tx: typeof transaction) => Promise<unknown>) => callback(transaction))
+
+  const db = { collection, runTransaction }
+
+  return { db, updateSpy, setSpy, runTransaction }
+}
+
+/** Storage bucket double — one shared file handle so assertions see every operation. */
+function createMockBucket(metadata: { size?: unknown; contentType?: unknown } = {}) {
+  const fileApi = {
+    getMetadata: vi.fn().mockResolvedValue([{ size: 2048, contentType: 'application/pdf', ...metadata }]),
+    setMetadata: vi.fn().mockResolvedValue([{}]),
+    getSignedUrl: vi.fn().mockResolvedValue(['https://storage.googleapis.com/pronto-vouchers/upload?sig=abc', {}]),
+    delete: vi.fn().mockResolvedValue([{}])
+  }
+  const fileSpy = vi.fn(() => fileApi)
+  return { bucket: { name: 'pronto-insumos.firebasestorage.app', file: fileSpy }, fileApi, fileSpy }
+}
+
+function setupAdmin(
+  orderData: Record<string, unknown> | null,
+  bucket: ReturnType<typeof createMockBucket>,
+  options: { transactionData?: Record<string, unknown> | null } = {}
+) {
+  const db = createMockDb(orderData, options)
+  vi.mocked(getAdminFirestore).mockReturnValue(db.db as unknown as ReturnType<typeof getAdminFirestore>)
+  process.env.FIREBASE_PROJECT_ID = 'pronto-insumos'
+  vi.mocked(getAdminApp).mockReturnValue({
+    options: {}
+  } as unknown as ReturnType<typeof getAdminApp>)
+  vi.mocked(getStorage).mockReturnValue({
+    bucket: vi.fn(() => bucket.bucket)
+  } as unknown as ReturnType<typeof getStorage>)
+  return db
+}
+
+const signRequest = (body: Record<string, unknown> = {}) =>
+  ({
+    method: 'POST',
+    body: {
+      action: 'sign',
+      orderId: 'PRONTO-123456',
+      rut: '12.345.678-5',
+      fileName: 'comprobante_banco_chile.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 2048,
+      ...body
+    }
+  }) as VercelRequest
+
+const confirmRequest = (body: Record<string, unknown> = {}) =>
+  ({
+    method: 'POST',
+    body: {
+      action: 'confirm',
+      orderId: 'PRONTO-123456',
+      rut: '12.345.678-5',
+      storagePath: 'vouchers/orders/PRONTO-123456/1700000000000-abcd1234.pdf',
+      fileName: 'comprobante_banco_chile.pdf',
+      ...body
+    }
+  }) as VercelRequest
+
 describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
+  const envBackup: Record<string, string | undefined> = {}
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.restoreAllMocks()
+    for (const key of [
+      'RESEND_API_KEY',
+      'WAREHOUSE_NOTIFICATION_EMAIL',
+      'VERCEL_ENV',
+      'ALLOW_SIMULATED_PAYMENTS',
+      'FIREBASE_PROJECT_ID'
+    ]) {
+      envBackup[key] = process.env[key]
+    }
+    delete process.env.RESEND_API_KEY
+    delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
+    delete process.env.VERCEL_ENV
+    delete process.env.ALLOW_SIMULATED_PAYMENTS
+    delete process.env.FIREBASE_PROJECT_ID
+  })
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(envBackup)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
   })
 
   it('should handle OPTIONS preflight with status 200', async () => {
-    const req = { method: 'OPTIONS' } as VercelRequest
     const res = createMockRes()
-
-    await handler(req, res)
+    await handler({ method: 'OPTIONS' } as VercelRequest, res)
 
     expect(res.status).toHaveBeenCalledWith(200)
     expect(res.end).toHaveBeenCalled()
   })
 
   it('should return 405 Method Not Allowed on non-POST requests', async () => {
-    const req = { method: 'GET' } as VercelRequest
     const res = createMockRes()
-
-    await handler(req, res)
+    await handler({ method: 'GET' } as VercelRequest, res)
 
     expect(res.status).toHaveBeenCalledWith(405)
     expect(res.json).toHaveBeenCalledWith({ error: 'Method not allowed' })
   })
 
-  it('should return 400 when required fields are missing', async () => {
-    const req = { method: 'POST', body: { orderId: 'PRONTO-123' } } as VercelRequest
+  it('should reject a request without a valid action', async () => {
     const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' } } as VercelRequest, res)
 
-    await handler(req, res)
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('Acción no válida') })
+    )
+  })
+
+  it('should reject Base64 data URLs outright (Task 2.9)', async () => {
+    const res = createMockRes()
+    await handler(
+      {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123456', rut: '12.345.678-5', dataUrl: 'data:application/pdf;base64,AAAA' }
+      } as VercelRequest,
+      res
+    )
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('base64') }))
+  })
+
+  it('should return 400 when orderId or RUT are missing', async () => {
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { action: 'sign', orderId: 'PRONTO-123456' } } as VercelRequest, res)
 
     expect(res.status).toHaveBeenCalledWith(400)
     expect(res.json).toHaveBeenCalledWith(
@@ -61,204 +218,435 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
     )
   })
 
-  it('should return 404 when order is not found', async () => {
-    const mockAdminDb = {
-      collection: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockReturnValue({
-            get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
-          })
-        })
-      })
-    }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
-
-    const req = {
-      method: 'POST',
-      body: {
-        orderId: 'PRONTO-000000',
-        rut: '12.345.678-5',
-        dataUrl: 'data:image/png;base64,dummy'
-      }
-    } as VercelRequest
+  it('should return 400 when the RUT is malformed', async () => {
     const res = createMockRes()
+    await handler(signRequest({ rut: '123' }), res)
 
-    await handler(req, res)
-
-    expect(res.status).toHaveBeenCalledWith(404)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('No se encontró') }))
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('RUT no válido') }))
   })
 
-  it('should return 401 when purchaser RUT does not match order record', async () => {
-    const mockOrderDoc = {
-      data: () => ({
-        orderId: 'PRONTO-123456',
-        customer: { rut: '99.999.999-9' }
-      }),
-      ref: { update: vi.fn() }
-    }
-    const mockAdminDb = {
-      collection: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockReturnValue({
-            get: vi.fn().mockResolvedValue({ empty: false, docs: [mockOrderDoc] })
-          })
-        })
-      })
-    }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+  describe('Simulation policy & fail-closed behaviour', () => {
+    it('should return a simulated response when Admin is unavailable outside production', async () => {
+      vi.mocked(getAdminFirestore).mockReturnValue(null)
+      const res = createMockRes()
 
-    const req = {
-      method: 'POST',
-      body: {
-        orderId: 'PRONTO-123456',
-        rut: '12.345.678-5',
-        dataUrl: 'data:image/png;base64,dummy'
-      }
-    } as VercelRequest
-    const res = createMockRes()
+      await handler(signRequest(), res)
 
-    await handler(req, res)
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, simulated: true, orderId: 'PRONTO-123456' })
+      )
+    })
 
-    expect(res.status).toHaveBeenCalledWith(401)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('no coincide') }))
+    it('should refuse the upload with 500 when Admin is unavailable in production', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      process.env.VERCEL_ENV = 'production'
+      vi.mocked(getAdminFirestore).mockReturnValue(null)
+      const res = createMockRes()
+
+      await handler(signRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('WhatsApp') }))
+    })
+
+    it('should refuse the upload with 500 when the storage bucket cannot be resolved in production', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      process.env.VERCEL_ENV = 'production'
+      const db = createMockDb(PENDING_ORDER)
+      vi.mocked(getAdminFirestore).mockReturnValue(db.db as unknown as ReturnType<typeof getAdminFirestore>)
+      vi.mocked(getAdminApp).mockReturnValue(null)
+      const res = createMockRes()
+
+      await handler(signRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(db.runTransaction).not.toHaveBeenCalled()
+    })
   })
 
-  it('should update order document with voucherUrl and transition status to TRANSFERENCIA_COMPROBANTE_SUBIDO', async () => {
-    const updateSpy = vi.fn().mockResolvedValue({})
-    const mockOrderDoc = {
-      data: () => ({
-        orderId: 'PRONTO-123456',
-        customer: { rut: '12345678-5' },
-        status: 'PENDIENTE_TRANSFERENCIA'
-      }),
-      ref: { update: updateSpy }
-    }
-    const batchSetSpy = vi.fn()
-    const batchCommitSpy = vi.fn().mockResolvedValue([])
+  describe('Sign phase', () => {
+    it('should require fileName, contentType and sizeBytes', async () => {
+      const bucket = createMockBucket()
+      setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
 
-    const mockAdminDb = {
-      collection: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockReturnValue({
-            get: vi.fn().mockResolvedValue({ empty: false, docs: [mockOrderDoc] })
-          })
-        }),
-        doc: vi.fn().mockReturnValue({ id: 'osh-123' })
-      }),
-      batch: vi.fn().mockReturnValue({
-        update: updateSpy,
-        set: batchSetSpy,
-        commit: batchCommitSpy
-      })
-    }
-    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      await handler(signRequest({ fileName: undefined, contentType: undefined, sizeBytes: undefined }), res)
 
-    const req = {
-      method: 'POST',
-      body: {
-        orderId: 'PRONTO-123456',
-        rut: '12.345.678-5',
-        fileName: 'comprobante_banco_chile.pdf',
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('fileName, contentType y sizeBytes') })
+      )
+    })
+
+    it('should reject an unsupported MIME type server-side', async () => {
+      const bucket = createMockBucket()
+      setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
+
+      await handler(signRequest({ contentType: 'application/zip' }), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('Formato no soportado') })
+      )
+      expect(bucket.fileApi.getSignedUrl).not.toHaveBeenCalled()
+    })
+
+    it('should reject non-positive and oversized declared sizes', async () => {
+      const bucket = createMockBucket()
+      setupAdmin(PENDING_ORDER, bucket)
+
+      const zeroRes = createMockRes()
+      await handler(signRequest({ sizeBytes: 0 }), zeroRes)
+      expect(zeroRes.status).toHaveBeenCalledWith(400)
+      expect(zeroRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('Tamaño de archivo') })
+      )
+
+      const hugeRes = createMockRes()
+      await handler(signRequest({ sizeBytes: 5 * 1024 * 1024 + 1 }), hugeRes)
+      expect(hugeRes.status).toHaveBeenCalledWith(400)
+      expect(hugeRes.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('5 MB') }))
+
+      expect(bucket.fileApi.getSignedUrl).not.toHaveBeenCalled()
+    })
+
+    it('should return 404 when the order does not exist', async () => {
+      const bucket = createMockBucket()
+      setupAdmin(null, bucket)
+      const res = createMockRes()
+
+      await handler(signRequest({ orderId: 'PRONTO-000000' }), res)
+
+      expect(res.status).toHaveBeenCalledWith(404)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('No se encontró') })
+      )
+    })
+
+    it('should return 401 when the purchaser RUT does not match the order record', async () => {
+      const bucket = createMockBucket()
+      setupAdmin({ ...PENDING_ORDER, customer: { ...PENDING_ORDER.customer, rut: '99999999-9' } }, bucket)
+      const res = createMockRes()
+
+      await handler(signRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(401)
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('no coincide') }))
+    })
+
+    it('should refuse every status outside the lifecycle guard with 409', async () => {
+      for (const status of [
+        'PAGADO_MERCADOPAGO',
+        'PAGADO_TRANSFERENCIA',
+        'TRANSFERENCIA_APROBADA',
+        'DESPACHADO',
+        'ENTREGADO',
+        'CANCELADO',
+        'COTIZACION_SOLICITADA_WHATSAPP'
+      ]) {
+        const bucket = createMockBucket()
+        setupAdmin({ ...PENDING_ORDER, status }, bucket)
+        const res = createMockRes()
+
+        await handler(signRequest(), res)
+
+        expect(res.status).toHaveBeenCalledWith(409)
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining(status) }))
+        expect(bucket.fileApi.getSignedUrl).not.toHaveBeenCalled()
+      }
+    })
+
+    it('should mint a scoped signed URL without writing anything to Firestore', async () => {
+      const bucket = createMockBucket()
+      const db = setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
+
+      await handler(signRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(bucket.fileApi.getSignedUrl).toHaveBeenCalledTimes(1)
+      const signedConfig = bucket.fileApi.getSignedUrl.mock.calls[0][0]
+      expect(signedConfig).toMatchObject({
+        version: 'v4',
+        action: 'write',
         contentType: 'application/pdf',
-        dataUrl: 'data:application/pdf;base64,samplepdfcontent'
-      }
-    } as VercelRequest
-    const res = createMockRes()
-
-    await handler(req, res)
-
-    expect(res.status).toHaveBeenCalledWith(200)
-    expect(updateSpy).toHaveBeenCalledWith(
-      mockOrderDoc.ref,
-      expect.objectContaining({
-        voucherUrl: 'data:application/pdf;base64,samplepdfcontent',
-        voucherFileName: 'comprobante_banco_chile.pdf',
-        status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
+        // The byte cap is part of the signature, so Storage itself refuses oversized uploads
+        extensionHeaders: { 'x-goog-content-length-range': `0,${5 * 1024 * 1024}` }
       })
-    )
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({
+      expect(signedConfig.expires).toBeGreaterThan(Date.now())
+
+      const payload = res.json.mock.calls[0][0]
+      expect(payload).toMatchObject({
         success: true,
         orderId: 'PRONTO-123456',
+        uploadUrl: 'https://storage.googleapis.com/pronto-vouchers/upload?sig=abc',
+        contentType: 'application/pdf',
+        maxBytes: 5 * 1024 * 1024
+      })
+      expect(payload.storagePath).toMatch(/^vouchers\/orders\/PRONTO-123456\/\d+-[0-9a-f]{8}\.pdf$/)
+      expect(payload.dataUrl).toBeUndefined()
+
+      // No bytes, no metadata and no status change are persisted at signing time
+      expect(db.updateSpy).not.toHaveBeenCalled()
+      expect(db.setSpy).not.toHaveBeenCalled()
+      expect(db.runTransaction).not.toHaveBeenCalled()
+    })
+
+    it('should allow a voucher replacement while the transfer is still pending', async () => {
+      const bucket = createMockBucket()
+      setupAdmin({ ...PENDING_ORDER, status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO' }, bucket)
+      const res = createMockRes()
+
+      await handler(signRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(bucket.fileApi.getSignedUrl).toHaveBeenCalledTimes(1)
+    })
+
+    it('should fail closed when signing the URL throws', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const bucket = createMockBucket()
+      bucket.fileApi.getSignedUrl.mockRejectedValue(new Error('402 billing required'))
+      setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
+
+      await handler(signRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('WhatsApp') }))
+    })
+  })
+
+  describe('Confirm phase', () => {
+    const objectPath = 'vouchers/orders/PRONTO-123456/1700000000000-abcd1234.pdf'
+
+    it('should require a storage path', async () => {
+      const bucket = createMockBucket()
+      setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
+
+      await handler(confirmRequest({ storagePath: undefined }), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('identificador del comprobante') })
+      )
+    })
+
+    it('should reject a storage path that belongs to another order', async () => {
+      const bucket = createMockBucket()
+      setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
+
+      await handler(confirmRequest({ storagePath: 'vouchers/orders/PRONTO-999999/1700000000000-abcd1234.pdf' }), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('no corresponde') })
+      )
+      expect(bucket.fileApi.getMetadata).not.toHaveBeenCalled()
+    })
+
+    it('should reject a storage path outside the voucher prefix', async () => {
+      const bucket = createMockBucket()
+      setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
+
+      await handler(confirmRequest({ storagePath: 'products/odon-101.png' }), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(bucket.fileApi.delete).not.toHaveBeenCalled()
+    })
+
+    it('should return 400 when the uploaded object cannot be found', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const bucket = createMockBucket()
+      bucket.fileApi.getMetadata.mockRejectedValue(new Error('Not Found'))
+      setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
+
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('No encontramos el comprobante') })
+      )
+    })
+
+    it('should delete and reject an object that exceeds the byte cap', async () => {
+      const bucket = createMockBucket({ size: 5 * 1024 * 1024 + 1 })
+      const db = setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
+
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('5 MB') }))
+      expect(bucket.fileApi.delete).toHaveBeenCalledWith({ ignoreNotFound: true })
+      expect(db.runTransaction).not.toHaveBeenCalled()
+    })
+
+    it('should delete and reject an object whose real content type is not allowed', async () => {
+      const bucket = createMockBucket({ contentType: 'application/x-msdownload' })
+      const db = setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
+
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('Formato no soportado') })
+      )
+      expect(bucket.fileApi.delete).toHaveBeenCalledWith({ ignoreNotFound: true })
+      expect(db.runTransaction).not.toHaveBeenCalled()
+    })
+
+    it('should persist the voucher trail without ever storing Base64 bytes', async () => {
+      const bucket = createMockBucket()
+      const db = setupAdmin(PENDING_ORDER, bucket)
+      const res = createMockRes()
+
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(db.runTransaction).toHaveBeenCalledTimes(1)
+
+      const updatePayload = db.updateSpy.mock.calls[0][1] as Record<string, unknown>
+      expect(updatePayload).toMatchObject({
+        voucherStoragePath: objectPath,
+        voucherFileName: 'comprobante_banco_chile.pdf',
+        voucherContentType: 'application/pdf',
+        voucherSizeBytes: 2048,
         status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
       })
-    )
+      expect(String(updatePayload.voucherUrl)).toMatch(
+        /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/pronto-insumos\.firebasestorage\.app\/o\//
+      )
+      expect(String(updatePayload.voucherUrl)).toContain('token=')
+      expect(JSON.stringify(updatePayload)).not.toContain('data:')
+      expect(bucket.fileApi.setMetadata).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({ firebaseStorageDownloadTokens: expect.any(String) })
+        })
+      )
+
+      const historyPayload = db.setSpy.mock.calls[0][1] as Record<string, unknown>
+      expect(historyPayload).toMatchObject({
+        orderId: 'PRONTO-123456',
+        previousStatus: 'PENDIENTE_TRANSFERENCIA',
+        newStatus: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+        changedBy: 'CUSTOMER',
+        changedByEmail: 'andrea@clinica.cl',
+        actorRole: 'CUSTOMER'
+      })
+      expect((historyPayload.metadata as Record<string, unknown>).storagePath).toBe(objectPath)
+
+      const responsePayload = res.json.mock.calls[0][0]
+      expect(responsePayload).toMatchObject({ success: true, status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO' })
+      expect(responsePayload.voucherUrl).toContain('token=')
+
+      // Nothing was deleted: this order had no previous voucher
+      expect(bucket.fileApi.delete).not.toHaveBeenCalled()
+    })
+
+    it('should be idempotent when the same object is confirmed twice', async () => {
+      const bucket = createMockBucket()
+      const db = setupAdmin(
+        {
+          ...PENDING_ORDER,
+          status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+          voucherStoragePath: objectPath,
+          voucherUrl:
+            'https://firebasestorage.googleapis.com/v0/b/pronto-insumos.firebasestorage.app/o/x?alt=media&token=t',
+          voucherFileName: 'comprobante_banco_chile.pdf',
+          voucherUploadedAt: '2026-09-28T10:00:00.000Z'
+        },
+        bucket
+      )
+      const res = createMockRes()
+
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true, duplicate: true }))
+      // Nothing at all happens on a retried confirm: no transaction, no write, no re-tokenization
+      expect(db.runTransaction).not.toHaveBeenCalled()
+      expect(db.updateSpy).not.toHaveBeenCalled()
+      expect(bucket.fileApi.setMetadata).not.toHaveBeenCalled()
+    })
+
+    it('should replace the previous object only after the new voucher is persisted', async () => {
+      const previousPath = 'vouchers/orders/PRONTO-123456/1699999999999-old.pdf'
+      const bucket = createMockBucket()
+      const db = setupAdmin(
+        { ...PENDING_ORDER, status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO', voucherStoragePath: previousPath },
+        bucket
+      )
+      const res = createMockRes()
+
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(bucket.fileApi.delete).toHaveBeenCalledWith({ ignoreNotFound: true })
+      expect(db.updateSpy.mock.invocationCallOrder[0]).toBeLessThan(bucket.fileApi.delete.mock.invocationCallOrder[0])
+    })
+
+    it('should refuse a status that changed during the upload window (TOCTOU guard)', async () => {
+      const bucket = createMockBucket()
+      const db = setupAdmin(PENDING_ORDER, bucket, {
+        transactionData: { ...PENDING_ORDER, status: 'TRANSFERENCIA_APROBADA' }
+      })
+      const res = createMockRes()
+
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(409)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('TRANSFERENCIA_APROBADA') })
+      )
+      expect(db.updateSpy).not.toHaveBeenCalled()
+      expect(bucket.fileApi.delete).toHaveBeenCalledWith({ ignoreNotFound: true })
+    })
+
+    it('should fail closed without deleting anything when the order write fails', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const previousPath = 'vouchers/orders/PRONTO-123456/1699999999999-old.pdf'
+      const bucket = createMockBucket()
+      const db = setupAdmin(
+        { ...PENDING_ORDER, status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO', voucherStoragePath: previousPath },
+        bucket
+      )
+      db.runTransaction.mockRejectedValue(new Error('firestore unavailable'))
+      const res = createMockRes()
+
+      await handler(confirmRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('No pudimos registrar') })
+      )
+      expect(bucket.fileApi.delete).not.toHaveBeenCalled()
+    })
   })
 
   describe('Warehouse Email Alert (Resend)', () => {
-    let resendKeyBackup: string | undefined
-    let warehouseBackup: string | undefined
-
     beforeEach(() => {
-      resendKeyBackup = process.env.RESEND_API_KEY
-      warehouseBackup = process.env.WAREHOUSE_NOTIFICATION_EMAIL
-      delete process.env.RESEND_API_KEY
-      delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
-    })
-
-    afterEach(() => {
-      if (resendKeyBackup === undefined) delete process.env.RESEND_API_KEY
-      else process.env.RESEND_API_KEY = resendKeyBackup
-      if (warehouseBackup === undefined) delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
-      else process.env.WAREHOUSE_NOTIFICATION_EMAIL = warehouseBackup
-    })
-
-    function mockSuccessfulVoucherDb() {
-      const updateSpy = vi.fn().mockResolvedValue({})
-      const mockOrderDoc = {
-        data: () => ({
-          orderId: 'PRONTO-123456',
-          status: 'PENDIENTE_TRANSFERENCIA',
-          totalAmount: 189990,
-          items: [{ productId: 'odon-101', name: 'Turbina', quantity: 1, price: 189990 }],
-          customer: {
-            fullName: 'Dra. Andrea',
-            email: 'andrea@clinica.cl',
-            rut: '12345678-5',
-            address: 'Calle 1',
-            city: 'Melipilla'
-          }
-        }),
-        ref: { update: updateSpy }
-      }
-      const mockAdminDb = {
-        collection: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({
-              get: vi.fn().mockResolvedValue({ empty: false, docs: [mockOrderDoc] })
-            })
-          }),
-          doc: vi.fn().mockReturnValue({ id: 'osh-123' })
-        }),
-        batch: vi.fn().mockReturnValue({ update: updateSpy, set: vi.fn(), commit: vi.fn().mockResolvedValue([]) })
-      }
-      return { mockAdminDb, updateSpy }
-    }
-
-    const voucherReq = () =>
-      ({
-        method: 'POST',
-        body: {
-          orderId: 'PRONTO-123456',
-          rut: '12.345.678-5',
-          fileName: 'comprobante.pdf',
-          contentType: 'application/pdf',
-          dataUrl: 'data:application/pdf;base64,samplepdfcontent'
-        }
-      }) as VercelRequest
-
-    it('should send a warehouse alert email after the voucher is stored', async () => {
       process.env.RESEND_API_KEY = 're_test_key'
       process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+    })
+
+    it('should send a warehouse alert email after the voucher is stored', async () => {
       const fetchSpy = vi
         .spyOn(global, 'fetch')
         .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
-      const { mockAdminDb } = mockSuccessfulVoucherDb()
-      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const bucket = createMockBucket()
+      setupAdmin(PENDING_ORDER, bucket)
 
       const res = createMockRes()
-      await handler(voucherReq(), res)
+      await handler(confirmRequest(), res)
 
       expect(res.status).toHaveBeenCalledWith(200)
       const resendCalls = fetchSpy.mock.calls.filter((c) => String(c[0]).includes('api.resend.com'))
@@ -269,15 +657,13 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
     })
 
     it('should still return 200 when the warehouse alert fails (non-blocking)', async () => {
-      process.env.RESEND_API_KEY = 're_test_key'
-      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
       vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'))
       vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const { mockAdminDb } = mockSuccessfulVoucherDb()
-      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const bucket = createMockBucket()
+      setupAdmin(PENDING_ORDER, bucket)
 
       const res = createMockRes()
-      await handler(voucherReq(), res)
+      await handler(confirmRequest(), res)
 
       expect(res.status).toHaveBeenCalledWith(200)
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }))

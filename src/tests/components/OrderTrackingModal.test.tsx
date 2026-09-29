@@ -155,4 +155,57 @@ describe('OrderTrackingModal Component (src/components/OrderTrackingModal)', () 
       expect(uploadTransferVoucher).toHaveBeenCalledTimes(1)
     })
   })
+
+  it('should offer a voucher replacement while the transfer is being verified (Task 2.9)', async () => {
+    vi.mocked(fetchOrderTracking).mockResolvedValue({
+      success: true,
+      data: {
+        orderId: 'PRONTO-112233',
+        createdAt: '2026-09-17T10:00:00Z',
+        status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+        paymentMethod: 'transferencia',
+        totalAmount: 189990,
+        items: [{ productId: 'odon-1', name: 'Turbina', quantity: 1, price: 189990 }],
+        customer: {
+          fullName: 'Dr. Test',
+          email: 'test@clinica.cl',
+          rut: '12345678-5',
+          address: 'Av. Ortúzar 100',
+          city: 'Melipilla',
+          documentType: 'boleta'
+        },
+        voucher: { uploaded: true, fileName: 'comprobante.pdf' },
+        fulfillment: {
+          currentStep: 2,
+          statusTitle: 'Comprobante en Verificación',
+          statusDescription: 'Comprobante recibido. Nuestro equipo contable está validando los fondos.'
+        }
+      }
+    })
+
+    vi.mocked(uploadTransferVoucher).mockResolvedValueOnce({
+      success: true,
+      orderId: 'PRONTO-112233',
+      status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+      message: 'Comprobante adjuntado exitosamente. En proceso de validación contable.'
+    })
+
+    render(
+      <OrderTrackingModal isOpen={true} onClose={() => {}} initialOrderId="PRONTO-112233" initialRut="12.345.678-5" />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Comprobante Recibido — Puedes Reemplazarlo')).toBeInTheDocument()
+    })
+    expect(screen.getByText(/reemplazará al anterior/i)).toBeInTheDocument()
+
+    const file = new File(['corrected voucher'], 'comprobante_corregido.pdf', { type: 'application/pdf' })
+    const fileInput = document.getElementById('tracking-voucher-file') as HTMLInputElement
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    fireEvent.click(screen.getByRole('button', { name: /Enviar Comprobante/i }))
+
+    await waitFor(() => {
+      expect(uploadTransferVoucher).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'PRONTO-112233', file }))
+    })
+  })
 })

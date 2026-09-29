@@ -130,8 +130,14 @@ export interface Order {
     quantity: number
     price: number
   }[]
+  // Bank-transfer voucher trail (Task 2.9): the bytes live in Firebase Storage —
+  // `voucherUrl` is a download-token URL and `voucherStoragePath` the object key.
+  // A `data:` URL here means a legacy pre-2.9 document.
   voucherUrl?: string
+  voucherStoragePath?: string
   voucherFileName?: string
+  voucherContentType?: string
+  voucherSizeBytes?: number
   voucherUploadedAt?: string
   // Promo trail — persisted so the payment webhook can recompute the verified
   // payable total from the catalog (Task 0.9); written only at order creation.
