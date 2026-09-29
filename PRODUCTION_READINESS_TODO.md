@@ -2,7 +2,7 @@
 
 A working task list, not a changelog. Finished work is one line in §2; its as-built detail lives in the `AGENTS.md` of the directory it touches. Open tasks keep their IDs (they are referenced from code comments and `AGENTS.md` files) — do not renumber.
 
-**Last updated:** 2026-09-29 (full audit pass) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
+**Last updated:** 2026-09-29 (full audit pass; **Phase 3 suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
 **Baseline (verified 2026-09-29, after merging PR #22 / Task 2.9):** `pnpm test` 663/663 (72 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict`.
 
 **Priorities:** **P1** = fix before real traffic · **P2** = fix soon after / before a marketed launch · **P3** = polish & DevOps.
@@ -25,8 +25,8 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 2.10 | Last literal `wa.me` / stale phone placeholders | P2 | No |
 | 2.12 | Payment-return modal claims "Pago Confirmado" from URL params alone | P2 | No |
 | 2.15 | Voucher storage follow-ups (unconfirmed uploads, legacy base64 docs) | P2 | No |
-| 3.2 | Estimated delivery windows in cart/checkout | P2 | No |
-| 3.3 | Stale localization copy sweep (API, services, storefront, admin) | P2 | **Yes** (wrong coverage claims) |
+| 3.2 | Estimated delivery windows in cart/checkout — **suspended (Phase 3)** | P2 | No |
+| 3.3 | Stale localization copy sweep (API, services, storefront, admin) — **suspended (Phase 3)** | P2 | **Yes** (wrong coverage claims) |
 | 4.2 | Backoffice readiness sweep | P2 | No |
 | 4.3 | Admin handler hardening (status guards, amount check, stock races) | P2 | No |
 | 8.4 | Pre-flight gate / minimal CI | P2 | No |
@@ -38,6 +38,8 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 8.1 · 8.2 · 8.5 | Bundle chunks · `api/` in `tsc` · Sentry & GA4 | P3 | No |
 | 8.9 · 8.10 · 8.11 | `.env.example` gaps · lint scope · resilient Firebase init | P3 | No |
 | 8.14 · 8.15 | Dependency hygiene · operator-script guardrails | P3 | No |
+
+> **SUSPENDED until further notice (owner decision, 2026-09-29):** **Phase 3 — Logistics & Copy** (**3.2**, **3.3**) is out of the active priority queue — do not select, plan or implement these items. **3.1** (per-zone shipping rates) is a P1 launch blocker grouped under Phase 0 in this document and is **not** covered by the suspension.
 
 **Human action items (no agent can close these):**
 
@@ -167,7 +169,9 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
 - [ ] **2.14. Decision: Public `stockCount` Read vs. the "Confidential Stock" Rule** _(P3)_
   - `firestore.rules` grants public `read` on `products`, so exact `stockCount` is fetchable by anyone even though `src/data/AGENTS.md` §3.2 declares it confidential (the UI only hides it). Either accept and amend that rule, or publish a stock-free projection (e.g. `stockBucket`/`inStock` only) and keep exact counts admin/server-side. Low urgency; do not change opportunistically — it touches `cartStorage` clamping and `create-preference`.
 
-### Phase 3 — Logistics & Copy
+### Phase 3 — Logistics & Copy — SUSPENDED until further notice (owner decision, 2026-09-29)
+
+> Not in the active priority queue: do not select, plan or implement these two items. IDs and wording are retained for when the suspension is lifted.
 
 - [ ] **3.2. Estimated Delivery Time Windows** _(P2)_
   - Show fulfillment estimates in Cart and Checkout: same-day Melipilla for orders confirmed before 16:00; scheduled route for San Antonio. Copy must come from `DELIVERY_ZONES` and add a config constant for the 16:00 cutoff (today it is a literal duplicated in Footer/LegalModal) — never "RM".
