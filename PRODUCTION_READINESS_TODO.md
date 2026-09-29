@@ -3,7 +3,7 @@
 A working task list, not a changelog. Finished work is one line in §2; its as-built detail lives in the `AGENTS.md` of the directory it touches. Open tasks keep their IDs (they are referenced from code comments and `AGENTS.md` files) — do not renumber.
 
 **Last updated:** 2026-09-29 (full audit pass; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
-**Baseline (verified 2026-09-29, after rebasing onto the merged 0.12 + 0.13 work):** `pnpm test` 697/697 (76 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
+**Baseline (verified 2026-09-29, after the Task 0.14 webhook reconciliation work):** `pnpm test` 726/726 (76 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
 
 **Priorities:** **P1** = fix before real traffic · **P2** = fix soon after / before a marketed launch · **P3** = polish & DevOps.
 
@@ -13,7 +13,6 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 
 | ID | Task | Pri | Launch blocker |
 | :-- | :-- | :-: | :-: |
-| 0.14 | Webhook reconciliation gaps (MP 5xx swallowed, double payment, cancelled/refunded orders, oversell) | P1 | **Yes** |
 | 2.11 | Catalog fallback shows prototype fixtures and wipes the persisted cart | P1 | **Yes** |
 | 3.1 | Per-zone shipping rates below the free-shipping threshold — **suspended (Phase 3)** | P1 | **Yes** |
 | 7.2 | Custom `.cl` domain + SSL | P1 | **Yes** |
@@ -69,6 +68,7 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 0.11 | `submitOrder` fails closed; `ignoreUndefinedProperties: true` on the client Firestore instance. |
 | 0.12 | Order documents bound to their own id + `keys().hasOnly` create-shape allowlist (nested maps, `paymentMethod` ↔ `status`, length caps, `PENDIENTE_EMISION_SII`); canonical doc-key-first resolver `api/_lib/orderLookup.ts` wired into the webhook, `track-order`, `order-confirmation` and `upload-voucher`; payload↔rules drift guard. **Rules still need `pnpm run deploy:rules`.** |
 | 0.13 | Voucher URLs allowlisted at the render sink: `src/utils/voucherUrl.ts` (storage host / legacy `data:` MIME / unsafe) + `OrderDetailPanel` opens a re-typed Blob or plain text — closes the admin-origin XSS that 0.12's write-side hole made reachable. |
+| 0.14 | Webhook reconciliation closed: MP verification failures return `502` (only a `404` is acked), one signed payment id drives signature + fetch, the status guard parks non-payable orders in `PAGO_EN_REVISION` and records settled ones as double-payment incidents (at-most-once stock deduction, never a tracking regression), refunds/chargebacks park the order for manual review, oversell shortfalls are recorded + alerted, and `create-preference` prices the order document's lines (the request body contributes only the order id). |
 | 0.15 | Dispatch accepts a blank tracking code: `dispatch-order` omits absent keys instead of writing `undefined` (which the Admin SDK rejects), and the Admin Firestore instance is now created with `ignoreUndefinedProperties: true` too. The audit confirmed it was the only handler writing `undefined`. |
 | 0.16 | `track-order` fails closed: `500` + loud log in a production runtime when Firestore Admin is unavailable, instead of returning the fabricated "Dra. Andrea Morales" order. The simulated payload is reachable only through `isSimulatedPaymentAllowed()` (dev/preview, or the explicit `ALLOW_SIMULATED_PAYMENTS='true'` opt-in). |
 | 1.1 | Integer-CLP catalog, `formatCLP`, `Math.round` IVA. |
@@ -102,16 +102,6 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
 ## 3. Open Tasks
 
 ### Phase 0 — Security & Payment Integrity (2026-09-29 audit)
-
-- [ ] **0.14. Webhook reconciliation gaps** _(P1)_ — `api/webhooks/mercadopago.ts`
-  - **(a) MP verification failures are acknowledged `200`** (`:107-115`): a revoked/expired token, an MP 5xx or a timeout returns 200, so a genuinely paid order is never retried and never reconciled. Return `5xx` for `401/403/5xx/network`; keep `200` only for `404` (payment does not exist).
-  - **(b) A second approved payment for an already-paid order is silently ack'd as `duplicate`** (`:163-176`, keyed on `status === 'PAGADO_MERCADOPAGO'`, not on the payment id). A double charge (two approved payment ids) is never flagged. If `paymentId !== order.mercadopagoPaymentId`, alert the warehouse and record it in history for manual refund.
-  - **(c) No order-status guard:** an approved payment for an order that is `CANCELADO` / `DESPACHADO` / `ENTREGADO` / `TRANSFERENCIA_APROBADA` flips it to `PAGADO_MERCADOPAGO` and deducts stock again. Only `PENDIENTE_PAGO_MERCADOPAGO` and `PAGO_EN_REVISION` should be payable; anything else → review + alert, no stock movement.
-  - **(d) Refunds / chargebacks are unhandled:** only `approved` is processed; a later `refunded` / `charged_back` / `cancelled` leaves the order `PAGADO`, stock deducted. Minimum: route to `PAGO_EN_REVISION` with an alert (refunds stay off-platform, `src/types/AGENTS.md` §2.1).
-  - **(e) Silent oversell:** `newStock = Math.max(0, current − qty)` (`:249`) hides a shortfall (stock hit 0 between preference and payment). Approve (money is taken) but record the shortfall in history/audit metadata and alert the warehouse. Same clamp exists in `approve-transfer` and `resolve-payment-review`.
-  - **(f) Signed id ≠ used id:** the signature is verified against query `data.id` first (`:53-54`) but the payment fetched is `body.data.id` first (`:42-43`). Use one value for both. Optionally pass `maxAgeSeconds` (the helper supports it).
-  - **(g) `create-preference` prices the request body, not the order:** lines come from `req.body.items` (`api/create-preference.ts:117-183`) while the webhook checks `order.items`. A mismatched body yields a payable preference that later lands in `PAGO_EN_REVISION`. Build the lines from `orderData.items` instead.
-  - **Verify:** webhook tests for each branch (MP 500 → 5xx; second payment id → alert; cancelled order → no transition/stock; refund → review; shortfall → alert with approval; mismatched signed id).
 
 - [ ] **2.15. Voucher Storage Follow-Ups (post-2.9)** _(P2)_
   - **Unconfirmed uploads are never cleaned up.** `sign` hands out signed PUT URLs with no per-order limit and no throttle; an upload that is never `confirm`ed leaves an orphan object of up to 5 MiB under `vouchers/…` (Blaze bills storage). Cap signs per order (e.g. a small counter on the order doc / 8.8 throttling) and add a housekeeping path for objects the order document does not reference (bucket lifecycle rule on a `pending/` prefix that `confirm` moves out of, or an admin sweep action on the existing dispatcher — no new function slot).

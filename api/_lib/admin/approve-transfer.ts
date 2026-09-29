@@ -8,6 +8,7 @@ import {
   buildWarehouseAlertEmail,
   toOrderEmailData,
 } from "../emailTemplates.js";
+import type { StockShortfall } from "../emailTemplates.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -64,8 +65,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     let orderDataForEmail: any = null;
+    // Task 0.14e — oversold lines recorded on approval. Reset inside the
+    // transaction callback, which Firestore may re-run on contention.
+    const stockShortfalls: StockShortfall[] = [];
 
     const result = await db.runTransaction(async (transaction) => {
+      stockShortfalls.length = 0;
       const orderDoc = await transaction.get(orderRef);
       if (!orderDoc.exists) {
         throw new Error(`Pedido "${orderId}" no encontrado en Firestore`);
@@ -112,6 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         previousStock: number;
         newStock: number;
         delta: number;
+        shortfall: number;
         isActive: boolean;
       }[] = [];
 
@@ -129,15 +135,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               : 0;
           const newStock = Math.max(0, currentStock - itemInfo.qty);
           const isActive = productData.isActive !== false;
+          const lineName = productData.name || itemInfo.name || productId;
+          const shortfall = Math.max(0, itemInfo.qty - currentStock);
+          // Task 0.14e: an approval that oversells is still approved (the money
+          // is in) but the shortfall is recorded and alerted — never hidden by
+          // the Math.max clamp.
+          if (shortfall > 0) {
+            stockShortfalls.push({
+              productId,
+              name: lineName,
+              requested: itemInfo.qty,
+              available: currentStock,
+            });
+          }
 
           productDocsToUpdate.push({
             ref: productRef,
             productId,
-            name: productData.name || itemInfo.name || productId,
+            name: lineName,
             sku: productData.sku || "",
             previousStock: currentStock,
             newStock,
             delta: -itemInfo.qty,
+            shortfall,
             isActive,
           });
         }
@@ -172,7 +192,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           changedByEmail: authResult.email || null,
           actorRole: "ADMIN",
           timestamp: nowIso,
-          metadata: { orderId },
+          metadata: {
+            orderId,
+            ...(update.shortfall > 0
+              ? { stockShortfall: update.shortfall }
+              : {}),
+          },
         });
       }
 
@@ -202,6 +227,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         metadata: {
           approvedBy: adminActor,
           itemsCount: items.length,
+          // Task 0.14e: oversold lines travel with the approval so the
+          // shortfall is auditable, not just emailed.
+          ...(stockShortfalls.length > 0 ? { stockShortfalls } : {}),
         },
       });
 
@@ -227,7 +255,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (warehouseEmail) {
         await sendEmail({
           to: warehouseEmail,
-          ...buildWarehouseAlertEmail(emailData, "TRANSFERENCIA_APROBADA"),
+          ...buildWarehouseAlertEmail(
+            emailData,
+            "TRANSFERENCIA_APROBADA",
+            stockShortfalls,
+          ),
         });
       }
     }
