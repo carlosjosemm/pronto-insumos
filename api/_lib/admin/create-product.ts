@@ -4,6 +4,7 @@ import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
 import { validateProductSchema } from '../../../src/utils/schemaValidation.js'
+import { MAX_CLP, MAX_STOCK_UNITS, isValidClpAmount, isValidStockUnits } from './adminLimits.js'
 import type { Product, InventoryAuditLog } from '../../../src/types'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -47,14 +48,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'La especialidad o categoría es obligatoria.' })
     }
 
-    const parsedPrice = parseInt(String(price), 10)
-    if (isNaN(parsedPrice) || parsedPrice <= 0) {
-      return res.status(400).json({ error: 'El precio debe ser un número entero mayor a 0 en CLP.' })
+    // Whole-peso CLP, number-only: the shared guard rejects fractional, non-finite,
+    // out-of-range and string input, instead of the silent truncation `parseInt` did
+    // (`189.99` → `189`, `'12abc'` → `12`) which let a typo change the catalog price.
+    if (!isValidClpAmount(price)) {
+      return res.status(400).json({
+        error: `El precio debe ser un número entero en CLP entre 1 y ${MAX_CLP}.`
+      })
     }
 
-    const parsedStock = parseInt(String(stockCount), 10)
-    if (isNaN(parsedStock) || parsedStock < 0) {
-      return res.status(400).json({ error: 'El stock debe ser un número entero mayor o igual a 0.' })
+    if (!isValidStockUnits(stockCount)) {
+      return res.status(400).json({
+        error: `El stock debe ser un número entero entre 0 y ${MAX_STOCK_UNITS} unidades.`
+      })
     }
 
     const adminDb = getAdminFirestore()
@@ -78,10 +84,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       category: cleanCategory,
       brand: cleanBrand,
       manufacturer: cleanBrand,
-      price: parsedPrice,
-      priceNeto: Math.round(parsedPrice / 1.19),
-      stockCount: parsedStock,
-      inStock: parsedStock > 0,
+      price: price,
+      priceNeto: Math.round(price / 1.19),
+      stockCount: stockCount,
+      inStock: stockCount > 0,
       isActive: true,
       prescriptionRequired: !!prescriptionRequired,
       tag: (tag || '').trim(),
@@ -119,8 +125,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       productName: newProduct.name,
       changeType: 'STOCK_ADJUSTMENT',
       previousStock: null,
-      newStock: parsedStock,
-      delta: parsedStock,
+      newStock: stockCount,
+      delta: stockCount,
       reasonCode: 'creacion_manual',
       operatorNotes: 'Registro manual de nuevo insumo desde el panel de administración',
       changedBy: authResult.uid || 'ADMIN',
@@ -129,7 +135,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       timestamp: nowIso,
       metadata: {
         category: cleanCategory,
-        price: parsedPrice
+        price
       }
     }
 
