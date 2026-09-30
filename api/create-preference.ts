@@ -2,12 +2,118 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getAdminFirestore } from './_lib/firebaseAdmin.js'
 import { getCollectionName } from './_lib/firestoreEnv.js'
 import { hasRealMercadoPagoToken, isSimulatedPaymentAllowed } from './_lib/simulationPolicy.js'
+import { consumeThrottleAttempt, getClientIp, recordThrottleFailures, respondThrottled } from './_lib/abuseThrottle.js'
 import { resolvePromoPercent } from '../src/config/promos.js'
-import { computeDiscountedUnitPrice, normalizeQuantity } from '../src/utils/orderTotal.js'
+import { computeDiscountedUnitPrice, computeOrderTotal, normalizeQuantity } from '../src/utils/orderTotal.js'
+import { MIN_ORDER_OUTSIDE_MELIPILLA, MIN_ORDER_ZONE, isBelowMinimumOrder } from '../src/config/delivery.js'
+import type { DeliveryZone } from '../src/config/delivery.js'
+import { formatCLP } from '../src/utils/currency.js'
 
-function buildBaseUrl(host: string): string {
-  const protocol = host.includes('localhost') ? 'http' : 'https'
-  return `${protocol}://${host}`
+/**
+ * Host header shapes a preference's return/webhook URLs may be built from
+ * outside production: loopback (any port), Vercel deployment domains and
+ * private-range IPv4 for LAN testing. Anything else — a scheme, a path,
+ * traversal, whitespace or a public foreign host — is refused: the Host
+ * header is caller-controlled and must never decide where Mercado Pago
+ * redirects the shopper or delivers the payment webhook.
+ */
+function isSafeDevHost(host: string): boolean {
+  if (!host || host.length > 253) return false
+  if (/[/?#@\s\\]/.test(host) || host.includes('..')) return false
+  if (/^(?:localhost|127\.0\.0\.1|::1|\[::1\])(?::\d+)?$/i.test(host)) return true
+  if (/\.vercel\.app$/i.test(host)) return true
+  // Full dotted quads only, so a public hostname like `10.evil.com` can never
+  // pass by sharing a prefix with a private address.
+  if (
+    /^(?:(?:10(?:\.\d{1,3}){3})|(?:192\.168(?:\.\d{1,3}){2})|(?:172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}))(?::\d+)?$/.test(
+      host
+    )
+  ) {
+    return true
+  }
+  return false
+}
+
+function hostProtocol(host: string): 'http' | 'https' {
+  // Loopback and private-range LAN servers are plain-http dev endpoints; a
+  // public deployment domain is always https.
+  if (/^(?:localhost|127\.0\.0\.1|::1|\[::1\])(?::\d+)?$/i.test(host)) return 'http'
+  if (
+    /^(?:(?:10(?:\.\d{1,3}){3})|(?:192\.168(?:\.\d{1,3}){2})|(?:172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}))(?::\d+)?$/.test(
+      host
+    )
+  ) {
+    return 'http'
+  }
+  return 'https'
+}
+
+type CheckoutOrigin =
+  | { origin: string }
+  | { failure: { status: number; body: Record<string, unknown> } }
+
+const ORIGIN_UNAVAILABLE_ERROR =
+  'Servicio de pagos no disponible temporalmente. Intenta nuevamente o cotiza por WhatsApp.'
+
+/**
+ * The origin every preference URL is built from — the return URLs Mercado
+ * Pago sends the shopper to and the webhook endpoint it delivers payment
+ * notifications to. In a production runtime `SITE_URL` is the only trusted
+ * source (fail closed when missing or malformed); outside production the
+ * Host header is used only when it passes the safe-shape check above, and a
+ * configured SITE_URL is deliberately ignored there — a value leaked to a
+ * preview target must never repoint preview returns and webhooks at
+ * production, where the canonical collections cannot see a preview order.
+ */
+function resolveCheckoutOrigin(req: VercelRequest): CheckoutOrigin {
+  if (process.env.VERCEL_ENV === 'production') {
+    const configured = (process.env.SITE_URL || '').trim().replace(/\/+$/, '')
+    if (configured && /^https?:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(configured)) {
+      return { origin: configured }
+    }
+    console.error(
+      `[create-preference] SITE_URL missing or not a valid http(s) origin ("${configured}") in a production runtime; refusing to build return URLs from the request Host.`
+    )
+    return { failure: { status: 500, body: { error: ORIGIN_UNAVAILABLE_ERROR } } }
+  }
+
+  const host = String(req.headers.host || '').trim()
+  if (!isSafeDevHost(host)) {
+    console.warn(
+      `[create-preference] Unsafe request Host ("${host}"); refusing to build return URLs from it.`
+    )
+    return {
+      failure: {
+        status: 400,
+        body: { error: 'Origen de la solicitud no válido. Reintenta la compra o cotiza por WhatsApp.' }
+      }
+    }
+  }
+  return { origin: `${hostProtocol(host)}://${host}` }
+}
+
+/**
+ * Uniform rejection path for the preference endpoint: every 4xx refusal also
+ * records a throttle failure against the order and IP keys, so a client
+ * hammering invalid preferences is locked out by the existing budget instead
+ * of being able to retry forever. Fail-open — a counter outage never changes
+ * the rejection itself.
+ */
+async function rejectPreference(
+  res: VercelResponse,
+  adminDb: ReturnType<typeof getAdminFirestore>,
+  req: VercelRequest,
+  cleanOrderId: string,
+  status: number,
+  body: Record<string, unknown>
+): Promise<VercelResponse> {
+  if (adminDb) {
+    await recordThrottleFailures(adminDb, 'create-preference', {
+      order: cleanOrderId,
+      ip: getClientIp(req)
+    })
+  }
+  return res.status(status).json(body)
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -34,21 +140,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // The request body contributes ONLY the order id (plus the
-    // optional payer details). The line items are read from the order document —
-    // never from the request — so the charged preference can never diverge from
-    // the order the webhook later asserts the payment against.
-    const { orderId, customer } = req.body || {}
+    // The request body contributes ONLY the order id. The line items, the payer
+    // and the promo code are all read from the order document — never from the
+    // request — so the charged preference can never diverge from the order the
+    // webhook later asserts the payment against.
+    const { orderId } = req.body || {}
 
     if (!orderId) {
       return res.status(400).json({ error: 'Missing required parameters: orderId' })
     }
 
     const cleanOrderId = String(orderId).trim().toUpperCase()
-    const host = req.headers.host || 'pronto-insumos.vercel.app'
-    const baseUrl = buildBaseUrl(host)
+
+    const originResult = resolveCheckoutOrigin(req)
+    if ('failure' in originResult) {
+      return res.status(originResult.failure.status).json(originResult.failure.body)
+    }
+    const baseUrl = originResult.origin
 
     const adminDb = getAdminFirestore()
+
+    // REPEAT BUDGET: both keys (client IP and the order id) are consumed before
+    // any Firestore read, so a locked caller never reaches the order lookup.
+    // Fail-open — a counter outage logs loudly and lets the request through.
+    if (adminDb) {
+      const ipDecision = await consumeThrottleAttempt(adminDb, 'create-preference', 'ip', getClientIp(req))
+      const orderDecision = ipDecision.allowed
+        ? await consumeThrottleAttempt(adminDb, 'create-preference', 'order', cleanOrderId)
+        : null
+      const decision = ipDecision.allowed ? orderDecision : ipDecision
+      if (decision && !decision.allowed) {
+        return respondThrottled(res, decision.retryAfterSeconds)
+      }
+    }
 
     // FAIL-CLOSED: without Firestore Admin there is no catalog to rebuild prices
     // from. A real charge must never be created from client-supplied prices, so
@@ -97,8 +221,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.warn(
         `[create-preference] Order "${cleanOrderId}" not found; refusing to build a preference for an unregistered order.`
       )
-      return res.status(400).json({
+      return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
         error: 'El pedido no está registrado en el sistema. Reintenta la compra o cotiza por WhatsApp.',
+        orderId: cleanOrderId
+      })
+    }
+
+    // LIFECYCLE GUARD — only an online-payment order that is still genuinely
+    // awaiting payment may get a preference. Settled orders (paid, transfer-
+    // approved, in preparation, dispatched, delivered), orders parked in
+    // payment review, transfer-pending orders, WhatsApp quotes and cancelled
+    // orders are all refused: charging any of them again would double-bill a
+    // customer or start a payment flow that can never reconcile.
+    const orderStatus = String(orderData.status || '')
+    const orderMethod = String(orderData.paymentMethod || '')
+    if (orderMethod !== 'mercadopago' || orderStatus !== 'PENDIENTE_PAGO_MERCADOPAGO') {
+      console.warn(
+        `[create-preference] Order "${cleanOrderId}" (method: ${orderMethod || 'unknown'}, status: ${
+          orderStatus || 'unknown'
+        }) is not an online-payment order awaiting payment; refusing to create a preference.`
+      )
+      return rejectPreference(res, adminDb, req, cleanOrderId, 409, {
+        error:
+          'Este pedido no admite un nuevo pago en línea en su estado actual. Revisa el estado de tu pedido o cotiza por WhatsApp.',
         orderId: cleanOrderId
       })
     }
@@ -117,7 +262,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.warn(
         `[create-preference] Order "${cleanOrderId}" has no registered items; refusing to build an empty preference.`
       )
-      return res.status(400).json({
+      return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
         error:
           'El pedido no tiene insumos registrados; no es posible generar el pago. Reintenta la compra o cotiza por WhatsApp.',
         orderId: cleanOrderId
@@ -132,6 +277,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       unit_price: number
       currency_id: 'CLP'
     }> = []
+    // Raw catalog lines (list price × quantity, before the promo discount) —
+    // the input for both the stored-total agreement and the San Antonio
+    // minimum, which checkout gates on the same original subtotal.
+    const rawCatalogLines: Array<{ price: number; quantity: number }> = []
     const productCache = new Map<string, Record<string, unknown> | null>()
 
     for (const item of orderItems) {
@@ -140,7 +289,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // A line without a resolvable productId can be neither priced nor
       // stock-checked — reject it rather than skip it.
       if (!productId || typeof productId !== 'string') {
-        return res.status(400).json({
+        return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
           error: 'Cada insumo del pedido debe incluir un identificador de producto (productId) válido.',
           productId: null
         })
@@ -152,7 +301,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (productData === undefined) {
         const productSnap = await adminDb.collection(getCollectionName('products')).doc(productId).get()
         if (!productSnap.exists) {
-          return res.status(400).json({
+          return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
             error: `El producto "${item?.name || productId}" no fue encontrado en el catálogo de inventario.`,
             productId,
             availableStock: 0,
@@ -171,7 +320,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const inStock = isActive && productData?.inStock !== false && availableStock > 0
 
       if (!inStock || availableStock < quantity) {
-        return res.status(400).json({
+        return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
           error: isActive
             ? `Stock insuficiente para el producto "${String(productData?.name || productId)}". Stock disponible: ${availableStock}, solicitado: ${quantity}.`
             : `El producto "${String(productData?.name || productId)}" no está disponible para la venta. Por favor cotiza por WhatsApp.`,
@@ -187,18 +336,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.warn(
           `[create-preference] Producto "${productId}" con precio de catálogo inválido (${String(productData?.price)}); preferencia rechazada.`
         )
-        return res.status(400).json({
+        return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
           error: `El producto "${String(productData?.name || productId)}" no tiene un precio válido en el catálogo. Por favor cotiza por WhatsApp.`,
           productId
         })
       }
 
+      rawCatalogLines.push({ price: catalogPrice, quantity })
       rebuiltItems.push({
         id: productId,
         title: String(productData?.name || 'Insumo Odontológico'),
         quantity,
         unit_price: unitPrice,
         currency_id: 'CLP'
+      })
+    }
+
+    // STORED-TOTAL AGREEMENT — the payable total recomputed from the CURRENT
+    // catalog (the exact helper the payment webhook asserts with) must equal
+    // the total stored on the order document. A divergence means the catalog
+    // moved after registration (price change, promo removed): charging the
+    // recomputed amount would settle a payment the webhook refuses to
+    // reconcile against the order, so the preference is refused instead.
+    const expectedTotal = computeOrderTotal(rawCatalogLines, discountPercent)
+    const storedTotal = Number(orderData.totalAmount)
+    if (!Number.isInteger(storedTotal) || storedTotal !== expectedTotal) {
+      console.warn(
+        `[create-preference] Order "${cleanOrderId}" stored total (${String(
+          orderData.totalAmount
+        )}) disagrees with the catalog-recomputed total (${expectedTotal}); preference refused.`
+      )
+      return rejectPreference(res, adminDb, req, cleanOrderId, 409, {
+        error:
+          'El total del pedido no coincide con el catálogo actual. Reintenta la compra con un carrito actualizado o cotiza por WhatsApp.',
+        orderId: cleanOrderId
+      })
+    }
+
+    // SAN ANTONIO MINIMUM — the same original product subtotal checkout gates
+    // on (list prices × quantities, BEFORE the promo discount) must reach the
+    // zone minimum for a San Antonio despacho. Melipilla has no minimum. The
+    // zone comes from the order document's stored comuna, never the request.
+    const orderCustomer =
+      orderData.customer && typeof orderData.customer === 'object'
+        ? (orderData.customer as Record<string, unknown>)
+        : {}
+    const deliveryZone = String(orderCustomer.city || '').trim()
+    const rawSubtotal = rawCatalogLines.reduce((acc, line) => acc + line.price * line.quantity, 0)
+    if (isBelowMinimumOrder(deliveryZone as DeliveryZone, rawSubtotal)) {
+      console.warn(
+        `[create-preference] Order "${cleanOrderId}" targets ${MIN_ORDER_ZONE} with an original subtotal of ${rawSubtotal} CLP, below the ${MIN_ORDER_OUTSIDE_MELIPILLA} minimum; preference refused.`
+      )
+      return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
+        error: `La compra mínima para despacho a ${MIN_ORDER_ZONE} es de ${formatCLP(MIN_ORDER_OUTSIDE_MELIPILLA)}`,
+        orderId: cleanOrderId
       })
     }
 
@@ -213,16 +404,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
-    // Mercado Pago Preference Payload built exclusively from the REBUILT lines
+    // Mercado Pago Preference Payload built exclusively from the REBUILT lines;
+    // the payer is the customer stored on the order document, never the caller.
     const mpPreference = {
       items: rebuiltItems,
       payer: {
-        name: customer?.fullName || 'Cliente Clínica',
-        email: customer?.email || 'contacto@clinica.cl',
-        identification: customer?.rut
+        name: String(orderCustomer.fullName || '') || 'Cliente Clínica',
+        email: String(orderCustomer.email || '') || 'contacto@clinica.cl',
+        identification: orderCustomer.rut
           ? {
               type: 'RUT',
-              number: customer.rut
+              number: String(orderCustomer.rut)
             }
           : undefined
       },

@@ -7,10 +7,11 @@ import { getCollectionName } from './firestoreEnv.js'
 /**
  * Abuse throttling for the public dual-factor endpoints.
  *
- * `/api/track-order`, `/api/upload-voucher` and `/api/order-confirmation` are
- * unauthenticated and take an order id + RUT. Before this throttling they answered
- * `404` for an unknown id but `401` for a wrong RUT — an enumeration oracle — and
- * nothing bounded repeated attempts.
+ * `/api/track-order`, `/api/upload-voucher`, `/api/order-confirmation` and
+ * `/api/create-preference` are unauthenticated. Before this throttling the first
+ * three answered `404` for an unknown id but `401` for a wrong RUT — an
+ * enumeration oracle — and nothing bounded repeated attempts; the preference
+ * endpoint could be hammered with preference-creation requests per order.
  *
  * The counters are Firestore documents in `abuse_counters` (env-scoped, like every
  * other collection), one per `{scope, kind, key}`:
@@ -46,7 +47,7 @@ export const THROTTLE_DOC_TTL_MS = 24 * 60 * 60 * 1000
 export const THROTTLE_MESSAGE =
   'Demasiados intentos. Por seguridad, espera unos minutos antes de volver a intentarlo.'
 
-export type ThrottleScope = 'track-order' | 'upload-voucher' | 'order-confirmation'
+export type ThrottleScope = 'track-order' | 'upload-voucher' | 'order-confirmation' | 'create-preference'
 export type ThrottleKeyKind = 'ip' | 'order'
 
 export interface ThrottlePolicy {
@@ -61,6 +62,9 @@ export interface ThrottlePolicy {
  * `order-confirmation` (an order is only ever confirmed once, so a handful of
  * retries is the entire legitimate surface) and the loosest on `track-order`
  * (a customer mistyping their RUT must not be locked out of their own order).
+ * `create-preference` sits in between: a shopper legitimately retries a
+ * rejected preference a few times (stock moved, a stale total), but repeated
+ * preference creation against the same order must be bounded.
  */
 export const THROTTLE_POLICIES: Record<ThrottleScope, Record<ThrottleKeyKind, ThrottlePolicy>> = {
   'track-order': {
@@ -74,6 +78,10 @@ export const THROTTLE_POLICIES: Record<ThrottleScope, Record<ThrottleKeyKind, Th
   'order-confirmation': {
     ip: { maxAttempts: 40, maxFailures: 12 },
     order: { maxAttempts: 20, maxFailures: 10 }
+  },
+  'create-preference': {
+    ip: { maxAttempts: 30, maxFailures: 15 },
+    order: { maxAttempts: 15, maxFailures: 10 }
   }
 }
 

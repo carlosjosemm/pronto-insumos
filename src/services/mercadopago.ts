@@ -10,14 +10,15 @@ export interface MercadoPagoPaymentParams {
   customer: CustomerInfo
 }
 
+/**
+ * The outcome of starting a Mercado Pago checkout. Success means exactly one
+ * thing: a real Checkout Pro redirect was (or is about to be) initiated. No
+ * payment id, status or timestamp is ever invented here — the payment webhook
+ * is the only authority for what actually got paid.
+ */
 export interface MercadoPagoPaymentResult {
   success: boolean
-  paymentId?: string
-  status?: string
-  statusDetail?: string
   orderId: string
-  totalPaid?: number
-  paidAt?: string
   initPoint?: string
   error?: string
 }
@@ -47,9 +48,29 @@ export async function createMercadoPagoPreference(
     }
 
     const data = await response.json()
+    const initPoint =
+      typeof data?.initPoint === 'string' && data.initPoint
+        ? data.initPoint
+        : typeof data?.sandboxInitPoint === 'string' && data.sandboxInitPoint
+          ? data.sandboxInitPoint
+          : undefined
+
+    // A 200 response without a redirect target is not a success: the shopper
+    // would be left on the checkout with nothing happening while the endpoint
+    // claims everything went fine. Report it as the failure it is.
+    if (!initPoint && !data?.isSimulated) {
+      console.error(
+        'La respuesta de /api/create-preference no incluyó un enlace de pago (initPoint); tratándola como fallo.'
+      )
+      return {
+        success: false,
+        error: 'El servicio de pagos no devolvió un enlace de pago válido. Por favor reintenta o cotiza por WhatsApp.'
+      }
+    }
+
     return {
       success: true,
-      initPoint: data.initPoint || data.sandboxInitPoint
+      initPoint
     }
   } catch (error: unknown) {
     if (!isSimulatedFallbackAllowed()) {
@@ -95,19 +116,17 @@ export async function processMercadoPagoPayment({
     }
   }
 
-  // If running on live Vercel deployment with valid initPoint, open Mercado Pago Checkout Pro
+  // With a real redirect target, hand the browser to Mercado Pago Checkout Pro.
   if (prefResult.initPoint && typeof window !== 'undefined') {
     window.location.href = prefResult.initPoint
   }
 
+  // Success means "the redirect was initiated" (or, in the local simulation,
+  // "the demo flow may continue") — never "the payment was approved". The
+  // webhook is the only authority that marks an order paid.
   return {
     success: true,
-    paymentId: 'MP-' + Math.floor(10000000 + Math.random() * 90000000),
-    status: 'approved',
-    statusDetail: 'accredited',
     orderId,
-    totalPaid: total,
-    paidAt: new Date().toISOString(),
     initPoint: prefResult.initPoint
   }
 }

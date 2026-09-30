@@ -24,7 +24,7 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3 Open Tasks](#3-open
 | [1.5](#task-1-5) | Make Boleta issuance a controlled operation, not a checkout promise | Owner confirms issuer/access and dry-runs paid/refunded sale; dispatch gated on issuance record |
 | [1.6](#task-1-6) | Verify regulated products before dispatch | Admin verification gate enforced, or regulated SKUs are not listed |
 | [1.7](#task-1-7) | Make tax breakdowns and customer tax communications server-authoritative | Forged MP/transfer billing is rejected or shown provisional; issuance uses verified total |
-| [2.17](#task-2-17) | Bind MP preference creation/success to a valid pending order | Order, total, zone, host and retry checks pass |
+| [x] [2.17](#task-2-17) | Bind MP preference creation/success to a valid pending order | Order, total, zone, host and retry checks pass |
 | [4.3](#task-4-3) | Harden admin state, amount and inventory mutations | Guard/race tests pass; `PAGO_EN_REVISION` reconciliations have evidence and operator note |
 | [4.4](#task-4-4) | Prevent inventory admin hook-order crash | Null-to-product rerender test passes |
 | [4.6](#task-4-6) | Define an auditable handoff for WhatsApp quote orders | Owner-approved operational route is ready before exposure, or WhatsApp is not a checkout payment method |
@@ -174,7 +174,7 @@ This section separates source-level capability from independently verified produ
 
 <a id="task-2-17"></a>
 
-- [ ] **2.17. Mercado Pago Preference Lifecycle and Success Semantics** _(P1)_
+- [x] **2.17. Mercado Pago Preference Lifecycle and Success Semantics** _(P1)_
   - **Evidence:** `api/create-preference.ts:41-49,74-104,127-235` reads any order and accepts caller payer plus `Host`, without ensuring MP method/pending state, stored-total agreement, delivery zone/minimum or repeat budget. `src/services/mercadopago.ts:49-53,98-113` treats missing `initPoint` as success and manufactures an approved result.
   - **Risk:** invalid/settled/transfer/quote orders, forged success, unsafe origins and unlimited preference retries.
   - **Fix:** allow MP-only pending orders; reject settled, cancelled, transfer and quote orders; recompute and compare total to stored total; derive payer from stored order; use canonical configured return/webhook origin (`SITE_URL` in production, safe preview origin); bound repeated preference creation with existing throttle/compact per-order control. Preserve suspended 3.1 (no freight change). Enforce the existing San Antonio `$60.000` minimum against the same original product subtotal used by checkout (`src/components/CheckoutModal.tsx:230-238`), before promo discount—not against discounted payable total. Production success requires a valid MP redirect; never fabricate paid client state.
