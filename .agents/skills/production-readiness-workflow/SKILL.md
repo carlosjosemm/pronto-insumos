@@ -97,11 +97,17 @@ flowchart TD
   *(e.g., `git commit -m "feat(cart): persistent shopping cart via localStorage with schema migration (Task 2.2)"`)*
 
 ### Step 12: Push Branch & Create Detailed Pull Request
+* **MANDATORY pre-PR sync (never push a branch that is behind `origin/main`).** Run this on every wrap-up, even when the branch is only minutes old — the owner must never have to ask for it, and pushing a stale branch is what produces conflicted, un-mergeable PRs:
+  ```bash
+  git fetch origin
+  git log --oneline HEAD..origin/main     # MUST be empty before you push
+  ```
+  * If it lists commits, `main` moved: `git rebase origin/main`, resolve conflicts (usually confined to shared docs — combine both sides, then fix counts/status lines), re-run all five gates, and amend the commit if counts changed. Do not continue until the command is empty again. Never `git push --force` a shared branch to sidestep this.
 * Push the task branch to origin:
   ```bash
   git push -u origin feat/task-X.Y-<short-description>
   ```
-* Open a pull request targeting `main` using the GitHub CLI (`gh pr create`).
+* Open a pull request targeting `main` using the GitHub CLI (`gh pr create`), then confirm it is conflict-free with `gh pr view <n> --json mergeable,mergeStateStatus` → expect `MERGEABLE` / `CLEAN`; a `CONFLICTING` / `DIRTY` result means the sync above was skipped.
 * Provide a comprehensive, well-structured description matching the repository standard:
   ```bash
   gh pr create --title "feat(<scope>): <Task Title> (Task X.Y)" --body "$(cat <<'EOF'

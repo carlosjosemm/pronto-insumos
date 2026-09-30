@@ -82,23 +82,30 @@ All work must strictly observe the **PRONTO Master Guardrails** in [AGENTS.md](.
 > [!CAUTION]
 > **CRITICAL TIMING GUARD:** Never stage, commit, push, or open the PR prematurely. Await the explicit human command **"wrap up and proceed"**.
 
+> [!IMPORTANT]
+> **MANDATORY PRE-PR SYNC — never push a branch that is behind `origin/main`.** Run the check below on **every** wrap-up, even when the branch is only minutes old; it is not optional, and the owner must never have to ask for it. Pushing a stale branch is what produces conflicted, un-mergeable PRs.
+
 Once authorized:
 
 1. **Stage & conventional commit** on the task branch (match the repository's commit style; include the Devin trailer).
 
-2. **Pre-PR sync & conflict check (required — `main` may have moved):**
+2. **Pre-PR sync & conflict check (MANDATORY — `main` may have moved since the branch was cut):**
 
    ```bash
    git fetch origin
-   git log --oneline HEAD..origin/main     # anything new since the branch was cut?
+   git log --oneline HEAD..origin/main     # MUST be empty before you push
    ```
 
-   * If `main` moved: `git rebase origin/main`, resolve conflicts (they are usually confined to shared docs — combine both sides, then fix counts/status lines), re-run the gates, and amend the commit if counts changed.
-   * After pushing, confirm GitHub agrees: `gh pr view <n> --json mergeable,mergeStateStatus` → expect `MERGEABLE` / `CLEAN`.
+   * **Empty output** → `main` has not moved; continue to step 3.
+   * **Commits listed** → `main` has moved; you MUST integrate before pushing:
+     ```bash
+     git rebase origin/main
+     ```
+     Resolve conflicts (they are usually confined to shared docs — combine both sides, then fix counts/status lines), **re-run all five gates**, and amend the commit if counts changed. Do not continue until `git log --oneline HEAD..origin/main` is empty again. Never `git push --force` a shared branch to sidestep this — rebase the local branch only.
 
 3. **Push the branch:** `git push -u origin <branch-name>`.
 
-4. **Create the Pull Request** with `gh pr create --base main`. Write the body to a **`.txt` file** and use `--body-file`: heredocs inside `--body "$(…)"` are fragile in this shell, and `.md` temp files trigger IDE markdownlint noise.
+4. **Create the Pull Request** with `gh pr create --base main`, then immediately confirm it is conflict-free: `gh pr view <n> --json mergeable,mergeStateStatus` → expect `MERGEABLE` / `CLEAN`. If it reports `CONFLICTING` / `DIRTY`, you skipped step 2 — go back and sync. Write the body to a **`.txt` file** and use `--body-file`: heredocs inside `--body "$(…)"` are fragile in this shell, and `.md` temp files trigger IDE markdownlint noise.
 
    ```bash
    gh pr create --base main --title "<type>(<scope>): <summary> (Task X.Y)" --body-file /tmp/<task>-pr-body.txt
