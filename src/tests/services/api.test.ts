@@ -310,6 +310,35 @@ describe('submitOrder', () => {
     expect(submittedPayload.paymentMethod).toBe('transferencia')
   })
 
+  it('derives billing taxBreakdown, RUT and SII status instead of trusting the caller', async () => {
+    const { setDoc } = await import('firebase/firestore')
+    await submitOrder({
+      items: mockItems,
+      total: 100000,
+      customer: mockCustomer,
+      paymentMethod: 'transferencia',
+      billing: {
+        documentType: 'boleta',
+        rut: '99.999.999-9',
+        direccionFiscal: 'Otra Calle 1',
+        comunaFiscal: 'San Antonio',
+        taxBreakdown: { neto: 1, iva: 0, total: 1 },
+        status: 'EMITIDO'
+      }
+    })
+
+    const payload = vi.mocked(setDoc).mock.calls[0][1] as unknown as Record<string, unknown>
+    const billing = payload.billing as Record<string, unknown>
+    // 2 × 189990 = 379980 → neto round(379980 / 1.19) = 319311, iva = 60669.
+    // The caller's forged breakdown, RUT and EMITIDO state are all discarded.
+    expect(billing.taxBreakdown).toEqual({ neto: 319311, iva: 60669, total: 379980 })
+    expect(billing.rut).toBe('12.345.678-5')
+    expect(billing.status).toBe('PENDIENTE_EMISION_SII')
+    // Fiscal identity fields the caller legitimately supplies are preserved.
+    expect(billing.direccionFiscal).toBe('Otra Calle 1')
+    expect(billing.comunaFiscal).toBe('San Antonio')
+  })
+
   it('should initialize WhatsApp orders with status COTIZACION_SOLICITADA_WHATSAPP', async () => {
     const { setDoc } = await import('firebase/firestore')
     const result = await submitOrder({

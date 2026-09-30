@@ -69,8 +69,7 @@ const TEST_ORDER = {
     documentType: 'boleta'
   },
   billing: {
-    documentType: 'boleta',
-    taxBreakdown: { neto: 226874, iva: 43106, total: 269980 }
+    documentType: 'boleta'
   }
 }
 

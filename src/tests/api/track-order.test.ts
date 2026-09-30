@@ -493,6 +493,38 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
     return { mockAdminDb, counters, orderCollection: collectionApi }
   }
 
+  it('derives billing.taxBreakdown from the stored total, never echoing a forged breakdown', async () => {
+    // `billing.taxBreakdown` is client-writable — a crafted order could persist
+    // fiscal figures that contradict the verified `totalAmount`. The tracking
+    // payload must present the derived breakdown, not the stored one.
+    mockOrderDb({
+      orderId: 'PRONTO-123456',
+      status: 'PAGADO_MERCADOPAGO',
+      paymentMethod: 'mercadopago',
+      totalAmount: 189990,
+      items: [],
+      customer: { rut: '12345678-5', fullName: 'Dra. Andrea', email: 'a@b.cl', address: 'x', city: 'Melipilla' },
+      billing: {
+        documentType: 'boleta',
+        rut: '12345678-5',
+        status: 'PENDIENTE_EMISION_SII',
+        taxBreakdown: { neto: 1, iva: 0, total: 1 }
+      }
+    })
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' } } as VercelRequest, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    const payload = res.json.mock.calls[0][0]
+    expect(payload.billing).toMatchObject({
+      documentType: 'boleta',
+      status: 'PENDIENTE_EMISION_SII',
+      taxBreakdown: { neto: 159655, iva: 30335, total: 189990 }
+    })
+    expect(payload.billing.taxBreakdown.neto).not.toBe(1)
+  })
+
   it('should never echo a legacy Base64 voucher (Task 2.9)', async () => {
     mockOrderDb({
       orderId: 'PRONTO-123456',

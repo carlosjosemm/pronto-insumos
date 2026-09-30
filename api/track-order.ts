@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import type { DispatchReferenceSource } from '../src/types'
+import { calculateTaxBreakdown } from '../src/utils/tax.js'
 import { getAdminFirestore } from './_lib/firebaseAdmin.js'
 import { resolveOrderByCanonicalId, respondOrderLookupFailed } from './_lib/orderLookup.js'
 import { isSimulatedPaymentAllowed } from './_lib/simulationPolicy.js'
@@ -215,7 +216,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       billing: orderData.billing ? {
         documentType: orderData.billing.documentType,
         status: orderData.billing.status,
-        taxBreakdown: orderData.billing.taxBreakdown
+        // Derived from the stored totalAmount, not the persisted billing map:
+        // `billing.taxBreakdown` is a client-writable artifact, and a forged
+        // breakdown must never be echoed back to the customer as fiscal truth.
+        taxBreakdown: calculateTaxBreakdown(Number(orderData.totalAmount || 0))
       } : undefined,
       voucher: {
         uploaded: Boolean(orderData.voucherUrl || orderData.voucherStoragePath),

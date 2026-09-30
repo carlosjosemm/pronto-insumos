@@ -2,7 +2,7 @@
 
 A working task list, not a changelog. Finished work is one line in [§4 Resolved History](#4-resolved-history); its as-built detail lives in the `AGENTS.md` of the directory it touches. Open tasks keep their IDs (they are referenced from code comments and `AGENTS.md` files) — do not renumber.
 
-**Last updated:** 2026-09-29 · **Audit provenance:** static source audit only; no live infrastructure or production behavior verified. · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
+**Last updated:** 2026-09-30 · **Audit provenance:** static source audit only; no live infrastructure or production behavior verified. · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
 **Previously recorded baseline (not rerun for this update):** `pnpm test` 860/860 (82 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` recorded clean · `api/` type-check recorded clean under `--strict --target es2022`.
 
 **Priorities:** **P1** = close before real traffic · **P2** = next release / before a marketed launch · **P3** = optional polish or DevOps. Code complete is not deployment verification: source-level acceptance does not prove deployed production configuration, live provider behavior, or owner operational readiness.
@@ -21,9 +21,7 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3 Open Tasks](#3-open
 | :-- | :-- | :-- |
 | [Owner gate — 0.12](#owner-only-checklist) | Production Firestore rules deployment is not verified; until deployed, decoy documents and admin-only field pre-injection may still be accepted | Owner deploys and independently verifies rules before traffic; this is not a new source task |
 | [x] [0.17](#task-0-17) | Reconcile approved/reversal payments when order data is missing | Idempotent incident persists; missing-order manual reconciliation and failure tests pass |
-| [1.5](#task-1-5) | Make Boleta issuance a controlled operation, not a checkout promise | Owner confirms issuer/access and dry-runs paid/refunded sale; dispatch gated on issuance record |
-| [1.6](#task-1-6) | Verify regulated products before dispatch | Admin verification gate enforced, or regulated SKUs are not listed |
-| [1.7](#task-1-7) | Make tax breakdowns and customer tax communications server-authoritative | Forged MP/transfer billing is rejected or shown provisional; issuance uses verified total |
+| [x] [1.7](#task-1-7) | Make tax breakdowns and customer tax communications server-authoritative | Forged MP/transfer billing is rejected or shown provisional; issuance uses verified total |
 | [x] [2.17](#task-2-17) | Bind MP preference creation/success to a valid pending order | Order, total, zone, host and retry checks pass |
 | [4.3](#task-4-3) | Harden admin state, amount and inventory mutations | Guard/race tests pass; `PAGO_EN_REVISION` reconciliations have evidence and operator note |
 | [4.4](#task-4-4) | Prevent inventory admin hook-order crash | Null-to-product rerender test passes |
@@ -67,6 +65,8 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3 Open Tasks](#3-open
 
 | ID | Status | Accepted consequence while suspended |
 | :-- | :-- | :-- |
+| [1.5](#task-1-5) | **SUSPENDED** — Phase 1 (owner decision, 2026-09-30) | No verified Boleta issuance path: `billing.status` stays `PENDIENTE_EMISION_SII` and no storefront/email copy may claim a Boleta is issued or emailed. Do not unsuspend or implement. |
+| [1.6](#task-1-6) | **SUSPENDED** — Phase 1 (owner decision, 2026-09-30) | Verification stays a client-typed SIS number with no dispatch gate; the owner must not list regulated (`prescriptionRequired`) SKUs. Do not unsuspend or implement. |
 | [3.1](#task-3-1) | **SUSPENDED** — Phase 3 | No freight below `$150.000`; PRONTO absorbs courier cost. Do not unsuspend or implement. |
 | [3.2](#task-3-2) | **SUSPENDED** — Phase 3 | No estimated delivery windows. Do not unsuspend or implement. |
 | [3.3](#task-3-3) | **SUSPENDED** — Phase 3 | Existing stale localization copy remains. Do not unsuspend or implement. |
@@ -83,8 +83,6 @@ These production and operating checks cannot be closed by static source review. 
 - **8.8 TTL record:** prior documentation recorded production `abuse_counters.expiresAt` as ACTIVE on 2026-09-29; this audit did not re-verify live state. Optional dev twin: `gcloud firestore fields ttls update expiresAt --collection-group=dev_abuse_counters --enable-ttl --project=pronto-insumos`.
 - **P1 owner gate — 8.9 production environment:** verify `SITE_URL=https://pronto-insumos.vercel.app`, `ALLOW_SIMULATED_PAYMENTS=false`, `VITE_ALLOW_SIMULATED_PAYMENTS=false`, and intended Firestore/Vercel production alignment. Do not expose secrets.
 - **P1 owner gate — 9.1 current promotions:** confirm public `PRONTO10` / `DENT20` codes are intentional and margin-safe, or disable unused codes before traffic. This is an owner business decision; no promo backend is implied.
-- For 1.5, confirm authorized SII issuer/access and dry-run representative paid/refunded Boleta operations; record issuer, folio/date and customer delivery before paid-order dispatch.
-- For 1.6, complete safety/compliance review; do not list regulated SKUs unless verification and dispatch controls are ready.
 - **P1 owner gate — 4.6 quote/Factura handoff:** the code route is now built (`resolve-quote`: operator-attested conversion with one stock deduction, or decline without stock movement — see the task entry), and checkout keeps exposing WhatsApp per the owner decision. Before real traffic, run the operator walkthrough on a preview/staging order: accepted quote → verified payment + one stock deduction, declined quote, late reply, no duplicate fulfillment on re-click, and correct customer tracking. If the walkthrough is not done before traffic, hide the WhatsApp checkout method and retain WhatsApp contact for Factura requests. This is operational, separate from suspended 7.1 legal sign-off and 7.2 domain work.
 - For 8.4, preview checks use TEST credentials and non-customer test data only; do not mutate production. See the runtime/operator acceptance gate in 8.4.
 - Optional: configure 5.2 WhatsApp Business greeting/away/quick replies; supply owner-produced Appendix B.3/B.4 assets if desired.
@@ -96,8 +94,8 @@ These production and operating checks cannot be closed by static source review. 
 This section separates source-level capability from independently verified production and owner operations; it is **not** launch approval.
 
 - **Code present, not proof of production deployment:** orders start pending; Mercado Pago payment settlement and its stock deduction run only through the verified webhook; bank transfers are approved server-side by admin (4.3); clients never approve payment or deduct stock. Server-side amount checks exist; transactional messages are implemented fail-safe. Historical task detail is at [§4 Resolved History](#4-resolved-history).
-- **Boleta status:** checkout writes `billing.status = PENDIENTE_EMISION_SII`; no SII issuance handler or portal action transitions it to `EMITIDO`. Do not claim checkout issues or emails a Boleta until the controlled manual 1.5 procedure is completed and issuance recorded. `LegalModal` / `PaymentReturnModal` copy is not issuance evidence.
-- **Independent production/owner gates:** deployed Firestore/storage rules, production environment/provider configuration, preview API smoke/manual MP test, authorized issuer dry-run, regulated-product controls, and operator walkthroughs remain unverified; see the [owner-only checklist](#owner-only-checklist).
+- **Boleta status:** checkout writes `billing.status = PENDIENTE_EMISION_SII`; no SII issuance handler or portal action transitions it to `EMITIDO`. Do not claim checkout issues or emails a Boleta until the suspended 1.5 procedure is unsuspended, completed and issuance recorded. `LegalModal` / `PaymentReturnModal` copy is not issuance evidence.
+- **Independent production/owner gates:** deployed Firestore/storage rules, production environment/provider configuration, preview API smoke/manual MP test, and operator walkthroughs remain unverified; see the [owner-only checklist](#owner-only-checklist). Boleta issuance (1.5) and regulated-product controls (1.6) are suspended owner decisions; their accepted consequences are recorded in §1.
 - **Accepted exceptions:** while 3.1 and 7.2 remain suspended, orders below `$150.000` carry no freight charge and the storefront uses `https://pronto-insumos.vercel.app`. These are owner decisions, not a recommendation to unsuspend.
 
 ---
@@ -126,9 +124,11 @@ This section separates source-level capability from independently verified produ
 
 ### Phase 1 — Billing & Regulated Products
 
+> 1.5 and 1.6 are suspended by owner decision (2026-09-30) — not in the active priority queue; see the suspended board for their accepted consequences. 1.7 is resolved (2026-09-30).
+
 <a id="task-1-5"></a>
 
-- [ ] **1.5. Boleta Issuance Operations** _(P1; separate from suspended 7.1 legal review)_
+- [ ] **1.5. Boleta Issuance Operations** _(P1 — suspended, owner decision 2026-09-30; separate from suspended 7.1 legal review)_
   - **Evidence:** `src/components/CheckoutModal.tsx:342` writes `billing.status = PENDIENTE_EMISION_SII`; no API/admin handler or portal action transitions it to `EMITIDO`. `LegalModal` promises every sale issues a Boleta and `PaymentReturnModal` says it will email it.
   - **Risk:** checkout appears to promise a tax document without an implemented/verified issuance path.
   - **Fix:** define a manual authorized SII issuance procedure before paid-order dispatch: operator queue; record folio/date/issuer; deliver to customer and keep an audit link to the order. Do not claim actual issuance until recorded. No paid SaaS/SII automation required.
@@ -136,7 +136,7 @@ This section separates source-level capability from independently verified produ
 
 <a id="task-1-6"></a>
 
-- [ ] **1.6. Regulated Product Verification Before Dispatch** _(P1; conditional launch gate)_
+- [ ] **1.6. Regulated Product Verification Before Dispatch** _(P1 — suspended, owner decision 2026-09-30; accepted consequence: no regulated SKUs are listed)_
   - **Evidence:** `src/components/CheckoutModal.tsx:310-316` writes `verified: true` from typed SIS number; `firestore.rules:isValidSanitaryVerification` checks only the boolean; `src/admin/components/OrderDetailPanel.tsx:262-272` displays the number; `api/_lib/admin/dispatch-order.ts` has no verification gate.
   - **Risk:** a client-entered number alone is treated as verified, without independent check or dispatch hold. This is a safety/compliance sign-off, not a claim about a specific legal interpretation.
   - **Fix:** make verification server-owned; manually check RNPI/SIS and record audited admin confirmation; block dispatch of `prescriptionRequired` lines until confirmed, failing safely for missing product data. If not ready before launch, do not list regulated SKUs. No new registry integration.
@@ -144,11 +144,12 @@ This section separates source-level capability from independently verified produ
 
 <a id="task-1-7"></a>
 
-- [ ] **1.7. Server-Authoritative Tax Breakdown in Customer Communications and Boleta** _(P1; coordinate with 1.5, 4.3 and 8.16)_
+- [x] **1.7. Server-Authoritative Tax Breakdown in Customer Communications and Boleta** _(P1; coordinate with 1.5, 4.3 and 8.16)_
   - **Evidence:** `firestore.rules:42-45` (`isValidTaxBreakdown`) checks integer fields only; `isValidBilling` at `firestore.rules:78-93` accepts the client-written breakdown without math/total cross-check. `src/services/api.ts:257-283` accepts caller billing data. `api/_lib/emailTemplates.ts:150-158` selects `billing.taxBreakdown` total/neto/iva over `order.totalAmount` (also used at `:228,251,274`). MP webhook compares payment against `order.totalAmount`, but email can still present a forged fiscal figure; transfer confirmation is sent before admin verifies catalog total.
   - **Risk:** crafted `totalAmount=189990` with tax breakdown `total=1` / `iva=0` can result in a correct MP charge but incorrect customer email; unverified transfer amount can also mislead.
   - **Fix:** derive email neto/IVA using `src/utils/tax.ts:calculateTaxBreakdown` from a trusted amount, never client-written billing. Before catalog verification, recompute/validate transfer or quote total before stating an exact amount, or clearly mark it provisional and block DTE issuance. Bind billing breakdown math to totals in rules as defense in depth if within rules budget. Manual SII issuance (1.5) must use only the verified total and human corroboration. No SII API integration.
   - **Accept:** tests cover forged breakdowns in MP and transfer communications, correct integer-CLP tax math, and provisional/awaiting-validation copy; mismatched RUT/tax identity is routed to review as appropriate. Manual issuance walkthrough confirms the verified total and human corroboration.
+  - **As built (2026-09-30):** `submitOrder` derives `billing.rut`/`taxBreakdown`/`status` from the recomputed total (caller billing contributes fiscal identity fields only). `firestore.rules` binds `neto == math.round(total/1.19)` + `neto+iva==total` + `taxBreakdown.total==totalAmount` + `billing.rut==customer.rut`, so a forged breakdown or tax identity cannot persist even bypassing the client — **rules redeploy pending under the 0.12 owner gate**. Emails: `OrderEmailData` no longer carries the stored breakdown; `totalsBlock` derives via `calculateTaxBreakdown(totalAmount)`, the pre-verification "order received" send is labelled `Total referencial`, and `track-order` derives instead of echoing. Verified: `pnpm test` 938/938 (86 suites), build/lint/format/tsc clean.
 
 ### Phase 2 — Checkout, Payment Return & Storefront
 
@@ -287,7 +288,7 @@ This section separates source-level capability from independently verified produ
 
 ### Phase 7 — Legal & Domain — SUSPENDED until further notice (owner decision, 2026-09-29)
 
-> These items are out of the active priority queue. Do not chase 7.1 or implement 7.2 until the owner lifts the suspension. The manual SII operating procedure in 1.5 is separate and does not unsuspend legal review.
+> These items are out of the active priority queue. Do not chase 7.1 or implement 7.2 until the owner lifts the suspension. The manual SII operating procedure (1.5) is itself suspended; neither suspension lifts the other.
 
 <a id="task-7-1"></a>
 
@@ -416,6 +417,7 @@ Resolved outcomes are retained as recorded; detailed as-built context remains in
 | 1.2 | Billing block with tax breakdown, Factura field validation (gated by `FACTURA_ENABLED = false`), printable pro-forma voucher. |
 | 1.3 | ISP/SIS validation for regulated items (`prescriptionRequired`). |
 | 1.4 | Distributor RUT sourced from `BANK_DETAILS.rut` (single-source guard test). |
+| 1.7 | Fiscal breakdown is server-authoritative: `submitOrder` derives `billing.rut`/`taxBreakdown`/`status` from the recomputed total, `firestore.rules` binds the exact decomposition + `totalAmount` + billing RUT, and rendered surfaces (emails, `track-order`) derive via `calculateTaxBreakdown` — the stored map is never trusted; the pre-verification "order received" email is labelled `Total referencial`. |
 | 2.1 | Mercado Pago return URLs handled (`PaymentReturnModal`) — see 2.12 for the remaining trust gap. |
 | 2.2 | Cart persistence in `localStorage` (`pronto_cart_v1`, 7-day TTL, catalog revalidation). The data-loss edge where fallback data emptied the cart was closed by 2.11 (revalidation is `source: 'firestore'` only). |
 | 2.3 | Stock guards in cart, checkout and `create-preference`. |

@@ -213,6 +213,40 @@ describe('Order-create contract: submitOrder() payload vs firestore.rules allowl
     }
   })
 
+  it('satisfies the billing math and identity bindings the rules enforce', async () => {
+    // Rules side: the bindings must exist in the source (there is no emulator).
+    expect(rulesSource).toContain('t.neto == math.round(t.total / 1.19)')
+    expect(rulesSource).toContain('t.neto + t.iva == t.total')
+    expect(rulesSource).toContain('b.taxBreakdown.total == orderTotal')
+    expect(rulesSource).toContain('b.rut == customerRut')
+    expect(rulesSource).toContain('isValidBilling(data.billing, data.totalAmount, data.customer.rut)')
+
+    // Payload side: the real submitOrder() output must satisfy them — the
+    // breakdown is derived from the recomputed total and the billing RUT is the
+    // purchaser's, regardless of what the caller passed.
+    const payload = await capturePayload({
+      items,
+      total: 0,
+      customer,
+      paymentMethod: 'mercadopago',
+      billing: {
+        documentType: 'boleta',
+        rut: '99.999.999-9',
+        direccionFiscal: customer.address,
+        comunaFiscal: customer.city,
+        taxBreakdown: { neto: 1, iva: 0, total: 1 },
+        status: 'EMITIDO'
+      }
+    })
+
+    const billing = payload.billing as Record<string, unknown>
+    const tax = billing.taxBreakdown as { neto: number; iva: number; total: number }
+    expect(tax.neto + tax.iva).toBe(tax.total)
+    expect(tax.total).toBe(payload.totalAmount)
+    expect(billing.rut).toBe((payload.customer as Record<string, unknown>).rut)
+    expect(billing.status).toBe('PENDIENTE_EMISION_SII')
+  })
+
   it('keeps the checkout input caps in sync with the rules length caps', () => {
     const checkoutSource = fs.readFileSync(path.resolve(__dirname, '../../components/CheckoutModal.tsx'), 'utf8')
 

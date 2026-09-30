@@ -330,6 +330,9 @@ export default function CheckoutModal({
       sanitaryVerification
     }
 
+    // `rut`, `taxBreakdown` and `status` are re-derived inside submitOrder() —
+    // the values below only keep the BillingInfo shape complete; the caller can
+    // never inject its own tax math, tax RUT or SII emission state.
     const taxBreakdown = calculateTaxBreakdown(totalAmount)
     const billing: BillingInfo = {
       documentType: formData.documentType,
