@@ -12,6 +12,7 @@ import {
 import type { StockShortfall } from "../_lib/emailTemplates.js";
 import { resolvePromoPercent } from "../../src/config/promos.js";
 import { computeOrderTotal } from "../../src/utils/orderTotal.js";
+import { formatCLP } from "../../src/utils/currency.js";
 import { hasRealMercadoPagoToken, isSimulatedPaymentAllowed } from "../_lib/simulationPolicy.js";
 import {
   persistPaymentIncident,
@@ -107,6 +108,126 @@ async function respondMissingOrderIncident(
     );
     return res.status(500).json({ error: "Webhook processing unavailable" });
   }
+}
+
+/**
+ * The `order_status_history` event for a detected partial refund. The incident
+ * carries the payment id and the cumulative refunded amount so the case is
+ * auditable without ever storing bank secrets, and the order keeps its current
+ * status: a partial refund does not reverse fulfillment, and no stock moves —
+ * the owner's Mercado Pago ledger stays the reconciliation authority.
+ */
+function buildPartialRefundIncidentHistory({
+  cleanOrderId,
+  previousStatus,
+  paymentId,
+  paymentData,
+  partialRefundAmount,
+  nowIso,
+  uid,
+}: {
+  cleanOrderId: string;
+  previousStatus: string;
+  paymentId: string;
+  paymentData: Record<string, unknown>;
+  partialRefundAmount: number;
+  nowIso: string;
+  uid: string;
+}): Record<string, unknown> {
+  return {
+    id: uid,
+    orderId: cleanOrderId,
+    previousStatus: previousStatus,
+    newStatus: previousStatus,
+    changedBy: "MERCADOPAGO_WEBHOOK",
+    changedByEmail: "webhook@mercadopago.cl",
+    actorRole: "SYSTEM_WEBHOOK",
+    timestamp: nowIso,
+    reason: `Reembolso parcial detectado (ID: ${paymentId}): ${formatCLP(
+      partialRefundAmount,
+    )} de ${formatCLP(Number(paymentData.transaction_amount) || 0)} devueltos por Mercado Pago. Revisión manual requerida; sin movimiento de stock.`,
+    metadata: {
+      event: "PAGO_REEMBOLSO_PARCIAL",
+      paymentId,
+      refundedAmount: partialRefundAmount,
+      transactionAmount: paymentData.transaction_amount,
+      paymentStatus: paymentData.status,
+    },
+  };
+}
+
+/**
+ * Records the partial-refund incident once per refund state. The durable
+ * marker fields on the order document (`partialRefundPaymentId` +
+ * `partialRefundAmount`) are checked inside the transaction, so a retried
+ * delivery of the same refund state writes nothing, while a higher cumulative
+ * refunded amount (a new partial refund) records a new incident. No status
+ * flip (the sale mostly stands), no stock movement, no customer email.
+ *
+ * Returns whether this delivery was a replay of an already-recorded incident.
+ */
+async function respondPartialRefundIncident({
+  adminDb,
+  orderRef,
+  cleanOrderId,
+  paymentId,
+  paymentData,
+  partialRefundAmount,
+}: {
+  adminDb: FirebaseFirestore.Firestore;
+  orderRef: FirebaseFirestore.DocumentReference;
+  cleanOrderId: string;
+  paymentId: string;
+  paymentData: Record<string, unknown>;
+  partialRefundAmount: number;
+}): Promise<{ duplicate: boolean }> {
+  let partialRefundDuplicate = false;
+
+  await adminDb.runTransaction(async (transaction) => {
+    // The callback may be re-run by Firestore on contention: reset the
+    // closure state so a stale flag cannot leak into the result.
+    partialRefundDuplicate = false;
+
+    const freshOrderSnap = await transaction.get(orderRef);
+    const freshOrderData = freshOrderSnap.data() || {};
+    const freshPartialId = String(freshOrderData.partialRefundPaymentId || "");
+    const freshPartialAmount = Number(freshOrderData.partialRefundAmount) || 0;
+
+    // Same payment id = the same payment's refund state. Cumulative refunds
+    // only grow, so a lower-or-equal amount under the same payment id is
+    // necessarily a stale replay (e.g. refund-1's delivery retried after
+    // refund-2's landed first); a higher amount is a NEW partial refund.
+    if (freshPartialId === paymentId && partialRefundAmount <= freshPartialAmount) {
+      partialRefundDuplicate = true;
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    transaction.update(orderRef, {
+      partialRefundPaymentId: paymentId,
+      partialRefundAmount,
+      partialRefundAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    const incidentHistoryRef = adminDb
+      .collection(getCollectionName("order_status_history"))
+      .doc();
+    transaction.set(
+      incidentHistoryRef,
+      buildPartialRefundIncidentHistory({
+        cleanOrderId,
+        previousStatus: String(freshOrderData.status || ""),
+        paymentId,
+        paymentData,
+        partialRefundAmount,
+        nowIso,
+        uid: incidentHistoryRef.id,
+      }),
+    );
+  });
+
+  return { duplicate: partialRefundDuplicate };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -240,6 +361,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const isReversalPayment = REVERSAL_PAYMENT_STATUSES.has(
       String(paymentData.status),
     );
+
+    // A PARTIAL refund returns part of an already-collected charge while
+    // Mercado Pago keeps the payment `status: 'approved'` with the original
+    // `transaction_amount` — the returned money accumulates in
+    // `transaction_amount_refunded` (default 0). Only a still-approved payment
+    // can carry one; a positive fractional amount is garbage data and is
+    // logged loudly instead of silently treated as absent.
+    const rawPartialRefund = Number(paymentData.transaction_amount_refunded);
+    let partialRefundAmount = 0;
+    if (Number.isInteger(rawPartialRefund) && rawPartialRefund > 0) {
+      partialRefundAmount = rawPartialRefund;
+    } else if (rawPartialRefund > 0) {
+      console.warn(
+        `[Mercado Pago Webhook] Payment ${paymentId} reports a non-integer transaction_amount_refunded (${String(
+          paymentData.transaction_amount_refunded,
+        )}); treating it as absent — reconcile manually.`,
+      );
+    }
 
     if (paymentData.status === "approved" || isReversalPayment) {
       const orderId = paymentData.external_reference || paymentData.description;
@@ -403,6 +542,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // order that already recorded one is a double charge — it must be
         // recorded and alerted, never silently acked as a duplicate.
         if (orderData.mercadopagoPaymentId === paymentId) {
+          // A partial refund keeps the payment `approved`, so its update
+          // notification arrives through this same fast path. Swallowing it
+          // would leave the returned money invisible: record the deduped
+          // incident instead of the silent skip.
+          if (partialRefundAmount > 0) {
+            const refundIncident = await respondPartialRefundIncident({
+              adminDb,
+              orderRef,
+              cleanOrderId,
+              paymentId,
+              paymentData,
+              partialRefundAmount,
+            });
+            if (refundIncident.duplicate) {
+              console.info(
+                `[Mercado Pago Webhook] Order "${cleanOrderId}" already recorded the partial-refund incident for payment ${paymentId} (${partialRefundAmount}). Skipping duplicate processing.`,
+              );
+              return res.status(200).json({
+                received: true,
+                verifiedStatus: paymentData.status,
+                duplicate: true,
+                message: "Order already processed",
+              });
+            }
+            console.warn(
+              `[Mercado Pago Webhook] Payment ${paymentId} for order "${cleanOrderId}" carries a partial refund (${partialRefundAmount}); incident recorded for manual reconciliation.`,
+            );
+            const warehouseEmail = getWarehouseEmail();
+            if (warehouseEmail) {
+              await sendEmail({
+                to: warehouseEmail,
+                ...buildWarehouseAlertEmail(
+                  toOrderEmailData(cleanOrderId, orderData),
+                  "PAGO_REEMBOLSO_PARCIAL",
+                ),
+              });
+            }
+            return res.status(200).json({
+              received: true,
+              verifiedStatus: paymentData.status,
+              note: "incident",
+              incident: "REEMBOLSO_PARCIAL",
+            });
+          }
+
           console.info(
             `[Mercado Pago Webhook] Order "${cleanOrderId}" already recorded payment ${paymentId} (status: ${orderData.status}). Skipping duplicate processing.`,
           );
@@ -678,12 +862,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return;
           }
 
-          // 2. Perform all writes: update order document
+          // 2. Perform all writes: update order document. A payment that was
+          // already partially refunded by the time its approval webhook was
+          // processed (e.g. Mercado Pago retried the delivery during an outage)
+          // still settles — the charge went through and the amount assertion
+          // passed — but the refund is recorded in the SAME transaction so the
+          // case is never silently fulfilled.
+          const partialRefundIncident = partialRefundAmount > 0;
           transaction.update(orderRef, {
             status: "PAGADO_MERCADOPAGO",
             mercadopagoPaymentId: String(paymentId),
             paidAt: nowIso,
             updatedAt: nowIso,
+            ...(partialRefundIncident
+              ? {
+                  partialRefundPaymentId: paymentId,
+                  partialRefundAmount,
+                  partialRefundAt: nowIso,
+                }
+              : {}),
           });
 
           // Record order status history
@@ -710,6 +907,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               ...(stockShortfalls.length > 0 ? { stockShortfalls } : {}),
             },
           });
+
+          // The settled payment already carried a partial refund: record the
+          // incident in the same transaction so the case is auditable from the
+          // moment the order is marked paid.
+          if (partialRefundIncident) {
+            const refundIncidentRef = adminDb
+              .collection(getCollectionName("order_status_history"))
+              .doc();
+            transaction.set(
+              refundIncidentRef,
+              buildPartialRefundIncidentHistory({
+                cleanOrderId,
+                previousStatus: String(freshOrderData?.status || orderData.status || ""),
+                paymentId,
+                paymentData,
+                partialRefundAmount,
+                nowIso,
+                uid: refundIncidentRef.id,
+              }),
+            );
+          }
 
           // Perform all writes: update product stock documents and audit logs
           for (const prodUpdate of productUpdates) {
@@ -776,6 +994,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 stockShortfalls,
               ),
             });
+            // The settled payment already carried a partial refund: alert the
+            // warehouse so the returned money is reconciled manually.
+            if (partialRefundAmount > 0) {
+              await sendEmail({
+                to: warehouseEmail,
+                ...buildWarehouseAlertEmail(emailData, "PAGO_REEMBOLSO_PARCIAL"),
+              });
+            }
           }
         } else if (flaggedEvent) {
           // Never notify the customer that payment succeeded: the delivery was

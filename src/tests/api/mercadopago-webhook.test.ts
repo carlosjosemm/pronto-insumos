@@ -2136,6 +2136,402 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       expect(auditDoc?.metadata).not.toHaveProperty('stockShortfall')
       consoleSpy.mockRestore()
     })
+
+    describe('Partial-refund incident (R9)', () => {
+      let resendKeyBackup: string | undefined
+      let warehouseBackup: string | undefined
+
+      beforeEach(() => {
+        resendKeyBackup = process.env.RESEND_API_KEY
+        warehouseBackup = process.env.WAREHOUSE_NOTIFICATION_EMAIL
+        process.env.RESEND_API_KEY = 're_test_key'
+        process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      })
+
+      afterEach(() => {
+        if (resendKeyBackup === undefined) delete process.env.RESEND_API_KEY
+        else process.env.RESEND_API_KEY = resendKeyBackup
+        if (warehouseBackup === undefined) delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
+        else process.env.WAREHOUSE_NOTIFICATION_EMAIL = warehouseBackup
+      })
+
+      /** MP API double: an approved payment that already carries a partial refund. */
+      function mockApprovedPaymentWithRefund(id: number = 998877, amount: number = 189990, refunded: number = 50000) {
+        return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+          if (String(input).includes('api.resend.com')) {
+            return { ok: true, status: 200, json: async () => ({ id: 'email_xyz' }), text: async () => '' } as Response
+          }
+          return {
+            ok: true,
+            json: async () => ({
+              status: 'approved',
+              status_detail: 'partially_refunded',
+              external_reference: 'PRONTO-123456',
+              id,
+              transaction_amount: amount,
+              transaction_amount_refunded: refunded
+            })
+          } as Response
+        })
+      }
+
+      const settledOrder = {
+        orderId: 'PRONTO-123456',
+        status: 'PAGADO_MERCADOPAGO',
+        mercadopagoPaymentId: '998877',
+        totalAmount: 189990,
+        items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+      }
+
+      it('records one incident (no status flip, no stock movement, no customer email) when a settled order is partially refunded', async () => {
+        mockApprovedPaymentWithRefund()
+        const orderFixture = { ...settledOrder }
+        const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+        vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const fetchSpy = vi.spyOn(global, 'fetch')
+
+        const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+        const res = createMockRes()
+
+        await handler(req, res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        expect(res.json).toHaveBeenCalledWith({
+          received: true,
+          verifiedStatus: 'approved',
+          note: 'incident',
+          incident: 'REEMBOLSO_PARCIAL'
+        })
+        // The order keeps its paid status: only the marker fields are stamped.
+        expect(transactionUpdate).toHaveBeenCalledTimes(1)
+        const orderUpdate = transactionUpdate.mock.calls[0][1] as Record<string, unknown>
+        expect(orderUpdate).toEqual({
+          partialRefundPaymentId: '998877',
+          partialRefundAmount: 50000,
+          partialRefundAt: expect.any(String),
+          updatedAt: expect.any(String)
+        })
+        expect(transactionSet).toHaveBeenCalledTimes(1)
+        expect(transactionSet).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            previousStatus: 'PAGADO_MERCADOPAGO',
+            newStatus: 'PAGADO_MERCADOPAGO',
+            metadata: expect.objectContaining({
+              event: 'PAGO_REEMBOLSO_PARCIAL',
+              paymentId: '998877',
+              refundedAmount: 50000,
+              transactionAmount: 189990
+            })
+          })
+        )
+        // The warehouse is alerted; the customer is never told a refund happened.
+        const resendCalls = fetchSpy.mock.calls.filter((c) => String(c[0]).includes('resend.com'))
+        const recipients = resendCalls.map((c) => (JSON.parse(c[1]?.body as string).to as string[])[0])
+        expect(recipients).toEqual(['bodega@prontoinsumos.com'])
+        consoleSpy.mockRestore()
+      })
+
+      it('is idempotent: a replay of the same refund state writes nothing and acks as duplicate', async () => {
+        mockApprovedPaymentWithRefund()
+        const orderFixture = {
+          ...settledOrder,
+          partialRefundPaymentId: '998877',
+          partialRefundAmount: 50000,
+          partialRefundAt: '2026-09-30T12:00:00.000Z'
+        }
+        const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+        vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+        const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+        const res = createMockRes()
+
+        await handler(req, res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        expect(res.json).toHaveBeenCalledWith({
+          received: true,
+          verifiedStatus: 'approved',
+          duplicate: true,
+          message: 'Order already processed'
+        })
+        expect(transactionUpdate).not.toHaveBeenCalled()
+        expect(transactionSet).not.toHaveBeenCalled()
+        consoleSpy.mockRestore()
+      })
+
+      it('records a NEW incident when a higher cumulative refunded amount arrives (successive partial refunds)', async () => {
+        mockApprovedPaymentWithRefund(998877, 189990, 100000)
+        const orderFixture = {
+          ...settledOrder,
+          partialRefundPaymentId: '998877',
+          partialRefundAmount: 50000,
+          partialRefundAt: '2026-09-30T12:00:00.000Z'
+        }
+        const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+        vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+        const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+        const res = createMockRes()
+
+        await handler(req, res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        expect(res.json).toHaveBeenCalledWith({
+          received: true,
+          verifiedStatus: 'approved',
+          note: 'incident',
+          incident: 'REEMBOLSO_PARCIAL'
+        })
+        const orderUpdate = transactionUpdate.mock.calls[0][1] as Record<string, unknown>
+        expect(orderUpdate.partialRefundAmount).toBe(100000)
+        expect(transactionSet).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            metadata: expect.objectContaining({ event: 'PAGO_REEMBOLSO_PARCIAL', refundedAmount: 100000 })
+          })
+        )
+        consoleSpy.mockRestore()
+      })
+
+      it('treats a stale delivery with a LOWER cumulative amount as a replay (monotonic dedup, nothing written)', async () => {
+        // Cumulative refunds only grow: refund-2's delivery landed first
+        // (marker 100000) and MP then retried refund-1's delivery (50000) —
+        // necessarily a stale replay, so no spurious incident and no marker
+        // regression.
+        mockApprovedPaymentWithRefund(998877, 189990, 50000)
+        const orderFixture = {
+          ...settledOrder,
+          partialRefundPaymentId: '998877',
+          partialRefundAmount: 100000,
+          partialRefundAt: '2026-09-30T12:00:00.000Z'
+        }
+        const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+        vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+        const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+        const res = createMockRes()
+
+        await handler(req, res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        expect(res.json).toHaveBeenCalledWith({
+          received: true,
+          verifiedStatus: 'approved',
+          duplicate: true,
+          message: 'Order already processed'
+        })
+        expect(transactionUpdate).not.toHaveBeenCalled()
+        expect(transactionSet).not.toHaveBeenCalled()
+        consoleSpy.mockRestore()
+      })
+
+      it('keeps the plain duplicate skip when the delivery carries no refunded amount', async () => {
+        mockApprovedPayment(998877, 189990)
+        const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb({ ...settledOrder })
+        vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+        const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+        const res = createMockRes()
+
+        await handler(req, res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        expect(res.json).toHaveBeenCalledWith({
+          received: true,
+          verifiedStatus: 'approved',
+          duplicate: true,
+          message: 'Order already processed'
+        })
+        expect(transactionUpdate).not.toHaveBeenCalled()
+        expect(transactionSet).not.toHaveBeenCalled()
+        consoleSpy.mockRestore()
+      })
+
+      it('still records a double-payment incident (not a partial refund) for a different approved payment', async () => {
+        mockApprovedPaymentWithRefund(111111, 189990, 50000)
+        const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb({ ...settledOrder })
+        vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+        const req = { method: 'POST', body: { data: { id: '111111' } } } as unknown as VercelRequest
+        const res = createMockRes()
+
+        await handler(req, res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        expect(transactionUpdate).not.toHaveBeenCalled()
+        expect(transactionSet).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            metadata: expect.objectContaining({ event: 'PAGO_DUPLICADO', paymentId: '111111' })
+          })
+        )
+        consoleSpy.mockRestore()
+      })
+
+      it('settles a delayed approval normally AND records the refund incident in the same transaction', async () => {
+        // The approval delivery was retried after the refund: the charge went
+        // through, so the order settles (stock deducted, customer confirmed)
+        // and the returned money is flagged for manual reconciliation.
+        mockApprovedPaymentWithRefund()
+        const orderFixture = {
+          orderId: 'PRONTO-123456',
+          status: 'PENDIENTE_PAGO_MERCADOPAGO',
+          totalAmount: 189990,
+          customer: {
+            fullName: 'Dra. Camila Fuentes',
+            email: 'contacto@fuentesdental.cl',
+            rut: '12345678-5'
+          },
+          items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+        }
+        const { mockAdminDb, orderRef, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+        vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const fetchSpy = vi.spyOn(global, 'fetch')
+
+        const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+        const res = createMockRes()
+
+        await handler(req, res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
+        expect(transactionUpdate).toHaveBeenCalledWith(
+          orderRef,
+          expect.objectContaining({
+            status: 'PAGADO_MERCADOPAGO',
+            mercadopagoPaymentId: '998877',
+            paidAt: expect.any(String),
+            partialRefundPaymentId: '998877',
+            partialRefundAmount: 50000,
+            partialRefundAt: expect.any(String)
+          })
+        )
+        const setDocs = transactionSet.mock.calls.map((call) => call[1] as Record<string, unknown>)
+        expect(setDocs.find((doc) => doc.newStatus === 'PAGADO_MERCADOPAGO')).toBeDefined()
+        expect(
+          setDocs.find(
+            (doc) => doc.metadata && (doc.metadata as Record<string, unknown>).event === 'PAGO_REEMBOLSO_PARCIAL'
+          )
+        ).toBeDefined()
+        expect(setDocs.find((doc) => doc.changeType === 'ORDER_FULFILLMENT_DEDUCTION')).toBeDefined()
+        // Customer confirmation + settlement alert + refund alert.
+        const resendCalls = fetchSpy.mock.calls.filter((c) => String(c[0]).includes('resend.com'))
+        expect(resendCalls.length).toBe(3)
+        consoleSpy.mockRestore()
+      })
+
+      it('records the incident on a review-parked order without changing its status', async () => {
+        mockApprovedPaymentWithRefund()
+        const orderFixture = {
+          ...settledOrder,
+          status: 'PAGO_EN_REVISION'
+        }
+        const { mockAdminDb, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+        vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+        const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+        const res = createMockRes()
+
+        await handler(req, res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        expect(res.json).toHaveBeenCalledWith({
+          received: true,
+          verifiedStatus: 'approved',
+          note: 'incident',
+          incident: 'REEMBOLSO_PARCIAL'
+        })
+        const orderUpdate = transactionUpdate.mock.calls[0][1] as Record<string, unknown>
+        expect(orderUpdate).not.toHaveProperty('status')
+        expect(orderUpdate.partialRefundPaymentId).toBe('998877')
+        expect(transactionSet).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            previousStatus: 'PAGO_EN_REVISION',
+            newStatus: 'PAGO_EN_REVISION',
+            metadata: expect.objectContaining({ event: 'PAGO_REEMBOLSO_PARCIAL' })
+          })
+        )
+        consoleSpy.mockRestore()
+      })
+
+      it('still settles on the original transaction_amount when the payment carries a refund', async () => {
+        // The amount assertion uses transaction_amount (unchanged by Mercado
+        // Pago on a partial refund), so the settlement math is unaffected.
+        mockApprovedPaymentWithRefund(998877, 189990, 50000)
+        const orderFixture = {
+          orderId: 'PRONTO-123456',
+          status: 'PENDIENTE_PAGO_MERCADOPAGO',
+          totalAmount: 189990,
+          items: [{ productId: 'prod-turbine-1', name: 'Turbina', quantity: 2 }]
+        }
+        const { mockAdminDb, transactionSet } = mockReconciliationDb(orderFixture)
+        vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+        const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+        const res = createMockRes()
+
+        await handler(req, res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        const setDocs = transactionSet.mock.calls.map((call) => call[1] as Record<string, unknown>)
+        const historyDoc = setDocs.find((doc) => doc.newStatus === 'PAGADO_MERCADOPAGO')
+        expect(historyDoc?.metadata).toEqual(
+          expect.objectContaining({ paymentId: '998877', transactionAmount: 189990 })
+        )
+        consoleSpy.mockRestore()
+      })
+
+      it('routes a fully refunded payment that also reports transaction_amount_refunded to the reversal branch only', async () => {
+        // A full reversal flips `status` to `refunded`, so the reversal branch
+        // handles it (PAGO_REEMBOLSADO) and the partial-refund path must not
+        // double-fire: no PAGO_REEMBOLSO_PARCIAL event, no marker writes.
+        mockPaymentStatus('refunded', 998877, 189990)
+        vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            status: 'refunded',
+            status_detail: 'refunded',
+            external_reference: 'PRONTO-123456',
+            id: 998877,
+            transaction_amount: 189990,
+            transaction_amount_refunded: 189990
+          })
+        } as Response)
+        const orderFixture = { ...settledOrder }
+        const { mockAdminDb, orderRef, transactionUpdate, transactionSet } = mockReconciliationDb(orderFixture)
+        vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+        const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+        const res = createMockRes()
+
+        await handler(req, res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'refunded' })
+        // The paid order is parked in review by the reversal branch.
+        expect(transactionUpdate).toHaveBeenCalledTimes(1)
+        expect(transactionUpdate).toHaveBeenCalledWith(
+          orderRef,
+          expect.objectContaining({ status: 'PAGO_EN_REVISION' })
+        )
+        const setDocs = transactionSet.mock.calls.map((call) => call[1] as Record<string, unknown>)
+        expect(setDocs).toHaveLength(1)
+        expect(setDocs[0].metadata).toEqual(expect.objectContaining({ event: 'PAGO_REEMBOLSADO', paymentId: '998877' }))
+        consoleSpy.mockRestore()
+      })
+    })
   })
 
   describe('Production fail-closed configuration gates (Task 0.10)', () => {

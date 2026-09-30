@@ -32,7 +32,7 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3 Open Tasks](#3-open
 
 | ID | Outcome / risk | Gate |
 | :-- | :-- | :-- |
-| [0.18](#task-0-18) | Detect partial MP refunds for manual review | Partial/full/replay tests create one deduplicated incident; no auto-refund |
+| [x] [0.18](#task-0-18) | Detect partial MP refunds for manual review | Partial/full/replay tests create one deduplicated incident; no auto-refund |
 | [2.15](#task-2-15) | Bound orphan voucher uploads and legacy payloads | Housekeeping/cap or detail-fetch path verified without weakening access controls |
 | [2.18](#task-2-18) | Prevent unsafe payment retry after ambiguous return | Failed/pending/delayed/cross-tab cases reconcile prior order before retry |
 | [4.2](#task-4-2) | Close backoffice tests, pagination, refresh and KPI gaps | Deep-link, stale selection, read failure, KPI and bounded-read checks pass |
@@ -116,11 +116,12 @@ This section separates source-level capability from independently verified produ
 
 <a id="task-0-18"></a>
 
-- [ ] **0.18. Detect Partial Mercado Pago Refunds** _(P2; coordinate with 4.5)_
+- [x] **0.18. Detect Partial Mercado Pago Refunds** _(P2; coordinate with 4.5)_
   - **Evidence:** `api/AGENTS.md` records known R9; webhook only handles `refunded` / `charged_back` status, and the approved-payment fast path skips same-payment notifications even when `transaction_amount_refunded > 0`. Whether Mercado Pago delivers a distinct partial-refund event is unverified by this static scan.
   - **Risk:** partial refunds may leave a settled order without an operator incident.
   - **Fix:** detect partial refund and create one deduplicated manual incident/alert; no automatic refund pipeline.
-  - **Accept:** test partial/full refund and replay, verify gateway event semantics on preview/test, and retain owner ledger reconciliation as fallback; no automatic gateway refund.
+  - **As built (2026-09-30):** the webhook detects an `approved` payment whose cumulative `transaction_amount_refunded > 0` (verified against Mercado Pago's official docs: a partial refund keeps `status: 'approved'` + `status_detail: 'partially_refunded'` with the original `transaction_amount`, and the `payment` topic fires on every payment update through the already-configured subscription). Two detection surfaces — the duplicate fast path (the named R9 gap) and a settlement whose approval delivery was retried after the refund landed. Each detection stamps the `partialRefundPaymentId`/`partialRefundAmount`/`partialRefundAt` marker fields on the order document and writes one `PAGO_REEMBOLSO_PARCIAL` history event + Spanish warehouse alert — **no status flip, no stock movement, no customer email, no automatic gateway refund**. The dedup is monotonic (lower-or-equal cumulative amount under the same payment id ⇒ stale replay, nothing written; a higher amount ⇒ new incident), so successive partial refunds are never swallowed and replay ping-pong cannot manufacture spurious alerts; a positive non-integer amount is logged loudly and treated as absent. Full refunds keep flowing through the `refunded`/`charged_back` reversal branch, which takes precedence over the partial path.
+  - **Accept:** met at source level — 9 new webhook cases cover the partial path (one incident, no flip/no stock/no customer email), replay dedup, successive higher amounts, plain-duplicate unchanged, different-payment → `PAGO_DUPLICADO`, full-refund precedence, delayed-approval settlement + incident in one transaction, review-parked order and the refund-independent amount assertion. **Remaining human step:** the optional recommended smoke test — trigger a partial refund on a preview/test Mercado Pago payment and confirm the incident appears exactly once; owner ledger reconciliation remains the fallback authority.
 
 ### Phase 1 — Billing & Regulated Products
 
