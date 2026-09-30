@@ -180,9 +180,12 @@ pnpm run catalog:import:dev      # Import the price-list CSV into dev_products (
 
 # --- Live Production Database Operations ---
 pnpm run schema:validate         # Validate live production collections (Read-Only)
-pnpm run schema:seed             # Seed production catalog (⚠️ writes prod with NO confirmation flag)
+pnpm run schema:seed             # Seed production catalog — requires -- --confirm-production-seed
 pnpm run schema:purge-and-seed   # Requires --force AND --confirm-production-wipe appended to run
-pnpm run catalog:import          # Import CSV into production products (requires --confirm-production-import)
+pnpm run catalog:import          # Import CSV into production products — requires -- --confirm-production-import
+# Both write scripts are non-destructive (metadata-only updates, stable name-bound
+# ids, no sample order in prod) and support --dry-run for a read-only plan preview:
+#   pnpm run schema:seed -- --dry-run     pnpm run catalog:import -- --dry-run
 
 # --- Operator scripts without pnpm aliases (run via tsx) ---
 pnpm dlx tsx scripts/fix-catalog-data-quality.ts                    # dev by default; prod needs --env=prod --confirm-production-fix

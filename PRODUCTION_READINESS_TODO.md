@@ -26,7 +26,7 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3 Open Tasks](#3-open
 | [4.3](#task-4-3) | Harden admin state, amount and inventory mutations | Guard/race tests pass; `PAGO_EN_REVISION` reconciliations have evidence and operator note |
 | [4.4](#task-4-4) | Prevent inventory admin hook-order crash | Null-to-product rerender test passes |
 | [x] [4.6](#task-4-6) | Define an auditable handoff for WhatsApp quote orders | Owner-approved operational route is ready before exposure, or WhatsApp is not a checkout payment method |
-| [8.17](#task-8-17) | Make catalog imports/seeds non-destructive and identity-stable | Repeat/reorder tests and read-only operator rehearsal preserve live-like data |
+| [x] [8.17](#task-8-17) | Make catalog imports/seeds non-destructive and identity-stable | Repeat/reorder tests and read-only operator rehearsal preserve live-like data |
 
 ### P2 — Next release / before marketed launch
 
@@ -369,11 +369,12 @@ This section separates source-level capability from independently verified produ
 
 <a id="task-8-17"></a>
 
-- [ ] **8.17. Destructive / Repeat Catalog Import and Seed Risk** _(P1; cross-link 8.15 and 6.4)_
+- [x] **8.17. Destructive / Repeat Catalog Import and Seed Risk** _(P1; cross-link 8.15 and 6.4)_
   - **Evidence:** `scripts/import-catalog-csv.ts:155-180` deletes `odon-*`; `:189-234` derives IDs from CSV row index and merges `stockCount: 10`, `inStock: true`, `isActive: true`, `prescriptionRequired: false`, `images: []` into existing products. Re-runs can reset sold stock, erase regulatory/visibility/image metadata, change identities when rows reorder, and create bogus initial audit entries. `scripts/manage-firestore-schema.ts:130-158` similarly resets existing stock. `schema:seed` has no production confirmation and inserts fake paid `PRONTO-SAMPLE-001`; CSV import treats plain `--force` as production confirmation (`scripts/import-catalog-csv.ts:90`).
   - **Risk:** production scripts can destructively alter live catalog/order data even if currently unused. **Do not re-run production seed/import until this P1 safety pass is complete.**
   - **Fix:** production scripts must be create-only or explicitly reviewed metadata-only updates; preserve stock, visibility, regulated fields and images; use stable IDs; detect reordering/collisions; never delete products referenced by orders. Audit real price changes. Add preview/dry-run and explicit production confirmation: require `--confirm-production-seed`, never create sample paid orders in production, require `--confirm-production-import`, and do not accept plain `--force` as fallback. Coordinate with 8.15 and 6.4.
   - **Accept:** tests cover repeat/reordered input against existing live-like inventory and reject missing/weak production confirmations/sample-order writes; operator performs a read-only rehearsal confirming no destructive changes before any write.
+  - **As built (2026-09-30):** both scripts refactored to pure exported planners (`buildImportPlan`/`buildSeedPlan`) + direct-invocation-guarded `main()` (the `sync-env-to-vercel` convention). Import: identity is bound to the normalized product name (row reorder is a noop, `odon-*` excluded from matching), new ids allocate above the existing max (freed indexes never reused), updates are metadata-allowlist-only, `odon-*` referenced by orders is deactivated never deleted, audits write only on create (`CATALOG_SEED`) or real price change (`METADATA_UPDATE`), CSV/existing-name collisions abort, `--dry-run` plans read-only (gate-exempt), and prod accepts only `--confirm-production-import` (`--force` refused). Seed: same metadata-only/noop/price-audit semantics, `PRONTO-SAMPLE-001` is dev-only, prod requires `--confirm-production-seed`; purge keeps `--force` + `--confirm-production-wipe`. Verified: `pnpm test` 1004/1004 (89 suites), build/lint/format/tsc clean. Operator rehearsal pending: `pnpm run catalog:import -- --dry-run` / `schema:seed -- --dry-run`.
 
 ### Phase 9 — Commercial Promotions
 
@@ -437,3 +438,4 @@ Resolved outcomes are retained as recorded; detailed as-built context remains in
 | 8.3 | Integration tests for the serverless endpoints. |
 | 8.6 | `api/` consolidated to 6 functions (Hobby cap 12); ESM `.js` import rule and `jose@^5` override (removal condition: `jwks-rsa` > 4.1.0 ships the lazy-`jose` fix — then re-verify `firebase-admin/auth` on a preview deploy). |
 | 8.7 | Catalog progressive reveal (16 per page, button only). |
+| 8.17 | Catalog imports/seeds are non-destructive and identity-stable: `import-catalog-csv.ts` binds product identity to the normalized name (reorder-proof), allocates new ids above the existing max, updates metadata-only, soft-retires (never deletes) `odon-*` docs referenced by orders, and audits real changes only; `manage-firestore-schema.ts --seed` shares the metadata/noop/price-audit semantics, keeps the fake paid sample order dev-only, and both prod paths require explicit `--confirm-production-import`/`--confirm-production-seed` (no `--force` substitute) with a gate-exempt `--dry-run` rehearsal. |
