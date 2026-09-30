@@ -69,3 +69,23 @@ export interface OrderListResult {
   total: number
   nextCursor?: string
 }
+
+/**
+ * Result of the voucher-object housekeeping sweep (`/api/admin/voucher-housekeeping`).
+ *
+ * `dryRun: true` reports what *would* be removed without touching Storage. The sweep
+ * deletes only objects an order does not reference and that are older than the grace
+ * window, so a `deletedCount > 0` is always reclaimed abandoned upload space.
+ */
+export interface VoucherHousekeepingResult {
+  success: boolean
+  dryRun?: boolean
+  scannedOrders?: number
+  scannedObjects?: number
+  deletedCount?: number
+  keptReferenced?: number
+  skippedRecent?: number
+  deletedSample?: string[]
+  failures?: string[]
+  error?: string
+}

@@ -408,7 +408,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
           </div>
 
           {/* Transfer Voucher Section (only allowlisted URLs are openable) */}
-          {voucherUrl && (
+          {(voucherUrl || order.hasVoucher) && (
             <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 'var(--radius-sm)', padding: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
               <div>
                 <div style={{ fontWeight: '700', fontSize: '0.825rem', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -422,7 +422,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
                 )}
               </div>
 
-              {voucherKind === 'storage' && (
+              {voucherUrl && voucherKind === 'storage' && (
                 <a
                   href={voucherUrl}
                   target="_blank"
@@ -435,7 +435,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
                 </a>
               )}
 
-              {voucherKind === 'legacy-data' && (
+              {voucherUrl && voucherKind === 'legacy-data' && (
                 <button
                   type="button"
                   onClick={() => handleOpenVoucher(voucherUrl)}
@@ -447,9 +447,17 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
                 </button>
               )}
 
-              {voucherKind === 'unsafe' && (
+              {voucherUrl && voucherKind === 'unsafe' && (
                 <span style={{ fontSize: '0.725rem', fontWeight: '700', color: 'var(--danger)', textAlign: 'right' }}>
                   Enlace no verificable — revisa el documento en Firestore
+                </span>
+              )}
+
+              {/* The order list reports `hasVoucher` but omits the URL; if the detail
+                  fetch did not supply it, say so instead of silently hiding a voucher. */}
+              {!voucherUrl && order.hasVoucher && (
+                <span style={{ fontSize: '0.725rem', fontWeight: '700', color: 'var(--text-muted)', textAlign: 'right' }}>
+                  No se pudo cargar el enlace del comprobante. Reintenta o revisa Firestore.
                 </span>
               )}
             </div>

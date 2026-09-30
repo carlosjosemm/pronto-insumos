@@ -1,95 +1,180 @@
-# Task 2.18: Failed Payment Return and Retry Workflow
+# Task 2.15: Bound Orphan Voucher Uploads and Legacy Payloads
 
-**Branch:** `feat/task-2.18-failed-payment-return-retry` (Windsurf-managed worktree checkout at `~/.windsurf/worktrees/pronto-insumos/pronto-insumos-burnished-governor` — the session's sanctioned working environment; no manually-created `git worktree add` or sibling task directory)
-**Status:** **Implemented, reviewed, gates green — awaiting owner "wrap up and proceed".** 1027/1027 tests (89 suites) after rebasing onto `origin/main` (Task 0.18 merged mid-task); build / lint / format:check / tsc all clean. Adversarial review returned *approve with findings* (F1–F7); all remediated. See §6.
+**Branch:** `fix/task-2.15-voucher-upload-bounding` (primary working tree — no worktree; cut from `main` @ `85144e0`)
+**Status:** **Implemented, reviewed, remediated — gates green; awaiting owner "wrap up and proceed".** 93 suites / 1064 tests (89-suite baseline + 4 new; rebased onto `origin/main` @ Task 2.18). Adversarial review returned *approve with findings* (M1/M2 doc sync, m1/m2, n1–n4); all code findings remediated, doc findings land in the as-built pass (step 8).
+**Baseline on this branch:** `pnpm test` → 1014/1014 (89 suites) green after rebasing onto `origin/main` (Task 0.18 merge `85144e0`).
 
 ---
 
 ## 1. Context & Problem Statement
 
-`PRODUCTION_READINESS_TODO.md` §3, Task 2.18 *(P2; coordinate with 8.13, not UI polish alone)*:
+`PRODUCTION_READINESS_TODO.md` **2.15 (P2)** — three follow-ups left over from Task 2.9 (the browser→Storage voucher flow):
 
-> **Evidence:** `src/components/PaymentReturnModal.tsx:218-257` claims *"No se ha realizado ningún cobro"* from a forgeable failure query and Retry reopens checkout; `src/components/CheckoutModal.tsx:307-355` creates a new order. A late approval of the first order can cause separate order IDs/charges; the webhook's per-order duplicate guard cannot join them.
-> **Risk:** duplicate order/charge or false assurance that no payment occurred.
-> **Fix:** remove categorical no-charge language; verify tracking/payment ledger before retry. Reuse pending order where safe, or direct the operator to reconcile the prior order before a new attempt. Do not clear cart from a forged return.
+1. **Unconfirmed uploads are never cleaned up.** `handleSign` (`api/upload-voucher.ts:88-145`) mints a fresh
+   `vouchers/{env}/{orderId}/{epochMs}-{token}.{ext}` object path on every call and mints a signed PUT URL
+   with **no lifetime cap**. The Task 8.8 throttle bounds *attempts per 15-minute window*, so minting is
+   bounded per window but **repeatable forever**. An upload that is signed and PUT but never `confirm`ed
+   (tab closed, network drop) leaves an orphan object of up to 5 MiB under `vouchers/…` with no owner and
+   no cleanup path — Cloud Storage bills it indefinitely. `handleConfirm` only deletes the object it
+   *replaces* (`:329-331`), never an abandoned one.
 
-The Mercado Pago return URL (`/?status=failure&orderId=…`) is trivially forgeable **and** is written by Mercado Pago before our webhook has verified anything. Today the failure branch of `PaymentReturnModal` makes two categorical claims from that query:
+2. **Legacy base64 vouchers bloat the admin list response.** Pre-2.9 order docs may carry the whole voucher
+   as a `data:` URL in `voucherUrl` (up to ~1 MiB). `api/_lib/admin/orders.ts:47-58` spreads **every** field
+   of **every** order into the list response, so a handful of legacy vouchers can exceed Vercel's **4.5 MB**
+   response cap and break the entire backoffice order list. `/api/track-order` already hides `data:` URLs
+   (`:226-231`); the admin list was not covered.
 
-1. *"ℹ️ Tus insumos continúan guardados: **No se ha realizado ningún cobro a tu tarjeta.**"* — a categorical no-charge assurance the storefront cannot actually know.
-2. *"La transacción en Mercado Pago no pudo procesarse o fue cancelada."* — the same false-assurance class: the URL says failure, but the payment may have gone through with a delayed webhook.
+3. **`voucherUrl` is a permanent capability URL.** The Firebase download token never expires unless rotated.
+   Acceptable today (only the RUT-authenticated customer and admins ever see it) — this is a documentation
+   item, not a code change.
 
-Worse, the "Reintentar / Opciones de Pago" button reopens checkout, and `handleCompleteOrder()` mints a **new** order id and charges it. If the first payment later approves (delayed webhook), the shopper holds two separate orders/charges that `/api/webhooks/mercadopago`'s per-order duplicate guard cannot join — the guard only joins payments recorded against the *same* order document.
+**Chosen direction (owner-confirmed):**
+- Orphan uploads → **durable per-order sign counter (Firestore) + an authenticated housekeeping sweep on the
+  existing `/api/admin/[action]` dispatcher** (no new serverless-function slot), triggered from the admin UI.
+- Legacy payloads → **`orders.ts` list returns `hasVoucher` instead of `voucherUrl`; the `?orderId=` detail
+  request still returns the full document**, and the admin UI fetches the detail on select. No data migration.
 
-The server already provides the safe primitives (both built in earlier tasks, only unwired on this surface):
-
-- `/api/track-order` — dual-factor (order id + RUT) server-authoritative order status.
-- `/api/create-preference` **lifecycle guard** — only a `mercadopago` order in `PENDIENTE_PAGO_MERCADOPAGO` may get a preference (`409` otherwise), so re-initiating payment on the *same* pending order can never double-bill a settled one, and any genuine double payment on that order is joined by the webhook's `PAGO_DUPLICADO` incident path.
-
-This task wires the storefront retry path onto those primitives.
+---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-**None.** No new credentials, env vars or `.env.example` entries — the change reuses the existing serverless endpoints and their secrets. (Task 8.13's stale-pending-order close remains a separate roadmap item; this task only coordinates with it.)
+- **No new credentials, secrets or environment variables.** Both new bounds are code constants; nothing is
+  added to `.env.example`.
+- **Operator action (documented, optional):** the housekeeping sweep is exposed as a button in
+  `#settings`. The owner may run it periodically (e.g. after a campaign) to reclaim abandoned uploads.
+- **Deployment:** no new Vercel function is added (the admin action rides the existing `api/admin/[action]`
+  slot), so the Hobby 12-function cap is untouched (stays at 6 used).
+- **Note for the owner (recorded, no action):** `voucherUrl` remains a non-expiring capability URL; if
+  voucher revocation is ever required, the download token must be rotated / the object deleted.
+
+---
 
 ## 3. Proposed Changes
 
-### 3.1 `src/components/PaymentReturnModal.tsx` — copy honesty + protected retry entry
+### 3.1 Durable per-order sign cap (orphan bounding)
 
-- **`failure` branch rewrite (the named gap):**
-  - Remove *"No se ha realizado ningún cobro a tu tarjeta"* and *"La transacción en Mercado Pago no pudo procesarse o fue cancelada"* — both assert an outcome the forgeable URL cannot prove.
-  - New copy states only what is known: Mercado Pago returned a payment-not-completed notice; the notice does not confirm the charge outcome; before a new attempt, verify the order status (RUT as second factor) or coordinate by WhatsApp.
-  - Actions: `Cerrar` + `Verificar estado antes de reintentar` (calls `onTrackOrder`; renders only when both `orderId` and `onTrackOrder` are present — the same condition as the tracking action), plus a WhatsApp coordination link for the manual-reconciliation path.
-- **Remove the now-dead `onRetryPayment` prop** — a direct retry that skips ledger verification is exactly the unsafe path this task removes; the protected retry completes inside the tracking modal instead.
-- **`pending` branch:** unchanged (its copy makes no no-charge claim).
+- **[MODIFY]** `api/upload-voucher.ts`
+  - New constant `VOUCHER_MAX_SIGNS_PER_ORDER = 10` with a self-contained comment explaining that this is a
+    **lifetime** bound (unlike the 15-minute throttle) and why 10 is generous for legitimate replacements.
+  - New helper `reserveVoucherSignSlot(adminDb, order, cap)` → runs a Firestore transaction on the order doc:
+    read fresh, `current = Number(voucherSignCount) || 0`; if `current >= cap` → `{ allowed: false, count }`;
+    else `transaction.update(ref, { voucherSignCount: current + 1 })` → `{ allowed: true, count: current + 1 }`.
+    Transactional so concurrent signs serialize on the order document (a plain read-then-write could exceed
+    the cap). Reserve **before** minting: a slot is spent even if `getSignedUrl` later throws (conservative,
+    documented inline).
+  - `handleSign` gains `adminDb` + `order` parameters and calls the helper after the lifecycle guard, before
+    `buildVoucherStoragePath`. On refusal: `429` + a Chilean-Spanish message pointing to WhatsApp (no
+    `Retry-After` — the cap is not time-bound). On a counter-write failure: fail **closed** (`500`, loud log)
+    — we must not mint an unbounded URL because the bound could not be recorded.
+- **[MODIFY]** `src/types/index.ts` — add `voucherSignCount?: number` to `Order` (server-written, never
+  client-written; Admin SDK bypasses `firestore.rules`, so no rules change is needed).
 
-### 3.2 `src/services/mercadopago.ts` — new `resumeMercadoPagoPayment(orderId)`
+### 3.2 Housekeeping sweep (orphan cleanup)
 
-- `POST /api/create-preference` with `{ orderId }` only — the endpoint reads the line items, payer and promo from the order document (Task 0.14g/2.17 contract), so the request contributes nothing chargeable.
-- Success with a usable `initPoint` → redirect to Checkout Pro. Exact result shape `{ success: true }` — no payment id, status or timestamp is ever fabricated client-side.
-- `409` (settled / in-review / transfer / quote / cancelled) → `{ success: false, error }` with the server's message; the caller surfaces "revisa el estado de tu pedido" instead of creating a new order.
-- Production transport failure → loud `console.error` + `{ success: false }`; the dev/preview simulation stays (same `isSimulatedFallbackAllowed()` gate as the existing adapter).
-- `MercadoPagoPaymentParams`'s `items` / `total` / `customer` become optional — the endpoint only reads the `orderId`, and the checkout call keeps passing all four.
+- **[NEW]** `api/_lib/admin/voucher-housekeeping.ts` — `POST` admin handler:
+  - `setAdminResponseHeaders` / `isAdminPreflight` / `verifyAdminToken` / `405` on non-POST, mirroring the
+    other admin handlers.
+  - Body: `{ orderId?: string, dryRun?: boolean, limit?: number }`.
+  - Loads orders (single doc when `orderId` given; otherwise the collection read — the same
+    full read the existing admin order list already performs — sorted `createdAt` desc and
+    capped at `limit`, default 100 / max 500). Orders are never deletable (`firestore.rules`
+    denies client deletes and no handler deletes them), so **per-order folder listing is
+    complete** — every voucher folder belongs to a live order. Listing per loaded order (not
+    one whole-prefix listing) guarantees an object is only ever deleted when its own order was
+    read, so an unscanned order can never be mistaken for an orphan. The admin UI exposes the
+    `limit` so an operator can widen the scan to reach older orders (the server clamps to 500).
+  - For each order: `bucket.getFiles({ prefix: vouchers/{env}/{orderId}/ })`; keep the object equal to the
+    order's `voucherStoragePath`; delete every other object whose `timeCreated` is older than
+    `VOUCHER_ORPHAN_GRACE_MS = 60 min` (the signed PUT TTL is 10 min, so 60 min can never race an in-flight
+    upload); objects with an unknown age are skipped (conservative).
+  - Response: `{ success, dryRun, scannedOrders, scannedObjects, deletedCount, keptReferenced,
+    skippedRecent, deletedSample: string[], failures: string[] }` — counts + a capped sample, never a dump.
+  - Guards: `deleteVoucherObject` (existing helper) already refuses any path outside `vouchers/`; a delete
+    failure is recorded in `failures` and never aborts the sweep.
+- **[MODIFY]** `api/admin/[action].ts` — register `'voucher-housekeeping': voucherHousekeeping` (now **14**
+  actions) and correct the stale "12 administrative handlers" comment.
+- **[MODIFY]** `src/admin/types.ts` — add `VoucherHousekeepingResult`.
+- **[MODIFY]** `src/admin/services/adminApi.ts` — `runVoucherHousekeeping({ orderId?, dryRun?, limit? })`.
+- **[MODIFY]** `src/admin/components/AdminSettings.tsx` — a "Mantenimiento de Comprobantes" card with a
+  **Revisar huérfanos** (dry-run) button and a **Eliminar huérfanos** button; renders the returned counts or
+  the error. No new CSS framework; reuses `admin-card` / `admin-btn` classes.
 
-### 3.3 `src/components/OrderTrackingModal.tsx` — the protected retry completion
+### 3.3 Legacy base64 bounding in the admin list
 
-- Import `resumeMercadoPagoPayment` (the modal already invokes adapters directly — `fetchOrderTracking`, `uploadTransferVoucher`).
-- When the tracked order is `PENDIENTE_PAGO_MERCADOPAGO` **and** method is `mercadopago`, render `Reintentar pago de este pedido` → adapter call; on failure the server message renders inside the modal. On success the browser navigates to Checkout Pro.
-- No retry button for any other status/method combination (settled orders show `Pago Acreditado`; transfer/quote orders route through the existing WhatsApp support link).
+- **[MODIFY]** `api/_lib/admin/orders.ts`
+  - List path: destructure `voucherUrl` out of each doc and add
+    `hasVoucher: Boolean(data.voucherUrl || data.voucherStoragePath)` (same predicate `track-order` uses).
+  - Detail path (`?orderId=`, both the doc-key hit and the `where('orderId','==')` fallback): return the full
+    document unchanged, including `voucherUrl`.
+- **[MODIFY]** `src/types/index.ts` — add `hasVoucher?: boolean` to `Order`, documented as a **list-projection**
+  flag (the list omits `voucherUrl`; the detail request supplies it).
+- **[MODIFY]** `src/admin/components/AdminOrders.tsx`
+  - On select, show the list row immediately then `fetchAdminOrder(orderId)` and replace with the full detail
+    (guarded against out-of-order responses). Deep-link `initialOrderId` fetches the detail directly.
+  - `onOrderUpdated` now refreshes the selected order's detail as well as the list — fixes the stale-selection
+    panel after an approve/dispatch action (today `selectedOrder` is never re-read).
+- **[MODIFY]** `src/admin/components/OrderDetailPanel.tsx` — the voucher block also renders when
+  `order.hasVoucher` is true but the detail URL has not loaded, showing a neutral "no se pudo cargar el
+  enlace" note instead of silently hiding an attached voucher.
 
-### 3.4 `src/App.tsx` — wiring
+### 3.4 Documentation
 
-- `PaymentReturnModal`: drop the `onRetryPayment` wiring (the verify action **is** `onTrackOrder`).
-- No other App changes — the tracking modal owns the resume call internally.
+- **[MODIFY]** `api/AGENTS.md` — sign-phase cap, the housekeeping action, the list/detail voucher projection,
+  and the permanent-capability-URL note.
+- **[MODIFY]** `src/admin/AGENTS.md`, `src/types/AGENTS.md`, `src/tests/AGENTS.md` — as-built notes + counts.
+- **[MODIFY]** `PRODUCTION_READINESS_TODO.md` — mark 2.15 `[x]` and move it to Resolved History at wrap-up.
 
-### 3.5 `src/components/CheckoutModal.tsx` — pre-checkout pending-payment notice
+### 3.5 Non-goals
 
-- An order this tab already created may still be awaiting payment when the shopper re-enters checkout: the Mercado Pago return URL is forgeable and is written before the webhook verifies anything, so the storefront cannot know whether that earlier charge went through.
-- `pendingSessionOrderId` (a `useMemo` keyed on `[isOpen, step]`) reads the Task 2.12 session marker only while the checkout is open on step 1, so a just-created order is never shown as the pending one.
-- When the marker holds an id, the step-1 panel renders an advisory notice above the contact fields: `⚠️ Pago pendiente de confirmar (<id>): ya registraste un pedido que puede estar esperando la acreditación del pago. Verifica su estado antes de crear uno nuevo.` with a `Ver estado del pedido` button that closes the checkout and opens `OrderTrackingModal` via the existing `onOpenTracking` prop (RUT stays a second factor the customer types).
-- Deliberately **advisory, not a hard gate**: the client cannot query pending orders (rules deny reads) and the marker goes stale (e.g. an order cancelled after the marker was written), so a hard gate would block legitimate checkouts. The residual (a shopper may still mint a second order while the first is pending; the notice is per-tab) is recorded in the as-built docs and the roadmap entry.
+- No GCS lifecycle rule, no `pending/` path redesign, no object "move".
+- No legacy base64 → Storage migration script.
+- No new serverless function (Hobby cap preserved), no new dependency, no rules change.
+
+---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-Vitest suites in `src/tests/` (mock every network boundary; never a real outbound request):
+All boundaries mocked at the edge (`firebase-admin/storage`, `firebase-admin/firestore`, `adminAuth`); no real
+network. New/updated suites:
 
-| Suite | Change | Cases |
-| :-- | :-- | :-- |
-| `components/PaymentReturnModal.test.tsx` | MODIFY | Failure state: *"No se ha realizado ningún cobro a tu tarjeta"* pinned **absent** (the existing test asserted its presence — update it); honest copy present (`/no confirma el resultado del cobro/i`); the verify action fires `onTrackOrder` (relabelled retry-button test); `defaultProps` without `onRetryPayment`. |
-| `components/OrderTrackingModal.test.tsx` | MODIFY | Pending-MP order → retry button renders and calls the mocked adapter with the order id; settled / transfer / quote / cancelled → no retry button; adapter failure → server message renders inside the modal; malformed document (status `PENDIENTE_PAGO_MERCADOPAGO`, method `transferencia`) → no retry button. |
-| `services/mercadopago.test.ts` | MODIFY | `resumeMercadoPagoPayment`: success → redirect initiated, exact result shape `{ success: true, initPoint }` (nothing else may exist); `409` → failure with the server message, no redirect; production transport failure → loud error + failure; dev simulation → success without an `initPoint`; empty order id → refused before any network call. |
-| `components/AppPaymentReturn.test.tsx` | MODIFY | Failure return → clicking the verify action opens `OrderTrackingModal` with the order id prefilled and an empty RUT (mirror of the approved-state test). |
-| `components/AppCartPersistence.test.tsx` | MODIFY | Forged `?status=failure&orderId=…` → saved cart and badge count untouched (the failure branch never clears the cart — only an approved return naming the session order may). |
-| `components/CheckoutModal.test.tsx` | MODIFY | Session marker present → the pending-payment notice renders with the order id and its `Ver estado` action opens tracking; no marker → no notice. |
+| Suite | Cases |
+| :-- | :-- |
+| `src/tests/api/admin/orders.test.ts` **(NEW — also closes the TODO 4.2 `orders` gap)** | `405`/`OPTIONS`/`403`/db-down `500`; list **omits** `voucherUrl` for a legacy `data:` order and sets `hasVoucher: true`; `hasVoucher: true` for a Storage-only order; `hasVoucher: false` when no voucher; other fields (customer/items/total/status) preserved; detail doc-key hit **returns** `voucherUrl`; detail `where` fallback returns `voucherUrl`; detail `404`; status filter + search |
+| `src/tests/api/upload-voucher.test.ts` **(MODIFY)** | sign reserves exactly one slot (`voucherSignCount: 1`) and mints the URL; sign at the cap → `429` + message and **no** `getSignedUrl` call; sign counter write failure → `500` fail-closed, no URL minted; existing "mints a scoped signed URL" case updated to assert the counter write is the **only** write |
+| `src/tests/api/admin/voucher-housekeeping.test.ts` **(NEW)** | `403`/`405`/`OPTIONS`/db-or-bucket-down `500`; deletes only unreferenced + older-than-grace objects; keeps the referenced `voucherStoragePath`; keeps a young orphan; `dryRun` deletes nothing but reports counts; `orderId` scoping lists only that folder; a `delete` rejection lands in `failures` without aborting; a path outside the voucher prefix is never deleted |
+| `src/tests/api/admin/admin-router.test.ts` **(MODIFY)** | add `'voucher-housekeeping'` to `ROUTES` (the "maps every declared action" case then covers it) |
+| `src/tests/admin/AdminSettings.test.tsx` **(NEW)** | renders the maintenance card; "Revisar" calls the service with `dryRun: true`; "Eliminar" calls with `dryRun: false`; counts render; a service error renders the message |
+| `src/tests/admin/AdminOrders.test.tsx` **(NEW)** | selecting a row calls `fetchAdminOrder` and the panel receives the detailed order (voucher link appears from the detail payload, not the list row); the list row has no `voucherUrl` |
+| `src/tests/admin/OrderDetailPanel.test.tsx` **(MODIFY)** | `hasVoucher: true` with no `voucherUrl` renders the fallback note (no anchor) |
 
-**Mocking strategy:** `global.fetch` at the boundary (preference + tracking endpoints); `resumeMercadoPagoPayment` mocked in component suites; `window.sessionStorage.clear()` in `beforeEach`/`afterEach` wherever the Task 2.12 marker is exercised (jsdom's own storage, not the harness mock).
+Conventions: mirror `src/tests/api/admin/mark-delivered.test.ts` (handler doubles) and
+`src/tests/admin/OrderTable.test.tsx` (RTL). **Zero-regression:** the full 89-suite / 1014-test baseline plus
+the new cases must be green.
 
-**Zero Regression Policy:** the full suite (1027 tests, 89 suites) stays green. Suite duration is dominated by jsdom environment setup (~36–55 s wall clock across runs; the test bodies themselves run in ~15 s) — the repo's "under 5 s" guideline applies to test execution speed, not environment bootstrapping, and is unchanged by this task.
+---
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-- `src/components/AGENTS.md` §7.3 (`PaymentReturnModal`) — **landed:** the `failure` bullet rewritten to the as-built honest copy + protected-retry wiring; the removed `onRetryPayment` prop recorded; the failure-state WhatsApp message documented.
-- `src/components/AGENTS.md` §4.1.2 (`OrderTrackingModal`) — **landed:** the in-modal resume-payment action and its lifecycle guard documented.
-- `src/components/AGENTS.md` §3.1.1 (`CheckoutModal`) — **landed:** the pre-checkout pending-payment notice documented, including the advisory-not-gate disposition and the recorded residual.
-- `src/services/AGENTS.md` §1.1 (`mercadopago.ts`) — **landed:** `resumeMercadoPagoPayment` and the relaxed params shape documented.
-- `PRODUCTION_READINESS_TODO.md` §3 Task 2.18 — add the "As built" entry (with the duplicate-order residual recorded) and mark `[x]`; refresh the §1 board row.
-- `walkthrough.md` — branch, commit, PR URL, verification results, review-finding dispositions (at wrap-up).
+- `api/AGENTS.md`: sign-phase durable cap (`voucherSignCount`), the `voucher-housekeeping` action + its
+  contract, the admin list/detail voucher projection, and the capability-URL note.
+- `src/admin/AGENTS.md`: the detail-fetch-on-select change, the settings maintenance card, the new action.
+- `src/types/AGENTS.md`: `Order.hasVoucher` / `Order.voucherSignCount`.
+- `src/tests/AGENTS.md`: new suite names + updated counts.
+- `PRODUCTION_READINESS_TODO.md`: `[x]` on 2.15 + Resolved History row at wrap-up.
+
+## 6. Risks & Edge Cases
+
+- **Slot spent on a failed mint** — conservative by design (documented inline); the cap is 10, so a customer
+  is not realistically locked out.
+- **Sweep listing cost** — one `getFiles` per scanned order, bounded by `limit` (≤500); it is an operator
+  action, not a hot path.
+- **`hasVoucher` without a detail fetch** — the panel shows the fallback note rather than hiding an attached
+  voucher; the detail fetch normally supplies the URL.
+- **Existing sign test** asserted "no Firestore writes" — intentionally updated to "only the counter is
+  written"; this is the one deliberate contract change and is called out in the PR.
+
+## 7. Verification
+
+`pnpm test` (89 suites + 4 new → 93, 1064 tests), `pnpm build`, `pnpm lint`, `pnpm format:check`,
+`pnpm exec tsc --noEmit` (+ the documented `api/` strict check). Then the adversarial `code-review` subagent,
+remediation, as-built docs, roadmap checkbox, commit + PR.

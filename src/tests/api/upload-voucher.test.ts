@@ -474,10 +474,51 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
       expect(payload.storagePath).toMatch(/^vouchers\/orders\/PRONTO-123456\/\d+-[0-9a-f]{8}\.pdf$/)
       expect(payload.dataUrl).toBeUndefined()
 
-      // No bytes, no metadata and no status change are persisted at signing time
-      expect(db.updateSpy).not.toHaveBeenCalled()
+      // The ONLY write at signing time is the durable sign-slot reservation; no bytes,
+      // no voucher metadata and no status change are persisted here.
+      expect(db.updateSpy).toHaveBeenCalledTimes(1)
+      expect(db.updateSpy.mock.calls[0][1]).toEqual({ voucherSignCount: 1 })
       expect(db.setSpy).not.toHaveBeenCalled()
-      expect(db.orderTx.get).not.toHaveBeenCalled()
+    })
+
+    it('reserves one durable sign slot per call, incrementing the order counter', async () => {
+      const bucket = createMockBucket()
+      const db = setupAdmin({ ...PENDING_ORDER, voucherSignCount: 3 }, bucket)
+      const res = createMockRes()
+
+      await handler(signRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(db.updateSpy).toHaveBeenCalledTimes(1)
+      expect(db.updateSpy.mock.calls[0][1]).toEqual({ voucherSignCount: 4 })
+    })
+
+    it('refuses with 429 once the lifetime sign cap is reached, without minting a URL', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const bucket = createMockBucket()
+      const db = setupAdmin({ ...PENDING_ORDER, voucherSignCount: 10 }, bucket)
+      const res = createMockRes()
+
+      await handler(signRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(429)
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('límite') }))
+      expect(bucket.fileApi.getSignedUrl).not.toHaveBeenCalled()
+      expect(db.updateSpy).not.toHaveBeenCalled()
+    })
+
+    it('fails closed when the sign-slot reservation cannot be written', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const bucket = createMockBucket()
+      const db = setupAdmin(PENDING_ORDER, bucket)
+      db.orderTx.get.mockRejectedValue(new Error('transaction unavailable'))
+      const res = createMockRes()
+
+      await handler(signRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('WhatsApp') }))
+      expect(bucket.fileApi.getSignedUrl).not.toHaveBeenCalled()
     })
 
     it('should allow a voucher replacement while the transfer is still pending', async () => {

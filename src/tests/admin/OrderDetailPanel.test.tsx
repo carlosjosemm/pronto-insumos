@@ -232,6 +232,26 @@ describe('OrderDetailPanel Component', () => {
     openSpy.mockRestore()
   })
 
+  it('shows a neutral note when the list reports a voucher but the detail URL has not loaded', () => {
+    const orderWithoutUrl: Order = { ...mockOrder, hasVoucher: true }
+    delete orderWithoutUrl.voucherUrl
+
+    render(<OrderDetailPanel order={orderWithoutUrl} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+    expect(screen.getByText('Comprobante de Transferencia Adjunto')).toBeInTheDocument()
+    expect(screen.queryByText('Ver Comprobante')).not.toBeInTheDocument()
+    expect(screen.getByText(/No se pudo cargar el enlace/i)).toBeInTheDocument()
+  })
+
+  it('renders no voucher block when the order has neither a URL nor the existence flag', () => {
+    const orderWithoutUrl: Order = { ...mockOrder }
+    delete orderWithoutUrl.voucherUrl
+
+    render(<OrderDetailPanel order={orderWithoutUrl} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+    expect(screen.queryByText('Comprobante de Transferencia Adjunto')).not.toBeInTheDocument()
+  })
+
   it('refuses a legacy voucher whose fetched body is not the declared MIME type (Task 0.13)', async () => {
     // Defensive-only case: for a `data:` URL the fetched Blob type IS the declared
     // one (already gated by classifyVoucherUrl), so this state is not reachable in a

@@ -39,6 +39,52 @@ const UPLOAD_UNAVAILABLE_MESSAGE =
   'No pudimos preparar la subida segura de tu comprobante. Escríbenos por WhatsApp y lo recibimos manualmente.'
 const PERSISTENCE_ERROR_MESSAGE =
   'No pudimos registrar el comprobante en tu pedido. Por favor reintenta o escríbenos por WhatsApp.'
+const SIGN_LIMIT_MESSAGE =
+  'Alcanzaste el límite de intentos de carga del comprobante para este pedido. Escríbenos por WhatsApp y lo recibimos manualmente.'
+
+/**
+ * Lifetime per-order cap on minted voucher upload URLs.
+ *
+ * The per-IP/per-order attempt throttle (`abuseThrottle`) bounds *attempts per 15-minute
+ * window*, so on its own it would still let a self-created order mint a signed URL every
+ * window forever and leave one unreferenced object per window under `vouchers/…` — Cloud
+ * Storage bills every stored byte. This counter is the durable bound: it lives on the order
+ * document, outlives every throttle window, and is incremented inside a transaction
+ * so concurrent signs serialize on the order document instead of racing past the cap.
+ *
+ * A slot is reserved BEFORE the URL is minted, so a `getSignedUrl` failure still
+ * spends it — deliberately conservative, and 10 is far above what a legitimate
+ * replacement loop needs (each accepted `confirm` deletes the object it replaced).
+ */
+const VOUCHER_MAX_SIGNS_PER_ORDER = 10
+
+interface VoucherSignReservation {
+  allowed: boolean
+  count: number
+}
+
+/**
+ * Reserves one voucher-sign slot for the order, or reports that the lifetime cap is
+ * already reached. Runs as a Firestore transaction on the order document: a plain
+ * read-then-write would let two concurrent signs both observe `count < cap` and both
+ * mint, which is exactly the unbounded loop the cap exists to stop.
+ */
+async function reserveVoucherSignSlot(
+  adminDb: Firestore,
+  order: ResolvedOrder,
+  cap: number = VOUCHER_MAX_SIGNS_PER_ORDER
+): Promise<VoucherSignReservation> {
+  return adminDb.runTransaction(async (transaction) => {
+    const fresh = await transaction.get(order.ref)
+    const freshData = (fresh.data() || {}) as Record<string, unknown>
+    const current = Number(freshData.voucherSignCount) || 0
+    if (current >= cap) {
+      return { allowed: false, count: current }
+    }
+    transaction.update(order.ref, { voucherSignCount: current + 1 })
+    return { allowed: true, count: current + 1 }
+  })
+}
 
 /**
  * Warehouse-alert budget for one order.
@@ -84,10 +130,17 @@ function normalizeRut(raw: string): string {
   return (raw || '').replace(/[^0-9kK]/g, '').toUpperCase()
 }
 
-/** Phase 1 — authorize the upload and mint a short-lived V4 signed PUT URL (no bytes, no writes). */
+/**
+ * Phase 1 — authorize the upload and mint a short-lived V4 signed PUT URL.
+ *
+ * No bytes and no order-state writes: the only Firestore write is the durable
+ * `voucherSignCount` reservation that bounds how many URLs one order can ever mint.
+ */
 async function handleSign(
   res: VercelResponse,
+  adminDb: Firestore,
   bucket: AdminBucket,
+  order: ResolvedOrder,
   cleanOrderId: string,
   body: Record<string, unknown>
 ): Promise<VercelResponse> {
@@ -114,6 +167,23 @@ async function handleSign(
     return res
       .status(400)
       .json({ error: `El archivo excede el tamaño máximo permitido de ${VOUCHER_MAX_MB} MB.` })
+  }
+
+  // Durable bound: reserve the slot before minting. The request has already passed every
+  // input validation, so a malformed call never spends a slot. A counter-write failure
+  // fails closed — minting an unrecorded URL would defeat the bound entirely.
+  let reservation: VoucherSignReservation
+  try {
+    reservation = await reserveVoucherSignSlot(adminDb, order)
+  } catch (err: unknown) {
+    console.error('[upload-voucher] Failed to reserve a voucher sign slot:', err)
+    return res.status(500).json({ error: UPLOAD_UNAVAILABLE_MESSAGE })
+  }
+  if (!reservation.allowed) {
+    console.warn(
+      `[upload-voucher] Voucher sign cap reached for ${cleanOrderId} (${reservation.count}/${VOUCHER_MAX_SIGNS_PER_ORDER}).`
+    )
+    return res.status(429).json({ error: SIGN_LIMIT_MESSAGE })
   }
 
   const storagePath = buildVoucherStoragePath(
@@ -402,7 +472,8 @@ async function handleConfirm(
  * Bank-transfer voucher intake.
  *
  * Two-phase, action-dispatched endpoint — no serverless-function slot is added:
- *   * `action: 'sign'`    → authorize + validate, return a short-lived V4 signed PUT URL
+ *   * `action: 'sign'`    → authorize + validate, reserve a lifetime sign slot, return a
+ *                           short-lived V4 signed PUT URL
  *   * `action: 'confirm'` → re-validate the object's real metadata, persist the order trail
  *
  * The browser uploads the bytes straight to the private bucket; voucher data URLs are
@@ -512,7 +583,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     return action === 'sign'
-      ? handleSign(res, bucket, cleanOrderId, body)
+      ? handleSign(res, adminDb, bucket, order, cleanOrderId, body)
       : handleConfirm(res, adminDb, bucket, cleanOrderId, currentStatus, order, body)
   } catch (error: any) {
     // The raw cause is logged, never returned: this endpoint is unauthenticated.

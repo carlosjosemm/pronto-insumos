@@ -178,6 +178,16 @@ export interface Order {
   // /api/upload-voucher inside the confirm transaction (a reservation released
   // best-effort when the Resend send fails). Never written by the client.
   voucherAlertSentAt?: string; voucherAlertCount?: number
+  // Lifetime cap on minted voucher upload URLs (Task 2.15) — server-written by
+  // /api/upload-voucher at sign time (reserved inside a transaction, so concurrent
+  // signs serialize). Bounds the orphan objects left by uploads that are never
+  // confirmed; never written by the client.
+  voucherSignCount?: number
+  // List-projection flag (Task 2.15): the admin order LIST omits the full `voucherUrl`
+  // (a legacy pre-2.9 document can hold a ~1 MiB Base64 `data:` URL that would blow
+  // Vercel's 4.5 MB response cap) and reports whether a voucher exists instead. The
+  // `?orderId=` detail request still returns the real `voucherUrl`.
+  hasVoucher?: boolean
   dispatch?: {
     carrier: string
     trackingCode?: string

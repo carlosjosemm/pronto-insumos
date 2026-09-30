@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { OrderTable } from './OrderTable'
 import { OrderDetailPanel } from './OrderDetailPanel'
-import { fetchAdminOrders } from '../services/adminApi'
+import { fetchAdminOrders, fetchAdminOrder } from '../services/adminApi'
 import { RefreshCw } from 'lucide-react'
 import type { Order } from '../../types'
 
@@ -13,21 +13,46 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({ initialOrderId }) => {
   const [orders, setOrders] = useState<Order[]>([])
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
+  // Monotonic token: a slow detail response must never overwrite a newer selection (or
+  // reopen the panel after it was closed).
+  const selectionToken = useRef(0)
 
-  const loadOrders = async () => {
+  /**
+   * Opens an order in the slide-over panel.
+   *
+   * The list projection deliberately omits `voucherUrl` (a legacy Base64 voucher would
+   * blow the response cap), so the row is shown immediately and the detail request then
+   * supplies the full document — including the voucher URL.
+   */
+  const openOrder = async (order: Order) => {
+    const token = ++selectionToken.current
+    setSelectedOrder(order)
+    const detail = await fetchAdminOrder(order.orderId)
+    if (detail && token === selectionToken.current) setSelectedOrder(detail)
+  }
+
+  const loadOrders = async ({ openInitial = true }: { openInitial?: boolean } = {}) => {
     setLoading(true)
     try {
       const res = await fetchAdminOrders()
       setOrders(res.orders || [])
-      if (initialOrderId) {
+      if (openInitial && initialOrderId) {
         const found = res.orders?.find(o => o.orderId === initialOrderId)
-        if (found) setSelectedOrder(found)
+        if (found) await openOrder(found)
       }
     } catch (err) {
       console.error('[Admin Orders] Error loading orders:', err)
     } finally {
       setLoading(false)
     }
+  }
+
+  /** Refreshes the open order document after an action (approve/dispatch/…). */
+  const refreshSelectedOrder = async () => {
+    if (!selectedOrder) return
+    const token = ++selectionToken.current
+    const detail = await fetchAdminOrder(selectedOrder.orderId)
+    if (detail && token === selectionToken.current) setSelectedOrder(detail)
   }
 
   useEffect(() => {
@@ -44,7 +69,7 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({ initialOrderId }) => {
         </div>
         <button
           type="button"
-          onClick={loadOrders}
+          onClick={() => loadOrders()}
           className="admin-btn admin-btn-secondary"
           disabled={loading}
           style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem' }}
@@ -57,14 +82,20 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({ initialOrderId }) => {
       <OrderTable
         orders={orders}
         selectedOrderId={selectedOrder?.orderId}
-        onSelectOrder={order => setSelectedOrder(order)}
+        onSelectOrder={openOrder}
       />
 
       <OrderDetailPanel
         order={selectedOrder}
-        onClose={() => setSelectedOrder(null)}
+        onClose={() => {
+          selectionToken.current++
+          setSelectedOrder(null)
+        }}
         onOrderUpdated={() => {
-          loadOrders()
+          // `openInitial: false` keeps this to a single detail request: the list refresh
+          // must not re-open the deep link while the panel's own refresh runs below.
+          loadOrders({ openInitial: false })
+          refreshSelectedOrder()
         }}
       />
     </div>
