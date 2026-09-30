@@ -5,9 +5,14 @@ export const MERCADOPAGO_PUBLIC_KEY: string = import.meta.env.VITE_MERCADOPAGO_P
 
 export interface MercadoPagoPaymentParams {
   orderId: string
-  items: CartItem[]
-  total: number
-  customer: CustomerInfo
+  /**
+   * `/api/create-preference` reads the line items, the payer and the promo from
+   * the order document — the request body contributes only the `orderId`, so
+   * these are display-only conveniences for the caller and are never charged.
+   */
+  items?: CartItem[]
+  total?: number
+  customer?: CustomerInfo
 }
 
 /**
@@ -129,4 +134,33 @@ export async function processMercadoPagoPayment({
     orderId,
     initPoint: prefResult.initPoint
   }
+}
+
+/**
+ * Re-initiates the Mercado Pago Checkout Pro redirect for an order that is
+ * still genuinely awaiting payment. The request contributes only the order id:
+ * the endpoint rebuilds every line from the order document, and its lifecycle
+ * guard refuses (409) any order that is settled, parked in payment review,
+ * transfer-pending, a quote or cancelled — so a stale tracking read can never
+ * double-bill, and a genuine second payment on the same order is joined by the
+ * webhook's per-order duplicate guard. Success means exactly "a real Checkout
+ * Pro redirect was initiated"; no payment field is ever fabricated here. A
+ * success without an `initPoint` is the dev/preview simulation — the caller
+ * must surface that instead of pretending a redirect happened.
+ */
+export async function resumeMercadoPagoPayment(orderId: string): Promise<{
+  success: boolean
+  initPoint?: string
+  error?: string
+}> {
+  const cleanId = (orderId || '').trim().toUpperCase()
+  if (!cleanId) {
+    return { success: false, error: 'Falta el N° de Pedido para reintentar el pago.' }
+  }
+
+  const result = await processMercadoPagoPayment({ orderId: cleanId })
+  if (!result.success) {
+    return { success: false, error: result.error }
+  }
+  return { success: true, initPoint: result.initPoint }
 }

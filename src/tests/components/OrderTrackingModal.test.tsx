@@ -10,10 +10,15 @@ vi.mock('../../services/transferVoucher', () => ({
   uploadTransferVoucher: vi.fn(),
   validateVoucherFile: vi.fn(() => ({ isValid: true }))
 }))
+vi.mock('../../services/mercadopago', () => ({
+  resumeMercadoPagoPayment: vi.fn()
+}))
 
 import OrderTrackingModal from '../../components/OrderTrackingModal'
 import { fetchOrderTracking } from '../../services/orderTracking'
 import { uploadTransferVoucher } from '../../services/transferVoucher'
+import { resumeMercadoPagoPayment } from '../../services/mercadopago'
+import type { OrderStatus, OrderTrackingInfo } from '../../types'
 
 describe('OrderTrackingModal Component (src/components/OrderTrackingModal)', () => {
   beforeEach(() => {
@@ -206,6 +211,128 @@ describe('OrderTrackingModal Component (src/components/OrderTrackingModal)', () 
 
     await waitFor(() => {
       expect(uploadTransferVoucher).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'PRONTO-112233', file }))
+    })
+  })
+
+  describe('Resume-payment action', () => {
+    /** Tracking double for an online-payment order still awaiting payment. */
+    function mockPendingMercadoPagoOrder(orderId = 'PRONTO-445566'): {
+      success: boolean
+      data: OrderTrackingInfo
+      error?: string
+    } {
+      return {
+        success: true,
+        data: {
+          orderId,
+          createdAt: '2026-09-30T10:00:00Z',
+          status: 'PENDIENTE_PAGO_MERCADOPAGO',
+          paymentMethod: 'mercadopago',
+          totalAmount: 189990,
+          items: [{ productId: 'odon-1', name: 'Turbina', quantity: 1, price: 189990 }],
+          customer: {
+            fullName: 'Dr. Test',
+            email: 'test@clinica.cl',
+            rut: '12345678-5',
+            address: 'Av. Ortúzar 100',
+            city: 'Melipilla',
+            documentType: 'boleta'
+          },
+          fulfillment: {
+            currentStep: 1,
+            statusTitle: 'Pedido Registrado',
+            statusDescription: 'Esperando la acreditación del pago Mercado Pago.'
+          }
+        }
+      }
+    }
+
+    it('offers Reintentar pago de este pedido for a pending-MP order and resumes its redirect', async () => {
+      vi.mocked(fetchOrderTracking).mockResolvedValue(mockPendingMercadoPagoOrder())
+      vi.mocked(resumeMercadoPagoPayment).mockResolvedValueOnce({ success: true })
+
+      render(
+        <OrderTrackingModal isOpen={true} onClose={() => {}} initialOrderId="PRONTO-445566" initialRut="12.345.678-5" />
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText('Reintentar pago de este pedido')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByText('Reintentar pago de este pedido'))
+
+      await waitFor(() => {
+        expect(resumeMercadoPagoPayment).toHaveBeenCalledWith('PRONTO-445566')
+      })
+    })
+
+    it('omits the retry action for settled, in-review, transfer-pending, quote and cancelled orders', async () => {
+      const statuses: OrderStatus[] = [
+        'PAGADO_MERCADOPAGO',
+        'PENDIENTE_TRANSFERENCIA',
+        'COTIZACION_SOLICITADA_WHATSAPP',
+        'CANCELADO',
+        'PAGO_EN_REVISION'
+      ]
+      for (const status of statuses) {
+        const pending = mockPendingMercadoPagoOrder()
+        vi.mocked(fetchOrderTracking).mockResolvedValue({
+          ...pending,
+          data: { ...pending.data, status }
+        })
+        const { unmount } = render(
+          <OrderTrackingModal
+            isOpen={true}
+            onClose={() => {}}
+            initialOrderId="PRONTO-445566"
+            initialRut="12.345.678-5"
+          />
+        )
+        await waitFor(() => {
+          expect(screen.getByText(/Estado Actual del Pedido/i)).toBeInTheDocument()
+        })
+        expect(screen.queryByText('Reintentar pago de este pedido')).not.toBeInTheDocument()
+        unmount()
+      }
+    })
+
+    it('renders the server message inside the modal when the resume call fails', async () => {
+      vi.mocked(fetchOrderTracking).mockResolvedValue(mockPendingMercadoPagoOrder())
+      vi.mocked(resumeMercadoPagoPayment).mockResolvedValueOnce({
+        success: false,
+        error: 'Este pedido no admite un nuevo pago en línea en su estado actual.'
+      })
+
+      render(
+        <OrderTrackingModal isOpen={true} onClose={() => {}} initialOrderId="PRONTO-445566" initialRut="12.345.678-5" />
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText('Reintentar pago de este pedido')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByText('Reintentar pago de este pedido'))
+
+      await waitFor(() => {
+        expect(screen.getByText(/Este pedido no admite un nuevo pago en línea/i)).toBeInTheDocument()
+      })
+    })
+
+    it('omits the retry action when a malformed document disagrees (pending-MP status, transfer method)', async () => {
+      const pending = mockPendingMercadoPagoOrder()
+      vi.mocked(fetchOrderTracking).mockResolvedValue({
+        ...pending,
+        data: { ...pending.data, paymentMethod: 'transferencia' }
+      })
+
+      render(
+        <OrderTrackingModal isOpen={true} onClose={() => {}} initialOrderId="PRONTO-445566" initialRut="12.345.678-5" />
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText(/Estado Actual del Pedido/i)).toBeInTheDocument()
+      })
+      expect(screen.queryByText('Reintentar pago de este pedido')).not.toBeInTheDocument()
     })
   })
 })

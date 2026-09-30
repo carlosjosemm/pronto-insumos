@@ -10,7 +10,6 @@ export interface PaymentReturnModalProps {
   orderId?: string
   paymentId?: string
   onClose: () => void
-  onRetryPayment?: () => void
   /** Opens the dual-factor tracking flow (order id prefilled, RUT typed by the customer). */
   onTrackOrder?: () => void
 }
@@ -19,8 +18,10 @@ export interface PaymentReturnModalProps {
  * The status below comes from the Mercado Pago return URL, which is forgeable and
  * is written before our webhook verifies the payment — so the copy states only
  * what is actually known ("we received your return; we are confirming"), never
- * "accredited". The authoritative status lives in the order document and is
- * reachable through `Ver estado del pedido`.
+ * "accredited", and the failure branch never claims the URL proves no charge
+ * occurred. The authoritative status lives in the order document and is
+ * reachable through `Ver estado del pedido` / `Verificar estado antes de
+ * reintentar`, which open the dual-factor tracking flow.
  */
 export default function PaymentReturnModal({
   isOpen,
@@ -28,7 +29,6 @@ export default function PaymentReturnModal({
   orderId,
   paymentId,
   onClose,
-  onRetryPayment,
   onTrackOrder
 }: PaymentReturnModalProps) {
   // Freeze the page behind the modal
@@ -48,6 +48,13 @@ export default function PaymentReturnModal({
 
   const whatsappUrl = whatsappLink(
     `🏥 *COORDINACIÓN DE PEDIDO - PRONTO INSUMOS*\n\nHola, realicé el pago de mi pedido *${orderId || 'PRONTO'}* vía Mercado Pago y quisiera confirmar los tiempos y condiciones de entrega para mi clínica.`
+  )
+
+  // Manual-reconciliation path for an ambiguous failure return: the notice the
+  // customer received does not confirm the charge outcome, so the human channel
+  // is offered next to the self-service verification.
+  const paymentConfirmationUrl = whatsappLink(
+    `🧾 *CONFIRMACIÓN DE COBRO - PRONTO INSUMOS*\n\nHola, mi pedido *${orderId || 'PRONTO'}* volvió de Mercado Pago con un aviso de pago no completado. Quisiera confirmar si el cobro se registró antes de reintentar el pago.`
   )
 
   // Offered on every state: a return URL is not proof of payment, and the order
@@ -213,10 +220,11 @@ export default function PaymentReturnModal({
               id="payment-return-title"
               style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--ink-800)', marginBottom: '0.35rem' }}
             >
-              Pago No Completado o Rechazado
+              Retorno de Pago No Completado
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
-              La transacción en Mercado Pago no pudo procesarse o fue cancelada.
+              Mercado Pago nos devolvió un aviso de pago no completado. Este retorno no confirma el resultado del cobro:
+              antes de intentar un nuevo pago, verifica el estado de tu pedido.
             </p>
 
             <div
@@ -232,9 +240,9 @@ export default function PaymentReturnModal({
                 lineHeight: '1.45'
               }}
             >
-              ℹ️ <strong>Tus insumos continúan guardados:</strong> No se ha realizado ningún cobro a tu tarjeta. Puedes
-              reintentar el pago con otro medio o seleccionar <strong>Transferencia Bancaria Directa</strong> a nuestra
-              cuenta de Banco de Chile.
+              ℹ️ <strong>Tus insumos continúan guardados:</strong> Este aviso no permite afirmar que no se haya
+              realizado ningún cobro. Antes de reintentar, verifica el estado del pedido con tu RUT; si el pago ya se
+              hubiese acreditado, coordinamos la entrega por WhatsApp sin un segundo cobro.
             </div>
 
             <div style={{ display: 'flex', gap: '0.75rem' }}>
@@ -246,20 +254,31 @@ export default function PaymentReturnModal({
               >
                 Cerrar
               </button>
-              {onRetryPayment && (
+              {orderId && onTrackOrder && (
                 <button
                   type="button"
                   className="btn-primary"
-                  onClick={onRetryPayment}
+                  onClick={onTrackOrder}
                   style={{ flex: 2, justifyContent: 'center' }}
                 >
                   <RefreshCw size={16} />
-                  <span>Reintentar / Opciones de Pago</span>
+                  <span>Verificar estado antes de reintentar</span>
                 </button>
               )}
             </div>
 
-            <div style={{ marginTop: '0.65rem' }}>{trackOrderAction}</div>
+            <div style={{ marginTop: '0.65rem' }}>
+              <a
+                href={paymentConfirmationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-secondary"
+                style={{ width: '100%', justifyContent: 'center', textDecoration: 'none' }}
+              >
+                <MessageSquare size={16} />
+                <span>Coordinar pago por WhatsApp</span>
+              </a>
+            </div>
           </div>
         )}
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   processMercadoPagoPayment,
   createMercadoPagoPreference,
+  resumeMercadoPagoPayment,
   MERCADOPAGO_PUBLIC_KEY
 } from '../../services/mercadopago'
 import { CartItem, CustomerInfo } from '../../types'
@@ -252,6 +253,76 @@ describe('processMercadoPagoPayment — Task 2.8 failure propagation', () => {
       orderId: 'PRONTO-500000',
       error: 'Stock insuficiente para uno o más productos'
     })
+  })
+})
+
+describe('resumeMercadoPagoPayment — protected retry', () => {
+  const mutableEnv = import.meta.env as unknown as Record<string, unknown>
+
+  beforeEach(() => {
+    delete mutableEnv.VITE_VERCEL_ENV
+    delete mutableEnv.VITE_ALLOW_SIMULATED_PAYMENTS
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    delete mutableEnv.VITE_VERCEL_ENV
+    delete mutableEnv.VITE_ALLOW_SIMULATED_PAYMENTS
+  })
+
+  it('resumes the Checkout Pro redirect for a pending order and reports the exact success shape', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ initPoint: 'https://www.mercadopago.cl/checkout/v1/redirect?pref=456' })
+    } as Response)
+
+    const res = await resumeMercadoPagoPayment('PRONTO-445566')
+
+    expect(res).toEqual({ success: true, initPoint: 'https://www.mercadopago.cl/checkout/v1/redirect?pref=456' })
+  })
+
+  it('surfaces the server refusal (409 lifecycle guard) without a redirect', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'Este pedido no admite un nuevo pago en línea en su estado actual.' })
+    } as Response)
+
+    const res = await resumeMercadoPagoPayment('PRONTO-445566')
+
+    expect(res).toEqual({
+      success: false,
+      error: 'Este pedido no admite un nuevo pago en línea en su estado actual.'
+    })
+  })
+
+  it('fails loudly when the endpoint is unreachable in a production runtime', async () => {
+    mutableEnv.VITE_VERCEL_ENV = 'production'
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(global, 'fetch').mockRejectedValueOnce(new TypeError('Network request failed'))
+
+    const res = await resumeMercadoPagoPayment('PRONTO-445566')
+
+    expect(res.success).toBe(false)
+    expect(res.error).toContain('No fue posible contactar al servicio de pagos')
+    expect(errorSpy).toHaveBeenCalled()
+  })
+
+  it('keeps the dev simulation usable for the retry flow', async () => {
+    vi.spyOn(global, 'fetch').mockRejectedValueOnce(new TypeError('Network request failed'))
+
+    const res = await resumeMercadoPagoPayment('PRONTO-445566')
+
+    expect(res).toEqual({ success: true })
+  })
+
+  it('refuses an empty order id before any network call', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+
+    const res = await resumeMercadoPagoPayment('   ')
+
+    expect(res).toEqual({ success: false, error: 'Falta el N° de Pedido para reintentar el pago.' })
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
 

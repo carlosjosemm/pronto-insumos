@@ -30,7 +30,7 @@ vi.mock('../../services/orderConfirmation', () => ({
 
 import CheckoutModal, { CheckoutModalProps } from '../../components/CheckoutModal'
 import { submitOrder } from '../../services/api'
-import { SESSION_ORDER_STORAGE_KEY } from '../../services/orderSession'
+import { SESSION_ORDER_STORAGE_KEY, rememberSessionOrderId } from '../../services/orderSession'
 import { processMercadoPagoPayment } from '../../services/mercadopago'
 import { sendOrderConfirmationEmail } from '../../services/orderConfirmation'
 import { CartItem, Product } from '../../types'
@@ -857,6 +857,33 @@ describe('CheckoutModal Component', () => {
       })
 
       expect(window.sessionStorage.getItem(SESSION_ORDER_STORAGE_KEY)).toBeNull()
+    })
+
+    it('should surface a pending-payment notice when this tab already created an order', () => {
+      rememberSessionOrderId('PRONTO-PENDING99')
+
+      render(<CheckoutModal {...defaultProps} />)
+
+      expect(screen.getByText(/Pago pendiente de confirmar \(PRONTO-PENDING99\)/i)).toBeInTheDocument()
+    })
+
+    it('should route the notice action to dual-factor tracking instead of minting a second order', () => {
+      rememberSessionOrderId('PRONTO-PENDING99')
+      const onOpenTracking = vi.fn()
+      const onClose = vi.fn()
+
+      render(<CheckoutModal {...defaultProps} onClose={onClose} onOpenTracking={onOpenTracking} />)
+
+      fireEvent.click(screen.getByText('Ver estado del pedido'))
+
+      expect(onOpenTracking).toHaveBeenCalledWith('PRONTO-PENDING99', '')
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    it('should not surface the pending-payment notice without a session order', () => {
+      render(<CheckoutModal {...defaultProps} />)
+
+      expect(screen.queryByText(/Pago pendiente de confirmar/i)).not.toBeInTheDocument()
     })
   })
 })

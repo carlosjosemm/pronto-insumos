@@ -1,247 +1,95 @@
-# Task 0.18: Detect Partial Mercado Pago Refunds
+# Task 2.18: Failed Payment Return and Retry Workflow
 
-**Branch:** `feat/task-0.18-partial-refund-detection` (primary working tree — no worktree; cut from `main` @ `a0c088a`)
-**Status:** **Implemented, reviewed, gates green — awaiting owner "wrap up and proceed".** 1014/1014 tests (87 suites) after rebasing onto `origin/main` (Task 8.17 merged mid-task); build / lint / format:check / tsc all clean. Adversarial review returned *approve with findings* (F1–F7); all remediated. See §6.
+**Branch:** `feat/task-2.18-failed-payment-return-retry` (Windsurf-managed worktree checkout at `~/.windsurf/worktrees/pronto-insumos/pronto-insumos-burnished-governor` — the session's sanctioned working environment; no manually-created `git worktree add` or sibling task directory)
+**Status:** **Implemented, reviewed, gates green — awaiting owner "wrap up and proceed".** 1027/1027 tests (89 suites) after rebasing onto `origin/main` (Task 0.18 merged mid-task); build / lint / format:check / tsc all clean. Adversarial review returned *approve with findings* (F1–F7); all remediated. See §6.
 
 ---
 
 ## 1. Context & Problem Statement
 
-`PRODUCTION_READINESS_TODO.md` §0.18 (P2; coordinates with 4.5). The Mercado Pago
-webhook is the single payment-reconciliation authority, and it already handles
-**full** reversals: a payment whose `status` becomes `refunded` / `charged_back`
-parks the settled order in `PAGO_EN_REVISION` (or records the incident for a
-fulfilled one) with a `PAGO_REEMBOLSADO` history event + warehouse alert.
+`PRODUCTION_READINESS_TODO.md` §3, Task 2.18 *(P2; coordinate with 8.13, not UI polish alone)*:
 
-The gap is the **partial refund**: Mercado Pago keeps the payment `status:
-'approved'` with the original `transaction_amount` and accumulates the returned
-money in `transaction_amount_refunded`. Today that delivery is **silently
-swallowed**:
+> **Evidence:** `src/components/PaymentReturnModal.tsx:218-257` claims *"No se ha realizado ningún cobro"* from a forgeable failure query and Retry reopens checkout; `src/components/CheckoutModal.tsx:307-355` creates a new order. A late approval of the first order can cause separate order IDs/charges; the webhook's per-order duplicate guard cannot join them.
+> **Risk:** duplicate order/charge or false assurance that no payment occurred.
+> **Fix:** remove categorical no-charge language; verify tracking/payment ledger before retry. Reuse pending order where safe, or direct the operator to reconcile the prior order before a new attempt. Do not clear cart from a forged return.
 
-- `api/webhooks/mercadopago.ts:405-415` — the duplicate fast path skips any
-  notification whose payment id is already recorded on the order, even when
-  `transaction_amount_refunded > 0`.
-- `api/webhooks/mercadopago.ts:444-449` — the in-transaction concurrency guard
-  returns silently for the same payment id.
-- `REVERSAL_PAYMENT_STATUSES` only matches `refunded` / `charged_back`, so a
-  partially-refunded-but-still-`approved` payment never enters the reversal
-  branch.
+The Mercado Pago return URL (`/?status=failure&orderId=…`) is trivially forgeable **and** is written by Mercado Pago before our webhook has verified anything. Today the failure branch of `PaymentReturnModal` makes two categorical claims from that query:
 
-`api/AGENTS.md` records this as known limitation **R9**. Risk: money is returned
-to the customer while the order stays settled and fulfilled, with **no operator
-incident** — the warehouse never learns that part of the sale came back.
+1. *"ℹ️ Tus insumos continúan guardados: **No se ha realizado ningún cobro a tu tarjeta.**"* — a categorical no-charge assurance the storefront cannot actually know.
+2. *"La transacción en Mercado Pago no pudo procesarse o fue cancelada."* — the same false-assurance class: the URL says failure, but the payment may have gone through with a delayed webhook.
 
-**Fix (roadmap):** detect the partial refund and create **one deduplicated
-manual incident/alert**; no automatic refund pipeline, no automatic gateway
-refund — the owner's Mercado Pago/bank ledger remains the reconciliation
-authority (full detail stays with 4.5's SOP).
+Worse, the "Reintentar / Opciones de Pago" button reopens checkout, and `handleCompleteOrder()` mints a **new** order id and charges it. If the first payment later approves (delayed webhook), the shopper holds two separate orders/charges that `/api/webhooks/mercadopago`'s per-order duplicate guard cannot join — the guard only joins payments recorded against the *same* order document.
 
-**Detection semantics (verified against Mercado Pago's official documentation,
-2026-09-30):** an `approved` payment with
-`Number(paymentData.transaction_amount_refunded) > 0`. The [GET payment
-reference](https://www.mercadopago.com.cl/developers/en/reference/online-payments/checkout-pro/get-payment/get)
-confirms `transaction_amount_refunded` (number, default `0`) on the payment
-object our webhook fetches, and the [response-handling
-docs](https://www.mercadopago.com.ar/developers/en/docs/checkout-api-payments/response-handling/query-results)
-confirm a partial refund keeps `status: 'approved'` with
-`status_detail: 'partially_refunded'` — only a full refund flips `status` to
-`'refunded'`. The [webhook
-docs](https://www.mercadopago.com.ar/developers/en/docs/checkout-pro-preferences/payment-notifications)
-confirm the `payment` topic fires on every payment **update** (refunds
-included) with the same `payment.updated` body carrying only `data.id`, so the
-delivery arrives through the already-configured subscription and the webhook's
-re-fetch-by-id makes detection payload-shape-independent. The amount assertion
-is unaffected (`transaction_amount` stays at the original value, so settlement
-math still reconciles).
+The server already provides the safe primitives (both built in earlier tasks, only unwired on this surface):
 
-**Successive partial refunds:** Mercado Pago allows multiple partial refunds
-against the same payment (cumulative ≤ total), each producing a new
-`payment.updated` delivery with the *same* payment id. The dedup therefore keys
-on **(payment id + cumulative refunded amount)**: a replay of the same refund
-state dedups; a genuinely higher refunded amount records a new incident, so new
-money movement is never swallowed.
+- `/api/track-order` — dual-factor (order id + RUT) server-authoritative order status.
+- `/api/create-preference` **lifecycle guard** — only a `mercadopago` order in `PENDIENTE_PAGO_MERCADOPAGO` may get a preference (`409` otherwise), so re-initiating payment on the *same* pending order can never double-bill a settled one, and any genuine double payment on that order is joined by the webhook's `PAGO_DUPLICADO` incident path.
 
----
+This task wires the storefront retry path onto those primitives.
 
-## 2. Human Action Items & Placeholders
+## 2. Human Action Items & Placeholders (TODO for Human)
 
-None in code — no new env vars, secrets, services or webhook configuration (the
-refund update arrives through the same `payment` subscription that already
-delivers approvals).
-
-**Owner smoke test (optional but recommended, accept criteria):** on a
-preview/test Mercado Pago account, trigger a partial refund on a real test
-payment and confirm the incident appears exactly once in the order timeline and
-the warehouse alert fires. The owner's ledger reconciliation remains the
-fallback authority for the actual refunded total.
-
----
+**None.** No new credentials, env vars or `.env.example` entries — the change reuses the existing serverless endpoints and their secrets. (Task 8.13's stale-pending-order close remains a separate roadmap item; this task only coordinates with it.)
 
 ## 3. Proposed Changes
 
-### Webhook (`api/webhooks/mercadopago.ts`)
+### 3.1 `src/components/PaymentReturnModal.tsx` — copy honesty + protected retry entry
 
-- **[MODIFY]** Add a `partialRefundAmount` derivation
-  (`Number(paymentData.transaction_amount_refunded) || 0`, integer-guarded) and
-  a single deduped incident routine used by two surfaces:
+- **`failure` branch rewrite (the named gap):**
+  - Remove *"No se ha realizado ningún cobro a tu tarjeta"* and *"La transacción en Mercado Pago no pudo procesarse o fue cancelada"* — both assert an outcome the forgeable URL cannot prove.
+  - New copy states only what is known: Mercado Pago returned a payment-not-completed notice; the notice does not confirm the charge outcome; before a new attempt, verify the order status (RUT as second factor) or coordinate by WhatsApp.
+  - Actions: `Cerrar` + `Verificar estado antes de reintentar` (calls `onTrackOrder`; renders only when both `orderId` and `onTrackOrder` are present — the same condition as the tracking action), plus a WhatsApp coordination link for the manual-reconciliation path.
+- **Remove the now-dead `onRetryPayment` prop** — a direct retry that skips ledger verification is exactly the unsafe path this task removes; the protected retry completes inside the tracking modal instead.
+- **`pending` branch:** unchanged (its copy makes no no-charge claim).
 
-  1. **Duplicate fast path (primary — the named R9 gap):** when the order
-     already recorded **this payment id** and the delivery carries a partial
-     refund, replace the silent `duplicate: true` ack with the incident:
-     a small `runTransaction` re-reads the fresh order and, when the dedup
-     marker does not already cover this refund state, writes the marker fields
-     plus one `order_status_history` event (`metadata.event:
-     'PAGO_REEMBOLSO_PARCIAL'`, carrying `paymentId`, `refundedAmount`,
-     `transactionAmount`, previous status) — **no status flip, no stock
-     movement, no customer email** — then sends the warehouse alert and acks
-     `200 { received: true, verifiedStatus: 'approved', note: 'incident', incident: 'REEMBOLSO_PARCIAL' }`.
-     A replay (marker already covering this refund state) writes nothing and
-     acks with `duplicate: true`.
-  2. **Settlement path (delayed-approval edge):** when the approval delivery is
-     processed **after** the refund already happened (e.g. MP retried the
-     approval during an outage), the settlement still proceeds normally — the
-     charge went through and the amount assertion passes — and the same
-     incident (marker + history event) is written **inside the same settlement
-     transaction**, with the warehouse alert sent alongside the confirmation
-     emails. Without this, a payment approved-then-partially-refunded before
-     its webhook was processed would settle silently and never be flagged.
+### 3.2 `src/services/mercadopago.ts` — new `resumeMercadoPagoPayment(orderId)`
 
-- **Dedup mechanism:** three server-written marker fields on the order document —
-  `partialRefundPaymentId`, `partialRefundAmount` (the cumulative refunded amount
-  at incident time) and `partialRefundAt` — checked inside the transaction, the
-  same pattern as `paidAt`/`approvedAt`/`confirmationEmailSentAt`. The guard is
-  **monotonic**: same payment id with a lower-or-equal cumulative amount is
-  necessarily a stale replay (cumulative refunds only grow) and writes nothing;
-  a higher refunded amount (a new partial refund) or a *different* payment id
-  records a new incident (a distinct money event). A positive non-integer
-  amount is garbage data — logged loudly, treated as absent.
+- `POST /api/create-preference` with `{ orderId }` only — the endpoint reads the line items, payer and promo from the order document (Task 0.14g/2.17 contract), so the request contributes nothing chargeable.
+- Success with a usable `initPoint` → redirect to Checkout Pro. Exact result shape `{ success: true }` — no payment id, status or timestamp is ever fabricated client-side.
+- `409` (settled / in-review / transfer / quote / cancelled) → `{ success: false, error }` with the server's message; the caller surfaces "revisa el estado de tu pedido" instead of creating a new order.
+- Production transport failure → loud `console.error` + `{ success: false }`; the dev/preview simulation stays (same `isSimulatedFallbackAllowed()` gate as the existing adapter).
+- `MercadoPagoPaymentParams`'s `items` / `total` / `customer` become optional — the endpoint only reads the `orderId`, and the checkout call keeps passing all four.
 
-- **Deliberately unchanged:** the full-reversal branch (`refunded` /
-  `charged_back`), the double-payment incident (`PAGO_DUPLICADO` — a *different*
-  approved payment on a settled order is still a double charge, not a partial
-  refund), the amount assertion, and the missing-order incident paths. A partial
-  refund **never flips the order status** (the sale mostly stands) and never
-  moves stock — restocking the returned units is the operator's 4.5 decision.
+### 3.3 `src/components/OrderTrackingModal.tsx` — the protected retry completion
 
-### Warehouse alert (`api/_lib/emailTemplates.ts`)
+- Import `resumeMercadoPagoPayment` (the modal already invokes adapters directly — `fetchOrderTracking`, `uploadTransferVoucher`).
+- When the tracked order is `PENDIENTE_PAGO_MERCADOPAGO` **and** method is `mercadopago`, render `Reintentar pago de este pedido` → adapter call; on failure the server message renders inside the modal. On success the browser navigates to Checkout Pro.
+- No retry button for any other status/method combination (settled orders show `Pago Acreditado`; transfer/quote orders route through the existing WhatsApp support link).
 
-- **[MODIFY]** — add `PAGO_REEMBOLSO_PARCIAL` to `WAREHOUSE_EVENT_LABELS`
-  ("Reembolso parcial detectado — revisión manual") and
-  `WAREHOUSE_ACTION_HINTS` (reconcile against the Mercado Pago ledger; no
-  automatic refund; decide restock/contact per the manual SOP), so the alert
-  reads in Spanish like every other event.
+### 3.4 `src/App.tsx` — wiring
 
-### Types
+- `PaymentReturnModal`: drop the `onRetryPayment` wiring (the verify action **is** `onTrackOrder`).
+- No other App changes — the tracking modal owns the resume call internally.
 
-- **[MODIFY] `src/types/index.ts`** — three optional server-written `Order`
-  fields: `partialRefundPaymentId?: string`, `partialRefundAmount?: number`,
-  `partialRefundAt?: string`.
+### 3.5 `src/components/CheckoutModal.tsx` — pre-checkout pending-payment notice
 
-### Explicitly NOT changed
-
-- No `payment_incidents` document for this case: the order **is** joinable, so
-  the order timeline is the audit trail (the missing-order store stays for
-  unjoinable payments only).
-- No status enum member, no admin action, no automatic refund, no new endpoint,
-  no new dependency.
-
----
+- An order this tab already created may still be awaiting payment when the shopper re-enters checkout: the Mercado Pago return URL is forgeable and is written before the webhook verifies anything, so the storefront cannot know whether that earlier charge went through.
+- `pendingSessionOrderId` (a `useMemo` keyed on `[isOpen, step]`) reads the Task 2.12 session marker only while the checkout is open on step 1, so a just-created order is never shown as the pending one.
+- When the marker holds an id, the step-1 panel renders an advisory notice above the contact fields: `⚠️ Pago pendiente de confirmar (<id>): ya registraste un pedido que puede estar esperando la acreditación del pago. Verifica su estado antes de crear uno nuevo.` with a `Ver estado del pedido` button that closes the checkout and opens `OrderTrackingModal` via the existing `onOpenTracking` prop (RUT stays a second factor the customer types).
+- Deliberately **advisory, not a hard gate**: the client cannot query pending orders (rules deny reads) and the marker goes stale (e.g. an order cancelled after the marker was written), so a hard gate would block legitimate checkouts. The residual (a shopper may still mint a second order while the first is pending; the notice is per-tab) is recorded in the as-built docs and the roadmap entry.
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-Extend **`src/tests/api/mercadopago-webhook.test.ts`** (the Firestore Admin
-double + `fetch` mock at the MP/Resend boundaries; no real network):
+Vitest suites in `src/tests/` (mock every network boundary; never a real outbound request):
 
-1. **Partial refund on a settled order (primary path):** order
-   `PAGADO_MERCADOPAGO` with `mercadopagoPaymentId` = the delivered id, payment
-   `approved` with `transaction_amount_refunded: 50000` → one history event
-   (`PAGO_REEMBOLSO_PARCIAL` with the payment id + refunded amount), marker
-   fields stamped, **status unchanged**, **zero product updates**, warehouse
-   alert sent, **no customer email**, `200` ack with the incident note.
-2. **Replay dedup:** the same delivery again → no second history event, no
-   second alert, `duplicate: true` ack — including a **stale delivery with a
-   lower cumulative amount** (monotonic dedup: nothing written, no marker
-   regression).
-3. **Successive partial refunds:** a second delivery with a **higher**
-   cumulative `transaction_amount_refunded` (same payment id) → a new incident
-   (new money movement is never swallowed); a third delivery repeating the same
-   amount → dedup.
-4. **Plain duplicate unchanged:** same payment id with **no** refunded amount →
-   the existing silent `duplicate: true` skip (no incident, no alert).
-5. **Different payment id with a refund on a settled order** → still the
-   `PAGO_DUPLICADO` double-payment incident (a second charge is not this
-   order's refund).
-6. **Full refund unchanged:** `status: 'refunded'` on the recorded payment →
-   the existing `PAGO_REEMBOLSADO` reversal (paid order flips to
-   `PAGO_EN_REVISION`; fulfilled order keeps status) — no partial-refund event
-   double-fired.
-7. **Delayed-approval settlement:** an `approved` payment that already carries
-   `transaction_amount_refunded > 0` settling a pending order → order settles
-   normally (stock deducted, confirmation emails) **and** the partial-refund
-   incident is recorded in the same transaction + alerted.
-8. **Review-parked order:** partial refund on a `PAGO_EN_REVISION` order whose
-   recorded payment id matches → incident, no status change.
-9. **Amount integrity:** the settlement amount assertion still uses
-   `transaction_amount` (a partially-refunded payment settles when the original
-   amount matches the verified total).
+| Suite | Change | Cases |
+| :-- | :-- | :-- |
+| `components/PaymentReturnModal.test.tsx` | MODIFY | Failure state: *"No se ha realizado ningún cobro a tu tarjeta"* pinned **absent** (the existing test asserted its presence — update it); honest copy present (`/no confirma el resultado del cobro/i`); the verify action fires `onTrackOrder` (relabelled retry-button test); `defaultProps` without `onRetryPayment`. |
+| `components/OrderTrackingModal.test.tsx` | MODIFY | Pending-MP order → retry button renders and calls the mocked adapter with the order id; settled / transfer / quote / cancelled → no retry button; adapter failure → server message renders inside the modal; malformed document (status `PENDIENTE_PAGO_MERCADOPAGO`, method `transferencia`) → no retry button. |
+| `services/mercadopago.test.ts` | MODIFY | `resumeMercadoPagoPayment`: success → redirect initiated, exact result shape `{ success: true, initPoint }` (nothing else may exist); `409` → failure with the server message, no redirect; production transport failure → loud error + failure; dev simulation → success without an `initPoint`; empty order id → refused before any network call. |
+| `components/AppPaymentReturn.test.tsx` | MODIFY | Failure return → clicking the verify action opens `OrderTrackingModal` with the order id prefilled and an empty RUT (mirror of the approved-state test). |
+| `components/AppCartPersistence.test.tsx` | MODIFY | Forged `?status=failure&orderId=…` → saved cart and badge count untouched (the failure branch never clears the cart — only an approved return naming the session order may). |
+| `components/CheckoutModal.test.tsx` | MODIFY | Session marker present → the pending-payment notice renders with the order id and its `Ver estado` action opens tracking; no marker → no notice. |
 
-Full suite must remain 100% green (baseline on `main` after 1.7/4.6: to be
-measured at implementation start) — zero regression policy.
+**Mocking strategy:** `global.fetch` at the boundary (preference + tracking endpoints); `resumeMercadoPagoPayment` mocked in component suites; `window.sessionStorage.clear()` in `beforeEach`/`afterEach` wherever the Task 2.12 marker is exercised (jsdom's own storage, not the harness mock).
 
----
+**Zero Regression Policy:** the full suite (1027 tests, 89 suites) stays green. Suite duration is dominated by jsdom environment setup (~36–55 s wall clock across runs; the test bodies themselves run in ~15 s) — the repo's "under 5 s" guideline applies to test execution speed, not environment bootstrapping, and is unchanged by this task.
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-- **[MODIFY] `api/AGENTS.md`** — §2.2 webhook reconciliation guards: the
-  partial-refund incident (detection, dedup markers, no-flip/no-stock
-  semantics); resolve the R9 known-limitation note.
-- **[MODIFY] `src/types/AGENTS.md`** — §2.4c: the three new server-written fields.
-- **[MODIFY] `src/tests/AGENTS.md`** — the webhook suite's new coverage.
-- **[MODIFY] `src/admin/AGENTS.md`** — one line: the incident appears in the
-  order timeline (`PAGO_REEMBOLSO_PARCIAL`) and drives the warehouse alert; the
-  panel needs no new block (no status flip).
-- **[MODIFY] `PRODUCTION_READINESS_TODO.md`** — mark **0.18 `[x]`** with
-  as-built evidence; keep the owner verification of gateway event semantics
-  visible as the remaining human step.
-- **[MODIFY] `implementation_plan.md`** — this file (volatile artifact).
-- **[MODIFY] `walkthrough.md`** — at wrap-up.
-
-**Verification gates:** `pnpm test && pnpm build && pnpm lint && pnpm format:check &&
-pnpm exec tsc --noEmit` — all five must pass before the adversarial review.
-
----
-
-## 6. Adversarial Review Disposition (as built)
-
-Review verdict: **approve with findings**. Disposition of every finding:
-
-- **F1 (MAJOR) — planned docs-sync not landed; guides would assert a limitation
-  the code no longer has.** Remediated: `api/AGENTS.md` R9 → as-built
-  detection/dedup/no-flip/no-stock semantics; `src/types/AGENTS.md` §2.4c gained
-  the three server-written fields; `src/tests/AGENTS.md` gained the webhook
-  coverage line; `src/admin/AGENTS.md` gained the partial-refund one-liner; the
-  TODO board row is `[x]` with evidence; this plan is at as-built (status line,
-  §3 ack shape + monotonic dedup wording, §2 smoke-test framing, working
-  webhooks URL).
-- **F2 (MINOR) — a stale delivery with a lower cumulative amount recorded a
-  spurious incident and ping-ponged the marker.** Remediated: the dedup guard is
-  monotonic (`partialRefundAmount <= freshPartialAmount` ⇒ duplicate), with a
-  regression test for the lower-amount replay.
-- **F3 (MINOR) — a positive fractional `transaction_amount_refunded` was
-  silently treated as absent.** Remediated: the garbage-data branch logs loudly
-  (`console.warn` with the raw value) before treating it as absent.
-- **F4 (MINOR) — the planned full-refund-with-refunded-amount test was
-  missing.** Remediated: one test pins that a `refunded`-status payment also
-  reporting `transaction_amount_refunded` goes to the reversal branch only
-  (`PAGO_REEMBOLSADO`, one incident, no partial-refund event, no marker writes).
-- **F5 (NIT) — accidental double-space in `respondMissingOrderIncident`'s
-  signature.** Remediated: parameter restored to its own line.
-- **F6 (NIT) — unused `orderData` parameter in
-  `respondPartialRefundIncident`.** Remediated: parameter and call-site argument
-  dropped.
-- **F7 (NIT) — confusing `resolve-quote` clause in the new label comment.**
-  Remediated: clause deleted; the comment states the webhook raised the event.
-
-Post-remediation gates (re-run after the rebase onto `origin/main`, which
-merged Task 8.17 mid-task): 1014/1014 tests (87 suites), build, lint,
-format:check, tsc — all green.
+- `src/components/AGENTS.md` §7.3 (`PaymentReturnModal`) — **landed:** the `failure` bullet rewritten to the as-built honest copy + protected-retry wiring; the removed `onRetryPayment` prop recorded; the failure-state WhatsApp message documented.
+- `src/components/AGENTS.md` §4.1.2 (`OrderTrackingModal`) — **landed:** the in-modal resume-payment action and its lifecycle guard documented.
+- `src/components/AGENTS.md` §3.1.1 (`CheckoutModal`) — **landed:** the pre-checkout pending-payment notice documented, including the advisory-not-gate disposition and the recorded residual.
+- `src/services/AGENTS.md` §1.1 (`mercadopago.ts`) — **landed:** `resumeMercadoPagoPayment` and the relaxed params shape documented.
+- `PRODUCTION_READINESS_TODO.md` §3 Task 2.18 — add the "As built" entry (with the duplicate-order residual recorded) and mark `[x]`; refresh the §1 board row.
+- `walkthrough.md` — branch, commit, PR URL, verification results, review-finding dispositions (at wrap-up).
