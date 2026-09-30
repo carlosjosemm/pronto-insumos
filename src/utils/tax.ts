@@ -1,5 +1,8 @@
-import { TaxBreakdown } from '../types'
-import { validateRut } from './rut'
+import type { TaxBreakdown } from '../types'
+// Explicit `.js` specifier: this module is also imported by the serverless
+// functions under api/, which run on Node's own ESM resolver — it rejects
+// extensionless relative imports at request time even though Vite/tsc accept them.
+import { validateRut } from './rut.js'
 
 /**
  * Pure Chilean Tax (SII 19% IVA) calculation and Factura validation utilities.

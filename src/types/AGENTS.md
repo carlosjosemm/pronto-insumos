@@ -114,7 +114,7 @@ export interface OrderTrackingInfo {
 
 ### 2.4b Fiscal Billing Contract (`BillingInfo` & `TaxBreakdown`)
 
-Persisted on `Order.billing` when the fiscal document is chosen; `status` starts `'PENDIENTE_EMISION_SII'` and moves to `'EMITIDO'` when the document is issued via the SII portal:
+Persisted on `Order.billing` when the fiscal document is chosen; `status` starts `'PENDIENTE_EMISION_SII'` and moves to `'EMITIDO'` when the document is issued via the SII portal. **Server-derived fields (Task 1.7):** `rut`, `taxBreakdown` and `status` are always re-derived at write time by `submitOrder` (and the same bindings are enforced in `firestore.rules`), so the stored map is a display/issuance artifact that provably matches the order's verified `totalAmount` — never a trusted fiscal source on its own. Rendered surfaces (transactional emails, `track-order`) re-derive the breakdown from `totalAmount` rather than reading this map.
 
 ```typescript
 export interface BillingInfo {

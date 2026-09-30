@@ -12,8 +12,9 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.admin == true;
     }
 
-    // Per-line shape guard for order creation (Task 0.9 defense in depth,
-    // tightened by Task 0.12: a line must be EXACTLY the shape submitOrder writes).
+    // Per-line shape guard for order creation (defense in depth — the
+    // authoritative price check lives server-side: a line must be EXACTLY the
+    // shape submitOrder writes).
     // NOTE: rules cannot join the products catalog to verify prices — the
     // authoritative price/total verification lives in api/create-preference.ts
     // (catalog rebuild) and api/webhooks/mercadopago.ts (amount assertion).
@@ -26,7 +27,7 @@ service cloud.firestore {
         && item.price is number && item.price >= 0;
     }
 
-    // ── Task 0.12 — the order-create contract ─────────────────────────────────
+    // ── The order-create contract ─────────────────────────────────────────────
     // `orders` is a PUBLIC create (checkout runs client-side), so the rules must
     // describe EXACTLY the document src/services/api.ts `submitOrder()` writes.
     // The client Firestore instance runs with `ignoreUndefinedProperties: true`,
@@ -41,7 +42,13 @@ service cloud.firestore {
 
     function isValidTaxBreakdown(t) {
       return t.keys().hasOnly(['neto', 'iva', 'total'])
-        && t.neto is int && t.iva is int && t.total is int;
+        && t.neto is int && t.iva is int && t.total is int
+        // The exact gross→neto decomposition: neto = round(total / 1.19) and
+        // iva = total − neto, the same math calculateTaxBreakdown() applies —
+        // so a stored breakdown can carry no decomposition other than the real
+        // one (e.g. iva: 0). The binding to totalAmount lives in isValidBilling.
+        && t.neto == math.round(t.total / 1.19)
+        && t.neto + t.iva == t.total;
     }
 
     function isValidSanitaryVerification(s) {
@@ -75,16 +82,22 @@ service cloud.firestore {
             || (c.sanitaryVerification is map && isValidSanitaryVerification(c.sanitaryVerification)));
     }
 
-    function isValidBilling(b) {
+    // `orderTotal` and `customerRut` are passed in: the persisted breakdown and
+    // the fiscal RUT are client-writable artifacts, so they are pinned to the
+    // order's own figures — a crafted document could otherwise carry a fiscal
+    // total (or tax identity) that contradicts what was actually charged.
+    function isValidBilling(b, orderTotal, customerRut) {
       return b.keys().hasOnly([
           'documentType', 'rut', 'razonSocial', 'giroComercial',
           'direccionFiscal', 'comunaFiscal', 'taxBreakdown', 'status'
         ])
         && b.documentType in ['boleta', 'factura']
         && isBoundedString(b.rut, 16)
+        && b.rut == customerRut
         && isBoundedString(b.direccionFiscal, 200)
         && isBoundedString(b.comunaFiscal, 80)
         && b.taxBreakdown is map && isValidTaxBreakdown(b.taxBreakdown)
+        && b.taxBreakdown.total == orderTotal
         // The SII emission state is server-owned: a client may only ever open a
         // document as PENDIENTE_EMISION_SII — never as EMITIDO.
         && b.status == 'PENDIENTE_EMISION_SII'
@@ -120,7 +133,9 @@ service cloud.firestore {
           || (data.paymentMethod == 'whatsapp' && data.status == 'COTIZACION_SOLICITADA_WHATSAPP')
         )
         && data.customer is map && isValidCustomer(data.customer)
-        && (!('billing' in data) || (data.billing is map && isValidBilling(data.billing)))
+        && (!('billing' in data)
+            || (data.billing is map
+                && isValidBilling(data.billing, data.totalAmount, data.customer.rut)))
         && (!('sanitaryVerification' in data)
             || (data.sanitaryVerification is map && isValidSanitaryVerification(data.sanitaryVerification)))
         && (!('promoCode' in data) || isBoundedString(data.promoCode, 32))
@@ -158,7 +173,7 @@ service cloud.firestore {
 
     // Orders (Production & Development/QA):
     // Storefront checkout can create initial pending orders, pinned to the exact
-    // `submitOrder()` shape and to the document's own id (Task 0.12).
+    // `submitOrder()` shape and to the document's own id.
     // Read, update, and delete are strictly forbidden from client SDKs.
     // Backend updates (payment approvals & inventory deductions) run exclusively
     // via Firebase Admin SDK (which inherently bypasses security rules).

@@ -6,6 +6,8 @@
  * Monetary values follow Chilean conventions: integer CLP, "$189.990", 19% IVA.
  */
 
+import { calculateTaxBreakdown } from '../../src/utils/tax.js'
+
 export interface EmailTemplate {
   subject: string
   html: string
@@ -27,9 +29,13 @@ export interface OrderEmailData {
     documentType?: string
     razonSocial?: string
   }
+  // `billing` carries the document type only — the stored `taxBreakdown` is a
+  // client-writable display artifact and is deliberately NOT surfaced here:
+  // every rendered fiscal figure is derived from `totalAmount` (the amount the
+  // payment webhook asserts and the transfer approval re-verifies), so a forged
+  // persisted breakdown can never reach a customer email.
   billing?: {
     documentType?: string
-    taxBreakdown?: { neto: number; iva: number; total: number }
   }
 }
 
@@ -57,8 +63,7 @@ export function toOrderEmailData(orderId: string, orderData: any): OrderEmailDat
     },
     billing: orderData?.billing
       ? {
-          documentType: orderData.billing.documentType,
-          taxBreakdown: orderData.billing.taxBreakdown
+          documentType: orderData.billing.documentType
         }
       : undefined
   }
@@ -147,14 +152,25 @@ function itemsTable(data: OrderEmailData): string {
   </table>`
 }
 
-function totalsBlock(data: OrderEmailData): string {
-  const total = data.billing?.taxBreakdown?.total ?? data.totalAmount
-  const neto = data.billing?.taxBreakdown?.neto ?? Math.round(total / 1.19)
-  const iva = data.billing?.taxBreakdown?.iva ?? Math.round(total - neto)
+/**
+ * Neto/IVA/total table. The breakdown is always derived from `data.totalAmount`
+ * (the order's verified payable amount) — never from the stored billing map.
+ * `provisional` is for sends that go out before any server-side catalog or
+ * payment verification (the "order received" email for transfer/quote orders):
+ * the amount is still stated — the customer needs it to transfer — but labelled
+ * referencial so it cannot read as a settled fiscal figure.
+ */
+function totalsBlock(data: OrderEmailData, provisional = false): string {
+  const { neto, iva, total } = calculateTaxBreakdown(data.totalAmount)
+  const totalLabel = provisional ? 'Total referencial (IVA incluido)' : 'Total (IVA incluido)'
+  const provisionalNote = provisional
+    ? `<tr><td colspan="2" style="padding-top:6px;font-size:12px;color:#6b7280;">Monto referencial — se confirma al validar tu pago.</td></tr>`
+    : ''
   return `<table style="width:100%;font-size:14px;margin-top:12px;">
     <tr><td style="color:#6b7280;padding:2px 0;">Neto</td><td style="text-align:right;padding:2px 0;">${formatCLP(neto)}</td></tr>
     <tr><td style="color:#6b7280;padding:2px 0;">IVA (19%)</td><td style="text-align:right;padding:2px 0;">${formatCLP(iva)}</td></tr>
-    <tr><td style="padding-top:8px;font-size:16px;font-weight:bold;">Total (IVA incluido)</td><td style="padding-top:8px;text-align:right;font-size:16px;font-weight:bold;color:#102748;">${formatCLP(total)}</td></tr>
+    <tr><td style="padding-top:8px;font-size:16px;font-weight:bold;">${totalLabel}</td><td style="padding-top:8px;text-align:right;font-size:16px;font-weight:bold;color:#102748;">${formatCLP(total)}</td></tr>
+    ${provisionalNote}
   </table>`
 }
 
@@ -217,7 +233,7 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailTemplate
     <h2 style="margin:0 0 8px;font-size:20px;color:#102748;">${isQuote ? 'Cotización registrada' : '¡Gracias por tu pedido!'}</h2>
     <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">${intro}</p>
     ${itemsTable(data)}
-    ${totalsBlock(data)}
+    ${totalsBlock(data, true)}
     ${customerBlock(data)}
     ${bankBlock}
     <p style="margin:20px 0 0;font-size:13px;color:#374151;">
@@ -225,7 +241,7 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailTemplate
       <a href="${trackingUrl(data.orderId)}" style="color:#102748;font-weight:bold;">${trackingUrl(data.orderId)}</a>
     </p>`)
 
-  const text = `${isQuote ? 'Cotización registrada' : 'Pedido recibido'} — ${data.orderId}\n\n${itemsText(data)}\n\nTotal (IVA incluido): ${formatCLP(data.billing?.taxBreakdown?.total ?? data.totalAmount)}${bankText}\n\nSeguimiento: ${trackingUrl(data.orderId)}\n\nPRONTO Insumos Odontológicos — Melipilla, Chile`
+  const text = `${isQuote ? 'Cotización registrada' : 'Pedido recibido'} — ${data.orderId}\n\n${itemsText(data)}\n\nTotal referencial (IVA incluido): ${formatCLP(data.totalAmount)} — monto sujeto a confirmación.${bankText}\n\nSeguimiento: ${trackingUrl(data.orderId)}\n\nPRONTO Insumos Odontológicos — Melipilla, Chile`
 
   return { subject, html, text }
 }
@@ -248,7 +264,7 @@ export function buildPaymentConfirmedEmail(data: OrderEmailData): EmailTemplate 
       <a href="${trackingUrl(data.orderId)}" style="color:#102748;font-weight:bold;">${trackingUrl(data.orderId)}</a>
     </p>`)
 
-  const text = `Pago confirmado — Pedido ${data.orderId}\n\nTu pago fue aprobado por Mercado Pago. Estamos preparando tu pedido en Melipilla.\n\n${itemsText(data)}\n\nTotal (IVA incluido): ${formatCLP(data.billing?.taxBreakdown?.total ?? data.totalAmount)}\n\nSeguimiento: ${trackingUrl(data.orderId)}`
+  const text = `Pago confirmado — Pedido ${data.orderId}\n\nTu pago fue aprobado por Mercado Pago. Estamos preparando tu pedido en Melipilla.\n\n${itemsText(data)}\n\nTotal (IVA incluido): ${formatCLP(data.totalAmount)}\n\nSeguimiento: ${trackingUrl(data.orderId)}`
 
   return { subject, html, text }
 }
@@ -271,7 +287,7 @@ export function buildTransferApprovedEmail(data: OrderEmailData): EmailTemplate 
       <a href="${trackingUrl(data.orderId)}" style="color:#102748;font-weight:bold;">${trackingUrl(data.orderId)}</a>
     </p>`)
 
-  const text = `Transferencia aprobada — Pedido ${data.orderId}\n\nTu transferencia fue verificada. Tu pedido está en preparación en Melipilla.\n\n${itemsText(data)}\n\nTotal (IVA incluido): ${formatCLP(data.billing?.taxBreakdown?.total ?? data.totalAmount)}\n\nSeguimiento: ${trackingUrl(data.orderId)}`
+  const text = `Transferencia aprobada — Pedido ${data.orderId}\n\nTu transferencia fue verificada. Tu pedido está en preparación en Melipilla.\n\n${itemsText(data)}\n\nTotal (IVA incluido): ${formatCLP(data.totalAmount)}\n\nSeguimiento: ${trackingUrl(data.orderId)}`
 
   return { subject, html, text }
 }
@@ -298,7 +314,7 @@ export function buildPaymentReviewResolvedEmail(data: OrderEmailData): EmailTemp
       <a href="${trackingUrl(data.orderId)}" style="color:#102748;font-weight:bold;">${trackingUrl(data.orderId)}</a>
     </p>`)
 
-  const text = `Pago verificado — Pedido ${data.orderId}\n\nRevisamos el pago de tu pedido y quedó confirmado. Estamos preparando tus insumos en Melipilla.\n\n${itemsText(data)}\n\nTotal (IVA incluido): ${formatCLP(data.billing?.taxBreakdown?.total ?? data.totalAmount)}\n\nSeguimiento: ${trackingUrl(data.orderId)}`
+  const text = `Pago verificado — Pedido ${data.orderId}\n\nRevisamos el pago de tu pedido y quedó confirmado. Estamos preparando tus insumos en Melipilla.\n\n${itemsText(data)}\n\nTotal (IVA incluido): ${formatCLP(data.totalAmount)}\n\nSeguimiento: ${trackingUrl(data.orderId)}`
 
   return { subject, html, text }
 }
@@ -386,7 +402,7 @@ export function buildWarehouseAlertEmail(
     ${totalsBlock(data)}
     ${customerBlock(data)}`)
 
-  const text = `[Bodega] ${eventLabel} — ${data.orderId}\n\nEstado: ${data.status || event}\nAcción: ${actionHint}\n\n${itemsText(data)}\n\nTotal (IVA incluido): ${formatCLP(data.billing?.taxBreakdown?.total ?? data.totalAmount)}\n\nCliente: ${data.customer.fullName} (${data.customer.rut})\nDespacho: ${data.customer.address}, ${data.customer.city}`
+  const text = `[Bodega] ${eventLabel} — ${data.orderId}\n\nEstado: ${data.status || event}\nAcción: ${actionHint}\n\n${itemsText(data)}\n\nTotal (IVA incluido): ${formatCLP(data.totalAmount)}\n\nCliente: ${data.customer.fullName} (${data.customer.rut})\nDespacho: ${data.customer.address}, ${data.customer.city}`
 
   return { subject, html, text }
 }

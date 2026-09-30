@@ -254,13 +254,20 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
   const listSubtotal = orderData.items.reduce((acc, i) => acc + i.product.price * i.quantity, 0)
   const discountAmount = Math.max(0, listSubtotal - totalAmount)
 
-  const billing: BillingInfo = orderData.billing || {
-    documentType: orderData.customer.documentType,
+  // The tax math, the billing RUT and the SII emission state are derived here —
+  // never taken from the caller. A crafted `billing` payload could otherwise
+  // persist a fiscal breakdown that disagrees with the recomputed total (e.g.
+  // iva: 0), or a tax RUT different from the purchaser's, and that stored map is
+  // what admin portals and manual issuance would read later.
+  const billing: BillingInfo = {
+    ...(orderData.billing || {
+      documentType: orderData.customer.documentType,
+      razonSocial: orderData.customer.razonSocial,
+      giroComercial: orderData.customer.giroComercial,
+      direccionFiscal: orderData.customer.address,
+      comunaFiscal: orderData.customer.city
+    }),
     rut: orderData.customer.rut,
-    razonSocial: orderData.customer.razonSocial,
-    giroComercial: orderData.customer.giroComercial,
-    direccionFiscal: orderData.customer.address,
-    comunaFiscal: orderData.customer.city,
     taxBreakdown: calculateTaxBreakdown(totalAmount),
     status: 'PENDIENTE_EMISION_SII'
   }

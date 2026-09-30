@@ -4,6 +4,7 @@ import {
   buildOrderConfirmationEmail,
   buildPaymentConfirmedEmail,
   buildTransferApprovedEmail,
+  buildPaymentReviewResolvedEmail,
   buildWarehouseAlertEmail,
   toOrderEmailData,
   OrderEmailData
@@ -25,8 +26,7 @@ const sampleOrderData: OrderEmailData = {
     razonSocial: 'CLÍNICA DENTAL MORALES SPA'
   },
   billing: {
-    documentType: 'factura',
-    taxBreakdown: { neto: 159656, iva: 30334, total: 189990 }
+    documentType: 'factura'
   }
 }
 
@@ -172,6 +172,39 @@ describe('Email Templates (api/_lib/emailTemplates.ts)', () => {
     expect(tpl.text).toContain('PRONTO-ABC123')
   })
 
+  it('should label the amount as referencial on the pre-verification confirmation (transfer and quote)', () => {
+    // This send goes out before any server-side catalog/payment verification —
+    // the customer still needs the amount to transfer, but it must not read as
+    // a settled fiscal figure.
+    const transfer = buildOrderConfirmationEmail(sampleOrderData)
+    expect(transfer.html).toContain('Total referencial (IVA incluido)')
+    expect(transfer.html).toContain('Monto referencial')
+    expect(transfer.text).toContain('Total referencial (IVA incluido)')
+    expect(transfer.text).toContain('monto sujeto a confirmación')
+    expect(transfer.html).not.toContain('>Total (IVA incluido)<')
+
+    const quote = buildOrderConfirmationEmail({ ...sampleOrderData, paymentMethod: 'whatsapp' })
+    expect(quote.html).toContain('Total referencial (IVA incluido)')
+    expect(quote.html).toContain('Monto referencial')
+  })
+
+  it('should render the authoritative total label on post-verification emails', () => {
+    // These send after a server-side verification (webhook amount assertion,
+    // admin transfer approval, operator reconciliation), so the amount is final.
+    const postVerification = [
+      buildPaymentConfirmedEmail({ ...sampleOrderData, paymentMethod: 'mercadopago' }),
+      buildTransferApprovedEmail(sampleOrderData),
+      buildPaymentReviewResolvedEmail(sampleOrderData),
+      buildWarehouseAlertEmail(sampleOrderData, 'PAGADO_MERCADOPAGO')
+    ]
+
+    for (const tpl of postVerification) {
+      expect(tpl.html).toContain('Total (IVA incluido)')
+      expect(tpl.html).not.toContain('referencial')
+      expect(tpl.text).toContain('Total (IVA incluido)')
+    }
+  })
+
   it('should render cotización variant for whatsapp orders without bank block', () => {
     const tpl = buildOrderConfirmationEmail({
       ...sampleOrderData,
@@ -247,6 +280,68 @@ describe('Email Templates (api/_lib/emailTemplates.ts)', () => {
     expect(tpl.html).not.toContain('<img')
     expect(tpl.html).toContain('&lt;script&gt;')
     expect(tpl.html).toContain('&lt;img')
+  })
+
+  it('should derive neto/IVA/total from the order amount, never from a forged stored taxBreakdown', () => {
+    // A crafted order document can persist `billing.taxBreakdown = { total: 1,
+    // iva: 0 }` alongside a correct `totalAmount`. Every rendered fiscal figure
+    // must come from the order amount — never from the stored billing map.
+    const forged = toOrderEmailData('PRONTO-FORGED', {
+      status: 'PAGADO_MERCADOPAGO',
+      paymentMethod: 'mercadopago',
+      totalAmount: 189990,
+      items: [{ name: 'Turbina', quantity: 1, price: 189990 }],
+      customer: {
+        fullName: 'Dra. Andrea Morales',
+        email: 'andrea@clinica.cl',
+        rut: '12.345.678-5',
+        address: 'Av. Ortúzar 750',
+        city: 'Melipilla',
+        documentType: 'boleta'
+      },
+      billing: { documentType: 'boleta', taxBreakdown: { neto: 1, iva: 0, total: 1 } }
+    })
+
+    // The sanitized payload deliberately does not carry the stored breakdown.
+    expect(forged.billing).toEqual({ documentType: 'boleta' })
+
+    const customerEmails = [
+      buildPaymentConfirmedEmail(forged),
+      buildTransferApprovedEmail(forged),
+      buildPaymentReviewResolvedEmail(forged),
+      buildOrderConfirmationEmail(forged)
+    ]
+
+    for (const tpl of customerEmails) {
+      // Derived from 189990: neto 159655 + iva 30335 = 189990.
+      expect(tpl.html).toContain('$159.655')
+      expect(tpl.html).toContain('$30.335')
+      expect(tpl.html).toContain('$189.990')
+      expect(tpl.text).toContain('$189.990')
+      // The forged figures never leak into a money cell.
+      expect(tpl.html).not.toContain('>$0<')
+      expect(tpl.html).not.toContain('>$1<')
+    }
+
+    const warehouse = buildWarehouseAlertEmail(forged, 'PAGADO_MERCADOPAGO')
+    expect(warehouse.html).toContain('$159.655')
+    expect(warehouse.html).toContain('$30.335')
+    expect(warehouse.text).toContain('$189.990')
+  })
+
+  it('should compute the integer breakdown identity for odd totals', () => {
+    // 99991 → neto 84026 + iva 15965 = 99991 (neto + iva === total always holds).
+    const odd = toOrderEmailData('PRONTO-ODD', {
+      totalAmount: 99991,
+      items: [],
+      customer: { rut: '12345678-5' },
+      billing: { documentType: 'boleta', taxBreakdown: { neto: 0, iva: 0, total: 0 } }
+    })
+
+    const tpl = buildPaymentConfirmedEmail(odd)
+    expect(tpl.html).toContain('$84.026')
+    expect(tpl.html).toContain('$15.965')
+    expect(tpl.html).toContain('$99.991')
   })
 
   it('should map raw Firestore order data defensively via toOrderEmailData', () => {

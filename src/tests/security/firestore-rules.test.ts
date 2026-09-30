@@ -134,7 +134,7 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     // Nested allowlists and length caps.
     expect(content).toContain('function isBoundedString(value, maxLength)')
     expect(content).toMatch(/function isValidCustomer\(c\)[\s\S]*?hasOnly\(\[/)
-    expect(content).toMatch(/function isValidBilling\(b\)[\s\S]*?hasOnly\(\[/)
+    expect(content).toMatch(/function isValidBilling\(b, orderTotal, customerRut\)[\s\S]*?hasOnly\(\[/)
     expect(content).toMatch(/function isValidSanitaryVerification\(s\)[\s\S]*?hasOnly\(\[/)
     expect(content).toContain("t.keys().hasOnly(['neto', 'iva', 'total'])")
     expect(content).toContain("item.keys().hasOnly(['productId', 'name', 'quantity', 'price'])")
@@ -150,6 +150,17 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     expect(content).toContain("data.paymentMethod == 'transferencia' && data.status == 'PENDIENTE_TRANSFERENCIA'")
     expect(content).toContain("data.paymentMethod == 'whatsapp' && data.status == 'COTIZACION_SOLICITADA_WHATSAPP'")
     expect(content).toContain("b.status == 'PENDIENTE_EMISION_SII'")
+
+    // The persisted fiscal breakdown is bound to the order's own verified
+    // figures: neto === round(total / 1.19) and neto + iva === total internally
+    // (the exact calculateTaxBreakdown decomposition, so no other split can be
+    // stored), total === totalAmount against the document, and the billing RUT
+    // identical to the purchaser's.
+    expect(content).toContain('t.neto == math.round(t.total / 1.19)')
+    expect(content).toContain('t.neto + t.iva == t.total')
+    expect(content).toContain('b.taxBreakdown.total == orderTotal')
+    expect(content).toContain('b.rut == customerRut')
+    expect(content).toContain('isValidBilling(data.billing, data.totalAmount, data.customer.rut)')
   })
 
   it('should enforce read-only for admins and write-deny on audit log collections', () => {
