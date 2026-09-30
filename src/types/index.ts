@@ -158,6 +158,13 @@ export interface Order {
   approvedAt?: string
   approvedBy?: string
   confirmationEmailSentAt?: string
+  // WhatsApp-quote resolution trail: server-written by `resolve-quote` only.
+  // `quoteResolution` says how the lead left the quote state ('CONVERTIDA' = the
+  // sale settled off-platform exactly as quoted; 'DECLINADA' = closed without a
+  // sale), and `quoteResolvedAt`/`quoteResolvedBy` attribute the human decision.
+  quoteResolvedAt?: string
+  quoteResolution?: 'CONVERTIDA' | 'DECLINADA'
+  quoteResolvedBy?: string
   // Warehouse-alert budget for the "voucher received" email: server-written.
   // The stamp is a RESERVATION committed inside the confirm transaction (so concurrent
   // confirms serialize on the order document) and released best-effort when the Resend

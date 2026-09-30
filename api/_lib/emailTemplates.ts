@@ -311,6 +311,9 @@ const WAREHOUSE_EVENT_LABELS: Record<string, string> = {
   PAGADO_MERCADOPAGO: 'Pago Mercado Pago confirmado',
   TRANSFERENCIA_COMPROBANTE_SUBIDO: 'Comprobante de transferencia recibido',
   TRANSFERENCIA_APROBADA: 'Transferencia aprobada por administración',
+  // A WhatsApp quote converted into a verified sale by the operator
+  // (resolve-quote): the money settled off-platform and stock was deducted.
+  PAGADO_TRANSFERENCIA: 'Venta de cotización WhatsApp confirmada (transferencia verificada)',
   PAGO_EN_REVISION: 'Pago Mercado Pago en revisión — monto inconsistente',
   CANCELADO: 'Pedido cancelado por administración',
   // Reconciliation incidents raised by the Mercado Pago webhook.
@@ -323,6 +326,8 @@ const WAREHOUSE_ACTION_HINTS: Record<string, string> = {
   TRANSFERENCIA_COMPROBANTE_SUBIDO:
     'Verificar el comprobante contra la cartola de Banco de Chile y aprobar en el portal /admin.',
   PAGADO_MERCADOPAGO: 'Pago acreditado: preparar y despachar el pedido.',
+  PAGADO_TRANSFERENCIA:
+    'Cotización WhatsApp convertida en venta verificada: preparar y despachar el pedido.',
   PAGO_EN_REVISION:
     'El monto pagado no coincide con el total verificado del pedido. NO despachar: conciliar el pago en el portal /admin.',
   CANCELADO:

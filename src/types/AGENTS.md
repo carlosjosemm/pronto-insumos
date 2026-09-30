@@ -162,6 +162,12 @@ export interface Order {
   mercadopagoPaymentId?: string; paidAt?: string
   approvedAt?: string; approvedBy?: string
   confirmationEmailSentAt?: string     // idempotency flag for /api/order-confirmation
+  // WhatsApp-quote resolution trail — server-written by `resolve-quote` only.
+  // `quoteResolution` says how the lead left the quote state: 'CONVERTIDA' (the
+  // sale settled off-platform exactly as quoted; the document keeps its original
+  // quote id and becomes the sale record, stamped `PAGADO_TRANSFERENCIA`) or
+  // 'DECLINADA' (closed `CANCELADO` with no stock movement).
+  quoteResolvedAt?: string; quoteResolution?: 'CONVERTIDA' | 'DECLINADA'; quoteResolvedBy?: string
   // Warehouse "voucher received" alert budget (Task 8.8) — server-written by
   // /api/upload-voucher inside the confirm transaction (a reservation released
   // best-effort when the Resend send fails). Never written by the client.
