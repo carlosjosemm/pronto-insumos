@@ -96,11 +96,13 @@ export const AdminInventory: React.FC = () => {
         onToggleVisibility={handleToggleVisibility}
       />
 
-      <StockAdjustModal
-        product={selectedForStock}
-        onClose={() => setSelectedForStock(null)}
-        onSuccess={() => loadProducts()}
-      />
+      {selectedForStock && (
+        <StockAdjustModal
+          product={selectedForStock}
+          onClose={() => setSelectedForStock(null)}
+          onSuccess={() => loadProducts()}
+        />
+      )}
 
       {/* Edit Existing Product */}
       {selectedForEdit && (

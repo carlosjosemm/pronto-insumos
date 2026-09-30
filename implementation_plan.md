@@ -1,104 +1,106 @@
-# Task 0.17: Reconcile Approved/Reversal Payments with Missing Order Data
+# Task 4.4: Admin Inventory Hook-Order Crash
 
-**Branch:** `feat/task-0.17-missing-order-reconciliation` (primary working tree — no worktree; cut from `main` @ `d39875a`)
-**RequestFeedback:** true · **UserFacing:** true
-**Status:** **Implemented — 866/866 tests (82 suites)** after review round 1; `pnpm test`, `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` and the strict ad-hoc `api/**` tsc all clean. Owner approved the plan 2026-09-29 ("proceed"). Adversarial review round 1 returned F1–F4 (verdict *approve with findings*); every finding is remediated — F1 (test env leak → real Resend call) fixed in the describe `afterEach`, F2 (this file's stale status/details) refreshed, F3 (two missing assertions) added, F4 (dead `if (orderId)` guard) unwrapped. Changes remain uncommitted pending the owner's "wrap up and proceed".
+**Branch:** `fix/task-4.4-stock-adjust-hook-order` (primary working tree — no worktree; cut from `main` @ `1637755`)
+**Status:** **Implemented, reviewed, gates green — awaiting owner "wrap up and proceed".** 870/870 tests (83 suites) after rebasing onto `origin/main`; build / lint / format:check / tsc all clean. Adversarial review returned *approve with findings* (F1–F4); all remediated in the working tree. See §6.
 
 ---
 
 ## 1. Context & Problem Statement
 
-Roadmap item [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md) §Phase 0, Task 0.17 _(P1; coordinate with 0.11)_:
+`PRODUCTION_READINESS_TODO.md` §4.4 (P1, small). `StockAdjustModal` called
+`if (!product) return null` **before** its four `useState` hooks
+(`src/admin/components/StockAdjustModal.tsx`), while `AdminInventory` mounted it
+unconditionally with `product={selectedForStock}` and `selectedForStock` starts
+as `null`. While the product is null the component registers **zero** hooks; the
+first time a warehouse row's **Stock** button sets a product, the same component
+instance would call four. The existing test mounted with a product immediately,
+so it never exercised the null→product transition.
 
-> **Evidence:** `api/webhooks/mercadopago.ts:175-205,715-725` acknowledges `200` when an approved/reversal payment has no usable `external_reference`/`description` or no matching Firestore order; `src/tests/api/mercadopago-webhook.test.ts:484-514` pins the current behavior. Mercado Pago `404` is correctly acknowledged and is not this gap.
-> **Risk:** a real settlement can be acknowledged without durable reconciliation.
-> **Fix:** persist a small Firestore incident keyed idempotently by `paymentId` for warehouse/manual reconciliation; no new function. Retry transient conditions; for an irrecoverably missing order, acknowledge only after the incident is durable (avoid endless `5xx`); return `5xx` if incident persistence fails.
-> **Accept:** tests cover unusable reference/description or missing order, duplicate delivery, transient recovery and incident-store failure. On preview/test, verify Mercado Pago event semantics; owner ledger reconciliation remains fallback for absent/unreliable events.
+**Correction established during implementation (2026-09-30).** The task's
+premise — that React throws *"Rendered more hooks than during the previous
+render"* and crashes the view — is **not reproducible on the installed React
+18.3.1**. React's own DEV source
+(`node_modules/react-dom/cjs/react-dom.development.js:15464-15483`) dispatches a
+render whose previous committed state is `memoizedState === null` to the **mount**
+path, so no hook-count comparison runs; a StrictMode repro of the exact
+early-return-before-four-hooks shape produced `THREW: null`, `CONSOLE.ERROR
+CALLS: 0`. The real, verifiable defect is twofold:
 
-**The two acked-but-unreconciled paths today** (both fall through to the generic `200 { received: true }` at `api/webhooks/mercadopago.ts:723-725`):
+1. The shape is a textbook `react-hooks/rules-of-hooks` violation (4 errors
+   pre-fix under the react-hooks rule set; clean post-fix). It is undefined
+   behavior and becomes a genuine crash the moment a hook is added above the
+   guard or a partial hook set runs before it. `src/admin/**` is currently
+   excluded from the full lint rule set (deferred to §8.10), which is why
+   `pnpm lint` never surfaced it.
+2. Pre-fix, switching from product A to product B while the modal stayed mounted
+   kept the stale `useState(product.stockCount)` draft (no remount).
 
-1. **Unusable reference (lines 175-177):** an `approved` (or `refunded`/`charged_back`) payment whose `external_reference` **and** `description` are both absent/empty gives the webhook no order id at all. Money moved; nothing is recorded anywhere.
-2. **Order not found (lines 715-719):** a usable reference resolves to no Firestore order (deleted order, typo'd reference, legacy id purged). Today: one `console.warn`, then ack.
+The repo's house convention is explicit: `src/admin/AGENTS.md` §6.2 and
+`src/components/AGENTS.md` §2.1 — *scope overlay state by remount, not by reset
+effects*; the synchronous prop→state `useEffect` (`set-state-in-effect`) is
+forbidden. The fix must therefore be hook-order invariant **and** effect-free.
 
-**Transient conditions are already correct and stay untouched:** MP verification `5xx`/`401`/`403` → `502` (MP retries, Task 0.14a); Firestore Admin unavailable in a production runtime → `500` (MP retries, Task 0.10). The incident path is only for the **irrecoverable** case — a verified payment that can never be joined to an order — where retrying forever would just hammer MP; there we persist a durable incident and only then acknowledge.
+## 2. Human Action Items & Placeholders
 
-## 2. Human Action Items & Placeholders (TODO for Human)
+None. Pure admin-UI correctness fix: no env vars, no external services, no owner
+gates, no new dependencies.
 
-* **None.** No new secrets, env vars or external credentials. The incident collection lives in the existing Firestore Admin database; the warehouse alert reuses the existing `WAREHOUSE_NOTIFICATION_EMAIL` / Resend configuration (and is fail-safe: an email failure never blocks the incident or the ack).
-* **Owner follow-up (operational, not code):** on a preview/test deploy, verify Mercado Pago event semantics (that approved/reversal notifications actually carry the fields we incident on) and keep the owner ledger reconciliation as the fallback for absent/unreliable events — per the task's Accept clause.
+## 3. Proposed Changes (as built)
 
-## 3. Proposed Changes
+- `[MODIFY]` `src/admin/components/StockAdjustModal.tsx` — split into a
+  hook-free guard and a stateful form. The exported `StockAdjustModal` keeps
+  `product: Product | null`, returns `null` before registering any hook, and
+  otherwise renders an inner `StockAdjustForm` (four unconditional `useState`,
+  lazy `useState(product.stockCount)`) with `key={product.id}`. Null→product
+  mounts the form fresh; A→B remounts it with the new product's stock. No
+  `useEffect`.
+- `[MODIFY]` `src/admin/components/AdminInventory.tsx` — mount the modal
+  conditionally (`{selectedForStock && <StockAdjustModal …/>}`), matching the
+  existing `ProductEditModal` mount.
+- `[MODIFY]` `src/tests/admin/StockAdjustModal.test.tsx` — null→product rerender
+  test, A→B draft re-seed test, and `afterEach(vi.restoreAllMocks)` hygiene.
+- `[NEW]` `src/tests/admin/AdminInventory.test.tsx` — integration over the
+  reported surface (row **Stock** button → modal → submit).
 
-Lean, no new serverless function (the incident logic lives under `api/_lib/`, which does not count against the Vercel Hobby 12-function cap — currently 6/12).
+No other files. No CSS, no API, no types change.
 
-### [NEW] `api/_lib/paymentIncidents.ts`
+## 4. Robust Unit Testing Plan (as built)
 
-Single-purpose module, no framework:
+Vitest + `@testing-library/react`; `vi.spyOn` on `src/admin/services/adminApi`.
+No network, no Firebase. Added 3 tests / 1 suite; the full suite is 870/870 (83 suites) after rebasing onto `origin/main`.
 
-* `persistPaymentIncident(adminDb, { paymentId, paymentData, reason })`:
-  * Collection: `getCollectionName('payment_incidents')` (env-scoped like every other collection).
-  * **Idempotency by `paymentId`:** document id `mp-<paymentId>`; written with Firestore `create()`, which atomically fails when the doc already exists. A duplicate delivery (MP retries the same event) therefore performs **no second write** and resolves to `{ persisted: true, duplicate: true }` — no re-alert, no duplicate incident.
-  * Incident document (small, reconciliation-oriented):
-    ```ts
-    {
-      paymentId, paymentStatus, transactionAmount, currencyId,
-      externalReference: <raw external_reference or null>,
-      description: <raw description or null>,
-      payerEmail: <paymentData.payer?.email or null>,
-      reason: 'REFERENCIA_NO_UTILIZABLE' | 'PEDIDO_NO_ENCONTRADO',
-      status: 'PENDIENTE_RECONCILIACION_MANUAL',
-      resolved: false,
-      source: 'MERCADOPAGO_WEBHOOK',
-      createdAt, updatedAt   // ISO strings, matching existing history docs
-    }
-    ```
-  * Returns `{ persisted: true, duplicate?: boolean }`; **throws** on any real persistence failure (network, permission) so the webhook can fail closed with `5xx`.
-* `sendPaymentIncidentAlert(...)` — fire-and-forget-safe warehouse email via the existing `sendEmail`/`getWarehouseEmail`, with a small inline template (`[PRONTO] Pago sin pedido — revisión manual (ID: <paymentId>)`). Email failure is logged, never thrown: the durable incident is the authority, the email is a convenience.
-
-### [MODIFY] `api/webhooks/mercadopago.ts`
-
-Two surgical insertions; no restructuring:
-
-1. **No usable reference:** when `orderId` is falsy for an approved/reversal payment → `persistPaymentIncident(..., reason 'REFERENCIA_NO_UTILIZABLE')` + warehouse alert, then ack `200 { received: true, verifiedStatus, note: 'incident' }` **only if** the incident is durable (persisted or duplicate). Persistence failure → `500` + loud `console.error` (MP retries; Task 0.10 style).
-2. **Order not found:** the existing `console.warn` branch (lines 715-719) → same incident treatment with reason `'PEDIDO_NO_ENCONTRADO'` (keeping the warn), then ack only if durable; persistence failure → `500`.
-3. Firestore Admin `null` in production → unchanged `500` (transient; retry). Outside production → unchanged simulated `200` (no Admin ⇒ no incident store; the loud log already covers it).
-
-### [MODIFY] `api/_lib/firestoreEnv.ts`
-
-Add `'payment_incidents'` to the `FirestoreCollectionKey` union (the function already accepts arbitrary strings; this makes the new collection first-class).
-
-### [MODIFY] `.env.example`
-
-No changes (no new variables).
-
-## 4. Robust Unit Testing Plan (MANDATORY)
-
-All in `src/tests/api/mercadopago-webhook.test.ts` (the existing webhook suite; boundary-mocked — no live Firebase/MP/network). One new focused block "Task 0.17 — missing-order payment reconciliation":
-
-| # | Case | Assertion |
-| :-- | :--- | :--- |
-| 1 | **Unusable reference** — approved payment with no `external_reference`/`description` | Incident doc written to `payment_incidents` with doc id `mp-<paymentId>`, correct `reason`/`paymentStatus`/`transactionAmount`; response `200` with `note: 'incident'`; no order lookup attempted |
-| 2 | **Order not found** — approved payment, reference resolves to nothing | Incident persisted (`reason: 'PEDIDO_NO_ENCONTRADO'`), `200` + note; **updates** the pinned test at lines 484-514 (which currently asserts bare warn + ack) |
-| 3 | **Reversal with missing order** — `refunded` payment, no usable reference | Same incident path (reversals are in scope per the task evidence) |
-| 4 | **Duplicate delivery (idempotency)** — second delivery of the same payment | `create()` rejects with an already-exists error → treated as duplicate: **no second write**, still `200`, no second alert |
-| 5 | **Transient recovery** — Firestore Admin unavailable in a production runtime | Unchanged `500` (retried by MP) — pins that the incident path does **not** swallow the transient gate |
-| 6 | **Incident-store failure** — `create()` throws a non-duplicate error | `500` + loud `console.error`; **no** ack of an unreconcilable settlement |
-| 7 | **Warehouse alert** — `WAREHOUSE_NOTIFICATION_EMAIL` configured | Alert email attempted once per incident; a Resend outage is logged, incident still acknowledged (dedicated test) |
-| 8 | **Happy paths intact** — existing approved-with-order and reversal-with-order tests | Unchanged and green (no incident written when the order resolves) |
-
-Mocking: `global.fetch` (MP verification), `getAdminFirestore` (existing module mock), the Firestore `create()` as a `vi.fn()` on the incidents-collection double; the duplicate case rejects with an object shaped like a Firestore `ALREADY_EXISTS` error. Full suite (866 tests / 82 suites) must remain green — zero regressions.
+1. Existing happy-path test — unchanged, green.
+2. Null→product rerender — renders nothing for `null`, then rerenders with the
+   product: modal appears, spinbutton reads `8`, submit calls
+   `updateStockCount({ productId, newStock: 8, reason: 'reposicion' })`,
+   `onSuccess`/`onClose` fire once. **Test-revert:** passes pre-fix too (React
+   tolerates the 0→4 transition — see §1); it guards the early-return contract
+   rather than proving this diff.
+3. A→B draft re-seed — **the only revert-sensitive test**: fails pre-fix with
+   stale `'8'` instead of `'3'`.
+4. `AdminInventory` integration — passes pre-fix too (no crash to catch); its
+   value is coverage of the row→modal→submit path.
+5. Mock hygiene: `afterEach(() => vi.restoreAllMocks())` in both suites.
+6. Zero-regression: 870/870 pass.
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-* **`api/AGENTS.md`** — §2.2 webhook section: document the two new incident branches (unusable reference / order not found), the `payment_incidents` collection + `mp-<paymentId>` idempotency key, the durable-then-ack rule, and the `500` on incident-store failure.
-* **`src/tests/AGENTS.md`** — add the Task 0.17 block to the `mercadopago-webhook` suite description.
-* **`PRODUCTION_READINESS_TODO.md`** — mark Task 0.17 `[x]` after gates pass and review findings are remediated.
-* **`walkthrough.md`** — updated at wrap-up (branch, verification, PR link).
+- `src/admin/AGENTS.md` §6.2 bullet and the `AdminInventory` / `StockAdjustModal`
+  table rows rewritten as built (hook-order hardening; the crash was latent, not
+  observed).
+- `PRODUCTION_READINESS_TODO.md` §4.4 marked `[x]` with corrected evidence and
+  the verification counts.
+- Gates: `pnpm test && pnpm build && pnpm lint && pnpm format:check && pnpm exec tsc --noEmit` — all green.
 
-## 6. Verification Gates
+## 6. Adversarial Review Disposition (round 1 — approve with findings)
 
-```bash
-pnpm test && pnpm build && pnpm lint && pnpm format:check && pnpm exec tsc --noEmit
-```
+| ID | Severity | Finding | Disposition |
+| :-- | :-- | :-- | :-- |
+| F1 | MAJOR | "Runtime crash" premise false on React 18.3.1; real defect is the `rules-of-hooks` violation + stale-draft edge; docs must not claim a crash fix | **Fixed** — §1 here, `src/admin/AGENTS.md` §6.2, and the §4.4 roadmap entry rewritten to state the latent-violation framing |
+| F2 | MINOR | JSDoc said `AdminInventory` renders the component with a null product, which the conditional mount no longer does | **Fixed** — JSDoc reworded (null accepted for callers that mount unconditionally; `AdminInventory` mounts only after selection) |
+| F3 | MINOR | `StockAdjustModal.test.tsx` restored spies inline, leaking on a thrown assertion | **Fixed** — `afterEach(vi.restoreAllMocks)`, inline `mockRestore()` removed |
+| F4 | MINOR | `AdminInventory.test.tsx` title claimed a hook-order crash that cannot occur | **Fixed** — retitled to the row→modal→submit behavior |
 
-Then the adversarial read-only code review (`/code-review`), remediation, and — only on the explicit **"wrap up and proceed"** — commit, push and PR.
+Reviewer also confirmed the wrapper-split is the right call over hoisting (hoisting
+would still need a `key` or the forbidden `set-state-in-effect` to re-seed the
+draft) and that `key={product.id}` has no bad interaction.
