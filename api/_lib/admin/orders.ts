@@ -39,6 +39,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(404).json({ success: false, error: 'Pedido no encontrado' })
         }
         const data = snap.docs[0].data()
+        // Detail request: returns the FULL document, `voucherUrl` included — this is the
+        // only response allowed to carry a legacy Base64 voucher, and a single order
+        // document is always within Vercel's 4.5 MB cap.
         return res.status(200).json({ success: true, order: { ...data, orderId: snap.docs[0].id } })
       }
       return res.status(200).json({ success: true, order: { ...doc.data(), orderId: doc.id } })
@@ -50,10 +53,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     snap.forEach(doc => {
       const data = doc.data()
       const createdAt = data.createdAt ? (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate().toISOString() : String(data.createdAt)) : ''
+      // The LIST must never carry `voucherUrl`: a legacy pre-2.9 document holds the whole
+      // voucher as a Base64 `data:` URL (up to ~1 MiB each), so a handful of them exceeds
+      // Vercel's 4.5 MB response cap and breaks the entire order list. Report existence
+      // instead (`hasVoucher`, the same predicate /api/track-order uses) and let the
+      // `?orderId=` detail request supply the real URL.
+      const { voucherUrl, ...rest } = data
       orders.push({
-        ...data,
+        ...rest,
         orderId: data.orderId || doc.id,
-        createdAt
+        createdAt,
+        hasVoucher: Boolean(voucherUrl || data.voucherStoragePath)
       })
     })
 

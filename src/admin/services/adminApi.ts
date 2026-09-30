@@ -6,7 +6,8 @@ import type {
   StockAdjustmentPayload,
   DispatchOrderPayload,
   DispatchOrderResult,
-  ProductUpdatePayload
+  ProductUpdatePayload,
+  VoucherHousekeepingResult
 } from '../types'
 import type { Order, Product } from '../../types'
 
@@ -360,3 +361,29 @@ export async function fetchOrderHistory(orderId: string): Promise<import('../../
   }
 }
 
+/**
+ * Reclaims abandoned voucher objects (signed and uploaded but never confirmed).
+ *
+ * `dryRun` reports what would be removed without deleting; the sweep only ever touches
+ * objects an order does not reference and that are older than the server's grace window,
+ * so it can never delete a voucher that is currently attached to an order.
+ */
+export async function runVoucherHousekeeping(
+  options: { orderId?: string; dryRun?: boolean; limit?: number } = {}
+): Promise<VoucherHousekeepingResult> {
+  const headers = await getAuthHeaders()
+  try {
+    const res = await fetch('/api/admin/voucher-housekeeping', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(options)
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || `HTTP ${res.status}` }
+    }
+    return { ...data, success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error de conexión' }
+  }
+}

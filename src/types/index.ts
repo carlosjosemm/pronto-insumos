@@ -179,6 +179,15 @@ export interface Order {
   // send fails — never written by the client.
   voucherAlertSentAt?: string
   voucherAlertCount?: number
+  // Lifetime cap on minted voucher upload URLs: server-written by /api/upload-voucher
+  // at sign time (reserved inside a transaction, so concurrent signs serialize).
+  // Bounds orphan objects left by uploads that are never confirmed; never client-written.
+  voucherSignCount?: number
+  // List-projection flag: the admin order LIST omits the full `voucherUrl` (legacy
+  // pre-2.9 documents can hold a ~1 MiB Base64 `data:` URL that would blow Vercel's
+  // 4.5 MB response cap) and reports whether a voucher exists instead. The
+  // `?orderId=` detail request still returns the real `voucherUrl`.
+  hasVoucher?: boolean
   dispatch?: {
     carrier: 'starken' | 'chilexpress' | 'blue_express' | 'despacho_local_melipilla' | string
     trackingCode?: string
