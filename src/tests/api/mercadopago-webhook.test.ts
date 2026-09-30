@@ -481,18 +481,27 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     expect(resEnd).toHaveBeenCalled()
   })
 
-  it('should log a warning and return 200 when approved order is not found in Firestore', async () => {
+  it('persists a missing-order incident and returns 200 when the approved order is not found in Firestore (Task 0.17)', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         status: 'approved',
         external_reference: 'PRONTO-NONEXISTENT',
-        id: 778899
+        id: 778899,
+        transaction_amount: 189990
       })
     } as Response)
 
+    const mockCreate = vi.fn().mockResolvedValue(undefined)
+    const incidentDocFn = vi.fn(() => ({ create: mockCreate }))
     const mockAdminDb = {
-      collection: vi.fn().mockReturnValue(orderCollectionMock()),
+      collection: vi.fn((colName: string) => {
+        if (colName === 'orders') return orderCollectionMock()
+        if (colName === 'payment_incidents') {
+          return { doc: incidentDocFn }
+        }
+        return { doc: vi.fn() }
+      }),
       runTransaction: vi.fn()
     }
     vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
@@ -507,12 +516,297 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     await handler(req, res)
 
     expect(res.status).toHaveBeenCalledWith(200)
-    expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        received: true,
+        verifiedStatus: 'approved',
+        note: 'incident',
+        incident: 'PEDIDO_NO_ENCONTRADO'
+      })
+    )
+    expect(incidentDocFn).toHaveBeenCalledWith('mp-778899')
+    expect(mockCreate).toHaveBeenCalledTimes(1)
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: '778899',
+        paymentStatus: 'approved',
+        transactionAmount: 189990,
+        reason: 'PEDIDO_NO_ENCONTRADO',
+        status: 'PENDIENTE_RECONCILIACION_MANUAL',
+        resolved: false,
+        source: 'MERCADOPAGO_WEBHOOK'
+      })
+    )
     expect(mockAdminDb.runTransaction).not.toHaveBeenCalled()
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('Order "PRONTO-NONEXISTENT" not found in Firestore')
     )
     consoleSpy.mockRestore()
+  })
+
+  describe('Missing-order payment reconciliation (Task 0.17)', () => {
+    /** Admin double whose `payment_incidents` collection records every create. */
+    function incidentDb(mockCreate: ReturnType<typeof vi.fn>) {
+      const incidentDocFn = vi.fn(() => ({ create: mockCreate }))
+      const mockAdminDb = {
+        collection: vi.fn((colName: string) => {
+          if (colName === 'payment_incidents') {
+            return { doc: incidentDocFn }
+          }
+          return { doc: vi.fn() }
+        }),
+        runTransaction: vi.fn()
+      }
+      return { mockAdminDb, incidentDocFn }
+    }
+
+    /** MP verification response for a settlement with no usable reference. */
+    function paymentWithoutReference(id: string, status = 'approved') {
+      return {
+        ok: true,
+        json: async () => ({
+          status,
+          id,
+          transaction_amount: 189990,
+          payer: { email: 'pagador@clinica.cl' }
+        })
+      } as Response
+    }
+
+    it('persists an incident when an approved payment carries no usable external_reference or description', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(paymentWithoutReference('555000'))
+      const mockCreate = vi.fn().mockResolvedValue(undefined)
+      const { mockAdminDb, incidentDocFn } = incidentDb(mockCreate)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        body: { data: { id: '555000' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          received: true,
+          verifiedStatus: 'approved',
+          note: 'incident',
+          incident: 'REFERENCIA_NO_UTILIZABLE'
+        })
+      )
+      expect(incidentDocFn).toHaveBeenCalledWith('mp-555000')
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paymentId: '555000',
+          paymentStatus: 'approved',
+          payerEmail: 'pagador@clinica.cl',
+          reason: 'REFERENCIA_NO_UTILIZABLE',
+          externalReference: null,
+          description: null
+        })
+      )
+      // No usable reference ⇒ no order lookup is ever attempted.
+      expect(mockAdminDb.collection).not.toHaveBeenCalledWith('orders')
+      consoleSpy.mockRestore()
+    })
+
+    it('persists an incident for a refunded payment with no usable reference (reversals are in scope)', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(paymentWithoutReference('555001', 'refunded'))
+      const mockCreate = vi.fn().mockResolvedValue(undefined)
+      const { mockAdminDb } = incidentDb(mockCreate)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        body: { data: { id: '555001' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          received: true,
+          verifiedStatus: 'refunded',
+          incident: 'REFERENCIA_NO_UTILIZABLE'
+        })
+      )
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentStatus: 'refunded', reason: 'REFERENCIA_NO_UTILIZABLE' })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('is idempotent: a duplicate delivery writes no second incident and returns the duplicate flag', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(paymentWithoutReference('555002'))
+      // Firestore rejects create() on an existing document with ALREADY_EXISTS.
+      const mockCreate = vi.fn().mockRejectedValue({ code: 6, message: '6 ALREADY_EXISTS: Document already exists' })
+      const { mockAdminDb } = incidentDb(mockCreate)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        body: { data: { id: '555002' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          received: true,
+          note: 'incident',
+          incident: 'REFERENCIA_NO_UTILIZABLE',
+          duplicate: true
+        })
+      )
+      expect(mockCreate).toHaveBeenCalledTimes(1)
+      consoleSpy.mockRestore()
+    })
+
+    it('refuses with 500 when the incident store fails — an unreconcilable settlement is never acked', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(paymentWithoutReference('555003'))
+      const mockCreate = vi.fn().mockRejectedValue(new Error('firestore unavailable'))
+      const { mockAdminDb } = incidentDb(mockCreate)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        body: { data: { id: '555003' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: 'Webhook processing unavailable' }))
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to persist the missing-order incident for payment 555003'),
+        expect.anything()
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('keeps the transient 500 when Firestore Admin is unavailable in production (no incident store)', async () => {
+      process.env.VERCEL_ENV = 'production'
+      process.env.MERCADOPAGO_WEBHOOK_SECRET = 'secret_webhook_key_12345'
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      delete process.env.ALLOW_SIMULATED_PAYMENTS
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(paymentWithoutReference('555004'))
+      vi.mocked(getAdminFirestore).mockReturnValue(null)
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      // Valid signature so the request reaches the incident path: the
+      // production fail-closed gates refuse unsigned requests before any
+      // reconciliation runs.
+      const requestId = 'req-task-017-prod'
+      const ts = '1710372000'
+      const manifest = `id:555004;request-id:${requestId};ts:${ts};`
+      const hash = (await import('crypto')).default
+        .createHmac('sha256', 'secret_webhook_key_12345')
+        .update(manifest)
+        .digest('hex')
+
+      const req = {
+        method: 'POST',
+        headers: { 'x-signature': `ts=${ts},v1=${hash}`, 'x-request-id': requestId },
+        body: { data: { id: '555004' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: 'Webhook processing unavailable' }))
+      consoleSpy.mockRestore()
+    })
+
+    afterEach(() => {
+      delete process.env.MERCADOPAGO_WEBHOOK_SECRET
+      delete process.env.MERCADOPAGO_ACCESS_TOKEN
+      // F1: the alert test sets these — never leak them into later tests
+      // (a leaked RESEND_API_KEY makes sendEmail hit the real Resend API).
+      delete process.env.RESEND_API_KEY
+      delete process.env.WAREHOUSE_NOTIFICATION_EMAIL
+    })
+
+    it('alerts the warehouse (never the customer) once per persisted incident', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+        const url = String(input)
+        if (url.includes('api.resend.com')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ id: 'email_incident' })
+          } as Response
+        }
+        return paymentWithoutReference('555005')
+      })
+      const mockCreate = vi.fn().mockResolvedValue(undefined)
+      const { mockAdminDb } = incidentDb(mockCreate)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        body: { data: { id: '555005' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      const sends = fetchSpy.mock.calls.filter((c) => String(c[0]).includes('api.resend.com'))
+      expect(sends).toHaveLength(1)
+      const body = JSON.parse(((sends[0][1] as RequestInit | undefined)?.body ?? '{}') as string)
+      expect(body.to).toEqual(['bodega@prontoinsumos.com'])
+      expect(body.subject).toContain('555005')
+      expect(body.text).toContain('Motivo')
+      consoleSpy.mockRestore()
+    })
+
+    it('still acknowledges the durable incident when the warehouse alert email fails', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      // Resend is down: the email fetch rejects. sendEmail's fail-safe contract
+      // swallows it — the incident document is the authority, so the delivery
+      // is still acknowledged once the incident is durable.
+      vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+        if (String(input).includes('api.resend.com')) {
+          throw new Error('resend down')
+        }
+        return paymentWithoutReference('555006')
+      })
+      const mockCreate = vi.fn().mockResolvedValue(undefined)
+      const { mockAdminDb } = incidentDb(mockCreate)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = {
+        method: 'POST',
+        body: { data: { id: '555006' } }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ received: true, note: 'incident', incident: 'REFERENCIA_NO_UTILIZABLE' })
+      )
+      expect(mockCreate).toHaveBeenCalledTimes(1)
+      consoleSpy.mockRestore()
+    })
   })
 
   it('resolves the document key first: a decoy document carrying the same orderId field cannot shadow the real order (Task 0.12)', async () => {

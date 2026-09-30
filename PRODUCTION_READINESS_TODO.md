@@ -20,7 +20,7 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3 Open Tasks](#3-open
 | ID | Outcome / risk | Gate |
 | :-- | :-- | :-- |
 | [Owner gate — 0.12](#owner-only-checklist) | Production Firestore rules deployment is not verified; until deployed, decoy documents and admin-only field pre-injection may still be accepted | Owner deploys and independently verifies rules before traffic; this is not a new source task |
-| [0.17](#task-0-17) | Reconcile approved/reversal payments when order data is missing | Idempotent incident persists; missing-order manual reconciliation and failure tests pass |
+| [x] [0.17](#task-0-17) | Reconcile approved/reversal payments when order data is missing | Idempotent incident persists; missing-order manual reconciliation and failure tests pass |
 | [1.5](#task-1-5) | Make Boleta issuance a controlled operation, not a checkout promise | Owner confirms issuer/access and dry-runs paid/refunded sale; dispatch gated on issuance record |
 | [1.6](#task-1-6) | Verify regulated products before dispatch | Admin verification gate enforced, or regulated SKUs are not listed |
 | [1.7](#task-1-7) | Make tax breakdowns and customer tax communications server-authoritative | Forged MP/transfer billing is rejected or shown provisional; issuance uses verified total |
@@ -110,7 +110,7 @@ This section separates source-level capability from independently verified produ
 
 <a id="task-0-17"></a>
 
-- [ ] **0.17. Reconcile Approved/Reversal Payments with Missing Order Data** _(P1; coordinate with 0.11)_
+- [x] **0.17. Reconcile Approved/Reversal Payments with Missing Order Data** _(P1; coordinate with 0.11)_
   - **Evidence:** `api/webhooks/mercadopago.ts:175-205,715-725` acknowledges `200` when an approved/reversal payment has no usable `external_reference`/`description` or no matching Firestore order; `src/tests/api/mercadopago-webhook.test.ts:484-514` pins the current behavior. Mercado Pago `404` is correctly acknowledged and is not this gap.
   - **Risk:** a real settlement can be acknowledged without durable reconciliation.
   - **Fix:** persist a small Firestore incident keyed idempotently by `paymentId` for warehouse/manual reconciliation; no new function. Retry transient conditions; for an irrecoverably missing order, acknowledge only after the incident is durable (avoid endless `5xx`); return `5xx` if incident persistence fails.
