@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import React from 'react'
 
 vi.mock('../../services/api', () => ({
@@ -12,9 +12,13 @@ import App from '../../App'
 describe('App Mercado Pago Return Flow Handling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The session order marker decides whether an approved return may reset the
+    // cart (Task 2.12) — never let it leak between cases.
+    window.sessionStorage.clear()
   })
 
   afterEach(() => {
+    window.sessionStorage.clear()
     window.history.replaceState({}, '', '/')
   })
 
@@ -24,11 +28,35 @@ describe('App Mercado Pago Return Flow Handling', () => {
     render(<App />)
 
     await waitFor(() => {
-      expect(screen.getByText('¡Pago Confirmado Exitosamente!')).toBeInTheDocument()
+      expect(screen.getByText('Recibimos tu Retorno de Pago')).toBeInTheDocument()
       expect(screen.getByText('PRONTO-554433')).toBeInTheDocument()
       expect(screen.getByText('12938475')).toBeInTheDocument()
+      // The forged URL must never re-open the "confirmed payment" claim (Task 2.12).
+      expect(screen.queryByText('¡Pago Confirmado Exitosamente!')).not.toBeInTheDocument()
       expect(window.location.search).toBe('')
     })
+  })
+
+  it('should open the tracking flow from the return modal with the order id prefilled (Task 2.12)', async () => {
+    window.history.replaceState({}, '', '/?status=approved&orderId=PRONTO-554433&payment_id=12938475')
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Recibimos tu Retorno de Pago')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText('Ver estado del pedido'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Seguimiento de Pedido en Línea')).toBeInTheDocument()
+    })
+
+    // The payment-return modal steps aside; the RUT stays a second factor the
+    // customer types (never prefilled from the URL or from storage).
+    expect(screen.queryByText('Recibimos tu Retorno de Pago')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/N° de Pedido/i)).toHaveValue('PRONTO-554433')
+    expect(screen.getByLabelText(/RUT del Comprador/i)).toHaveValue('')
   })
 
   it('should detect status=failure in URL parameters and open failure modal', async () => {
@@ -61,7 +89,7 @@ describe('App Mercado Pago Return Flow Handling', () => {
     render(<App />)
 
     await waitFor(() => {
-      expect(screen.queryByText('¡Pago Confirmado Exitosamente!')).not.toBeInTheDocument()
+      expect(screen.queryByText('Recibimos tu Retorno de Pago')).not.toBeInTheDocument()
       expect(screen.queryByText('Pago No Completado o Rechazado')).not.toBeInTheDocument()
       expect(screen.queryByText('Pago en Proceso de Validación')).not.toBeInTheDocument()
     })

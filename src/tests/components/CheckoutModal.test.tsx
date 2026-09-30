@@ -30,6 +30,7 @@ vi.mock('../../services/orderConfirmation', () => ({
 
 import CheckoutModal, { CheckoutModalProps } from '../../components/CheckoutModal'
 import { submitOrder } from '../../services/api'
+import { SESSION_ORDER_STORAGE_KEY } from '../../services/orderSession'
 import { processMercadoPagoPayment } from '../../services/mercadopago'
 import { sendOrderConfirmationEmail } from '../../services/orderConfirmation'
 import { CartItem, Product } from '../../types'
@@ -66,6 +67,8 @@ const defaultProps: CheckoutModalProps = {
 describe('CheckoutModal Component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The Task 2.12 session marker is real browser storage — keep it per-test.
+    window.sessionStorage.clear()
     vi.mocked(submitOrder).mockResolvedValue({
       success: true,
       orderId: 'PRONTO-TEST1234',
@@ -779,6 +782,81 @@ describe('CheckoutModal Component', () => {
       expect(screen.queryByText(/¡Pedido Registrado con Éxito!/i)).not.toBeInTheDocument()
       // The shopper stays on the Pago step with the submit control re-enabled (retry possible).
       expect(screen.getByRole('button', { name: /Confirmar Pedido/i })).toBeEnabled()
+    })
+  })
+
+  describe('Session order marker for the Mercado Pago return (Task 2.12)', () => {
+    /** Echoes the canonical id back so the assertion can pin the recorded value. */
+    const echoSubmittedOrderId = async (orderData: { orderId?: string }) => ({
+      success: true,
+      orderId: String(orderData.orderId),
+      timestamp: new Date().toISOString(),
+      total: 189990,
+      itemsCount: 1
+    })
+
+    it('should record the created order id so the payment return can be matched', async () => {
+      vi.mocked(submitOrder).mockImplementation(echoSubmittedOrderId)
+
+      render(<CheckoutModal {...defaultProps} />)
+      completeDataEntry()
+      fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+      await waitFor(() => {
+        expect(submitOrder).toHaveBeenCalledTimes(1)
+      })
+
+      const submittedOrderId = vi.mocked(submitOrder).mock.calls[0][0].orderId
+      expect(window.sessionStorage.getItem(SESSION_ORDER_STORAGE_KEY)).toBe(submittedOrderId)
+    })
+
+    it('should record the marker before Mercado Pago payment initiation (redirect safety)', async () => {
+      vi.mocked(submitOrder).mockImplementation(echoSubmittedOrderId)
+      let markerAtPaymentInitiation: string | null = 'not-read'
+      vi.mocked(processMercadoPagoPayment).mockImplementationOnce(async () => {
+        markerAtPaymentInitiation = window.sessionStorage.getItem(SESSION_ORDER_STORAGE_KEY)
+        return {
+          success: true,
+          paymentId: 'MP-TEST-123',
+          status: 'approved',
+          orderId: 'PRONTO-TEST1234',
+          totalPaid: 189990,
+          paidAt: new Date().toISOString()
+        }
+      })
+
+      render(<CheckoutModal {...defaultProps} />)
+      completeDataEntry()
+      fireEvent.click(screen.getByLabelText(/Pago Inmediato Mercado Pago Chile/i))
+      fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+      await waitFor(() => {
+        expect(processMercadoPagoPayment).toHaveBeenCalledTimes(1)
+      })
+
+      // The Checkout Pro redirect is requested inside that call, so the marker must
+      // already be in storage by then — the return has to be able to match it.
+      expect(markerAtPaymentInitiation).toBe(vi.mocked(submitOrder).mock.calls[0][0].orderId)
+    })
+
+    it('should not record a marker when the order registration fails (Task 0.11)', async () => {
+      vi.mocked(submitOrder).mockResolvedValue({
+        success: false,
+        orderId: 'PRONTO-TEST1234',
+        timestamp: new Date().toISOString(),
+        total: 189990,
+        itemsCount: 1
+      })
+
+      render(<CheckoutModal {...defaultProps} />)
+      completeDataEntry()
+      fireEvent.click(screen.getByText('Confirmar Pedido'))
+
+      await waitFor(() => {
+        expect(submitOrder).toHaveBeenCalledTimes(1)
+      })
+
+      expect(window.sessionStorage.getItem(SESSION_ORDER_STORAGE_KEY)).toBeNull()
     })
   })
 })

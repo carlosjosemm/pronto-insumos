@@ -581,10 +581,18 @@ Trust items absorb PromoStrip's unique messages — its Factura claim becomes it
 
 ### C.7 `PaymentReturnModal.tsx`
 
-| Location                    | Final string                                                                                                                     |
-| :-------------------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| Fulfillment line (line 103) | `Despacho desde Bodega Melipilla (Av. Ortúzar)`                                                                                  |
-| Comprobante box (line 118)  | `📄 Comprobante: Tu Boleta Electrónica (IVA 19%) será emitida por nuestro equipo y remitida a tu correo electrónico registrado.` |
+**Rewritten by Task 2.12 (2026-09-29).** The return URL is forgeable *and* is written by Mercado Pago before our webhook verifies the payment, so no string may claim an accredited payment — the modal states only what is known. Superseded strings: `¡Pago Confirmado Exitosamente!`, `Tu transacción ha sido acreditada vía Mercado Pago Chile / Webpay.`, `● Pago Acreditado (PAGADO)`, `Tu Boleta Electrónica (IVA 19%) será emitida por nuestro equipo y remitida a tu correo electrónico registrado.`
+
+| Location                            | Final string                                                                                                                                                                                                                                                                    |
+| :---------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Fulfillment line                    | `Despacho desde Bodega Melipilla (Av. Ortúzar)`                                                                                                                                                                                                                                 |
+| Comprobante box                     | `📄 Comprobante: Una vez acreditado el pago, emitiremos tu Boleta Electrónica (IVA 19%) y la enviaremos al correo electrónico registrado.`                                                                                                                                      |
+| `approved` title                    | `Recibimos tu Retorno de Pago`                                                                                                                                                                                                                                                  |
+| `approved` body                     | `Mercado Pago nos informó un pago aprobado. Estamos confirmando la acreditación con nuestro servidor de pagos y te avisaremos por correo electrónico en cuanto quede registrada en tu pedido.`                                                                                   |
+| `approved` status row               | `● Verificando acreditación`                                                                                                                                                                                                                                                    |
+| WhatsApp message (all states)       | `🏥 *COORDINACIÓN DE PEDIDO - PRONTO INSUMOS*` + `Hola, realicé el pago de mi pedido *{orderId}* vía Mercado Pago y quisiera confirmar los tiempos y condiciones de entrega para mi clínica.`                                                                                    |
+| New action (all three states)       | `Ver estado del pedido` — opens the dual-factor tracking modal with the order id prefilled; the RUT stays a field the customer types (never stored or prefilled)                                                                                                                |
+| `failure` / `pending` copy          | **unchanged** — `Pago No Completado o Rechazado` / `Pago en Proceso de Validación` and their bodies are still accurate; only the new `Ver estado del pedido` secondary action was added                                                                                        |
 
 ### C.8 `Footer.tsx`
 

@@ -20,6 +20,7 @@ As-built technical reference for the client-side integration layer of PRONTO Ins
 | [`firestoreEnv.ts`](./firestoreEnv.ts) | Client-side resolver: production (`orders`, `products`) vs isolated `dev_*` collections. | `import.meta.env` detector |
 | [`mercadopago.ts`](./mercadopago.ts) | `createMercadoPagoPreference()` → `POST /api/create-preference`; `processMercadoPagoPayment()` redirects to Checkout Pro `initPoint`. **No promo code is sent** — the endpoint resolves it from the order document it already registered. Also exports `MERCADOPAGO_PUBLIC_KEY` (`VITE_MERCADOPAGO_PUBLIC_KEY`). | Serverless `/api/create-preference` |
 | [`orderConfirmation.ts`](./orderConfirmation.ts) | Fire-and-forget proxy to `/api/order-confirmation` for transfer & WhatsApp-quote orders. Never throws; returns `boolean`. | Serverless `/api/order-confirmation` |
+| [`orderSession.ts`](./orderSession.ts) | Session order marker in `sessionStorage` (`pronto_session_order_v1`, Task 2.12): `rememberSessionOrderId()` / `getSessionOrderId()` / `isSessionOrder()` / `forgetSessionOrderId()`. It answers "did *this tab* create this order?" — the only condition under which the Mercado Pago return URL may reset the persisted cart. | Browser `sessionStorage` |
 | [`orderTracking.ts`](./orderTracking.ts) | `fetchOrderTracking()` → `/api/track-order` with client-side `validateRut` Modulo-11 gate first. | Serverless `/api/track-order` |
 | [`simulationPolicy.ts`](./simulationPolicy.ts) | `isSimulatedFallbackAllowed()` — client-side gate (Task 2.8): simulated fallbacks only outside a production runtime (`VITE_VERCEL_ENV`) or with the strict `VITE_ALLOW_SIMULATED_PAYMENTS='true'` opt-in. Injectable env → pure and unit-testable. | `import.meta.env` detector |
 | [`transferVoucher.ts`](./transferVoucher.ts) | `validateVoucherFile()` (PDF/PNG/JPG ≤ 5 MB — the client-side UX gate; the server re-validates), `resolveVoucherContentType()`, and `uploadTransferVoucher()` → **sign → direct PUT → confirm** against `/api/upload-voucher` + Cloud Storage (Task 2.9). | Serverless `/api/upload-voucher` + Firebase Storage (signed URL) |
@@ -116,6 +117,21 @@ interface CatalogResult {
 - **The promo is re-resolved on load (never trusted from storage):** `appliedPromo` is rebuilt with `resolvePromo(data.appliedPromo?.code)`, so a hand-edited `discountPercent`/`label` is discarded and a code that is no longer in `MOCK_PROMOS` is dropped entirely. The persisted percent/label are display snapshots — they must never reach a total (see [src/config/AGENTS.md](../config/AGENTS.md)).
 - **Load-time consolidation:** duplicate `product.id` lines are merged by summing quantities; invalid items filtered.
 - **`revalidateCartAgainstCatalog()`** on catalog arrival: removes discontinued/`!inStock`/zero-stock items, clamps quantity to live `stockCount` (default ceiling 99 when `stockCount` is absent), swaps in the live product object (price/spec sync), and returns `{ items, removedCount, adjustedCount, hasChanges }` for the UI toast.
+
+### 3.1 Session Order Marker (`orderSession.ts`) — Task 2.12
+
+`sessionStorage` key `pronto_session_order_v1`. The marker is the **only** thing that authorizes the payment-return flow to reset the persisted cart:
+
+| Function | Contract |
+| :--- | :--- |
+| `rememberSessionOrderId(orderId)` | Normalizes (`trim().toUpperCase()`) and stores the canonical id. Called by `CheckoutModal` **immediately after a successful `submitOrder()`** — before `processMercadoPagoPayment()` requests the Checkout Pro redirect, so the marker is already written when the browser leaves the tab. Empty/non-string ids and an unavailable store are silent no-ops. |
+| `getSessionOrderId()` | The marker or `null`; `null` on any storage error (warns). |
+| `isSessionOrder(orderId)` | `true` only for a normalized match. Fails safe: absent store, empty id, non-string or non-match ⇒ `false`, so a forged `?status=approved&orderId=…` can never reset a cart. |
+| `forgetSessionOrderId()` | Drops the marker once its return has been consumed (`App`'s mount effect, next to `clearCartFromStorage()`), so replaying the URL from history/bookmarks cannot wipe a cart the shopper refilled after paying. Idempotent. |
+
+- **Why `sessionStorage` and not `localStorage`:** the marker is per-tab and dies with the tab, and the Checkout Pro return is a same-tab `window.location.href` hop — so the marker survives the round trip while a crafted link opened elsewhere can never match it.
+- **Recorded residual (accepted):** if the payment is completed in a *different* context (a second tab, an MP app hand-off), the marker lives in the tab that created the order, so a return landing in another tab no longer purges the persisted cart (pre-2.12 every `status=approved` URL did). The cart is normally already purged at order creation, so this only affects a cart repopulated afterwards in another tab; the deliberate trade-off is that the URL alone must never destroy a cart.
+- **No PII:** the marker stores an order id only — never the customer's RUT or any identity field.
 
 ---
 
