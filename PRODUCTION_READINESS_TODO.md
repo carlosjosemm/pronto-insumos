@@ -237,10 +237,10 @@ This section separates source-level capability from independently verified produ
 
 <a id="task-4-4"></a>
 
-- [ ] **4.4. Admin Inventory Hook-Order Crash** _(P1)_
-  - **Evidence:** `src/admin/components/StockAdjustModal.tsx:18-23` returns before four hooks when `product` is absent; `src/admin/components/AdminInventory.tsx:99` mounts it unconditionally. Existing suite mounts with a product immediately and misses null→product rerender.
-  - **Fix:** conditionally mount from `AdminInventory` or hoist hooks so hook order is invariant.
-  - **Accept:** standalone null-to-product rerender test has no hook-order error and adjustment remains functional.
+- [x] **4.4. Admin Inventory Hook-Order Crash** _(P1)_
+  - **Evidence:** `src/admin/components/StockAdjustModal.tsx` returned before its four `useState` hooks when `product` was absent, while `src/admin/components/AdminInventory.tsx` mounted it unconditionally — a `react-hooks/rules-of-hooks` violation (4 lint errors under the react-hooks rule set). Existing suite mounted with a product immediately and missed the null→product rerender. **As built (2026-09-30):** React 18.3.1 does not actually throw on the zero-hook→four-hook transition — a render whose previous committed state is `memoizedState === null` is dispatched to the mount path, so no hook-count comparison runs — meaning the crash was latent, not observed. The violation and a stale-draft edge on product switch are nonetheless real.
+  - **Fix (as built):** `StockAdjustModal` returns from a hook-free guard and renders a keyed stateful `StockAdjustForm` only while a product exists; `AdminInventory` also mounts it conditionally. `src/tests/admin/StockAdjustModal.test.tsx` covers the null→product rerender and the A→B draft re-seed; `src/tests/admin/AdminInventory.test.tsx` covers the row→modal→submit path.
+  - **Accept:** met — the null→product rerender raises no hook-order violation and adjustment remains functional; `pnpm test` 870/870 (83 suites), `pnpm build` / `pnpm lint` / `pnpm format:check` / `pnpm exec tsc --noEmit` all clean.
 
 <a id="task-4-5"></a>
 

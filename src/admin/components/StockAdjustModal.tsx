@@ -10,13 +10,28 @@ interface StockAdjustModalProps {
   onSuccess: () => void
 }
 
-export const StockAdjustModal: React.FC<StockAdjustModalProps> = ({
-  product,
-  onClose,
-  onSuccess
-}) => {
+/**
+ * Keeps the hook order invariant. React requires the same hooks in the same
+ * order on every render; the prop accepts `null` so a caller may mount this
+ * unconditionally, and returning before any hook runs satisfies that contract.
+ * `AdminInventory` additionally mounts it only once a warehouse row is chosen.
+ * The stateful form is a separate component mounted only while a product
+ * exists, so its four `useState` calls never alternate with a zero-hook render
+ * — a pattern `react-hooks/rules-of-hooks` rejects, and which breaks the moment
+ * a hook is added above the guard.
+ */
+export const StockAdjustModal: React.FC<StockAdjustModalProps> = ({ product, onClose, onSuccess }) => {
   if (!product) return null
+  return <StockAdjustForm key={product.id} product={product} onClose={onClose} onSuccess={onSuccess} />
+}
 
+interface StockAdjustFormProps {
+  product: Product
+  onClose: () => void
+  onSuccess: () => void
+}
+
+const StockAdjustForm: React.FC<StockAdjustFormProps> = ({ product, onClose, onSuccess }) => {
   const [newStock, setNewStock] = useState(product.stockCount || 0)
   const [reason, setReason] = useState<StockAdjustmentReason>('reposicion')
   const [loading, setLoading] = useState(false)
