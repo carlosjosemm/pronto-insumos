@@ -165,6 +165,14 @@ export interface Order {
   quoteResolvedAt?: string
   quoteResolution?: 'CONVERTIDA' | 'DECLINADA'
   quoteResolvedBy?: string
+  // Partial-refund incident trail: server-written by the Mercado Pago webhook
+  // only. A partial refund keeps the payment `approved` and accumulates the
+  // returned money in `transaction_amount_refunded`, so the webhook stamps the
+  // payment id + cumulative amount as the durable dedup marker (a replay of the
+  // same refund state writes nothing; a higher amount is a new incident).
+  partialRefundPaymentId?: string
+  partialRefundAmount?: number
+  partialRefundAt?: string
   // Warehouse-alert budget for the "voucher received" email: server-written.
   // The stamp is a RESERVATION committed inside the confirm transaction (so concurrent
   // confirms serialize on the order document) and released best-effort when the Resend

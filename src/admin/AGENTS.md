@@ -148,6 +148,8 @@ Checkout's WhatsApp method creates a **lead, not a paid sale** — the order sta
 - **Declinar Cotización (sin rebajar stock)** (`resolution: 'decline'`) — for a refused quote, a customer who never replied (timeout) or a sale closed on other terms (the optional **Nota de cierre** records why, and can name a replacement order id). Sets `CANCELADO` with **no** stock movement and no customer email (the conversation already happened on WhatsApp); the warehouse gets the alert only.
 - **Guardrails:** only a pending quote can be resolved (`409` otherwise), re-resolving the target status returns `duplicate: true` with no second deduction (the success banner says so instead of claiming stock moved again), and cross-resolution is refused (`409` — a converted sale cannot be declined, a declined quote cannot be converted). The action never fabricates a Mercado Pago payment id.
 
+**Partial refunds (raised by the Mercado Pago webhook):** when part of a collected charge is returned, the webhook stamps the `partialRefundPaymentId`/`partialRefundAmount`/`partialRefundAt` marker fields on the order document and writes one `PAGO_REEMBOLSO_PARCIAL` event into the audit timeline (the stored Spanish `reason` renders beneath it) — the panel needs no new block because the order status never flips; the warehouse alert drives the manual reconciliation (ledger check, restock/contact decision per the manual SOP).
+
 ### 4.4 Decoupled Catalog Visibility (`isActive`) vs Physical Stock (`stockCount`)
 In `InventoryTable.tsx` and `AdminInventory.tsx`, warehouse stock and catalog visibility are clearly decoupled:
 - **`stockCount` (Physical Warehouse Count):** The real unit count in the Melipilla storage facility. If `stockCount === 0`, the product is flagged as **Agotado**.

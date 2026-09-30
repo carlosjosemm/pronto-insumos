@@ -168,6 +168,12 @@ export interface Order {
   // quote id and becomes the sale record, stamped `PAGADO_TRANSFERENCIA`) or
   // 'DECLINADA' (closed `CANCELADO` with no stock movement).
   quoteResolvedAt?: string; quoteResolution?: 'CONVERTIDA' | 'DECLINADA'; quoteResolvedBy?: string
+  // Partial-refund incident trail — server-written by the Mercado Pago webhook
+  // only. A partial refund keeps the payment `approved` and accumulates the
+  // returned money in `transaction_amount_refunded`, so the webhook stamps the
+  // payment id + cumulative amount as the durable dedup marker (a replay of the
+  // same refund state writes nothing; a higher amount is a new incident).
+  partialRefundPaymentId?: string; partialRefundAmount?: number; partialRefundAt?: string
   // Warehouse "voucher received" alert budget (Task 8.8) — server-written by
   // /api/upload-voucher inside the confirm transaction (a reservation released
   // best-effort when the Resend send fails). Never written by the client.

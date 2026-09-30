@@ -332,6 +332,9 @@ const WAREHOUSE_EVENT_LABELS: Record<string, string> = {
   PAGADO_TRANSFERENCIA: 'Venta de cotización WhatsApp confirmada (transferencia verificada)',
   PAGO_EN_REVISION: 'Pago Mercado Pago en revisión — monto inconsistente',
   CANCELADO: 'Pedido cancelado por administración',
+  // Part of a collected charge was returned by Mercado Pago while the payment
+  // stayed `approved` (raised by the webhook).
+  PAGO_REEMBOLSO_PARCIAL: 'Reembolso parcial detectado — revisión manual',
   // Reconciliation incidents raised by the Mercado Pago webhook.
   PAGO_DUPLICADO: 'Doble pago detectado — posible doble cobro',
   PAGO_ESTADO_INVALIDO: 'Pago aprobado para un pedido que no admite pago',
@@ -346,6 +349,8 @@ const WAREHOUSE_ACTION_HINTS: Record<string, string> = {
     'Cotización WhatsApp convertida en venta verificada: preparar y despachar el pedido.',
   PAGO_EN_REVISION:
     'El monto pagado no coincide con el total verificado del pedido. NO despachar: conciliar el pago en el portal /admin.',
+  PAGO_REEMBOLSO_PARCIAL:
+    'Parte del cobro fue devuelto por Mercado Pago (sin reembolso automático). Conciliar contra la ledger de Mercado Pago y decidir reposición de las unidades devueltas y contacto con el cliente según el SOP manual.',
   CANCELADO:
     'Pedido cancelado al conciliar un pago inconsistente. NO despachar: gestionar el reembolso manualmente si corresponde.',
   PAGO_DUPLICADO:
