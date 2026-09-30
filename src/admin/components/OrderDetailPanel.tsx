@@ -8,7 +8,8 @@ import {
   dispatchAdminOrder,
   markOrderDelivered,
   fetchOrderHistory,
-  resolvePaymentReview
+  resolvePaymentReview,
+  resolveQuote
 } from '../services/adminApi'
 import { CARRIER_LABELS, type CarrierType } from '../types'
 import type { Order, OrderStatusHistory } from '../../types'
@@ -29,6 +30,8 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   const [trackingCode, setTrackingCode] = useState('')
   const [transferReference, setTransferReference] = useState('')
   const [reviewNotes, setReviewNotes] = useState('')
+  const [quoteReference, setQuoteReference] = useState('')
+  const [quoteNotes, setQuoteNotes] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState('')
   const [actionSuccess, setActionSuccess] = useState('')
@@ -97,6 +100,38 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
       onOrderUpdated()
     } else {
       setActionError(res.error || 'Error al conciliar el pago en revisión')
+    }
+  }
+
+  const handleResolveQuote = async (resolution: 'convert' | 'decline') => {
+    if (resolution === 'convert' && quoteReference.trim().length === 0) {
+      setActionError('Verifica la venta fuera de la plataforma y registra la referencia antes de confirmar.')
+      return
+    }
+    setActionLoading(true)
+    setActionError('')
+    setActionSuccess('')
+    const res = await resolveQuote(
+      order.orderId,
+      resolution,
+      resolution === 'convert' ? quoteReference.trim() || undefined : undefined,
+      resolution === 'decline' ? quoteNotes.trim() || undefined : undefined
+    )
+    setActionLoading(false)
+    if (res.success) {
+      setActionSuccess(
+        res.duplicate
+          ? 'La cotización ya estaba cerrada; no se realizó ningún cambio adicional.'
+          : resolution === 'convert'
+            ? '¡Cotización convertida en venta verificada! Stock rebajado en bodega y cliente notificado.'
+            : 'Cotización cerrada sin venta. No se rebajó stock.'
+      )
+      setQuoteReference('')
+      setQuoteNotes('')
+      setHistoryRefreshKey(k => k + 1)
+      onOrderUpdated()
+    } else {
+      setActionError(res.error || 'Error al cerrar la cotización')
     }
   }
 
@@ -182,6 +217,10 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   // The Mercado Pago webhook flags a mismatch here instead of marking the order
   // paid — a human must reconcile before anything is dispatched.
   const isInPaymentReview = order.status === 'PAGO_EN_REVISION'
+
+  // A WhatsApp quote is a lead, not a paid sale: it leaves the quote state only
+  // through the operator's resolution (verified sale or declined/timeout close).
+  const isQuote = order.status === 'COTIZACION_SOLICITADA_WHATSAPP'
 
   // The real reason the order was parked lives in its history event: a duplicate
   // payment, an invalid source state or a refund/chargeback all land in
@@ -509,6 +548,71 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
                 >
                   <X size={16} />
                   <span>Cancelar Pedido (sin rebajar stock)</span>
+                </button>
+              </div>
+            )}
+
+            {isQuote && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.6rem',
+                  background: 'var(--accent-info-bg)',
+                  border: '1px solid var(--accent-info)',
+                  padding: '0.85rem',
+                  borderRadius: 'var(--radius-sm)'
+                }}
+              >
+                <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--accent-info)' }}>
+                  Cotización WhatsApp — verifica la venta fuera de la plataforma antes de confirmar.
+                </div>
+
+                <div className="admin-form-group">
+                  <label className="admin-label">Referencia de conciliación (obligatoria para confirmar la venta)</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    placeholder="Ej: cartola 30-09, abono $189.990"
+                    value={quoteReference}
+                    onChange={e => setQuoteReference(e.target.value)}
+                  />
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    Registra la cartola de Banco de Chile o el comprobante recibido. No ingreses credenciales bancarias.
+                  </div>
+                </div>
+
+                <div className="admin-form-group">
+                  <label className="admin-label">Nota de cierre (opcional al declinar)</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    placeholder="Ej: sin respuesta tras 7 días"
+                    value={quoteNotes}
+                    onChange={e => setQuoteNotes(e.target.value)}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={actionLoading || quoteReference.trim().length === 0}
+                  onClick={() => handleResolveQuote('convert')}
+                  className="admin-btn admin-btn-primary"
+                  style={{ width: '100%', padding: '0.7rem' }}
+                >
+                  <CheckCircle2 size={16} />
+                  <span>{actionLoading ? 'Procesando...' : 'Confirmar Venta y Rebajar Stock'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => handleResolveQuote('decline')}
+                  className="admin-btn admin-btn-danger"
+                  style={{ width: '100%', padding: '0.7rem' }}
+                >
+                  <X size={16} />
+                  <span>Declinar Cotización (sin rebajar stock)</span>
                 </button>
               </div>
             )}

@@ -168,6 +168,36 @@ export async function resolvePaymentReview(
   }
 }
 
+/**
+ * Closes a WhatsApp quote order. `resolution: 'convert'` settles the lead as a
+ * verified sale (PAGADO_TRANSFERENCIA, stock deducted server-side) and requires
+ * `reconciliationReference` — the operator's attestation that the off-platform
+ * payment settled (bank cartola line or receipt; never bank credentials).
+ * `resolution: 'decline'` closes it as CANCELADO with no stock movement.
+ */
+export async function resolveQuote(
+  orderId: string,
+  resolution: 'convert' | 'decline',
+  reconciliationReference?: string,
+  notes?: string
+): Promise<{ success: boolean; duplicate?: boolean; error?: string }> {
+  const headers = await getAuthHeaders()
+  try {
+    const res = await fetch('/api/admin/resolve-quote', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ orderId, resolution, reconciliationReference, notes })
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || `HTTP ${res.status}` }
+    }
+    return { success: true, duplicate: Boolean(data.duplicate) }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error de conexión' }
+  }
+}
+
 export async function dispatchAdminOrder(payload: DispatchOrderPayload): Promise<DispatchOrderResult> {
   const headers = await getAuthHeaders()
   try {
