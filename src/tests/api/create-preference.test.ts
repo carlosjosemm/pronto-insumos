@@ -8,18 +8,23 @@ vi.mock('../../../api/_lib/firebaseAdmin', () => ({
 
 import handler from '../../../api/create-preference'
 import { getAdminFirestore } from '../../../api/_lib/firebaseAdmin'
+import { resolvePromoPercent } from '../../../src/config/promos'
+import { computeOrderTotal } from '../../../src/utils/orderTotal'
+import { createThrottleCounters } from './helpers/throttleCounters'
 
 function createMockRes() {
   const res: Partial<VercelResponse> = {
     statusCode: 200,
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
-    end: vi.fn().mockReturnThis()
+    end: vi.fn().mockReturnThis(),
+    setHeader: vi.fn().mockReturnThis()
   }
   return res as VercelResponse & {
     status: ReturnType<typeof vi.fn>
     json: ReturnType<typeof vi.fn>
     end: ReturnType<typeof vi.fn>
+    setHeader: ReturnType<typeof vi.fn>
   }
 }
 
@@ -33,14 +38,45 @@ function createMockRes() {
  * Passing an explicit map also exercises the `where('orderId','==')` fallback,
  * because a fixture may key the document by an id that differs from its
  * `orderId` field.
+ *
+ * Order fixtures are normalized to a chargeable lifecycle by default —
+ * `paymentMethod: 'mercadopago'`, `status: 'PENDIENTE_PAGO_MERCADOPAGO'`, a
+ * `customer` block (Melipilla, so the zone minimum never interferes) and a
+ * `totalAmount` recomputed from the fixture's own catalog lines + promo code.
+ * Explicit fields on the fixture always win, so the lifecycle-guard tests can
+ * override any of them to build an unchargeable order.
  */
 function mockAdminDbWithProducts(
   products: Record<string, Record<string, unknown>>,
   orders: Record<string, Record<string, unknown>> = {}
 ) {
+  const normalizedOrders: Record<string, Record<string, unknown>> = Object.fromEntries(
+    Object.entries(orders).map(([id, order]) => {
+      const items = Array.isArray(order.items) ? (order.items as Array<Record<string, unknown>>) : []
+      const lines = items.map((item) => {
+        const productId = String(item.productId || item.id || '')
+        const price = Number(products[productId]?.price) || 0
+        const quantity = Math.max(1, Number(item.quantity) || 1)
+        return { price, quantity }
+      })
+      const defaults = {
+        paymentMethod: 'mercadopago',
+        status: 'PENDIENTE_PAGO_MERCADOPAGO',
+        customer: {
+          fullName: 'Dra. Camila Fuentes',
+          email: 'camila@clinica.cl',
+          rut: '12.345.678-5',
+          city: 'Melipilla'
+        },
+        totalAmount: computeOrderTotal(lines, resolvePromoPercent(order.promoCode))
+      }
+      return [id, { ...defaults, ...order }]
+    })
+  )
+
   return {
     collection: vi.fn().mockImplementation((collectionName: string) => {
-      const source = String(collectionName).includes('orders') ? orders : products
+      const source = String(collectionName).includes('orders') ? normalizedOrders : products
       return {
         doc: vi.fn().mockImplementation((id: string) => ({
           get: vi.fn().mockImplementation(async () => {
@@ -60,7 +96,11 @@ function mockAdminDbWithProducts(
           })
         }))
       }
-    })
+    }),
+    // The throttle counters are out of scope for this suite: a rejecting
+    // transaction puts the real throttle code on its fail-open path, which
+    // allows the request and logs loudly.
+    runTransaction: vi.fn().mockRejectedValue(new Error('no counters in this double'))
   }
 }
 
@@ -68,6 +108,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
   const initialEnv = process.env.MERCADOPAGO_ACCESS_TOKEN
   const initialVercelEnv = process.env.VERCEL_ENV
   const initialAllowSimulated = process.env.ALLOW_SIMULATED_PAYMENTS
+  const initialSiteUrl = process.env.SITE_URL
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -77,6 +118,9 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     // production with no override; the production-gate tests set VERCEL_ENV explicitly.
     delete process.env.VERCEL_ENV
     delete process.env.ALLOW_SIMULATED_PAYMENTS
+    // Canonical origin by default, so the lifecycle tests never depend on the
+    // Host header; the origin-behavior tests delete/override it explicitly.
+    process.env.SITE_URL = 'https://prontoinsumos.com'
   })
 
   afterAll(() => {
@@ -94,6 +138,11 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       delete process.env.ALLOW_SIMULATED_PAYMENTS
     } else {
       process.env.ALLOW_SIMULATED_PAYMENTS = initialAllowSimulated
+    }
+    if (initialSiteUrl === undefined) {
+      delete process.env.SITE_URL
+    } else {
+      process.env.SITE_URL = initialSiteUrl
     }
   })
 
@@ -189,7 +238,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
     const req = {
       method: 'POST',
-      headers: { host: 'pronto-insumos.cl' },
+      headers: { host: 'localhost:5173' },
       body: {
         orderId: 'PRONTO-777888',
         items: [
@@ -245,7 +294,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
     const req = {
       method: 'POST',
-      headers: { host: 'pronto-insumos.cl' },
+      headers: { host: 'localhost:5173' },
       body: {
         orderId: '  pronto-lowercase-123  ',
         items: [{ product: { id: 'odon-1', name: 'Item', price: 10000 }, quantity: 1 }],
@@ -296,7 +345,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-100001',
           items: [{ product: { id: 'odon-101', name: 'Turbina', price: 100 }, quantity: 1 }],
@@ -319,7 +368,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-100003',
           items: [{ product: { id: 'odon-101', name: 'Turbina', price: 189990 }, quantity: 2 }],
@@ -341,7 +390,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-100005',
           items: [{ product: { id: 'odon-101', name: 'Turbina', price: 189990 }, quantity: 1 }],
@@ -367,7 +416,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-100007',
           items: [{ product: { id: 'odon-101', name: 'Turbina', price: 189990 }, quantity: 1 }],
@@ -393,7 +442,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-100010',
           items: [{ product: { id: 'odon-999', name: 'Otro insumo', price: 1 }, quantity: 1 }],
@@ -417,7 +466,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-100011',
           customer: { fullName: 'Dr. Test' }
@@ -445,7 +494,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-100012',
           items: [{ product: { id: 'odon-101', name: 'Turbina', price: 189990 }, quantity: 1 }],
@@ -487,7 +536,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-100008',
           items: [{ product: { id: 'odon-101', name: 'Turbina', price: 189990 }, quantity: 1 }],
@@ -512,7 +561,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-999999',
           items: [{ product: { id: 'odon-101', name: 'Turbina', price: 189990 }, quantity: 1 }],
@@ -546,7 +595,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-100009',
           items: [{ product: { id: 'odon-101', name: 'Turbina', price: 189990 }, quantity: 1 }],
@@ -606,7 +655,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       const req = {
         method: 'POST',
-        headers: { host: 'pronto-insumos.cl' },
+        headers: { host: 'localhost:5173' },
         body: {
           orderId: 'PRONTO-100006',
           items: [{ product: { id: 'odon-101', name: 'Turbina', price: 189990 }, quantity: 1 }],
@@ -850,6 +899,391 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       expect(res.status).toHaveBeenCalledWith(500)
       consoleSpy.mockRestore()
+    })
+  })
+
+  describe('Preference lifecycle guards', () => {
+    const catalogTurbine = {
+      name: 'Turbina Odontológica LED MasterTorque',
+      price: 189990,
+      stockCount: 15,
+      inStock: true
+    }
+
+    function lifecycleDb(orderOverrides: Record<string, unknown>, orderId = 'PRONTO-200001') {
+      return mockAdminDbWithProducts(
+        { 'odon-101': catalogTurbine },
+        { [orderId]: { orderId, items: [{ productId: 'odon-101', quantity: 1 }], ...orderOverrides } }
+      )
+    }
+
+    function mpRequest(orderId = 'PRONTO-200001', body: Record<string, unknown> = {}) {
+      return {
+        method: 'POST',
+        headers: { host: 'localhost:5173' },
+        body: { orderId, ...body }
+      } as unknown as VercelRequest
+    }
+
+    /** Asserts an order fixture is refused with `status` and no MP call is made. */
+    async function expectRefused(status: number, orderOverrides: Record<string, unknown>, errorFragment: string) {
+      const mockAdminDb = lifecycleDb(orderOverrides)
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(status)
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining(errorFragment) }))
+      expect(fetchSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    }
+
+    it('refuses a settled order with 409', async () => {
+      await expectRefused(409, { status: 'PAGADO_MERCADOPAGO' }, 'no admite un nuevo pago')
+    })
+
+    it('refuses a transfer-pending order with 409', async () => {
+      await expectRefused(409, { status: 'PENDIENTE_TRANSFERENCIA' }, 'no admite un nuevo pago')
+    })
+
+    it('refuses a WhatsApp quote order with 409', async () => {
+      await expectRefused(409, { status: 'COTIZACION_SOLICITADA_WHATSAPP' }, 'no admite un nuevo pago')
+    })
+
+    it('refuses a cancelled order with 409', async () => {
+      await expectRefused(409, { status: 'CANCELADO' }, 'no admite un nuevo pago')
+    })
+
+    it('refuses an order parked in payment review with 409', async () => {
+      await expectRefused(409, { status: 'PAGO_EN_REVISION' }, 'no admite un nuevo pago')
+    })
+
+    it('refuses a non-Mercado-Pago order with 409 even while pending', async () => {
+      await expectRefused(409, { paymentMethod: 'transferencia' }, 'no admite un nuevo pago')
+    })
+
+    it('still creates a preference for a valid Mercado Pago pending order (regression pin)', async () => {
+      const mockAdminDb = lifecycleDb({})
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest(), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+      consoleSpy.mockRestore()
+    })
+
+    it('refuses with 409 when the stored total disagrees with the catalog-recomputed total', async () => {
+      await expectRefused(409, { totalAmount: 999 }, 'no coincide con el catálogo actual')
+    })
+
+    it('refuses a San Antonio order below the original-subtotal minimum with 400', async () => {
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-cheap': { name: 'Insumo Barato', price: 10000, stockCount: 10, inStock: true } },
+        {
+          'PRONTO-200006': {
+            orderId: 'PRONTO-200006',
+            customer: { fullName: 'Dra. Test', email: 't@clinica.cl', rut: '12.345.678-5', city: 'San Antonio' },
+            items: [{ productId: 'odon-cheap', quantity: 1 }]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest('PRONTO-200006'), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('compra mínima') })
+      )
+      expect(fetchSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('applies the minimum to the ORIGINAL subtotal: a discounted San Antonio order at the threshold passes', async () => {
+      // Catalog subtotal $60.000 exactly; the PRONTO10 promo discounts the
+      // payable total to $54.000 — the minimum is checked BEFORE the discount,
+      // the same way checkout gates it, so the preference is still created.
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-min': { name: 'Insumo Umbral', price: 60000, stockCount: 10, inStock: true } },
+        {
+          'PRONTO-200002': {
+            orderId: 'PRONTO-200002',
+            promoCode: 'PRONTO10',
+            customer: { fullName: 'Dra. Test', email: 't@clinica.cl', rut: '12.345.678-5', city: 'San Antonio' },
+            items: [{ productId: 'odon-min', quantity: 1 }]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest('PRONTO-200002'), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      const sentPayload = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+      expect(sentPayload.items[0].unit_price).toBe(54000) // 60000 × 0.9 — below the minimum, yet approved
+      consoleSpy.mockRestore()
+    })
+
+    it('applies no minimum to a Melipilla order', async () => {
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-cheap': { name: 'Insumo Barato', price: 10000, stockCount: 10, inStock: true } },
+        {
+          'PRONTO-200003': {
+            orderId: 'PRONTO-200003',
+            customer: { fullName: 'Dra. Test', email: 't@clinica.cl', rut: '12.345.678-5', city: 'Melipilla' },
+            items: [{ productId: 'odon-cheap', quantity: 1 }]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest('PRONTO-200003'), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+      consoleSpy.mockRestore()
+    })
+
+    it('builds the payer from the order document, ignoring the request body', async () => {
+      const mockAdminDb = lifecycleDb({})
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(
+        mpRequest('PRONTO-200001', {
+          customer: { fullName: 'Identidad Falsa', email: 'falso@evil.cl', rut: '99999999-9' }
+        }),
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      const sentPayload = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+      expect(sentPayload.payer).toMatchObject({
+        name: 'Dra. Camila Fuentes',
+        email: 'camila@clinica.cl',
+        identification: { type: 'RUT', number: '12.345.678-5' }
+      })
+      consoleSpy.mockRestore()
+    })
+
+    it('refuses an unsafe request Host outside production with 400', async () => {
+      delete process.env.SITE_URL
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const req = {
+        method: 'POST',
+        headers: { host: 'evil.example.com' },
+        body: { orderId: 'PRONTO-200004' }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('Origen de la solicitud no válido') })
+      )
+      expect(fetchSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('refuses public hostnames that merely share a private-IP prefix', async () => {
+      // `10.evil.com` starts with a private-octet prefix but is a public DNS
+      // name — the safe-shape check must not be fooled by the prefix.
+      delete process.env.SITE_URL
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const req = {
+        method: 'POST',
+        headers: { host: '10.evil.com' },
+        body: { orderId: 'PRONTO-200007' }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(fetchSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('accepts a private LAN IPv4 host over plain http (LAN-testing shape)', async () => {
+      delete process.env.SITE_URL
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const mockAdminDb = lifecycleDb({})
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const req = {
+        method: 'POST',
+        headers: { host: '192.168.1.50:5173' },
+        body: { orderId: 'PRONTO-200001' }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      const sentPayload = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+      expect(sentPayload.notification_url).toBe('http://192.168.1.50:5173/api/webhooks/mercadopago')
+      consoleSpy.mockRestore()
+    })
+
+    it('fails closed with 500 in a production runtime without SITE_URL', async () => {
+      delete process.env.SITE_URL
+      process.env.VERCEL_ENV = 'production'
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const req = {
+        method: 'POST',
+        headers: { host: 'pronto-insumos.vercel.app' },
+        body: { orderId: 'PRONTO-200005' }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(500)
+      expect(fetchSpy).not.toHaveBeenCalled()
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('SITE_URL missing or not a valid http(s) origin'))
+      consoleSpy.mockRestore()
+    })
+
+    it('builds every preference URL from SITE_URL in production and ignores the Host header', async () => {
+      process.env.VERCEL_ENV = 'production'
+      const mockAdminDb = lifecycleDb({})
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest('PRONTO-200001', {}), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      const sentPayload = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+      expect(sentPayload.back_urls.success).toBe('https://prontoinsumos.com/?status=approved&orderId=PRONTO-200001')
+      expect(sentPayload.back_urls.failure).toBe('https://prontoinsumos.com/?status=failure&orderId=PRONTO-200001')
+      expect(sentPayload.back_urls.pending).toBe('https://prontoinsumos.com/?status=pending&orderId=PRONTO-200001')
+      expect(sentPayload.notification_url).toBe('https://prontoinsumos.com/api/webhooks/mercadopago')
+      consoleSpy.mockRestore()
+    })
+
+    it('ignores a leaked SITE_URL outside production — a preview must never repoint at the production origin', async () => {
+      // SITE_URL is set by the suite's beforeEach, VERCEL_ENV is unset: the
+      // Host-derived origin wins, so a value synced to the wrong Vercel target
+      // cannot deliver preview webhooks to the production function.
+      const mockAdminDb = lifecycleDb({})
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest('PRONTO-200001', {}), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      const sentPayload = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+      expect(sentPayload.notification_url).toBe('http://localhost:5173/api/webhooks/mercadopago')
+      expect(sentPayload.back_urls.success).toContain('http://localhost:5173')
+      consoleSpy.mockRestore()
+    })
+
+    it('locks repeat preference creation after the per-order budget (429 + Retry-After)', async () => {
+      const counters = createThrottleCounters()
+      const orderDb = lifecycleDb({})
+      const mockAdminDb = {
+        collection: vi.fn((name: string) =>
+          String(name).includes('abuse_counters') ? counters.collection(name) : orderDb.collection(name)
+        ),
+        runTransaction: counters.runTransaction
+      }
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      // The per-order budget allows 15 attempts per window; the 16th is locked.
+      for (let attempt = 1; attempt <= 15; attempt++) {
+        const res = createMockRes()
+        await handler(mpRequest(), res)
+        expect(res.status).toHaveBeenCalledWith(200)
+      }
+      const lockedRes = createMockRes()
+      await handler(mpRequest(), lockedRes)
+
+      expect(lockedRes.status).toHaveBeenCalledWith(429)
+      expect(lockedRes.setHeader).toHaveBeenCalledWith('Retry-After', expect.any(String))
+      consoleSpy.mockRestore()
+    })
+
+    it('stays fail-open when the throttle counter is unavailable', async () => {
+      const mockAdminDb = lifecycleDb({})
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest(), res)
+
+      // The double's runTransaction rejects, the throttle logs loudly and the
+      // request proceeds — a counter outage never takes checkout down.
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+      errorSpy.mockRestore()
     })
   })
 })

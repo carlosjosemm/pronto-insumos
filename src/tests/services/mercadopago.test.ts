@@ -40,74 +40,73 @@ const mockItems: CartItem[] = [
   }
 ]
 
-describe('processMercadoPagoPayment', () => {
-  it('should return a successful payment result', async () => {
-    const result = await processMercadoPagoPayment({
-      orderId: 'PRONTO-500000',
-      items: mockItems,
-      total: 189.99,
-      customer: mockCustomer
-    })
+describe('processMercadoPagoPayment — success semantics (no fabricated paid state)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const baseParams = {
+    orderId: 'PRONTO-500000',
+    items: mockItems,
+    total: 189.99,
+    customer: mockCustomer
+  }
+
+  it('reports success only as "redirect initiated" and echoes the orderId', async () => {
+    // Dev simulation path: the endpoint is unreachable outside production, the
+    // demo flow may continue — but nothing about a payment is invented.
+    vi.spyOn(global, 'fetch').mockRejectedValueOnce(new TypeError('Network request failed'))
+
+    const result = await processMercadoPagoPayment({ ...baseParams, orderId: 'PRONTO-777777' })
 
     expect(result.success).toBe(true)
-  })
-
-  it('should return an approved status', async () => {
-    const result = await processMercadoPagoPayment({
-      orderId: 'PRONTO-500000',
-      items: mockItems,
-      total: 189.99,
-      customer: mockCustomer
-    })
-
-    expect(result.status).toBe('approved')
-    expect(result.statusDetail).toBe('accredited')
-  })
-
-  it('should return a payment ID starting with MP-', async () => {
-    const result = await processMercadoPagoPayment({
-      orderId: 'PRONTO-500000',
-      items: mockItems,
-      total: 189.99,
-      customer: mockCustomer
-    })
-
-    expect(result.paymentId).toMatch(/^MP-\d+$/)
-  })
-
-  it('should echo back the correct orderId', async () => {
-    const result = await processMercadoPagoPayment({
-      orderId: 'PRONTO-777777',
-      items: mockItems,
-      total: 189.99,
-      customer: mockCustomer
-    })
-
     expect(result.orderId).toBe('PRONTO-777777')
   })
 
-  it('should echo back the correct total paid', async () => {
-    const result = await processMercadoPagoPayment({
-      orderId: 'PRONTO-500000',
-      items: mockItems,
-      total: 245.5,
-      customer: mockCustomer
-    })
+  it('never fabricates a payment id, approved status or paid timestamp', async () => {
+    vi.spyOn(global, 'fetch').mockRejectedValueOnce(new TypeError('Network request failed'))
 
-    expect(result.totalPaid).toBe(245.5)
+    const result = await processMercadoPagoPayment(baseParams)
+
+    // The exact result shape: nothing beyond success/orderId(/initPoint) may
+    // exist, so a fabricated paymentId/status/paidAt cannot sneak back in.
+    expect(result).toEqual({ success: true, orderId: 'PRONTO-500000' })
   })
 
-  it('should include a valid ISO timestamp in paidAt', async () => {
-    const result = await processMercadoPagoPayment({
-      orderId: 'PRONTO-500000',
-      items: mockItems,
-      total: 189.99,
-      customer: mockCustomer
-    })
+  it('echoes the real initPoint and redirects when the endpoint provides one', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ initPoint: 'https://www.mercadopago.cl/checkout/v1/redirect?pref=123' })
+    } as Response)
 
-    expect(result.paidAt).toBeDefined()
-    const parsed = new Date(result.paidAt as string)
-    expect(parsed.getTime()).not.toBeNaN()
+    const result = await processMercadoPagoPayment(baseParams)
+
+    expect(result.success).toBe(true)
+    expect(result.initPoint).toBe('https://www.mercadopago.cl/checkout/v1/redirect?pref=123')
+  })
+
+  it('fails when the endpoint answers 200 without a redirect target (invalid MP success response)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true })
+    } as Response)
+
+    const result = await processMercadoPagoPayment(baseParams)
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('no devolvió un enlace de pago válido')
+    errorSpy.mockRestore()
+  })
+
+  it('keeps the dev simulation usable without inventing payment state', async () => {
+    vi.spyOn(global, 'fetch').mockRejectedValueOnce(new TypeError('Network request failed'))
+
+    const result = await processMercadoPagoPayment(baseParams)
+
+    expect(result.success).toBe(true)
+    expect(result.initPoint).toBeUndefined()
+    expect(result.error).toBeUndefined()
   })
 })
 
@@ -137,6 +136,32 @@ describe('createMercadoPagoPreference — Task 2.8 error contract', () => {
 
     expect(res.success).toBe(true)
     expect(res.initPoint).toBe('https://www.mercadopago.cl/checkout/v1/redirect?pref=123')
+  })
+
+  it('treats a 200 without a redirect target as a failure — never a silent success', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true })
+    } as Response)
+
+    const res = await createMercadoPagoPreference(params)
+
+    expect(res.success).toBe(false)
+    expect(res.error).toContain('no devolvió un enlace de pago válido')
+    errorSpy.mockRestore()
+  })
+
+  it('accepts a simulated 200 without a redirect target (dev fallback contract)', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true, isSimulated: true })
+    } as Response)
+
+    const res = await createMercadoPagoPreference(params)
+
+    expect(res.success).toBe(true)
+    expect(res.initPoint).toBeUndefined()
   })
 
   it('surfaces a real HTTP 400 stock rejection as an error — never simulates success', async () => {
@@ -222,8 +247,11 @@ describe('processMercadoPagoPayment — Task 2.8 failure propagation', () => {
 
     expect(res.success).toBe(false)
     expect(res.error).toBe('Stock insuficiente para uno o más productos')
-    expect(res.status).toBeUndefined()
-    expect(res.paymentId).toBeUndefined()
+    expect(res).toEqual({
+      success: false,
+      orderId: 'PRONTO-500000',
+      error: 'Stock insuficiente para uno o más productos'
+    })
   })
 })
 
