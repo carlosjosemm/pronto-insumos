@@ -150,6 +150,23 @@ describe('App Shopping Cart Persistence (localStorage)', () => {
     expect(screen.getByLabelText('Abrir Carro de Compras').querySelector('.cart-count-badge')).toHaveTextContent('2')
   })
 
+  it('should keep the saved cart when a failure return names a foreign order', async () => {
+    saveCartToStorage([{ product: MOCK_STORE_PRODUCT, quantity: 2 }], null)
+
+    window.history.replaceState({}, '', '/?status=failure&orderId=PRONTO-FORGED99')
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Retorno de Pago No Completado')).toBeInTheDocument()
+    })
+
+    // A failure return never clears the cart — only an approved return naming
+    // the order this tab created may.
+    expect(window.localStorage.getItem(CART_STORAGE_KEY)).not.toBeNull()
+    expect(screen.getByLabelText('Abrir Carro de Compras').querySelector('.cart-count-badge')).toHaveTextContent('2')
+  })
+
   it('should revalidate cart against live catalog stock on mount and display toast alert', async () => {
     // Saved cart has 15 units of MOCK_STORE_PRODUCT (whose catalog stockCount is 10)
     saveCartToStorage([{ product: MOCK_STORE_PRODUCT, quantity: 15 }], null)

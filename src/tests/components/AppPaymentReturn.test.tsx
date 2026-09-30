@@ -59,14 +59,37 @@ describe('App Mercado Pago Return Flow Handling', () => {
     expect(screen.getByLabelText(/RUT del Comprador/i)).toHaveValue('')
   })
 
+  it('should open the tracking flow from a failure return with the order id prefilled', async () => {
+    window.history.replaceState({}, '', '/?status=failure&orderId=PRONTO-998877')
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Retorno de Pago No Completado')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText('Verificar estado antes de reintentar'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Seguimiento de Pedido en Línea')).toBeInTheDocument()
+    })
+
+    // The payment-return modal steps aside; the RUT stays a second factor the
+    // customer types (never prefilled from the URL or from storage).
+    expect(screen.queryByText('Retorno de Pago No Completado')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/N° de Pedido/i)).toHaveValue('PRONTO-998877')
+    expect(screen.getByLabelText(/RUT del Comprador/i)).toHaveValue('')
+  })
+
   it('should detect status=failure in URL parameters and open failure modal', async () => {
     window.history.replaceState({}, '', '/?status=failure&orderId=PRONTO-998877')
 
     render(<App />)
 
     await waitFor(() => {
-      expect(screen.getByText('Pago No Completado o Rechazado')).toBeInTheDocument()
-      expect(screen.getByText(/No se ha realizado ningún cobro a tu tarjeta/i)).toBeInTheDocument()
+      expect(screen.getByText('Retorno de Pago No Completado')).toBeInTheDocument()
+      // The forgeable failure URL must never come back as a no-charge assurance.
+      expect(screen.queryByText(/No se ha realizado ningún cobro a tu tarjeta/i)).not.toBeInTheDocument()
       expect(window.location.search).toBe('')
     })
   })
@@ -112,7 +135,7 @@ describe('App Mercado Pago Return Flow Handling', () => {
     render(<App />)
 
     await waitFor(() => {
-      expect(screen.getByText('Pago No Completado o Rechazado')).toBeInTheDocument()
+      expect(screen.getByText('Retorno de Pago No Completado')).toBeInTheDocument()
     })
   })
 })

@@ -19,7 +19,6 @@ describe('PaymentReturnModal Component', () => {
     orderId: 'PRONTO-982341',
     paymentId: 'MP-12345678',
     onClose: vi.fn(),
-    onRetryPayment: vi.fn(),
     onTrackOrder: vi.fn()
   }
 
@@ -93,35 +92,28 @@ describe('PaymentReturnModal Component', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('should render failure status view with error advice, retry button and the tracking action', () => {
-    const onRetryPayment = vi.fn()
+  it('should render failure status view with honest advice, the verification action and no no-charge claim', () => {
     const onClose = vi.fn()
     const onTrackOrder = vi.fn()
-    render(
-      <PaymentReturnModal
-        {...defaultProps}
-        status="failure"
-        onRetryPayment={onRetryPayment}
-        onClose={onClose}
-        onTrackOrder={onTrackOrder}
-      />
-    )
+    render(<PaymentReturnModal {...defaultProps} status="failure" onClose={onClose} onTrackOrder={onTrackOrder} />)
 
-    expect(screen.getByText('Pago No Completado o Rechazado')).toBeInTheDocument()
-    expect(screen.getByText(/No se ha realizado ningún cobro a tu tarjeta/i)).toBeInTheDocument()
-    expect(screen.getByText(/Transferencia Bancaria Directa/i)).toBeInTheDocument()
+    expect(screen.getByText('Retorno de Pago No Completado')).toBeInTheDocument()
+    expect(screen.getByText(/no confirma el resultado del cobro/i)).toBeInTheDocument()
+    expect(screen.getByText(/Tus insumos continúan guardados/i)).toBeInTheDocument()
+    expect(screen.getByText(/Coordinar pago por WhatsApp/i)).toBeInTheDocument()
 
-    const retryBtn = screen.getByText('Reintentar / Opciones de Pago')
-    fireEvent.click(retryBtn)
-    expect(onRetryPayment).toHaveBeenCalledTimes(1)
+    // The forgeable failure URL must never come back as a no-charge assurance:
+    // the payment may have gone through with a delayed webhook.
+    expect(screen.queryByText(/No se ha realizado ningún cobro a tu tarjeta/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no pudo procesarse o fue cancelada/i)).not.toBeInTheDocument()
 
-    const closeBtn = screen.getByText('Cerrar')
-    fireEvent.click(closeBtn)
-    expect(onClose).toHaveBeenCalledTimes(1)
-
-    // A declined payment can still have registered a pending order.
-    fireEvent.click(screen.getByText('Ver estado del pedido'))
+    // The protected retry opens the dual-factor tracking flow instead of minting
+    // a second order/charge.
+    fireEvent.click(screen.getByText('Verificar estado antes de reintentar'))
     expect(onTrackOrder).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByText('Cerrar'))
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('should render pending status view with the tracking action and dismiss on action button', () => {

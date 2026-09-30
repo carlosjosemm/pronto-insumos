@@ -9,9 +9,11 @@ import {
   AlertCircle,
   MessageSquare,
   ExternalLink,
-  Building2
+  Building2,
+  RefreshCw
 } from 'lucide-react'
 import { fetchOrderTracking } from '../services/orderTracking'
+import { resumeMercadoPagoPayment } from '../services/mercadopago'
 import { uploadTransferVoucher, validateVoucherFile } from '../services/transferVoucher'
 import { OrderTrackingInfo } from '../types'
 import { formatCLP } from '../utils/currency'
@@ -38,6 +40,16 @@ function canUploadVoucher(status: string): boolean {
   return VOUCHER_UPLOAD_STATUSES.includes(status)
 }
 
+/**
+ * Only an online-payment order still genuinely awaiting payment may resume its
+ * Checkout Pro redirect. The serverless preference endpoint re-asserts the same
+ * lifecycle guard server-side (409 otherwise), so a stale tracking read can
+ * never double-bill a settled order.
+ */
+function canRetryPayment(status: string, method: string): boolean {
+  return status === 'PENDIENTE_PAGO_MERCADOPAGO' && method === 'mercadopago'
+}
+
 export default function OrderTrackingModal({
   isOpen,
   onClose,
@@ -59,6 +71,10 @@ export default function OrderTrackingModal({
   const [voucherUploading, setVoucherUploading] = useState<boolean>(false)
   const [voucherSuccess, setVoucherSuccess] = useState<string>('')
   const [voucherError, setVoucherError] = useState<string>('')
+
+  // Resume-payment state in tracking view
+  const [retrying, setRetrying] = useState<boolean>(false)
+  const [retryError, setRetryError] = useState<string>('')
 
   // Freeze the page behind the modal
   useScrollLock(isOpen)
@@ -87,6 +103,7 @@ export default function OrderTrackingModal({
     setTrackingData(null)
     setVoucherSuccess('')
     setVoucherError('')
+    setRetryError('')
 
     const cleanId = targetOrderId.trim().toUpperCase()
     if (!cleanId) {
@@ -169,6 +186,23 @@ export default function OrderTrackingModal({
       performSearch(trackingData.orderId, rut)
     } else {
       setVoucherError(res.error || 'Error al subir el comprobante.')
+    }
+  }
+
+  // Resume the Checkout Pro redirect for an order still awaiting payment. The
+  // adapter redirects the browser itself when it holds a real target; a success
+  // without one is the dev/preview simulation and is surfaced as such instead
+  // of a silent no-op, and a failure renders the server's message here.
+  const handleRetryPayment = async () => {
+    if (!trackingData) return
+    setRetryError('')
+    setRetrying(true)
+    const result = await resumeMercadoPagoPayment(trackingData.orderId)
+    setRetrying(false)
+    if (!result.success) {
+      setRetryError(result.error || 'No fue posible iniciar el pago. Por favor reintenta o cotiza por WhatsApp.')
+    } else if (!result.initPoint) {
+      setRetryError('Entorno de demostración: el reintento no inició un pago real.')
     }
   }
 
@@ -402,6 +436,34 @@ export default function OrderTrackingModal({
                   </div>
                 </div>
               </div>
+
+              {/* Resume-payment action — only an online-payment order still awaiting payment can be retried; the preference endpoint's lifecycle guard re-asserts this server-side (409 otherwise). */}
+              {canRetryPayment(trackingData.status, trackingData.paymentMethod) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleRetryPayment}
+                    disabled={retrying}
+                    style={{ width: '100%', justifyContent: 'center' }}
+                  >
+                    <RefreshCw size={17} />
+                    <span>{retrying ? 'Iniciando pago...' : 'Reintentar pago de este pedido'}</span>
+                  </button>
+                  {retryError && (
+                    <span
+                      style={{
+                        fontSize: '0.775rem',
+                        color: 'var(--danger)',
+                        fontWeight: '600',
+                        textAlign: 'center'
+                      }}
+                    >
+                      {retryError}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* 5-Step Visual Stepper */}
               <div

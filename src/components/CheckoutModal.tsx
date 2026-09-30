@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   CartItem,
   CustomerInfo,
@@ -22,10 +22,11 @@ import {
   FileText,
   ShieldAlert,
   Upload,
-  Truck
+  Truck,
+  PackageSearch
 } from 'lucide-react'
 import { submitOrder, generateOrderId } from '../services/api'
-import { rememberSessionOrderId } from '../services/orderSession'
+import { rememberSessionOrderId, getSessionOrderId } from '../services/orderSession'
 import { sendOrderConfirmationEmail } from '../services/orderConfirmation'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
 import { processMercadoPagoPayment } from '../services/mercadopago'
@@ -146,6 +147,14 @@ export default function CheckoutModal({
     city: DEFAULT_DELIVERY_ZONE,
     zip: ''
   })
+
+  // An order this tab already created may still be awaiting payment when the
+  // shopper re-enters checkout: the Mercado Pago return URL is forgeable and is
+  // written before the webhook verifies anything, so the storefront cannot know
+  // whether that earlier charge went through. Surface the id before a second
+  // order/charge can be minted; re-read per step change so a just-created order
+  // is never shown as the pending one.
+  const pendingSessionOrderId = useMemo(() => (isOpen && step === 1 ? getSessionOrderId() : null), [isOpen, step])
 
   if (!isOpen) return null
 
@@ -484,6 +493,41 @@ export default function CheckoutModal({
           <div key={step} className="checkout-panel">
             {step === 1 && (
               <form onSubmit={handleNextStep} style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+                {/* Pre-checkout notice: an order this tab already created may still be awaiting payment (the Mercado Pago return URL is forgeable and is written before the webhook verifies anything), so the shopper is directed to confirm its status before a second order/charge is minted. */}
+                {pendingSessionOrderId && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.6rem',
+                      background: 'var(--signal-soft)',
+                      border: '1px solid var(--signal-border)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.85rem 1rem',
+                      fontSize: '0.8rem',
+                      color: 'var(--warning)',
+                      lineHeight: '1.45'
+                    }}
+                  >
+                    <span>
+                      ⚠️ <strong>Pago pendiente de confirmar ({pendingSessionOrderId}):</strong> ya registraste un
+                      pedido que puede estar esperando la acreditación del pago. Verifica su estado antes de crear uno
+                      nuevo.
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        handleClose()
+                        onOpenTracking?.(pendingSessionOrderId, '')
+                      }}
+                      style={{ width: '100%', justifyContent: 'center' }}
+                    >
+                      <PackageSearch size={15} />
+                      <span>Ver estado del pedido</span>
+                    </button>
+                  </div>
+                )}
                 <div className="checkout-fields checkout-fields--single">
                   <div>
                     <label className="checkout-label" htmlFor="ck-fullname">

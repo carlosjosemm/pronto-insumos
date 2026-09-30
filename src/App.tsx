@@ -415,10 +415,6 @@ export default function App() {
         orderId={paymentReturn.orderId}
         paymentId={paymentReturn.paymentId}
         onClose={() => setPaymentReturn((prev) => ({ ...prev, isOpen: false }))}
-        onRetryPayment={() => {
-          setPaymentReturn((prev) => ({ ...prev, isOpen: false }))
-          setIsCheckoutOpen(true)
-        }}
         onTrackOrder={() => {
           setPaymentReturn((prev) => ({ ...prev, isOpen: false }))
           handleOpenTracking(paymentReturn.orderId)
