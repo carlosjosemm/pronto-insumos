@@ -105,7 +105,12 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
     })
     setActionLoading(false)
     if (res.success) {
-      setActionSuccess('¡Pedido marcado como despachado con courier asignado!')
+      const referenceLabel = res.referenceSource === 'manual' ? 'N° Guía' : 'Ref. Despacho'
+      setActionSuccess(
+        res.dispatchReference
+          ? `¡Pedido marcado como despachado! ${referenceLabel}: ${res.dispatchReference}`
+          : '¡Pedido marcado como despachado con courier asignado!'
+      )
       setHistoryRefreshKey(k => k + 1)
       onOrderUpdated()
     } else {
@@ -170,6 +175,15 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   // The Mercado Pago webhook flags a mismatch here instead of marking the order
   // paid — a human must reconcile before anything is dispatched.
   const isInPaymentReview = order.status === 'PAGO_EN_REVISION'
+
+  // Task 2.13 — the dispatch record: carrier + reference (the typed courier guía,
+  // or the internal route code minted by the dispatch handler).
+  const hasDispatchRecord = Boolean(order.dispatch || order.trackingNumber)
+  const dispatchCarrierLabel = order.dispatch?.carrier
+    ? (CARRIER_LABELS as Record<string, string>)[order.dispatch.carrier] || order.dispatch.carrier
+    : order.courier || 'No especificado'
+  const dispatchReference = order.dispatch?.reference || order.trackingNumber || ''
+  const dispatchReferenceLabel = order.dispatch?.referenceSource === 'generated' ? 'Ref. Despacho' : 'N° Guía'
 
   return (
     <div className="admin-slide-overlay" onClick={onClose}>
@@ -265,6 +279,32 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
               {order.customer?.address}, {order.customer?.city} (CP {order.customer?.zip || '9500000'})
             </div>
           </div>
+
+          {/* Dispatch record (Task 2.13) */}
+          {hasDispatchRecord && (
+            <div style={{ background: 'var(--surface-muted)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <div style={{ fontWeight: '800', fontSize: '0.85rem', color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Truck size={16} style={{ color: 'var(--teal-600)' }} />
+                <span>Despacho Registrado</span>
+              </div>
+              <div>
+                <strong>Courier:</strong> {dispatchCarrierLabel}
+              </div>
+              {dispatchReference && (
+                <div>
+                  <strong>{dispatchReferenceLabel}:</strong> {dispatchReference}
+                  {order.dispatch?.referenceSource === 'generated' && (
+                    <span style={{ color: 'var(--text-muted)' }}> (código interno)</span>
+                  )}
+                </div>
+              )}
+              {order.dispatch?.dispatchedAt && (
+                <div>
+                  <strong>Despachado el:</strong> {new Date(order.dispatch.dispatchedAt).toLocaleString('es-CL')}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Itemized Products Table */}
           <div>

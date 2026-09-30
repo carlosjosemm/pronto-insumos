@@ -152,6 +152,164 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
     )
   })
 
+  describe('Dispatch reference (Task 2.13)', () => {
+    const dispatchedOrder = (extra: Record<string, unknown>) => ({
+      orderId: 'PRONTO-123456',
+      status: 'DESPACHADO',
+      paymentMethod: 'mercadopago',
+      totalAmount: 189990,
+      items: [],
+      customer: {
+        rut: '12345678-5',
+        fullName: 'Dra. Andrea',
+        email: 'a@b.cl',
+        address: 'x',
+        city: 'Melipilla'
+      },
+      courier: 'Despacho Local Melipilla (Flota Directa)',
+      ...extra
+    })
+
+    async function track() {
+      const res = createMockRes()
+      await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12.345.678-5' } } as VercelRequest, res)
+      return res.json.mock.calls[0][0]
+    }
+
+    it('labels a generated route code as an internal dispatch reference, never as a guía', async () => {
+      mockOrderDb(
+        dispatchedOrder({
+          dispatch: {
+            carrier: 'despacho_local_melipilla',
+            reference: 'MEL-260929-07',
+            referenceSource: 'generated',
+            dispatchedAt: '2026-09-29T14:00:00.000Z',
+            dispatchedBy: 'bodega@pronto.cl'
+          }
+        })
+      )
+
+      const payload = await track()
+
+      expect(payload.fulfillment).toMatchObject({
+        currentStep: 4,
+        statusTitle: 'En Ruta / Despachado',
+        statusDescription: 'En tránsito con Despacho Local Melipilla (Flota Directa) (Ref. Despacho: MEL-260929-07).',
+        dispatchReference: 'MEL-260929-07',
+        dispatchReferenceSource: 'generated'
+      })
+      expect(payload.fulfillment.trackingNumber).toBeUndefined()
+    })
+
+    it('keeps the courier guía wording when the warehouse typed a real code', async () => {
+      mockOrderDb(
+        dispatchedOrder({
+          trackingNumber: 'STK-998877',
+          dispatch: {
+            carrier: 'starken',
+            trackingCode: 'STK-998877',
+            reference: 'STK-998877',
+            referenceSource: 'manual',
+            dispatchedAt: '2026-09-29T14:00:00.000Z',
+            dispatchedBy: 'bodega@pronto.cl'
+          }
+        })
+      )
+
+      const payload = await track()
+
+      expect(payload.fulfillment.statusDescription).toBe(
+        'En tránsito con Despacho Local Melipilla (Flota Directa) (N° Seguimiento: STK-998877).'
+      )
+      expect(payload.fulfillment).toMatchObject({
+        trackingNumber: 'STK-998877',
+        dispatchReference: 'STK-998877',
+        dispatchReferenceSource: 'manual'
+      })
+    })
+
+    it('falls back to the reference when a manual code has no top-level trackingNumber', async () => {
+      mockOrderDb(
+        dispatchedOrder({
+          dispatch: {
+            carrier: 'starken',
+            reference: 'STK-998877',
+            referenceSource: 'manual',
+            dispatchedAt: '2026-09-29T14:00:00.000Z',
+            dispatchedBy: 'bodega@pronto.cl'
+          }
+        })
+      )
+
+      const payload = await track()
+
+      expect(payload.fulfillment.statusDescription).toBe(
+        'En tránsito con Despacho Local Melipilla (Flota Directa) (N° Seguimiento: STK-998877).'
+      )
+      expect(payload.fulfillment.dispatchReferenceSource).toBe('manual')
+    })
+
+    it('treats a malformed referenceSource as generated, so an internal code is never called a guía', async () => {
+      mockOrderDb(
+        dispatchedOrder({
+          dispatch: {
+            carrier: 'despacho_local_melipilla',
+            reference: 'MEL-260929-07',
+            referenceSource: 'guia-falsa',
+            dispatchedAt: '2026-09-29T14:00:00.000Z',
+            dispatchedBy: 'bodega@pronto.cl'
+          }
+        })
+      )
+
+      const payload = await track()
+
+      expect(payload.fulfillment.dispatchReferenceSource).toBe('generated')
+      expect(payload.fulfillment.statusDescription).toContain('(Ref. Despacho: MEL-260929-07)')
+    })
+
+    it('ignores a non-string stored reference and keeps the legacy code-less copy', async () => {
+      mockOrderDb(
+        dispatchedOrder({
+          dispatch: {
+            carrier: 'despacho_local_melipilla',
+            reference: 12345,
+            referenceSource: 'generated',
+            dispatchedAt: '2026-09-29T14:00:00.000Z',
+            dispatchedBy: 'bodega@pronto.cl'
+          }
+        })
+      )
+
+      const payload = await track()
+
+      expect(payload.fulfillment.dispatchReference).toBeUndefined()
+      expect(payload.fulfillment.dispatchReferenceSource).toBeUndefined()
+      expect(payload.fulfillment.statusDescription).toBe('En tránsito con Despacho Local Melipilla (Flota Directa).')
+    })
+
+    it('never invents a reference for an order that was not dispatched', async () => {
+      mockOrderDb({
+        orderId: 'PRONTO-123456',
+        status: 'EN_PREPARACION',
+        totalAmount: 189990,
+        items: [],
+        customer: {
+          rut: '12345678-5',
+          fullName: 'Dra. Andrea',
+          email: 'a@b.cl',
+          address: 'x',
+          city: 'Melipilla'
+        }
+      })
+
+      const payload = await track()
+
+      expect(payload.fulfillment.dispatchReference).toBeUndefined()
+      expect(payload.fulfillment.dispatchReferenceSource).toBeUndefined()
+    })
+  })
+
   describe('Abuse throttling (Task 8.8)', () => {
     const ipHeaders = { 'x-real-ip': '200.83.10.4' }
     const matchingOrder = {

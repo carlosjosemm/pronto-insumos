@@ -1,250 +1,258 @@
-# Task 2.12: Payment-Return Modal Claims Success From URL Parameters Alone
+# Task 2.13: Internal Dispatch Reference for Courier-less Deliveries
 
-**Branch:** `fix/task-2.12-payment-return-trust-gap` (primary working tree — no worktree)
-**Base:** `main` @ **`eaf79da`** (clean, in sync with `origin/main` — verified `git log HEAD..origin/main` empty before branching)
+**Branch:** `feat/task-2.13-internal-dispatch-reference` (primary working tree — no worktree; cut from `origin/main` @ `eaf79da`, re-based onto `origin/main` @ `4b2a915` before the PR — see §0)
 **RequestFeedback:** true · **UserFacing:** true
-**Status:** **Implemented and verified — 817/817 tests (81 suites)**; `pnpm build`, `pnpm lint`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean. Adversarial review round 1 returned R1–R8 + P1–P2; every finding is disposed of in §8 (R1–R5 fixed, R6 accepted + documented, R7/R8/P2 fixed, P1 pre-existing and out of scope). Awaiting the explicit **"wrap up and proceed"** command before staging/committing.
-**Owner decisions:** **Proceed** approved 2026-09-29, with **D2 extended by the owner: the `Ver estado del pedido` action goes on all three states** (approved, pending **and** failure). D1/D3/D4 as recommended.
+**Status:** **Implemented, verified and reviewed — 860/860 tests (82 suites)** after the pre-PR rebase onto PR #30; `pnpm test`, `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` and the strict `api/**` tsc all clean. **Owner decisions D1–D5 approved 2026-09-29 ("proceed")** and implemented as recommended. Adversarial review round 1 returned M1–M3 + N1 (verdict *approve with findings*); every finding is disposed of in §6. Committed as `feat(dispatch): internal dispatch reference for courier-less deliveries (Task 2.13)`.
+
+---
+
+## 0. Post-Rebase Delta — What PR #30 (Task 2.12) Changed, and Why This Plan Still Holds
+
+`origin/main` moved from `eaf79da` to `4b2a915` (merge of **PR #30**, `fix(checkout): stop the payment-return URL from claiming an accredited payment and wiping the cart`, plus its Spanish flow-reference doc) while this branch was open. The rebase was **conflict-free in code** — every conflict was in shared documentation:
+
+| 2.12 change | Overlap with 2.13 | Adjustment made |
+| :--- | :--- | :--- |
+| `src/services/orderSession.ts` (new), `App.tsx`, `CheckoutModal.tsx`, `PaymentReturnModal.tsx` | None — 2.13 touches the dispatch/tracking path | No change; the replayed commit applies cleanly |
+| New suite `src/tests/services/orderSession.test.ts` (81 suites / 817 tests on `main`) | The count-bearing lines of `AGENTS.md`, `src/tests/AGENTS.md`, `PRODUCTION_READINESS_TODO.md` | Counts recomputed after the rebase: **82 suites / 860 tests** (817 + the 43 added here), `api/` is 13 suites, `services/` is 11 |
+| `src/tests/AGENTS.md` — the `sessionStorage` harness bullet + a Task 2.12 sentence on the `components/` bullet + `orderSession` in the `services/` bullet | Same bullets the 2.13 diff edits | Both sides kept: their `services/`/`sessionStorage`/`components` content **and** the `dispatchReference` + Task 2.13 sentences |
+| `PRODUCTION_READINESS_TODO.md` — 2.12 resolved (glance row dropped, §2 row added, §3 block removed) | 2.13 resolves itself in the same file | Both rows now live in §2 (2.13, then 2.12); both glance rows and both §3 blocks are gone; header + baseline refreshed to 860/860 (82 suites) |
+| `implementation_plan.md` — 2.12's plan was still in the file | This plan overwrote it on the branch | The 2.13 plan wins (the file is a per-task volatile artifact; 2.12's plan is preserved in its own PR history) |
+
+**Conclusion: no scope, design or decision changes** — 2.12 touched the payment-return/tracking-entry surface, 2.13 touches dispatch, the tracking *payload* and the backoffice.
 
 ---
 
 ## 1. Context & Problem Statement
 
-Reference: [`PRODUCTION_READINESS_TODO.md`](./PRODUCTION_READINESS_TODO.md) → **2.12 — Payment-Return Modal Claims Success From URL Parameters Alone** _(P2, not a launch blocker)_.
+Reference: `PRODUCTION_READINESS_TODO.md` → **2.13. Internal Dispatch Reference for Courier-less Deliveries** *(P2 — owner idea, 2026-09-29)*.
 
-### 1.1 What is wrong today
+**As built:** the order's tracking reference is a **free-text field the warehouse types at dispatch time** (`OrderDetailPanel` → "Código de Seguimiento / N° Guía" → `dispatch-order` → `trackingNumber` + `dispatch.trackingCode`). Nothing generates one, and there is no courier API. Task 0.15 made a blank code a supported state, so the default route — **Despacho Local Melipilla (Flota Directa)** — routinely ships with **no reference at all**: `track-order` renders `En tránsito con Despacho Local Melipilla (Flota Directa).` and the customer has nothing to quote on WhatsApp, while the warehouse has no handle to locate the parcel.
 
-`/?status=approved&orderId=…` is a **trivially forgeable** URL — and it is also the exact URL Mercado Pago is told to return the shopper to (`api/create-preference.ts:230-234`, `back_urls.success`) **before our webhook has verified anything**. The storefront treats that query string as proof of payment:
+**Goal:** mint a human-readable **internal dispatch reference** when the order is dispatched, so the manual `dispatch → delivered` flow emulates a courier system until one is integrated — while never masquerading as a courier guía.
 
-| # | Defect (as built) | Evidence |
-| :-- | :-- | :-- |
-| a | The modal asserts a completed payment: `¡Pago Confirmado Exitosamente!`, `Tu transacción ha sido acreditada vía Mercado Pago Chile / Webpay`, `● Pago Acreditado (PAGADO)` | `src/components/PaymentReturnModal.tsx:84-88`, `:120` |
-| b | The URL is parsed straight into that state, with no server round-trip | `src/App.tsx:50-98` (`parseUrlBootstrap`) → `:140` (`paymentReturn`) |
-| c | The same flag **empties the shopper's cart**: both lazy initializers bail out to empty when `approved`, and the mount effect purges storage | `src/App.tsx:123-127`, `:134-138`, `:240` |
+### 1.1 The four design questions the roadmap raises (as resolved here)
 
-### 1.2 Why it matters (and why it is only P2)
+| Roadmap question | Resolution |
+| :--- | :--- |
+| **(a) Semantics** — an internal dispatch code, not a courier guía | The reference is a **warehouse/route code** (`MEL-260929-07`), always labeled **"Referencia de Despacho"** — never "N° Guía" / "N° Seguimiento". Courier wording stays reserved for `trackingNumber`, which only exists when a real guía was typed. |
+| **(b) Override** — a real Starken/Chilexpress guía must replace it, and the model must tell them apart | `dispatch.reference` + **`dispatch.referenceSource: 'generated' \| 'manual'`**. A typed guía becomes the reference (`manual`) and still writes `trackingNumber`/`trackingCode` exactly as today. Re-dispatch **never downgrades** a manual reference to a generated one, and a generated reference stays **stable** across re-dispatches. |
+| **(c) Generation point** — payment transition vs. dispatch action | The **dispatch action** (`api/_lib/admin/dispatch-order.ts`) — the moment the parcel physically leaves the warehouse and the label is printed. The payment webhook/`approve-transfer` (the money authorities) are **not touched**: they run days earlier and would mint codes for orders that never ship. |
+| **(d) Customer value** — must add something the order id does not | **Zone + Chilean local date + daily sequence** (`MEL-260929-07`) = a genuine *driver route-sheet number*: "parcel #7 of today's Melipilla run". Surfaced in the tracking modal and in the `DESPACHADO` copy; superseded by a real guía when one exists. |
 
-The claim is **not** backed by the payment authority — only the verified webhook may mark `PAGADO_MERCADOPAGO` (root [`AGENTS.md`](./AGENTS.md) §4). Nothing is corrupted server-side (no stock moves, no status flips, no money is claimed), but:
+### 1.2 Owner decisions required (D1–D5)
 
-* a customer (or a staff member reading over their shoulder) is told the payment is accredited when it may still fail, be refunded, or never have existed;
-* a crafted or stale return link **destroys a real cart with no order behind it** — a genuine data-loss path for the shopper;
-* the honest, already-built answer to "did my payment go through?" is the dual-factor tracking flow (`/api/track-order` + `OrderTrackingModal`), which the modal never offers.
+| # | Decision | **Recommended** | Alternative (leaner / different) |
+| :-- | :--- | :--- | :--- |
+| **D1** | Reference format | `<ZONE>-<YYMMDD>-<NN>`, zone codes from `src/config/delivery.ts` → `MEL-260929-07` / `SAN-260929-03` | zone-free `DSP-260929-07` |
+| **D2** | Daily sequence | **Atomic counter doc** in a new server-only `dispatch_counters` collection (env-scoped `dev_dispatch_counters`), incremented inside the dispatch transaction — this is what makes it a route sheet | no counter: random suffix `MEL-260929-7K3Q` (no new collection, handler keeps its `batch`) |
+| **D3** | Generation point | `dispatch-order` only | mint at payment approval (`webhook` / `approve-transfer`) |
+| **D4** | Override model | `dispatch.reference` + `dispatch.referenceSource`; typed code ⇒ `manual` (and `trackingNumber` as today) | two always-parallel fields (guía + internal code shown together) |
+| **D5** | Customer surface | tracking modal line + `DESPACHADO` status copy + admin panel block | admin/warehouse only (no customer surface) |
 
-### 1.3 The roadmap's required fix (implemented verbatim, no more)
-
-> **Fix:** soften the copy to what is actually known ("Recibimos tu retorno de pago; confirmaremos por correo cuando se acredite") and add the `Ver estado del pedido` action (tracking needs the RUT the customer already typed); clear the cart only when a matching order was just created in this session.
-
-### 1.4 Explicitly out of scope (anti-overshooting)
-
-* **No server-side verification of the return URL.** `/api/track-order` already requires the order id **+ RUT**; the modal has only the id, and adding a public "is this order paid?" endpoint keyed by the id alone would re-open exactly the enumeration oracle Task 8.8 closed. The modal stays advisory; the authority remains the webhook + email + tracking.
-* **No change to `api/**`, `firestore.rules`, order statuses, or payment flow.** The backend is already correct (Task 0.14).
-* **The `failure` branch keeps its retry/transfer CTA as the primary action** (it claims no money moved) — but per the owner's decision it now **also** carries the `Ver estado del pedido` secondary action, so a declined payment whose order *was* registered (`PENDIENTE_PAGO_MERCADOPAGO`) can still be tracked. The tracking action therefore appears on **all three** states — see D2.
-* **No new state library, no new dependency, no CSS framework** — one tiny browser-storage module and copy/UX edits.
+**Explicit non-goals (anti-overshooting):** no new serverless function (the module lives in `api/_lib/` — function count stays **6/12**), no courier API integration, no backfill for orders dispatched before this task (they keep today's copy), no dispatch email, no `firestore.rules` change (see §3.H), no new env var.
 
 ---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-**No new credentials, no new environment variables, no `.env.example` change.** Nothing in this task needs a secret, an external console action, or a DNS change.
+**None — no new credentials, no `.env.example` change.**
 
-| # | Action | Where |
+| # | Note | Where |
 | :-- | :--- | :--- |
-| H1 | Review the softened Spanish copy (§3.4) — it is the customer-facing wording of a legal-adjacent claim, so the owner should confirm the phrasing. The strings are plain JSX text, text-only edits afterwards | This plan, §3.4 |
-| H2 | Deploy as usual (`pnpm dlx vercel@latest deploy --prod`) once merged — no migration, no rules change, no storage change | Terminal |
-
-*(The pre-existing human items — `pnpm run deploy:rules` for 0.12, the production storage check for 2.9, the optional dev TTL policy for 8.8 — are unchanged and **not** part of this task.)*
+| H1 | `dispatch_counters` is written **exclusively** through the Admin SDK (service account bypasses security rules) and is never read by a client — **no `firestore.rules` entry, no index, no TTL policy** required (the documents must persist; they *are* the sequence). | — |
+| H2 | Optional post-deploy spot check: dispatch a dev order and confirm `dispatch.reference` + the counter doc (`dev_dispatch_counters/MEL-YYMMDD`) in the Firebase console. | Manual |
 
 ---
 
 ## 3. Proposed Changes
 
-### 3.1 Files
+### 3.A `[NEW] api/_lib/dispatchReference.ts` — the reference authority (pure, unit-testable)
 
-| Action | File | Purpose |
-| :-- | :-- | :-- |
-| **[NEW]** | `src/services/orderSession.ts` | ~45-line sessionStorage helper: remembers the canonical order id **this tab created** and answers "is this returned id mine?" |
-| **[MODIFY]** | `src/App.tsx` | `parseUrlBootstrap()` gains `clearsCart` (approved **and** the returned id matches this tab's order); the mount effect consumes the marker (`forgetSessionOrderId`) on a match; `PaymentReturnModal` gets `onTrackOrder` wired to the tracking modal. `handleOrderSuccess` is **unchanged** from `main` |
-| **[MODIFY]** | `src/components/CheckoutModal.tsx` | `rememberSessionOrderId(result.orderId)` immediately after a successful `submitOrder()` — before payment initiation, so the redirect can never outrun the marker (review R4) |
-| **[MODIFY]** | `src/components/PaymentReturnModal.tsx` | Truthful `approved`/`pending` copy + `Ver estado del pedido` action + `onTrackOrder?: () => void` prop |
-| **[MODIFY]** | `src/tests/services/orderSession.test.ts` *(new suite)*, `src/tests/components/AppPaymentReturn.test.tsx`, `src/tests/components/AppCartPersistence.test.tsx`, `src/tests/components/PaymentReturnModal.test.tsx` | See §4 |
-| **[MODIFY]** | `src/services/AGENTS.md`, `src/components/AGENTS.md`, `src/tests/AGENTS.md`, `AGENTS.md`, `PRODUCTION_READINESS_TODO.md` | As-built docs + counts + checkbox (§5) |
-
-**No `[DELETE]`.** No type change in `src/types/index.ts` (nothing new is persisted in Firestore).
-
-### 3.2 `src/services/orderSession.ts` — the session marker (D1)
+Server-only, dependency-free, ESM `.js` specifiers per `api/AGENTS.md` §1.3. Lives under `_lib/` → **not counted** as a serverless function.
 
 ```ts
-export const SESSION_ORDER_STORAGE_KEY = 'pronto_session_order_v1'
+export const DISPATCH_REFERENCE_COLLECTION = 'dispatch_counters'
 
-/** Records the canonical order id created by this tab (Task 2.12). */
-export function rememberSessionOrderId(orderId: string): void
-/** The canonical order id this tab created, or null. */
-export function getSessionOrderId(): string | null
-/** True when `orderId` names the order this tab created (trim + upper-case normalized). */
-export function isSessionOrder(orderId: string | null | undefined): boolean
+/** 'generated' = minted by PRONTO (internal code) · 'manual' = typed by the warehouse (real guía). */
+export type DispatchReferencePlan =
+  | { kind: 'manual'; reference: string }
+  | { kind: 'keep'; reference: string; source: DispatchReferenceSource }
+  | { kind: 'mint' }
+
+/** Chilean local YYMMDD (America/Santiago) — a 21:00 Melipilla dispatch belongs to that local day. */
+export function chileanDateKey(date: Date): string            // '260929'
+
+/** 'Melipilla' → 'MEL' · 'San Antonio' → 'SAN' · unknown/legacy city → Melipilla's code. */
+export function resolveDispatchReferencePrefix(city?: string): string
+
+export function counterDocumentId(prefix: string, dateKey: string): string   // 'MEL-260929'
+export function formatDispatchReference(prefix: string, dateKey: string, sequence: number): string  // 'MEL-260929-07'
+
+/** Pure decision: typed code ⇒ manual · existing manual kept · existing generated kept · else mint. */
+export function planDispatchReference(input: {
+  typedCode?: string
+  existingReference?: string
+  existingSource?: DispatchReferenceSource
+}): DispatchReferencePlan
 ```
 
-* **`sessionStorage`, not `localStorage`:** the marker is per-tab and dies with the tab, matching "in this session". Mercado Pago's Checkout Pro redirect is a **same-tab** `window.location.href` hop (`src/services/mercadopago.ts:100`), so the marker survives the round trip; a different tab's forged link can never match it.
-* **Defensive by construction** (mirrors `cartStorage.ts`): `typeof window === 'undefined'` / missing `sessionStorage` / a throwing storage (`QuotaExceededError`, Safari private mode) → no throw, `getSessionOrderId()` → `null`, `isSessionOrder()` → `false` (fail-safe: no clear, no crash).
-* **Why a module and not inline `sessionStorage` calls in `App.tsx`:** the comparison rule (normalization, empty/null handling, storage absence) is the security-relevant part and must be unit-testable without rendering the app — same rationale as `cartStorage.ts`.
-* **No TTL needed** — the storage itself is scoped to the tab's lifetime.
+* Zone codes come from a **new export in `src/config/delivery.ts`** (§3.C) — the zone list is never re-declared in `api/` (root `AGENTS.md` §3.4 / `src/config/AGENTS.md` §1).
+* `chileanDateKey` mirrors `dashboard-stats.ts`'s `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' })` precedent.
+* Sequence is zero-padded to 2 (`01`), and grows naturally past 99 (`100`) — no truncation, no wrap.
 
-### 3.3 `src/App.tsx` — clear the cart only for our own order
+### 3.B `[MODIFY] api/_lib/admin/dispatch-order.ts` — mint / keep / override inside one transaction
+
+1. Gates (`OPTIONS`/`405`/`403`/`400`/`404`) and the doc-key-first + legacy-field-fallback resolution are **unchanged**.
+2. The current `db.batch()` becomes **`db.runTransaction()`** (all reads before writes, mirroring `approve-transfer`):
+   ```
+   tx.get(orderRef)                    → fresh snapshot (the decision must not race a re-dispatch)
+   plan = planDispatchReference({ typedCode, existingReference, existingSource })
+   if plan.kind === 'mint':
+       tx.get(counterRef)              → next = lastNumber + 1 (guarded: non-integer/absent ⇒ 1)
+       tx.set(counterRef, { lastNumber: next, updatedAt }, { merge: true })
+       reference = formatDispatchReference(prefix, dateKey, next)   // prefix from order.customer.city
+   tx.update(orderRef, { status: 'DESPACHADO', courier, updatedAt, dispatch: {...}, ...trackingNumber })
+   tx.set(historyRef, { ...audit event... })
+   ```
+3. `dispatch` block written: `{ carrier, reference, referenceSource, dispatchedAt, dispatchedBy }` + `trackingCode` when a code was typed — **and the previously stored `dispatch.trackingCode` is carried forward on a code-less re-dispatch** (the whole map is replaced by `update()`, so this also closes the small pre-existing inconsistency where a re-dispatch silently dropped the block's `trackingCode` while the top-level `trackingNumber` survived).
+4. Top-level `trackingNumber` semantics are **unchanged** (written only when a code is typed; omitted ⇒ untouched).
+5. History event: `metadata: { carrier, trackingNumber: code || null, dispatchReference: reference, referenceSource }`, `reason: 'Despachado vía <carrier> (N° Seguimiento: X)'` for a manual code / `'(Ref. Despacho: MEL-260929-07)'` for a generated one.
+6. Response gains `dispatchReference` + `referenceSource` (consumed by the admin panel).
+7. Fail-closed: any transaction failure ⇒ the existing `500` + loud `console.error` — a dispatch is never recorded without its reference.
+
+### 3.C `[MODIFY] src/config/delivery.ts` — zone → reference-code map (single source)
 
 ```ts
-interface UrlBootstrap {
-  hasParams: boolean
-  /** Task 2.12: true only when the return URL names the order THIS tab just created. */
-  clearsCart: boolean
-  paymentReturn: { … }
-  tracking: { … }
+/** Internal dispatch-reference prefix per zone (Task 2.13) — a warehouse code, never a courier guía. */
+export const DELIVERY_ZONE_REFERENCE_CODES: Record<DeliveryZone, string> = {
+  Melipilla: 'MEL',
+  'San Antonio': 'SAN'
 }
 ```
 
-* `parseUrlBootstrap()` keeps its module-scope/lazy-initializer contract (root `AGENTS.md` §8.4 — **not** moved into an effect): it normalizes the returned id (`trim().toUpperCase()`) and computes
-  `clearsCart = status === 'approved' && isSessionOrder(normalizedOrderId)`.
-* The `cart` / `appliedPromo` lazy initializers and the mount effect now key off `bootstrap.clearsCart` instead of `bootstrap.approved` (`App.tsx:124`, `:135`, `:240`). A forged/unknown/stale return URL therefore **preserves** the cart; the URL is still sanitized by `history.replaceState()` exactly as today (`hasParams` is unchanged).
-* A matched return also calls `forgetSessionOrderId()` (review R5) so replaying the URL from history/bookmarks cannot wipe a cart refilled after paying.
-* `handleOrderSuccess` keeps its `main` signature; the marker is written by `CheckoutModal` at the creation point (see §3.2 / review R4).
-* `PaymentReturnModal` gains `onTrackOrder`, wired to the existing `handleOpenTracking(paymentReturn.orderId)` after closing the payment modal — the tracking modal then opens with the order id prefilled.
+### 3.D `[MODIFY] src/types/index.ts` — domain contract
 
-### 3.4 `src/components/PaymentReturnModal.tsx` — copy + action
+```ts
+export type DispatchReferenceSource = 'generated' | 'manual'
 
-| Element | As built (approved) | Proposed |
-| :-- | :-- | :-- |
-| Title | `¡Pago Confirmado Exitosamente!` | **`Recibimos tu Retorno de Pago`** |
-| Body | `Tu transacción ha sido acreditada vía Mercado Pago Chile / Webpay.` | **`Mercado Pago nos informó un pago aprobado. Estamos confirmando la acreditación con nuestro servidor de pagos y te avisaremos por correo electrónico en cuanto quede registrada en tu pedido.`** |
-| Status row | `● Pago Acreditado (PAGADO)` | **`● Verificando acreditación`** |
-| Boleta note | `Tu Boleta Electrónica (IVA 19%) será emitida…` | **`Una vez acreditado el pago, emitiremos tu Boleta Electrónica (IVA 19%) y la enviaremos al correo electrónico registrado.`** |
-| WhatsApp CTA | `Coordinar Despacho por WhatsApp` (green primary) | **kept**, prefilled text softened (`COORDINACIÓN DE PEDIDO`; "realicé el pago … quisiera confirmar los tiempos y condiciones de entrega") |
-| New action | — | **`Ver estado del pedido`** (`btn-secondary`, `PackageSearch` icon) → `onTrackOrder()`, rendered only when `orderId && onTrackOrder` |
-| Order/payment id rows, `Continuar en la Tienda`, Escape/overlay/close behaviour | — | unchanged |
+// Order.dispatch
+dispatch?: {
+  carrier: 'starken' | 'chilexpress' | 'blue_express' | 'despacho_local_melipilla' | string
+  trackingCode?: string
+  reference?: string                 // Task 2.13 — server-written
+  referenceSource?: DispatchReferenceSource
+  dispatchedAt: string
+  dispatchedBy: string
+}
 
-`pending` gains the same **`Ver estado del pedido`** secondary action above `Entendido, Volver a la Tienda`; its copy is already truthful ("Mercado Pago está validando…") and stays. `failure` keeps `Reintentar / Opciones de Pago` as its primary and gains the tracking action as a secondary button, so all three states offer the same honest self-service path (D2 — owner decision, 2026-09-29).
+// OrderTrackingInfo.fulfillment
+dispatchReference?: string
+dispatchReferenceSource?: DispatchReferenceSource
+```
 
-**Decision D3 — no RUT is stored or prefilled.** Tracking stays dual-factor: the modal prefills only the order id, and the customer types the RUT they already know (the roadmap's parenthetical). Persisting a RUT in browser storage would be new PII at rest for a UX shortcut the task does not ask for.
+### 3.E `[MODIFY] api/track-order.ts` — customer copy + payload
 
-### 3.5 Deliberate non-changes (guardrail check)
+`DESPACHADO` branch:
+| State | `statusDescription` |
+| :--- | :--- |
+| Real guía (`trackingNumber`) | `En tránsito con <courier> (N° Seguimiento: <guía>).` *(unchanged)* |
+| Generated reference | `En tránsito con <courier> (Ref. Despacho: MEL-260929-07).` |
+| Neither (legacy) | `En tránsito con <courier>.` *(unchanged)* |
 
-* No new dependency (no state library, no date/util lib) — `lucide-react@^1.25.0` already provides `PackageSearch`.
-* No inline hex in the new styles: `var(--…)` tokens only (`btn-secondary` reuses the existing class).
-* No `api/**` edit, no rules edit, no new Firestore field, no CLP/RUT/IVA surface touched.
-* No `VITE_*` variable added.
+Payload adds `fulfillment.dispatchReference` + `fulfillment.dispatchReferenceSource`; `trackingNumber` unchanged. The simulated/dev payload is untouched.
+
+### 3.F `[MODIFY] src/components/OrderTrackingModal.tsx` — customer surface
+
+"Logística & Despacho" card gains two conditional lines, rendered by precedence so a manual dispatch (reference === guía) never shows a duplicate:
+* `N° Guía / Seguimiento: <trackingNumber>` when a real guía exists — **always wins**;
+* otherwise `Referencia de Despacho: <reference>` (with the *(código interno)* marker when `referenceSource === 'generated'`).
+
+Vanilla tokens only (`var(--…)`), no new CSS.
+
+### 3.G `[MODIFY] src/admin/services/adminApi.ts` + `src/admin/components/OrderDetailPanel.tsx` — backoffice
+
+* `dispatchAdminOrder()` returns the new `dispatchReference` / `referenceSource` (`DispatchOrderResult` in `src/admin/types.ts`, typed with the shared `DispatchReferenceSource`).
+* Success banner: `¡Pedido marcado como despachado! Ref. Despacho: MEL-260929-07` (guía when manual).
+* New compact **"Despacho"** block in the panel when `order.dispatch` exists — carrier label via `CARRIER_LABELS`, reference + source label, `dispatchedAt` (the audit timeline already carries `dispatchedBy`) — today the panel shows none of this.
+
+### 3.H `[MODIFY]` — none in `firestore.rules`
+
+`dispatch` is **already** absent from `isValidOrderCreate()`'s `keys().hasOnly([...])` and client `update`/`delete` on `orders` is denied outright (`firestore.rules`), so the new nested fields are server-written by construction. `src/tests/security/firestore-rules.test.ts`'s admin-only negative list already pins `dispatch` — no rules edit, no contract-drift risk.
+
+### 3.I `[DELETE]` — none.
 
 ---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-All suites mock at the boundary (Firebase/Firestore and `fetch` are already mocked in the affected suites); **no test may hit a network or a real storage backend**. Target: full suite green, ~5 s runtime.
+All boundaries mocked (Firestore Admin doubles, no network); deterministic dates injected into the pure helpers.
 
-### 4.1 `src/tests/services/orderSession.test.ts` — [NEW] (~10 cases)
+### 4.1 `[NEW] src/tests/api/dispatchReference.test.ts` (~14 tests)
 
-| # | Case | Asserts |
-| :-- | :-- | :-- |
-| 1 | `rememberSessionOrderId('PRONTO-ABCD1234')` then `getSessionOrderId()` | returns the canonical id; the key is `pronto_session_order_v1` |
-| 2 | `rememberSessionOrderId('  pronto-abcd1234 ')` | stored/normalized upper-case-trimmed (no duplicate-format drift vs. the URL param) |
-| 3 | `isSessionOrder` with the exact id / lower-case / padded | `true` in all three |
-| 4 | `isSessionOrder` with a different id, `''`, `null`, `undefined` | `false` — **never throws** |
-| 5 | No marker stored | `getSessionOrderId()` → `null`, `isSessionOrder(anything)` → `false` |
-| 6 | `rememberSessionOrderId('')` / non-string (`@ts-expect-error`) | no marker written, no throw |
-| 7 | `sessionStorage.setItem` throws (quota/private mode) | no throw + `console.warn` (spy) |
-| 8 | `window.sessionStorage` absent (`Object.defineProperty` to `undefined`, restored in `afterEach`) | no throw; `null` / `false` (fail-safe) |
-| 9 | `getSessionOrderId` when `getItem` throws | `null` + warn, no throw |
-| 10 | Marker survives a re-read; overwriting a second order id wins | last order created in the tab is the match |
+| # | Case |
+| :-- | :--- |
+| 1–3 | `chileanDateKey`: `2026-09-30T01:00Z` ⇒ `260929` (Santiago is UTC−3/−4 — the local-day boundary), midday UTC, and a `Date` in DST transition |
+| 4–6 | `resolveDispatchReferencePrefix`: `Melipilla`, `San Antonio`, case/accents/whitespace (`' san antonio '`), unknown/legacy/undefined city ⇒ `MEL` |
+| 7–8 | `formatDispatchReference`: `01` padding, `07`, `100` (no truncation); `counterDocumentId` shape |
+| 9–12 | `planDispatchReference`: typed code ⇒ `manual`; typed whitespace/`undefined` + existing `manual` ⇒ `keep(manual)`; + existing `generated` ⇒ `keep(generated)`; + nothing ⇒ `mint` |
+| 13–14 | Guards: a numeric code coerced (`998877`) ⇒ `manual`; an unknown `referenceSource` value falls back to `mint`/`keep` safely (never emits an undefined reference) |
 
-### 4.2 `src/tests/components/PaymentReturnModal.test.tsx` — [MODIFY]
+### 4.2 `[MODIFY] src/tests/api/admin/dispatch-order.test.ts` (~+10 tests, mock gains `runTransaction` + counter double)
 
-| # | Case | Asserts |
-| :-- | :-- | :-- |
-| 1 | `approved` render (updated) | new title/body present; **no** `¡Pago Confirmado Exitosamente!`, **no** `Pago Acreditado (PAGADO)`, **no** `/acreditada vía Mercado Pago/` (negative assertions pin the softened copy) |
-| 2 | `approved` + `onTrackOrder` + `orderId` | `Ver estado del pedido` renders; click → `onTrackOrder` called once |
-| 3 | `approved` **without** `onTrackOrder` prop | the action is **not** rendered (no dead button) |
-| 4 | `approved` **without** `orderId` | the action is **not** rendered |
-| 5 | `pending` + `onTrackOrder` | action renders and fires; existing `Entendido, Volver a la Tienda` still closes |
-| 6 | `failure` + `onTrackOrder` | decline copy unchanged; `Reintentar / Opciones de Pago` and `Cerrar` still work; the tracking action renders and fires |
-| 7 | WhatsApp link (existing Task 2.10 sentinel test) | still built through `whatsappLink()`; the message now says the payment was *made*, not *accredited* |
-| 8 | `isOpen=false` / `status=null` | renders nothing (unchanged) |
+* **Mint:** code-less dispatch ⇒ `dispatch.reference` matches `/^MEL-260929-\d{2}$/`, `referenceSource: 'generated'`, counter doc `dev_dispatch_counters/MEL-260929` incremented to `1`, **no** `trackingNumber` key (Task 0.15 contract preserved), no `undefined` anywhere (existing deep scan).
+* **Sequence:** a second dispatch ⇒ `-02`; a `San Antonio` order ⇒ `SAN-…` counter, independent sequence.
+* **Manual override:** typed code ⇒ `reference === code`, `referenceSource: 'manual'`, `trackingNumber` written as today.
+* **Re-dispatch:** code-less after generated ⇒ same reference, **counter not incremented**; code-less after manual ⇒ stays manual (never downgraded); typed code after generated ⇒ manual override.
+* **Legacy carry-forward:** an order with `dispatch.trackingCode` but no `reference` re-dispatched without a code keeps the block's `trackingCode`.
+* **Audit:** history `metadata.dispatchReference`/`referenceSource` + the two `reason` variants.
+* **Failure:** a throwing transaction ⇒ `500`, no partial write.
+* Existing 0.15 cases (blank/whitespace/numeric code, deep `undefined` scan, legacy field fallback) stay green, with the one `reason` assertion re-pointed to the new string.
 
-### 4.3 `src/tests/components/AppPaymentReturn.test.tsx` — [MODIFY]
+### 4.3 `[MODIFY] src/tests/api/track-order.test.ts` (~+4 tests)
 
-| # | Case | Asserts |
-| :-- | :-- | :-- |
-| 1 | `?status=approved&orderId=…&payment_id=…` (no session marker) | modal opens with the **new** copy, ids rendered, URL sanitized (`window.location.search === ''`) |
-| 2 | **NEW:** `Ver estado del pedido` from the return modal | `OrderTrackingModal` opens with the order id prefilled and the RUT field empty; the payment modal is closed |
-| 3 | `status=failure` / `status=pending` / `collection_status=…` (existing) | unchanged behaviour (regression pins) |
-| 4 | No status param | no modal (unchanged) |
+* `DESPACHADO` + generated reference ⇒ `(Ref. Despacho: MEL-260929-07)` and `fulfillment.dispatchReference`/`dispatchReferenceSource` in the payload.
+* `DESPACHADO` + manual guía ⇒ `(N° Seguimiento: …)`, source `manual`.
+* `DESPACHADO` legacy (neither) ⇒ current copy, both fields absent.
+* Non-dispatched statuses never expose a reference.
 
-*Drift note (review §e): the cart assertions (matching ⇒ cleared + marker consumed; foreign ⇒ preserved) landed in `AppCartPersistence.test.tsx` — the suite that already owns the cart fixtures — instead of here; coverage is equivalent to the original §4.3 case 1/2 intent.*
+### 4.4 `[MODIFY] src/tests/admin/OrderDetailPanel.test.tsx` (~+3 tests)
 
-### 4.4 `src/tests/components/AppCartPersistence.test.tsx` — [MODIFY]
+Generated reference renders as *Referencia de Despacho*; a manual guía renders as *N° Guía* and **never** as an internal reference; the success banner surfaces the minted reference (via the `adminApi` mock).
 
-| # | Case | Asserts |
-| :-- | :-- | :-- |
-| 1 | Existing "clears localStorage via the Mercado Pago return flow" → **rewritten** to seed `rememberSessionOrderId` first | cart cleared **and** the marker consumed (`sessionStorage` null) — the replay guard |
-| 2 | **NEW:** forged/foreign return URL with a cart present | `localStorage[pronto_cart_v1]` still populated, cart badge still shows the saved quantity (the data-loss path is closed; the discriminating case — proven to fail if the gate is reverted) |
-| 3 | Existing hydration/revalidation/`unavailable` cases | unchanged (regression pins) |
+### 4.5 Zero regression
 
-`sessionStorage` is cleared in `beforeEach`/`afterEach` of every touched component suite so the marker cannot leak between tests (the harness's `localStorage` mock is per-suite already).
+Every pre-existing suite must stay green (baseline: **794 tests / 80 suites**); `pnpm test`, `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit` and the strict `api/**` tsc all clean.
 
-### 4.5 `src/tests/components/CheckoutModal.test.tsx` — [MODIFY, 3 cases]
-
-The marker writer lives here, so the suite owns its coverage (review R3): the created order id is recorded after a successful submit; it is **already in storage when `processMercadoPagoPayment()` is called** (the redirect-ordering pin, review R4 — the mock reads `sessionStorage` at call time); and nothing is recorded when the registration fails (Task 0.11 path).
-
-### 4.6 Zero-regression statement
-
-Baseline **794 / 794 (80 suites)** on `eaf79da`. Final: **817 / 817 (81 suites)** — `orderSession` (+15) and the changed suites (`PaymentReturnModal` +3, `CheckoutModal` +3, `AppPaymentReturn` +1, `AppCartPersistence` +1). Every pre-existing test still passes; no test was skipped or deleted to make the suite green.
+**As executed:** **860/860 tests in 82 suites** (+43 tests, +1 suite on top of PR #30; 4 suites added or extended), all five gates green, plus the strict `api/**` tsc. Wall-clock on this machine is environment-bound (jsdom setup dominates) — the test bodies themselves run in ~8–12 s.
 
 ---
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
 | File | Update |
-| :-- | :-- |
-| `src/services/AGENTS.md` | §1.1 file map + a new bullet for `orderSession.ts` (sessionStorage key, normalization, fail-safe absence, why sessionStorage and not localStorage) |
-| `src/components/AGENTS.md` | §2.1 App contract bullet: the approved-return cart reset is now **session-matched** (`clearsCart`), never URL-only; §7.3 `PaymentReturnModal` rewritten (truthful copy, tracking action, `onTrackOrder`) |
-| `src/tests/AGENTS.md` | suite/test counts (3 occurrences), the `sessionStorage`-is-real-storage + jsdom-Proxy-spy note, and the new/changed suite descriptions (`orderSession`, the 2.12 cases in `AppPaymentReturn` / `AppCartPersistence` / `PaymentReturnModal` / `CheckoutModal`) |
-| `AGENTS.md` (root) | the three count-bearing lines (`:14`, `:138`, `:207`) + the §8.4 URL-bootstrap wording (review P2: "module scope" → "once per mount in a `useMemo`") |
-| `UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md` | **Appendix C.7** — the deck owns storefront copy, so the rewritten strings and the new action are registered there (review R2) |
-| `PRODUCTION_READINESS_TODO.md` | remove the 2.12 row from §1, add the resolved row to §2, delete the §3 Phase 2 block (the house convention — no `- [x]` items survive in §3), refresh the "Last updated" + baseline header |
+| :--- | :--- |
+| `api/AGENTS.md` | §6.2 `dispatch-order` row (transaction + reference) + new **§8.6** (format, counter, semantics, precedence, audit, customer surface, out-of-scope) + §8.5 gap #7 (raw carrier key → Task 2.16) |
+| `src/types/AGENTS.md` | §1 file map (`DispatchReferenceSource`), §2.4 tracking payload, §2.4c `Order.dispatch` |
+| `src/admin/AGENTS.md` | §1.2 *Marcar Despachado* bullet (the mint + override + panel block, replacing "There is no tracking-number generation anywhere in the system") |
+| `src/components/AGENTS.md` | §4.2 step 4 + new §4.2b (reference precedence in the modal) |
+| `src/config/AGENTS.md` | `delivery.ts` row: `DELIVERY_ZONE_REFERENCE_CODES` |
+| `src/tests/AGENTS.md` | counts (82/860) + the new `dispatchReference` suite + the `dispatch-order`/`track-order` Task 2.13 coverage |
+| root `AGENTS.md` | the three count-bearing lines (`:14`, `:138`, `:207`) |
+| `PRODUCTION_READINESS_TODO.md` | **2.13** ticked, moved to §2 Resolved, glance-table row removed; baseline header → 860/860 (82 suites) + "Last updated"; **new 2.16** (raw carrier key in customer copy) added to §1 and §3 |
 
-**Roadmap sync:** `PRODUCTION_READINESS_TODO.md` — §1 row removed, §2 row added, §3 Phase-2 block removed (the 8.8/2.11 precedent).
-
----
-
-## 6. Verification Gates (run before the code review)
-
-```bash
-pnpm test && pnpm build && pnpm lint && pnpm format:check && pnpm exec tsc --noEmit
-```
-
-Plus a manual read-through of the rendered modal copy (jsdom asserts the strings; the owner should eyeball the Spanish in a browser during wrap-up).
+**Branch:** `feat/task-2.13-internal-dispatch-reference` · **Commit:** `feat(dispatch): internal dispatch reference for courier-less deliveries (Task 2.13)` after the explicit *"wrap up and proceed"*.
 
 ---
 
-## 7. Open Decisions for the Owner
+## 6. Adversarial Review — Findings & Disposition
 
-| # | Decision | Recommendation |
-| :-- | :-- | :-- |
-| **D1** | Session marker in `sessionStorage` (`pronto_session_order_v1`) rather than `localStorage` | **Recommended** — per-tab lifetime, survives MP's same-tab redirect, cannot be matched by another tab's forged link |
-| **D2** | Add `Ver estado del pedido` to **all three** states | **DECIDED by the owner (2026-09-29): all three.** A declined payment can still have registered an order (`PENDIENTE_PAGO_MERCADOPAGO`), so the tracking path is offered there too; the failure branch keeps `Reintentar / Opciones de Pago` as its primary CTA |
-| **D3** | Do **not** store/prefill the RUT for the tracking action | **Recommended** — no new PII at rest; tracking stays dual-factor |
-| **D4** | Keep the green WhatsApp CTA as the primary button; the tracking action is a secondary button | **Recommended** — minimal visual churn; owner may invert if the tracking action should lead |
-
----
-
-## 8. Adversarial Review Disposition (round 1)
-
-Reviewer verdict: **APPROVE WITH FINDINGS** (8 findings + 2 pre-existing). Every finding is disposed of below; the two MAJOR items were documentation-completeness findings, not code defects.
+Round 1 (fresh-context reviewer, read-only): verdict **APPROVE WITH FINDINGS**. All gates re-verified by the reviewer; the new tests were proven revert-sensitive with a throwaway probe (20 failures against the pre-change tree).
 
 | # | Severity | Finding | Disposition |
-| :-- | :-- | :-- | :-- |
-| R1 | MAJOR | As-built docs + roadmap still described the pre-2.12 behaviour and carried stale 794/80 counts | **Fixed** — §5 applied in full: `src/services/AGENTS.md` §1.1 + new §3.1, `src/components/AGENTS.md` §2.1 + §7.3 + §4.1.2 note, `src/tests/AGENTS.md` (81/817 + the sessionStorage/jsdom-Proxy note + suite descriptions), root `AGENTS.md` (3 counts + §8.4 wording), `PRODUCTION_READINESS_TODO.md` (§1 row removed, §2 row added, §3 block deleted, header/baseline refreshed) |
-| R2 | MAJOR | Storefront copy rewritten without the Appendix C deck entry the repo mandates | **Fixed** — `UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md` C.7 rewritten with the new title/body/status row/Comprobante/WhatsApp strings, the new action, the superseded strings and the unchanged `failure`/`pending` copy; the `src/components/AGENTS.md` "do not edit without an Appendix C entry" note now records the Task 2.12 rewrite |
-| R3 | MINOR | The App-level marker write had no test (proved by revert) | **Fixed, and the design moved** — the write now lives in `CheckoutModal` (see R4) and is covered by 3 new cases; re-running the reviewer's revert experiment fails 2 of them (`should record the created order id…`, `should record the marker before Mercado Pago payment initiation`) |
-| R4 | MINOR | The marker was recorded after the MP redirect was requested | **Fixed** — `rememberSessionOrderId(result.orderId)` moved to immediately after the successful `submitOrder()`, before the confirmation email and before `processMercadoPagoPayment()`; `onOrderSuccess` reverts to its `main` signature, so `App.tsx`'s handler is untouched. The ordering is pinned by a test whose MP mock reads `sessionStorage` at call time |
-| R5 | MINOR | The marker was never consumed, so a replayed return URL still wiped a *new* cart | **Fixed** — `forgetSessionOrderId()` added and called in the same mount effect as `clearCartFromStorage()`; idempotency + throwing-store paths unit-tested; `AppCartPersistence` asserts the marker is gone after a matched return |
-| R6 | MINOR | An approved return that does not match no longer purges the persisted cart (cross-context returns) | **Accepted + documented** — deliberate trade-off: the URL alone must never destroy a cart. Residual recorded in `src/services/AGENTS.md` §3.1 ("Recorded residual (accepted)") with the affected scenario |
-| R7 | NIT | `implementation_plan.md` status contradicted the working tree | **Fixed** — this header + §3/§4 refreshed to the as-built state |
-| R8 | NIT | The canonical-id regex assertion was trivially satisfied by the suite's own `generateOrderId` mock | **Fixed by construction** — that assertion was replaced by the marker tests, which compare against the id actually passed to `submitOrder`; no regex remains |
-| P1 | MINOR (pre-existing) | The `failure` copy says "Tus insumos continúan guardados" although the MP flow already purged the cart, and "Reintentar" opens an empty checkout | **Out of scope** — pre-existing, unchanged by this task (which only adds the tracking action to that branch). Raised to the owner at wrap-up as a candidate follow-up item: the fix is a design decision (restore the pre-checkout cart snapshot vs. reword), not a copy edit |
-| P2 | NIT (pre-existing) | "URL bootstrap parsed at module scope" doc drift (it is a `useMemo`) | **Fixed** in the two docs touched by this task (root `AGENTS.md` §8.4, `src/components/AGENTS.md` §2.1) |
+| :-- | :--- | :--- | :--- |
+| M1 | Minor | A pre-2.13 guía (`dispatch.trackingCode` only) was not promoted into the plan, so a code-less re-dispatch minted a route code that **masked the real guía** in the admin panel while `track-order` still showed the guía — admin/customer divergence. | **Fixed:** the handler promotes `dispatch.trackingCode` into the plan inputs (`existingSource: 'manual'`), so a legacy re-dispatch keeps the guía and burns no counter. Two tests replace the old carry-forward case (promotion + a no-guía legacy order still mints). |
+| M2 | Minor | `DispatchOrderResult` re-declared the `'generated' \| 'manual'` union instead of importing `DispatchReferenceSource`. | **Fixed:** `src/admin/types.ts` now imports the shared type from `../types`. |
+| M3 | Minor | `implementation_plan.md` was stale (status, §3.F/§3.G wording) and its §5 under-scoped the repo's TODO convention. | **Fixed:** this revision — status, §3.F precedence, §3.G, §4.5 counts and §5 (full TODO move + baseline refresh + 2.16) all reconciled. |
+| N1 | Nit | New spies restored at the end of a test body instead of in an `afterEach`. | **Fixed (partially):** `src/tests/api/admin/dispatch-order.test.ts` gained `afterEach(() => vi.restoreAllMocks())` and dropped its inline restore; the panel suite keeps the file's existing convention (its new spies are the last cases in the file). |
+| P1 | Minor (pre-existing) | `dispatch-order` stores the raw `CarrierType` key in `courier`, so customers read *"En tránsito con despacho_local_melipilla"*. | **Not fixed here** (out of scope, pre-existing): recorded as **Task 2.16** in the roadmap, per the reviewer's recommendation. |
+| P2 | Nit (pre-existing) | Untyped `runTransaction` callback adds Vercel `TS7006` log noise (tracked by Task 8.2). | **Accepted:** matches every other handler (`approve-transfer`, `resolve-payment-review`, `upload-voucher`, the webhook); annotating with `FirebaseFirestore.Transaction` is what produces the `TS2503` noise 8.2 documents. |

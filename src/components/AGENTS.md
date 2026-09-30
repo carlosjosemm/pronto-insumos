@@ -313,10 +313,20 @@ stateDiagram-v2
 1. **Registrado:** Initial order entry in system (`PENDIENTE_PAGO_MERCADOPAGO` or `PENDIENTE_TRANSFERENCIA`).
 2. **Pago / Validación:** Payment confirmed via Mercado Pago webhook or transfer voucher uploaded (`TRANSFERENCIA_COMPROBANTE_SUBIDO` / `PAGADO_*`).
 3. **Preparación:** Order being verified, checked against ISP regulations, and packed in the Melipilla warehouse (`EN_PREPARACION`).
-4. **En Ruta:** Handed over to the local Melipilla fleet or regional logistics carrier with tracking number (`DESPACHADO`).
+4. **En Ruta:** Handed over to the local Melipilla fleet or regional logistics carrier, with a courier guía or the internal dispatch reference (`DESPACHADO`).
 5. **Entregado:** Successfully delivered and signed at clinic reception (`ENTREGADO`).
 
 (The numbered list mirrors the rendered `STEPS` labels in the component; the mermaid node names above are conceptual.)
+
+### 4.2b Dispatch Reference in the "En Ruta" Stage (Task 2.13)
+
+The *Logística & Despacho* card and the status copy show whatever identifier the parcel actually carries, and never conflate the two:
+
+* a real courier guía (`fulfillment.trackingNumber`) renders as **N° Guía / Seguimiento** — it always wins;
+* otherwise the internal route code minted by `dispatch-order` (`fulfillment.dispatchReference`, `dispatchReferenceSource: 'generated'`) renders as **Referencia de Despacho … (código interno)** — never worded as a guía;
+* pre-2.13 dispatches have neither field and keep the original code-less copy.
+
+The same precedence drives the `statusDescription` produced by `/api/track-order` (`Ref. Despacho:` vs `N° Seguimiento:`), so the modal and the API must stay aligned — full contract in [api/AGENTS.md](../../api/AGENTS.md) §8.6.
 
 ### 4.3 In-Modal Bank Transfer Voucher Upload
 

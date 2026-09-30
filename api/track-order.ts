@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import type { DispatchReferenceSource } from '../src/types'
 import { getAdminFirestore } from './_lib/firebaseAdmin.js'
 import { resolveOrderByCanonicalId, respondOrderLookupFailed } from './_lib/orderLookup.js'
 import { isSimulatedPaymentAllowed } from './_lib/simulationPolicy.js'
@@ -119,6 +120,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const orderData = resolvedOrder.data
 
+    // Task 2.13 — the dispatch reference: the admin-typed courier guía (`manual`)
+    // or the internal route code minted by `dispatch-order` (`generated`). An
+    // unknown `referenceSource` is treated as `generated`, so a malformed document
+    // can never label an internal code as a courier guía.
+    const dispatchReference =
+      typeof orderData.dispatch?.reference === 'string' && orderData.dispatch.reference.trim()
+        ? orderData.dispatch.reference.trim()
+        : undefined
+    const dispatchReferenceSource: DispatchReferenceSource | undefined = dispatchReference
+      ? orderData.dispatch?.referenceSource === 'manual'
+        ? 'manual'
+        : 'generated'
+      : undefined
+
     // Map order status to fulfillment step (1 to 5)
     let currentStep: 1 | 2 | 3 | 4 | 5 = 1
     let statusTitle = 'Pedido Registrado'
@@ -149,9 +164,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'DESPACHADO':
         currentStep = 4
         statusTitle = 'En Ruta / Despachado'
-        statusDescription = orderData.courier
-          ? `En tránsito con ${orderData.courier}${orderData.trackingNumber ? ` (N° Seguimiento: ${orderData.trackingNumber})` : ''}.`
-          : 'En tránsito hacia la dirección de tu clínica.'
+        if (!orderData.courier) {
+          statusDescription = 'En tránsito hacia la dirección de tu clínica.'
+        } else if (orderData.trackingNumber) {
+          statusDescription = `En tránsito con ${orderData.courier} (N° Seguimiento: ${orderData.trackingNumber}).`
+        } else if (dispatchReference) {
+          statusDescription =
+            dispatchReferenceSource === 'manual'
+              ? `En tránsito con ${orderData.courier} (N° Seguimiento: ${dispatchReference}).`
+              : `En tránsito con ${orderData.courier} (Ref. Despacho: ${dispatchReference}).`
+        } else {
+          statusDescription = `En tránsito con ${orderData.courier}.`
+        }
         break
       case 'ENTREGADO':
         currentStep = 5
@@ -209,7 +233,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         statusTitle,
         statusDescription,
         courier: orderData.courier || (orderData.customer?.city?.toLowerCase().includes('melipilla') ? 'Despacho Local Express Melipilla' : 'Starken / Chilexpress Regional'),
-        trackingNumber: orderData.trackingNumber
+        trackingNumber: orderData.trackingNumber,
+        dispatchReference,
+        dispatchReferenceSource
       }
     }
 
