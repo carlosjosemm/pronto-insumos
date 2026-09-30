@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (794 tests across 80 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (817 tests across 81 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -135,7 +135,7 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 80 suites / 794 tests)
+# Run all automated tests (Vitest, 81 suites / 817 tests)
 pnpm test
 
 # Run tests with live file watcher (or a V8 coverage report)
@@ -204,7 +204,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 794 tests pass
+pnpm test          # Ensure all 817 tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Sync environment variables to Vercel (DRY RUN by default — see §7.1)
@@ -291,7 +291,7 @@ Flat config: `js.configs.recommended` + `typescript-eslint` recommended + `react
 | Pattern | Where | Contract |
 | :--- | :--- | :--- |
 | `loading` derived from a request key, not `setState` in an effect | `App.tsx` | `loading === (loadedRequestKey !== catalogRequestKey)`. A filter change flips `loading` during render; the fetch only writes `loadedRequestKey` in its `finally`. |
-| URL bootstrap parsed once at module scope, consumed by lazy `useState` initializers | `App.tsx` (`parseUrlBootstrap`) | The mount effect performs **only** external side effects (`clearCartFromStorage`, `history.replaceState`). Never move the payment-return/tracking parsing back into an effect with `setState`. |
+| URL bootstrap parsed once per mount (`useMemo`), consumed by lazy `useState` initializers | `App.tsx` (`parseUrlBootstrap`) | The mount effect performs **only** external side effects (`clearCartFromStorage` + `forgetSessionOrderId` for a session-matched approved return, `history.replaceState`). Never move the payment-return/tracking parsing back into an effect with `setState`. |
 | Cart revalidation runs after the awaited fetch, reading a `cartRef` mirror | `App.tsx` | Keeps `cart` out of the effect's dependency array (which would re-fetch on every cart change) while still satisfying `exhaustive-deps`. |
 | Overlay state scoped by remount instead of a reset effect | `ProductQuickView` (`key={product.id}`), `OrderTrackingModal` (mounted only while open) | Callers **must** keep the `key` / the conditional render. Removing them silently reintroduces stale gallery/quantity/form state. |
 | Every state update in an auto-search effect happens after the `await` | `OrderTrackingModal` | The effect body itself must stay free of synchronous `setState`. |

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { saveCartToStorage, CART_STORAGE_KEY } from '../../services/cartStorage'
+import { rememberSessionOrderId, SESSION_ORDER_STORAGE_KEY } from '../../services/orderSession'
 import { Product, PromoCode } from '../../types'
 
 const MOCK_STORE_PRODUCT: Product = {
@@ -85,11 +86,13 @@ import { fetchProducts } from '../../services/api'
 describe('App Shopping Cart Persistence (localStorage)', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    window.sessionStorage.clear()
     vi.clearAllMocks()
   })
 
   afterEach(() => {
     window.localStorage.clear()
+    window.sessionStorage.clear()
     window.history.replaceState({}, '', '/')
   })
 
@@ -110,20 +113,41 @@ describe('App Shopping Cart Persistence (localStorage)', () => {
     })
   })
 
-  it('should clear localStorage when order succeeds via Mercado Pago return flow', async () => {
+  it('should clear localStorage when the approved return names the order this tab created', async () => {
     saveCartToStorage([{ product: MOCK_STORE_PRODUCT, quantity: 2 }], null)
     expect(window.localStorage.getItem(CART_STORAGE_KEY)).not.toBeNull()
+    rememberSessionOrderId('PRONTO-SUCCESS123')
 
     window.history.replaceState({}, '', '/?status=approved&orderId=PRONTO-SUCCESS123')
 
     render(<App />)
 
     await waitFor(() => {
-      expect(screen.getByText('¡Pago Confirmado Exitosamente!')).toBeInTheDocument()
+      expect(screen.getByText('Recibimos tu Retorno de Pago')).toBeInTheDocument()
     })
 
-    // localStorage should be cleared on success
+    // The matching order was created by this tab, so the cart reset is legitimate.
     expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBeNull()
+    // …and the marker is consumed, so replaying the same URL cannot wipe a cart
+    // the shopper refilled afterwards (Task 2.12).
+    expect(window.sessionStorage.getItem(SESSION_ORDER_STORAGE_KEY)).toBeNull()
+  })
+
+  it('should keep the saved cart when the approved return names an order this tab did not create (Task 2.12)', async () => {
+    saveCartToStorage([{ product: MOCK_STORE_PRODUCT, quantity: 2 }], null)
+
+    window.history.replaceState({}, '', '/?status=approved&orderId=PRONTO-FORGED99')
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Recibimos tu Retorno de Pago')).toBeInTheDocument()
+    })
+
+    // The URL alone is forgeable: with no matching order in this tab the cart
+    // must survive untouched (the pre-2.12 data-loss path).
+    expect(window.localStorage.getItem(CART_STORAGE_KEY)).not.toBeNull()
+    expect(screen.getByLabelText('Abrir Carro de Compras').querySelector('.cart-count-badge')).toHaveTextContent('2')
   })
 
   it('should revalidate cart against live catalog stock on mount and display toast alert', async () => {

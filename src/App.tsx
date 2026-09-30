@@ -17,6 +17,7 @@ import {
   clearCartFromStorage,
   revalidateCartAgainstCatalog
 } from './services/cartStorage'
+import { forgetSessionOrderId, isSessionOrder } from './services/orderSession'
 import { CartItem, Product, ProductCategory, PromoCode, Toast } from './types'
 import { CheckCircle2 } from 'lucide-react'
 import { computeCartTotal } from './utils/orderTotal'
@@ -27,8 +28,12 @@ type PaymentReturnStatus = 'approved' | 'failure' | 'pending' | null
 interface UrlBootstrap {
   /** True when the URL carried payment-return or tracking parameters to consume. */
   hasParams: boolean
-  /** Set when the shopper landed back from Mercado Pago with a status. */
-  approved: boolean
+  /**
+   * True only when an approved return names the order THIS tab just created
+   * (Task 2.12) — the URL alone is forgeable and Mercado Pago writes it before
+   * the webhook verifies the payment, so it may never reset the cart on its own.
+   */
+  clearsCart: boolean
   paymentReturn: {
     isOpen: boolean
     status: PaymentReturnStatus
@@ -50,7 +55,7 @@ interface UrlBootstrap {
 function parseUrlBootstrap(): UrlBootstrap {
   const empty: UrlBootstrap = {
     hasParams: false,
-    approved: false,
+    clearsCart: false,
     paymentReturn: { isOpen: false, status: null, orderId: '', paymentId: '' },
     tracking: { isOpen: false, orderId: '', rut: '' }
   }
@@ -60,6 +65,7 @@ function parseUrlBootstrap(): UrlBootstrap {
   const rawStatus = (params.get('status') || params.get('collection_status') || '').toLowerCase().trim()
   const orderIdParam = params.get('orderId') || params.get('external_reference')
   const paymentIdParam = params.get('payment_id') || params.get('collection_id')
+  const normalizedOrderId = orderIdParam ? orderIdParam.trim().toUpperCase() : ''
 
   let status: PaymentReturnStatus = null
   if (rawStatus === 'approved') {
@@ -75,11 +81,13 @@ function parseUrlBootstrap(): UrlBootstrap {
 
   const bootstrap: UrlBootstrap = {
     hasParams: Boolean(status) || shouldTrack,
-    approved: status === 'approved',
+    // Task 2.12: an approved return only resets the cart when it names the order
+    // this tab created — a forged or foreign URL must leave the cart untouched.
+    clearsCart: status === 'approved' && isSessionOrder(normalizedOrderId),
     paymentReturn: {
       isOpen: Boolean(status),
       status,
-      orderId: orderIdParam ? orderIdParam.trim().toUpperCase() : '',
+      orderId: normalizedOrderId,
       paymentId: paymentIdParam ? paymentIdParam.trim() : ''
     },
     tracking: { isOpen: false, orderId: '', rut: '' }
@@ -121,7 +129,7 @@ export default function App() {
   const loading = loadedRequestKey !== catalogRequestKey
 
   const [cart, setCart] = useState<CartItem[]>(() => {
-    if (bootstrap.approved) return []
+    if (bootstrap.clearsCart) return []
     const stored = loadCartFromStorage()
     return stored ? stored.items : []
   })
@@ -132,7 +140,7 @@ export default function App() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false)
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null)
   const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(() => {
-    if (bootstrap.approved) return null
+    if (bootstrap.clearsCart) return null
     const stored = loadCartFromStorage()
     return stored ? stored.appliedPromo : null
   })
@@ -234,10 +242,15 @@ export default function App() {
 
   // Consume the payment-return / tracking parameters. The state they seed was
   // already created by the lazy initializers above; this effect only performs
-  // the external side effect of tidying the address bar.
+  // the external side effects of resetting the matched cart and tidying the
+  // address bar. The session marker is dropped with it (Task 2.12) so a replayed
+  // return URL cannot wipe a cart the shopper refilled after paying.
   useEffect(() => {
     if (!bootstrap.hasParams || typeof window === 'undefined') return
-    if (bootstrap.approved) clearCartFromStorage()
+    if (bootstrap.clearsCart) {
+      clearCartFromStorage()
+      forgetSessionOrderId()
+    }
     try {
       const cleanUrl = window.location.pathname + window.location.hash
       window.history.replaceState({}, document.title, cleanUrl)
@@ -405,6 +418,10 @@ export default function App() {
         onRetryPayment={() => {
           setPaymentReturn((prev) => ({ ...prev, isOpen: false }))
           setIsCheckoutOpen(true)
+        }}
+        onTrackOrder={() => {
+          setPaymentReturn((prev) => ({ ...prev, isOpen: false }))
+          handleOpenTracking(paymentReturn.orderId)
         }}
       />
 

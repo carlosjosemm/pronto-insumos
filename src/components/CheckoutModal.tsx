@@ -25,6 +25,7 @@ import {
   Truck
 } from 'lucide-react'
 import { submitOrder, generateOrderId } from '../services/api'
+import { rememberSessionOrderId } from '../services/orderSession'
 import { sendOrderConfirmationEmail } from '../services/orderConfirmation'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
 import { processMercadoPagoPayment } from '../services/mercadopago'
@@ -359,6 +360,12 @@ export default function CheckoutModal({
       setIsSubmitting(false)
       return
     }
+
+    // Task 2.12: record the order this tab created before any payment step runs, so
+    // the Mercado Pago return (which is a redirect away and back) can be matched
+    // against it. Written here — not after payment initiation — because the redirect
+    // is requested inside `processMercadoPagoPayment`.
+    rememberSessionOrderId(result.orderId)
 
     // Fire-and-forget transactional "order received" email for methods without a
     // server-side payment touchpoint (Mercado Pago confirmations come from the webhook).

@@ -2,8 +2,8 @@
 
 A working task list, not a changelog. Finished work is one line in §2; its as-built detail lives in the `AGENTS.md` of the directory it touches. Open tasks keep their IDs (they are referenced from code comments and `AGENTS.md` files) — do not renumber.
 
-**Last updated:** 2026-09-29 (Task 2.10 — WhatsApp single source; Task 8.8 — public-endpoint enumeration & abuse throttling; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision; **Phase 7 — 7.1 legal sign-off & 7.2 custom `.cl` domain — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
-**Baseline (verified 2026-09-29, after the Task 0.14, 2.11, 2.10 and 8.8 work):** `pnpm test` 794/794 (80 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
+**Last updated:** 2026-09-29 (Task 2.12 — payment-return trust gap; Task 2.10 — WhatsApp single source; Task 8.8 — public-endpoint enumeration & abuse throttling; **Phase 3 — 3.1, 3.2, 3.3 — suspended** by owner decision; **Phase 7 — 7.1 legal sign-off & 7.2 custom `.cl` domain — suspended** by owner decision) · **Market:** Melipilla & San Antonio, Chile · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze plan since 2.9) · Mercado Pago Chile · Resend
+**Baseline (verified 2026-09-29, after the Task 0.14, 2.11, 2.10, 8.8 and 2.12 work):** `pnpm test` 817/817 (81 suites) · `pnpm lint`, `pnpm build`, `pnpm format:check` and `pnpm exec tsc --noEmit` all clean · `api/` type-checks clean under `--strict --target es2022`.
 
 **Priorities:** **P1** = fix before real traffic · **P2** = fix soon after / before a marketed launch · **P3** = polish & DevOps.
 
@@ -15,7 +15,6 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | :-- | :-- | :-: | :-: |
 | 3.1 | Per-zone shipping rates below the free-shipping threshold — **suspended (Phase 3)** | P1 | **Yes** |
 | 7.2 | Custom `.cl` domain + SSL — **suspended (owner decision)** | P1 | **Yes** |
-| 2.12 | Payment-return modal claims "Pago Confirmado" from URL params alone | P2 | No |
 | 2.13 | Internal dispatch reference for courier-less deliveries (auto-generated tracking id) | P2 | No |
 | 2.15 | Voucher storage follow-ups (unconfirmed uploads, legacy base64 docs) | P2 | No |
 | 3.2 | Estimated delivery windows in cart/checkout — **suspended (Phase 3)** | P2 | No |
@@ -78,6 +77,7 @@ A working task list, not a changelog. Finished work is one line in §2; its as-b
 | 2.11 | `fetchProducts()` returns a source-aware `CatalogResult`: production never serves the `odon-*` fixtures (rejection/empty/timeout → `unavailable` + retryable card, 10 s bound), the persisted cart is revalidated **only** from `source: 'firestore'`, and `CategoryFilter` counts the live unfiltered catalog instead of the prototype fixtures. **Owner decision (A):** the `isActive` filter is _not_ applied to the dev-only fixture fallback — fixtures are unreachable in production after this change, so the filter's purpose is already met. |
 | 2.10 | WhatsApp single source completed: `PaymentReturnModal` (stale `56912345678` fallback) and `src/services/whatsapp.ts` (second env read) now resolve through `whatsappLink()`; `contact.ts` is the only env reader and normalizes a formatted `VITE_WHATSAPP_NUMBER` to digits (digit-free ⇒ canonical fallback); `index.html`'s JSON-LD `telephone` carries `+56929831595`; and the `WhatsApp single-source guard` in `src/tests/config/contact.test.ts` fails on any reintroduced `wa.me` URL, `569…` literal or `VITE_WHATSAPP_NUMBER` read across `src/components/`, `src/services/` and `src/admin/`. |
 | 8.8 | Public dual-factor endpoints no longer enumerate and are throttled: `track-order`/`upload-voucher`/`order-confirmation` return one identical `404` for "not found" and "RUT mismatch" (`respondOrderLookupFailed`), per-IP + per-orderId attempt/failure budgets live in `api/_lib/abuseThrottle.ts` (15-min window, 15-min lock, `429` + `Retry-After`, `abuse_counters` Firestore docs, SHA-256 pseudonymized IPs, fail-open with a loud log), the canonical id is now `PRONTO-` + 8 Crockford base32 chars from `crypto.getRandomValues` (40 bits; legacy ids still resolve), and the warehouse "voucher received" alert is budgeted per order (5-min cooldown, 5 max, reserved inside the confirm transaction, released on a failed send). **Owner decision (D1):** the residual public `orders`-create cost exposure needs Firebase App Check — recorded as Task 8.16. |
+| 2.12 | Payment-return trust gap closed: the modal no longer claims an accredited payment from the URL (`Recibimos tu Retorno de Pago` / `● Verificando acreditación`; `¡Pago Confirmado Exitosamente!` and `Pago Acreditado (PAGADO)` are pinned absent by test), `Ver estado del pedido` on **all three** states opens the dual-factor tracking flow with the order id prefilled (RUT stays a typed second factor — no PII stored), and the cart is reset **only** when the return names the order this tab created (`src/services/orderSession.ts`, `pronto_session_order_v1` in `sessionStorage`, written by `CheckoutModal` before payment initiation and consumed after use). Cross-context return residual accepted and documented in `src/services/AGENTS.md` §3.1; deck copy registered in `UI_UX_EVALUATION_AND_REDESIGN_PROPOSAL.md` C.7. |
 | 1.1 | Integer-CLP catalog, `formatCLP`, `Math.round` IVA. |
 | 1.2 | Billing block with tax breakdown, Factura field validation (gated by `FACTURA_ENABLED = false`), printable pro-forma voucher. |
 | 1.3 | ISP/SIS validation for regulated items (`prescriptionRequired`). |
@@ -121,10 +121,6 @@ Go-live criteria: [x] CLP-accurate charges · [x] payment + stock only via the v
   - Register via NIC Chile (e.g. `prontoinsumos.cl`), configure DNS on Vercel (automatic TLS), replace every `pronto-insumos.vercel.app` (`index.html` `og:url`, `og:image`, `twitter:*`, JSON-LD `url`/`image`; `SITE_URL` in Vercel env for email tracking links). Re-check the Resend sender domain and Mercado Pago `notification_url`/back URLs after the switch.
 
 ### Phase 2 — Checkout, Payment Return & Storefront
-
-- [ ] **2.12. Payment-Return Modal Claims Success From URL Parameters Alone** _(P2)_
-  - `/?status=approved&orderId=…` (trivially forgeable, and also set by Mercado Pago before the webhook runs) opens "¡Pago Confirmado Exitosamente! — Tu transacción ha sido acreditada" (`PaymentReturnModal.tsx:85-88`) and clears the cart (`App.tsx:78,215`). It is harmless to the backend but misleads customers/staff and can clear a cart with no order.
-  - **Fix:** soften the copy to what is actually known ("Recibimos tu retorno de pago; confirmaremos por correo cuando se acredite") and add the `Ver estado del pedido` action (tracking needs the RUT the customer already typed); clear the cart only when a matching order was just created in this session.
 
 - [ ] **2.13. Internal Dispatch Reference for Courier-less Deliveries** _(P2 — owner idea, 2026-09-29)_
   - **Gap:** the order tracking number is a **manual, free-text field typed by the warehouse at dispatch time** — nothing in the system generates one, and there is no courier API integration. For the default "Despacho Local Melipilla (Flota Directa)" route the parcel normally has no guía, so the customer-facing tracking step (`fulfillment.statusDescription`) shows the courier with no reference at all.

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { CheckCircle2, AlertCircle, Clock, X, MessageSquare, ArrowRight, RefreshCw } from 'lucide-react'
+import { CheckCircle2, AlertCircle, Clock, X, MessageSquare, ArrowRight, RefreshCw, PackageSearch } from 'lucide-react'
 import { useScrollLock } from '../hooks/useScrollLock'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { whatsappLink } from '../config/contact'
@@ -11,15 +11,25 @@ export interface PaymentReturnModalProps {
   paymentId?: string
   onClose: () => void
   onRetryPayment?: () => void
+  /** Opens the dual-factor tracking flow (order id prefilled, RUT typed by the customer). */
+  onTrackOrder?: () => void
 }
 
+/**
+ * The status below comes from the Mercado Pago return URL, which is forgeable and
+ * is written before our webhook verifies the payment — so the copy states only
+ * what is actually known ("we received your return; we are confirming"), never
+ * "accredited". The authoritative status lives in the order document and is
+ * reachable through `Ver estado del pedido` (Task 2.12).
+ */
 export default function PaymentReturnModal({
   isOpen,
   status,
   orderId,
   paymentId,
   onClose,
-  onRetryPayment
+  onRetryPayment,
+  onTrackOrder
 }: PaymentReturnModalProps) {
   // Freeze the page behind the modal
   useScrollLock(isOpen)
@@ -37,7 +47,22 @@ export default function PaymentReturnModal({
   if (!isOpen || !status) return null
 
   const whatsappUrl = whatsappLink(
-    `🏥 *COORDINACIÓN DE PEDIDO PAGADO - PRONTO INSUMOS*\n\nHola, acabo de pagar mi pedido *${orderId || 'PRONTO'}* vía Mercado Pago. Quisiera consultar los tiempos y condiciones de entrega para mi clínica.`
+    `🏥 *COORDINACIÓN DE PEDIDO - PRONTO INSUMOS*\n\nHola, realicé el pago de mi pedido *${orderId || 'PRONTO'}* vía Mercado Pago y quisiera confirmar los tiempos y condiciones de entrega para mi clínica.`
+  )
+
+  // Offered on every state: a return URL is not proof of payment, and the order
+  // document is the only authority — tracking answers "did my payment register?"
+  // with the order id prefilled and the RUT as the second factor.
+  const trackOrderAction = orderId && onTrackOrder && (
+    <button
+      type="button"
+      className="btn-secondary"
+      onClick={onTrackOrder}
+      style={{ width: '100%', justifyContent: 'center' }}
+    >
+      <PackageSearch size={17} />
+      <span>Ver estado del pedido</span>
+    </button>
   )
 
   return (
@@ -81,10 +106,11 @@ export default function PaymentReturnModal({
               id="payment-return-title"
               style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--ink-800)', marginBottom: '0.35rem' }}
             >
-              ¡Pago Confirmado Exitosamente!
+              Recibimos tu Retorno de Pago
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
-              Tu transacción ha sido acreditada vía Mercado Pago Chile / Webpay.
+              Mercado Pago nos informó un pago aprobado. Estamos confirmando la acreditación con nuestro servidor de
+              pagos y te avisaremos por correo electrónico en cuanto quede registrada en tu pedido.
             </p>
 
             <div
@@ -117,7 +143,7 @@ export default function PaymentReturnModal({
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Estado:</span>
-                <span style={{ fontWeight: '700', color: 'var(--ink-700)' }}>● Pago Acreditado (PAGADO)</span>
+                <span style={{ fontWeight: '700', color: 'var(--ink-700)' }}>● Verificando acreditación</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Fulfillment:</span>
@@ -140,8 +166,8 @@ export default function PaymentReturnModal({
                 lineHeight: '1.4'
               }}
             >
-              📄 <strong>Comprobante:</strong> Tu Boleta Electrónica (IVA 19%) será emitida por nuestro equipo y
-              remitida a tu correo electrónico registrado.
+              📄 <strong>Comprobante:</strong> Una vez acreditado el pago, emitiremos tu Boleta Electrónica (IVA 19%) y
+              la enviaremos al correo electrónico registrado.
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
@@ -156,6 +182,7 @@ export default function PaymentReturnModal({
                 <span>Coordinar Despacho por WhatsApp</span>
                 <ArrowRight size={17} />
               </a>
+              {trackOrderAction}
               <button type="button" className="btn-secondary" onClick={onClose} style={{ justifyContent: 'center' }}>
                 Continuar en la Tienda
               </button>
@@ -231,6 +258,8 @@ export default function PaymentReturnModal({
                 </button>
               )}
             </div>
+
+            <div style={{ marginTop: '0.65rem' }}>{trackOrderAction}</div>
           </div>
         )}
 
@@ -288,14 +317,17 @@ export default function PaymentReturnModal({
               nuestra bodega en Melipilla. Recibirás una notificación por correo electrónico.
             </p>
 
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={onClose}
-              style={{ width: '100%', justifyContent: 'center' }}
-            >
-              Entendido, Volver a la Tienda
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              {trackOrderAction}
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={onClose}
+                style={{ width: '100%', justifyContent: 'center' }}
+              >
+                Entendido, Volver a la Tienda
+              </button>
+            </div>
           </div>
         )}
       </div>
