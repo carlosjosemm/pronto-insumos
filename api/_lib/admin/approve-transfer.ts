@@ -65,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     let orderDataForEmail: any = null;
-    // Task 0.14e — oversold lines recorded on approval. Reset inside the
+    // Oversold lines are recorded on approval. Reset inside the
     // transaction callback, which Firestore may re-run on contention.
     const stockShortfalls: StockShortfall[] = [];
 
@@ -137,7 +137,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const isActive = productData.isActive !== false;
           const lineName = productData.name || itemInfo.name || productId;
           const shortfall = Math.max(0, itemInfo.qty - currentStock);
-          // Task 0.14e: an approval that oversells is still approved (the money
+          // An approval that oversells is still approved (the money
           // is in) but the shortfall is recorded and alerted — never hidden by
           // the Math.max clamp.
           if (shortfall > 0) {
@@ -227,7 +227,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         metadata: {
           approvedBy: adminActor,
           itemsCount: items.length,
-          // Task 0.14e: oversold lines travel with the approval so the
+          // Oversold lines travel with the approval so the
           // shortfall is auditable, not just emailed.
           ...(stockShortfalls.length > 0 ? { stockShortfalls } : {}),
         },

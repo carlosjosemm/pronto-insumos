@@ -4,7 +4,7 @@ import React from 'react'
 import PaymentReturnModal, { PaymentReturnModalProps } from '../../components/PaymentReturnModal'
 
 /**
- * The approved-state link must come from the shared helper (Task 2.10). The sentinel
+ * The approved-state link must come from the shared helper. The sentinel
  * number proves the component no longer builds its own wa.me URL — with the old inline
  * build this mock is bypassed and the href carries the env placeholder instead.
  */
@@ -59,7 +59,7 @@ describe('PaymentReturnModal Component', () => {
 
     expect(link).toHaveAttribute('href', expect.stringContaining('https://wa.me/56900000000'))
     expect(decodedHref).toContain('PRONTO-982341')
-    // The message must claim a payment *made*, not an accredited one (Task 2.12).
+    // The message must claim a payment *made*, not an accredited one.
     expect(decodedHref).toContain('realicé el pago de mi pedido')
     expect(decodedHref).not.toContain('acabo de pagar')
   })
@@ -119,7 +119,7 @@ describe('PaymentReturnModal Component', () => {
     fireEvent.click(closeBtn)
     expect(onClose).toHaveBeenCalledTimes(1)
 
-    // A declined payment can still have registered a pending order (Task 2.12).
+    // A declined payment can still have registered a pending order.
     fireEvent.click(screen.getByText('Ver estado del pedido'))
     expect(onTrackOrder).toHaveBeenCalledTimes(1)
   })

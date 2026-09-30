@@ -1,6 +1,6 @@
 /**
  * Centralized commercial contact data — no component may hardcode phone
- * numbers or wa.me URLs again (§7.3).
+ * numbers or wa.me URLs again.
  */
 const CANONICAL_WHATSAPP_NUMBER = '56929831595'
 

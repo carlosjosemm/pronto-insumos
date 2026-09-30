@@ -50,9 +50,9 @@ const PENDING_ORDER = {
 /**
  * Firestore Admin double: direct doc-id lookup, `where` fallback, and a transactional
  * write path. `transactionData` lets a test simulate the order changing between the
- * authorization read and the confirm transaction (Task 2.9 TOCTOU guard).
+ * authorization read and the confirm transaction (TOCTOU guard).
  *
- * Since Task 8.8 the same double also backs the `abuse_counters` collection: the
+ * The same double also backs the `abuse_counters` collection: the
  * composite transaction routes counter refs to `counters` and every other ref to
  * `orderTx` (the order transaction), so `orderTx.get` is the precise "the order
  * transaction ran" assertion while the throttle keeps working underneath.
@@ -78,7 +78,7 @@ function createMockDb(
   const whereGet = vi.fn().mockResolvedValue(orderData ? { empty: false, docs: [orderDoc] } : { empty: true, docs: [] })
 
   // The transactional order document is a MUTABLE copy: a transaction update must be
-  // visible to a later transaction read — the Task 8.8 alert-reservation release does a
+  // visible to a later transaction read — the alert-reservation release does a
   // compare-and-swap against what the confirm transaction wrote. Snapshots return a copy,
   // like the real SDK, so `latestData` cannot alias the post-update state.
   const orderState: Record<string, unknown> | null =

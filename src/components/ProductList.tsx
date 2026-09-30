@@ -8,7 +8,7 @@ export interface ProductListProps {
   products: Product[]
   loading: boolean
   /**
-   * Task 2.11 — set when the catalog could not be loaded and the storefront must not
+   * Set when the catalog could not be loaded and the storefront must not
    * fabricate one. Renders a retryable error card in place of the grid; the normal
    * empty state stays for the genuinely-empty results of a filter/search.
    */

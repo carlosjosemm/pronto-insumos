@@ -13,7 +13,7 @@ describe('App Mercado Pago Return Flow Handling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // The session order marker decides whether an approved return may reset the
-    // cart (Task 2.12) — never let it leak between cases.
+    // cart — never let it leak between cases.
     window.sessionStorage.clear()
   })
 
@@ -31,7 +31,7 @@ describe('App Mercado Pago Return Flow Handling', () => {
       expect(screen.getByText('Recibimos tu Retorno de Pago')).toBeInTheDocument()
       expect(screen.getByText('PRONTO-554433')).toBeInTheDocument()
       expect(screen.getByText('12938475')).toBeInTheDocument()
-      // The forged URL must never re-open the "confirmed payment" claim (Task 2.12).
+      // The forged URL must never re-open the "confirmed payment" claim.
       expect(screen.queryByText('¡Pago Confirmado Exitosamente!')).not.toBeInTheDocument()
       expect(window.location.search).toBe('')
     })

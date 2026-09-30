@@ -313,7 +313,7 @@ const WAREHOUSE_EVENT_LABELS: Record<string, string> = {
   TRANSFERENCIA_APROBADA: 'Transferencia aprobada por administración',
   PAGO_EN_REVISION: 'Pago Mercado Pago en revisión — monto inconsistente',
   CANCELADO: 'Pedido cancelado por administración',
-  // Task 0.14 — reconciliation incidents raised by the Mercado Pago webhook.
+  // Reconciliation incidents raised by the Mercado Pago webhook.
   PAGO_DUPLICADO: 'Doble pago detectado — posible doble cobro',
   PAGO_ESTADO_INVALIDO: 'Pago aprobado para un pedido que no admite pago',
   PAGO_REEMBOLSADO: 'Pago reembolsado o contracargado — revisión manual'
@@ -338,7 +338,7 @@ const WAREHOUSE_ACTION_HINTS: Record<string, string> = {
 const DEFAULT_ACTION_HINT = 'Pedido confirmado: preparar y despachar.'
 
 /**
- * Stock shortfall detected while deducting an order's inventory (Task 0.14e):
+ * Stock shortfall detected while deducting an order's inventory:
  * the sale is approved (the money is in) but the warehouse must know that the
  * physical stock could not cover the line.
  */

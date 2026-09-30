@@ -3,7 +3,7 @@ import { THROTTLE_COLLECTION, hashThrottleKey } from '../../../../api/_lib/abuse
 import { getCollectionName } from '../../../../api/_lib/firestoreEnv'
 
 /**
- * In-memory Firestore double for the Task 8.8 abuse counters.
+ * In-memory Firestore double for the abuse-throttle counters.
  *
  * The endpoint suites already build their own Admin SDK doubles for the order
  * documents; this helper adds the `abuse_counters` half so the **real** throttling

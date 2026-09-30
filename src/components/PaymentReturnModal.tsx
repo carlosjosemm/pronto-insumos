@@ -20,7 +20,7 @@ export interface PaymentReturnModalProps {
  * is written before our webhook verifies the payment — so the copy states only
  * what is actually known ("we received your return; we are confirming"), never
  * "accredited". The authoritative status lives in the order document and is
- * reachable through `Ver estado del pedido` (Task 2.12).
+ * reachable through `Ver estado del pedido`.
  */
 export default function PaymentReturnModal({
   isOpen,

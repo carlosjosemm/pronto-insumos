@@ -7,7 +7,7 @@ const css = fs.readFileSync(path.join(rootDir, 'src/index.css'), 'utf8')
 
 /**
  * jsdom cannot evaluate media queries, so the mobile single-column acceptance
- * criterion (Task 8.7) is guarded as a stylesheet-content assertion — the same
+ * criterion is guarded as a stylesheet-content assertion — the same
  * pattern used by src/tests/security/firestore-rules.test.ts.
  */
 describe('storefront stylesheet invariants (Task 8.7)', () => {

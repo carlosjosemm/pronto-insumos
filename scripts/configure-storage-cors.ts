@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Apply the bucket CORS configuration the browser-direct voucher upload needs (Task 2.9).
+ * Apply the bucket CORS configuration the browser-direct voucher upload needs.
  *
  * Why this exists: `/api/upload-voucher` hands the browser a short-lived V4 signed PUT URL,
  * and the browser uploads straight to `storage.googleapis.com` — a cross-origin PUT, which

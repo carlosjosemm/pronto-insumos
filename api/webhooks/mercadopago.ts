@@ -15,7 +15,7 @@ import { computeOrderTotal } from "../../src/utils/orderTotal.js";
 import { hasRealMercadoPagoToken, isSimulatedPaymentAllowed } from "../_lib/simulationPolicy.js";
 
 /**
- * Order-status guard (Task 0.14c): an approved payment may only settle an order
+ * Order-status guard: an approved payment may only settle an order
  * that is genuinely awaiting payment. Anything else is refused — settled orders
  * get an incident record + warehouse alert, unresolved ones are parked in
  * PAGO_EN_REVISION — and stock is NEVER deducted for them.
@@ -30,7 +30,7 @@ const SETTLED_STATUSES = new Set([
   "ENTREGADO",
 ]);
 /**
- * Payment statuses that reverse an already-collected charge (Task 0.14d).
+ * Payment statuses that reverse an already-collected charge.
  * `cancelled` is deliberately absent: Mercado Pago only cancels payments that
  * are still pending/in-process (no money was ever collected), so a cancellation
  * can never reverse a paid order — including it would only create a
@@ -65,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { body, query: reqQuery } = req;
 
     // Extract Payment ID from Mercado Pago webhook notification payload.
-    // Task 0.14f: ONE normalized value is used for the signature, the MP fetch
+    // ONE normalized value is used for the signature, the MP fetch
     // and every comparison. The official HMAC manifest is built from the query
     // `data.id` (`id:[data.id];request-id:[x-request-id];ts:[ts];`), so the
     // payment actually fetched must be the one the signature covers — a tampered
@@ -104,7 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // FAIL-CLOSED (Task 0.10): a production runtime must not run with placeholder
+    // FAIL-CLOSED: a production runtime must not run with placeholder
     // credentials — without the webhook secret nothing can be verified, and without
     // a real access token the payment cannot be double-checked. Refuse loudly (5xx
     // makes Mercado Pago retry) instead of acknowledging blindly.
@@ -140,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     if (!mpResponse.ok) {
-      // Task 0.14a: 404 means the payment does not exist — there is nothing to
+      // 404 means the payment does not exist — there is nothing to
       // reconcile, so it is safe to acknowledge. EVERY other failure (revoked or
       // expired token, MP 5xx, malformed id) must NOT be acked: Mercado Pago
       // retries 5xx, so a genuinely paid order is reconciled once the cause is
@@ -165,8 +165,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Step 2: VERIFY PAYMENT STATUS — an approved payment is reconciled against
     // the order; a refund/chargeback of the payment that settled an order parks
-    // it for manual reconciliation instead of leaving it paid forever
-    // (Task 0.14d).
+    // it for manual reconciliation instead of leaving it paid forever.
     const isReversalPayment = REVERSAL_PAYMENT_STATUSES.has(
       String(paymentData.status),
     );
@@ -179,7 +178,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const adminDb = getAdminFirestore();
 
         if (!adminDb) {
-          // FAIL-CLOSED (Task 0.10): a verified payment we cannot reconcile must not
+          // FAIL-CLOSED: a verified payment we cannot reconcile must not
           // be silently acknowledged — money was collected. 5xx makes Mercado Pago
           // retry, so the delivery is processed once Firestore Admin is restored.
           if (!isSimulatedPaymentAllowed()) {
@@ -200,7 +199,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
-        // Resolve the order by document key first (Task 0.12) — resolving through
+        // Resolve the order by document key first — resolving through
         // the `orderId` field alone lets a decoy document shadow the real order.
         const resolvedOrder = await resolveOrderByCanonicalId(adminDb, cleanOrderId);
 
@@ -208,9 +207,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const orderRef = resolvedOrder.ref;
           const orderData = resolvedOrder.data;
 
-          // REFUND / CHARGEBACK (Task 0.14d): a reversal of the payment that
+          // REFUND / CHARGEBACK: a reversal of the payment that
           // settled this order must park it for manual reconciliation — refunds
-          // stay off-platform (src/types/AGENTS.md §2.1). Only the payment
+          // stay off-platform. Only the payment
           // recorded on the order can reverse it; a reversal of a second
           // (double) payment is not this order's charge.
           if (isReversalPayment) {
@@ -316,7 +315,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
           }
 
-          // Fast-Path Idempotency Check (Task 0.14b): ONLY the payment id that
+          // Fast-Path Idempotency Check: ONLY the payment id that
           // settled the order is a duplicate. A different approved payment for an
           // order that already recorded one is a double charge — it must be
           // recorded and alerted, never silently acked as a duplicate.
@@ -335,11 +334,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Execute atomic transaction for order status update and stock deduction.
           // In Firestore transactions, all reads MUST precede all writes.
           let stockDeducted = false;
-          // Post-transaction warehouse alert (Task 0.14 b/c): the review/incident
+          // Post-transaction warehouse alert: the review/incident
           // event to send when the delivery was not a clean approval.
           let flaggedEvent: string | null = null;
           let flaggedStatus: string | null = null;
-          // Task 0.14e — oversold lines recorded on approval.
+          // Oversold lines recorded on approval.
           const stockShortfalls: StockShortfall[] = [];
           await adminDb.runTransaction(async (transaction) => {
             // The callback may be re-run by Firestore on contention: reset the
@@ -357,7 +356,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               ? String(freshOrderData.mercadopagoPaymentId)
               : "";
 
-            // Concurrency Guard (Task 0.14b): only the same payment id is a
+            // Concurrency Guard: only the same payment id is a
             // duplicate; a different one falls through to the status guard below.
             if (freshStoredPaymentId === paymentId) {
               console.info(
@@ -368,7 +367,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
             const nowIso = new Date().toISOString();
 
-            // ORDER-STATUS GUARD (Task 0.14c): an approved payment may only
+            // ORDER-STATUS GUARD: an approved payment may only
             // settle an order that is genuinely awaiting payment — and an order's
             // lines are deducted AT MOST ONCE (`paidAt`/`approvedAt` mark an
             // earlier settlement, e.g. the refunded payment that parked this
@@ -511,7 +510,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 }
                 const lineName = pData.name || info.name || productId;
                 const shortfall = Math.max(0, info.qty - currentStock);
-                // Task 0.14e: an oversell (stock hit 0 between preference and
+                // An oversell (stock hit 0 between preference and
                 // payment) is still approved — the money is taken — but the
                 // shortfall is recorded and alerted, never hidden by the clamp.
                 if (shortfall > 0) {
@@ -538,7 +537,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               }
             }
 
-            // AMOUNT ASSERTION (Task 0.9 — underpayment exploit):
+            // AMOUNT ASSERTION (underpayment exploit):
             // recompute the payable total from the CURRENT Firestore catalog and
             // require BOTH the actually-paid amount and the order's stored total
             // to match it exactly (integer CLP) before marking paid. Any mismatch
@@ -623,7 +622,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 paymentId: String(paymentId),
                 paymentStatus: paymentData.status,
                 transactionAmount: paymentData.transaction_amount,
-                // Task 0.14e: oversold lines travel with the approval so the
+                // Oversold lines travel with the approval so the
                 // shortfall is auditable, not just emailed.
                 ...(stockShortfalls.length > 0 ? { stockShortfalls } : {}),
               },

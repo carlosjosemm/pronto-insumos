@@ -3,7 +3,7 @@ import { generateWhatsAppQuoteUrl } from '../../services/whatsapp'
 import { CartItem, CustomerInfo } from '../../types'
 
 /**
- * The quote link must come from the shared helper (Task 2.10). The sentinel number
+ * The quote link must come from the shared helper. The sentinel number
  * proves the service no longer builds its own wa.me URL from its own env read —
  * with the pre-consolidation code this mock is bypassed and the href carries the
  * env placeholder instead.

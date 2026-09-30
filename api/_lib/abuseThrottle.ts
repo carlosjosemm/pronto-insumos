@@ -5,12 +5,12 @@ import { createHash } from 'node:crypto'
 import { getCollectionName } from './firestoreEnv.js'
 
 /**
- * Abuse throttling for the public dual-factor endpoints (Task 8.8).
+ * Abuse throttling for the public dual-factor endpoints.
  *
  * `/api/track-order`, `/api/upload-voucher` and `/api/order-confirmation` are
- * unauthenticated and take an order id + RUT. Before Task 8.8 they answered `404`
- * for an unknown id but `401` for a wrong RUT — an enumeration oracle — and nothing
- * bounded repeated attempts.
+ * unauthenticated and take an order id + RUT. Before this throttling they answered
+ * `404` for an unknown id but `401` for a wrong RUT — an enumeration oracle — and
+ * nothing bounded repeated attempts.
  *
  * The counters are Firestore documents in `abuse_counters` (env-scoped, like every
  * other collection), one per `{scope, kind, key}`:

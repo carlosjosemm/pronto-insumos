@@ -22,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  // FAIL-CLOSED (Task 0.10): a production runtime must never fabricate an approved
+  // FAIL-CLOSED: a production runtime must never fabricate an approved
   // checkout. Without a real access token, refuse loudly instead of simulating.
   if (!hasRealToken && !isSimulatedPaymentAllowed()) {
     console.error(
@@ -34,7 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Task 0.14g: the request body contributes ONLY the order id (plus the
+    // The request body contributes ONLY the order id (plus the
     // optional payer details). The line items are read from the order document —
     // never from the request — so the charged preference can never diverge from
     // the order the webhook later asserts the payment against.
@@ -103,8 +103,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
-    // SERVER-SIDE PRICE REBUILD — every line comes from the ORDER DOCUMENT
-    // (Task 0.14g), which is the same document the webhook asserts the payment
+    // SERVER-SIDE PRICE REBUILD — every line comes from the ORDER DOCUMENT,
+    // which is the same document the webhook asserts the payment
     // against, and every unit price from the current Firestore products catalog.
     // The promo discount is resolved from the shared PROMO_CODES table using the
     // order's own code, so a tampered request body (`items`, `price`, `total` or
@@ -138,7 +138,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const productId = item?.productId || item?.id
 
       // A line without a resolvable productId can be neither priced nor
-      // stock-checked — reject it (closes the Task 2.3 validation bypass).
+      // stock-checked — reject it rather than skip it.
       if (!productId || typeof productId !== 'string') {
         return res.status(400).json({
           error: 'Cada insumo del pedido debe incluir un identificador de producto (productId) válido.',

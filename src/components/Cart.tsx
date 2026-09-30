@@ -84,7 +84,7 @@ export default function Cart({
   // so the rendered discount can never exceed what the payment layer charges.
   const activePromo = resolvePromo(appliedPromo?.code)
   // Payable total from the shared helper (IVA-inclusive prices, verified promo) —
-  // the exact amount the preference charges and the webhook asserts (Task 0.9).
+  // the exact amount the preference charges and the webhook asserts.
   const total = computeCartTotal(items, activePromo?.discountPercent ?? 0)
   // Derived so the rendered breakdown always balances: Subtotal − Descuento = Total.
   const discountAmount = Math.max(0, subtotal - total)

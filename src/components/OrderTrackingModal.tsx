@@ -30,7 +30,7 @@ export interface OrderTrackingModalProps {
 
 /**
  * Statuses where the customer may attach — or replace — a bank-transfer voucher
- * (Task 2.9 lifecycle guard: paid, dispatched and delivered orders are closed).
+ * (lifecycle guard: paid, dispatched and delivered orders are closed).
  */
 const VOUCHER_UPLOAD_STATUSES = ['PENDIENTE_TRANSFERENCIA', 'TRANSFERENCIA_COMPROBANTE_SUBIDO']
 
@@ -634,7 +634,7 @@ export default function OrderTrackingModal({
                   <div>
                     <strong>Courier / Medio:</strong> {trackingData.fulfillment.courier}
                   </div>
-                  {/* Task 2.13 — a real courier guía wins; otherwise the internal route code
+                  {/* A real courier guía wins; otherwise the internal route code
                       minted at dispatch, explicitly labeled as an internal code. */}
                   {trackingData.fulfillment.trackingNumber ? (
                     <div>

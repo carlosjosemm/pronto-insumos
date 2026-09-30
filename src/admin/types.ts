@@ -42,7 +42,7 @@ export interface DispatchOrderPayload {
 export interface DispatchOrderResult {
   success: boolean
   error?: string
-  /** Task 2.13 — the reference recorded on the order: minted route code or the typed guía. */
+  /** The reference recorded on the order: minted route code or the typed guía. */
   dispatchReference?: string
   referenceSource?: DispatchReferenceSource
 }

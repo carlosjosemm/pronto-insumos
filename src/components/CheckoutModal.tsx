@@ -49,11 +49,11 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 /** Factura Electrónica is disabled storefront-wide — the path is kept behind this flag. */
 const FACTURA_ENABLED = false
 
-/** Guided-flow step labels (Task 2.6). Step 5 (Confirmación) is outside the stepper. */
+/** Guided-flow step labels. Step 5 (Confirmación) is outside the stepper. */
 const STEPS = ['Contacto', 'Despacho', 'Documento', 'Pago'] as const
 
 /**
- * Field length caps mirrored from `firestore.rules` (Task 0.12 — `isValidCustomer`,
+ * Field length caps mirrored from `firestore.rules` (`isValidCustomer`,
  * `isValidBilling` and `isValidSanitaryVerification`). Firestore rejects the WHOLE
  * order document when any value exceeds its cap, and `submitOrder` can only report a
  * generic failure — so the inputs must stop the value before it can dead-end
@@ -304,7 +304,7 @@ export default function CheckoutModal({
 
     setIsSubmitting(true)
 
-    // Canonical order identifier PRONTO-XXXXXXXX (8 Crockford base32 chars — Task 8.8)
+    // Canonical order identifier PRONTO-XXXXXXXX (8 Crockford base32 chars)
     const canonicalOrderId = generateOrderId()
 
     const sanitaryVerification: SanitaryVerification | undefined = hasRegulatedItems
@@ -361,7 +361,7 @@ export default function CheckoutModal({
       return
     }
 
-    // Task 2.12: record the order this tab created before any payment step runs, so
+    // Record the order this tab created before any payment step runs, so
     // the Mercado Pago return (which is a redirect away and back) can be matched
     // against it. Written here — not after payment initiation — because the redirect
     // is requested inside `processMercadoPagoPayment`.
