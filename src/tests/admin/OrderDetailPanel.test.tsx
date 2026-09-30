@@ -47,15 +47,54 @@ describe('OrderDetailPanel Component', () => {
     expect(screen.getByText(/SIS-19284/i)).toBeInTheDocument()
     expect(screen.getByText('Ver Comprobante')).toBeInTheDocument()
 
+    fireEvent.change(screen.getByPlaceholderText(/cartola 30-09/i), {
+      target: { value: 'cartola 30-09, abono $189.990' }
+    })
     const approveBtn = screen.getByText(/Aprobar Transferencia y Rebajar Stock/i)
     fireEvent.click(approveBtn)
 
     await waitFor(() => {
-      expect(approveSpy).toHaveBeenCalledWith('PRONTO-998811')
+      expect(approveSpy).toHaveBeenCalledWith('PRONTO-998811', 'cartola 30-09, abono $189.990')
       expect(handleUpdated).toHaveBeenCalledTimes(1)
     })
 
     approveSpy.mockRestore()
+  })
+
+  it('keeps transfer approval disabled until a reconciliation reference is entered', () => {
+    const approveSpy = vi.spyOn(adminApi, 'approveBankTransfer').mockResolvedValue({ success: true })
+
+    render(<OrderDetailPanel order={mockOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+    const approveBtn = screen.getByText(/Aprobar Transferencia y Rebajar Stock/i).closest('button')
+    expect(approveBtn).toBeDisabled()
+    if (approveBtn) fireEvent.click(approveBtn)
+    expect(approveSpy).not.toHaveBeenCalled()
+
+    approveSpy.mockRestore()
+  })
+
+  it('renders the incident-specific reason for a PAGO_EN_REVISION order', async () => {
+    vi.spyOn(adminApi, 'fetchOrderHistory').mockResolvedValue([
+      {
+        id: 'h1',
+        orderId: 'PRONTO-998811',
+        previousStatus: 'PAGADO_MERCADOPAGO',
+        newStatus: 'PAGO_EN_REVISION',
+        changedBy: 'MERCADOPAGO_WEBHOOK',
+        actorRole: 'SYSTEM_WEBHOOK',
+        timestamp: new Date().toISOString(),
+        reason: 'Segundo pago aprobado para un pedido ya resuelto.',
+        metadata: { event: 'PAGO_DUPLICADO' }
+      }
+    ])
+    const reviewOrder: Order = { ...mockOrder, status: 'PAGO_EN_REVISION', paymentMethod: 'mercadopago' }
+
+    render(<OrderDetailPanel order={reviewOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+    expect(await screen.findByText(/Posible doble cobro detectado/i)).toBeInTheDocument()
+    // The reason shows both in the incident block and in the audit timeline.
+    expect(screen.getAllByText(/Segundo pago aprobado para un pedido ya resuelto/i).length).toBeGreaterThan(0)
   })
 
   it('renders the reconciliation panel for a PAGO_EN_REVISION order and approves it with a note', async () => {

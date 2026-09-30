@@ -27,6 +27,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
 }) => {
   const [carrier, setCarrier] = useState<CarrierType>('despacho_local_melipilla')
   const [trackingCode, setTrackingCode] = useState('')
+  const [transferReference, setTransferReference] = useState('')
   const [reviewNotes, setReviewNotes] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState('')
@@ -59,13 +60,19 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   const voucherKind: VoucherLinkKind = classifyVoucherUrl(voucherUrl)
 
   const handleApproveTransfer = async () => {
+    const reference = transferReference.trim()
+    if (!reference) {
+      setActionError('Verifica el abono en la cartola de Banco de Chile y registra la referencia antes de aprobar.')
+      return
+    }
     setActionLoading(true)
     setActionError('')
     setActionSuccess('')
-    const res = await approveBankTransfer(order.orderId)
+    const res = await approveBankTransfer(order.orderId, reference)
     setActionLoading(false)
     if (res.success) {
       setActionSuccess('¡Transferencia bancaria aprobada exitosamente y stock rebajado en bodega!')
+      setTransferReference('')
       setHistoryRefreshKey(k => k + 1)
       onOrderUpdated()
     } else {
@@ -175,6 +182,25 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   // The Mercado Pago webhook flags a mismatch here instead of marking the order
   // paid — a human must reconcile before anything is dispatched.
   const isInPaymentReview = order.status === 'PAGO_EN_REVISION'
+
+  // The real reason the order was parked lives in its history event: a duplicate
+  // payment, an invalid source state or a refund/chargeback all land in
+  // PAGO_EN_REVISION, not just an amount mismatch.
+  const reviewIncidentEvent = [...history].reverse().find(ev => ev.newStatus === 'PAGO_EN_REVISION')
+  const reviewIncidentLabel = (() => {
+    switch (reviewIncidentEvent?.metadata?.event) {
+      case 'PAGO_DUPLICADO':
+        return 'Posible doble cobro detectado'
+      case 'PAGO_ESTADO_INVALIDO':
+        return 'El pedido no admitía pago automático'
+      case 'PAGO_REEMBOLSADO':
+        return 'Pago reembolsado o contracargado'
+      case 'PAGO_EN_REVISION':
+        return 'Monto pagado no coincide con el total verificado'
+      default:
+        return 'Revisión manual de pago'
+    }
+  })()
 
   // The dispatch record: carrier + reference (the typed courier guía,
   // or the internal route code minted by the dispatch handler).
@@ -441,12 +467,19 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
                   borderRadius: 'var(--radius-sm)'
                 }}
               >
-                <div style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--danger)' }}>
-                  El monto pagado no coincide con el total verificado del pedido. No despachar hasta conciliar.
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--danger)' }}>
+                    {reviewIncidentLabel}. No despachar hasta conciliar.
+                  </div>
+                  {reviewIncidentEvent?.reason && (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                      {reviewIncidentEvent.reason}
+                    </div>
+                  )}
                 </div>
 
                 <div className="admin-form-group">
-                  <label className="admin-label">Nota de conciliación (opcional)</label>
+                  <label className="admin-label">Nota de conciliación (obligatoria para confirmar)</label>
                   <input
                     type="text"
                     className="admin-input"
@@ -458,7 +491,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
 
                 <button
                   type="button"
-                  disabled={actionLoading}
+                  disabled={actionLoading || reviewNotes.trim().length === 0}
                   onClick={() => handleResolvePaymentReview('approve')}
                   className="admin-btn admin-btn-primary"
                   style={{ width: '100%', padding: '0.7rem' }}
@@ -481,16 +514,31 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
             )}
 
             {isPendingTransfer && (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={handleApproveTransfer}
-                className="admin-btn admin-btn-primary"
-                style={{ width: '100%', padding: '0.7rem' }}
-              >
-                <CheckCircle2 size={16} />
-                <span>{actionLoading ? 'Aprobando transferencia...' : 'Aprobar Transferencia y Rebajar Stock'}</span>
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                <div className="admin-form-group">
+                  <label className="admin-label">Referencia de conciliación bancaria (Banco de Chile)</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    placeholder="Ej: cartola 30-09, abono $189.990"
+                    value={transferReference}
+                    onChange={e => setTransferReference(e.target.value)}
+                  />
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    Verifica el abono en la cartola antes de aprobar. No ingreses credenciales bancarias.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={actionLoading || transferReference.trim().length === 0}
+                  onClick={handleApproveTransfer}
+                  className="admin-btn admin-btn-primary"
+                  style={{ width: '100%', padding: '0.7rem' }}
+                >
+                  <CheckCircle2 size={16} />
+                  <span>{actionLoading ? 'Aprobando transferencia...' : 'Aprobar Transferencia y Rebajar Stock'}</span>
+                </button>
+              </div>
             )}
 
             {isReadyToDispatch && (

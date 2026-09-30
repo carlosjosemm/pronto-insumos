@@ -12,6 +12,114 @@ vi.mock('../../../../api/_lib/firebaseAdmin', () => ({
   getAdminFirestore: vi.fn()
 }))
 
+interface ApproveDbOptions {
+  orderData?: Record<string, unknown> | null
+  /** productId → catalog document (omit an id to simulate a deleted product). */
+  products?: Record<string, Record<string, unknown> | null>
+  directLookupMisses?: boolean
+  onProductUpdate?: (data: Record<string, unknown>, productId: string) => void
+  onSet?: (data: Record<string, unknown>) => void
+}
+
+const DEFAULT_ORDER = {
+  orderId: 'PRONTO-123',
+  status: 'PENDIENTE_TRANSFERENCIA',
+  totalAmount: 189990,
+  items: [{ productId: 'odon-101', name: 'Turbina', quantity: 2, price: 94995 }]
+}
+
+const DEFAULT_PRODUCT = {
+  stockCount: 10,
+  inStock: true,
+  isActive: true,
+  name: 'Turbina',
+  sku: 'OD-101',
+  price: 94995
+}
+
+/** Firestore Admin double for the transfer-approval transaction. */
+function mockApproveDb(options: ApproveDbOptions = {}) {
+  const {
+    orderData = DEFAULT_ORDER,
+    products = { 'odon-101': DEFAULT_PRODUCT },
+    directLookupMisses = false,
+    onProductUpdate,
+    onSet
+  } = options
+
+  const orderRef = {
+    id: 'order-ref',
+    get: vi.fn().mockResolvedValue(directLookupMisses ? { exists: false } : { exists: Boolean(orderData) })
+  }
+
+  const productRefs = new Map<string, { id: string }>()
+  const refToProductId = new Map<unknown, string>()
+  const productDataById = new Map<string, Record<string, unknown> | null>(Object.entries(products))
+
+  const getProductRef = (id: string) => {
+    let ref = productRefs.get(id)
+    if (!ref) {
+      ref = { id }
+      productRefs.set(id, ref)
+      refToProductId.set(ref, id)
+    }
+    return ref
+  }
+  for (const id of Object.keys(products)) getProductRef(id)
+
+  const collection = vi.fn((name: string) => {
+    if (name === 'orders') {
+      return {
+        doc: vi.fn(() => orderRef),
+        where: vi.fn(() => ({
+          limit: vi.fn(() => ({
+            get: vi
+              .fn()
+              .mockResolvedValue(
+                directLookupMisses && orderData
+                  ? { empty: false, docs: [{ ref: orderRef }] }
+                  : { empty: true, docs: [] }
+              )
+          }))
+        }))
+      }
+    }
+    if (name === 'products') {
+      return { doc: vi.fn((id: string) => getProductRef(id)) }
+    }
+    return { doc: vi.fn(() => ({ id: 'generated-id' })) }
+  })
+
+  const db = {
+    collection,
+    runTransaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => {
+      const transaction = {
+        get: vi.fn(async (ref: unknown) => {
+          if (ref === orderRef) {
+            return orderData ? { exists: true, data: () => orderData } : { exists: false }
+          }
+          const productId = refToProductId.get(ref)
+          if (productId !== undefined) {
+            const data = productDataById.get(productId)
+            return data ? { exists: true, data: () => data } : { exists: false }
+          }
+          return { exists: false }
+        }),
+        update: vi.fn((ref: unknown, data: Record<string, unknown>) => {
+          const productId = refToProductId.get(ref)
+          if (productId !== undefined) onProductUpdate?.(data, productId)
+        }),
+        set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
+          onSet?.(data)
+        })
+      }
+      return await callback(transaction)
+    })
+  }
+
+  return db
+}
+
 describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () => {
   let mockRes: Partial<VercelResponse>
   let jsonOutput: Record<string, unknown> = {}
@@ -21,6 +129,11 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
     vi.clearAllMocks()
     jsonOutput = {}
     statusOutput = 200
+    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({
+      authenticated: true,
+      uid: 'admin-1',
+      email: 'admin@prontoinsumos.cl'
+    })
 
     mockRes = {
       setHeader: vi.fn(),
@@ -36,9 +149,30 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
     }
   })
 
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('handles the OPTIONS preflight with 200', async () => {
+    await handler({ method: 'OPTIONS' } as VercelRequest, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(mockRes.end).toHaveBeenCalled()
+  })
+
+  it('rejects non-POST methods with 405', async () => {
+    await handler({ method: 'GET' } as VercelRequest, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(405)
+    expect(jsonOutput.success).toBe(false)
+  })
+
   it('rejects unauthenticated requests with 403', async () => {
     vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: false, error: 'Unauthorized' })
-    const req = { method: 'POST', body: { orderId: 'PRONTO-123' } } as VercelRequest
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
 
     await handler(req, mockRes as VercelResponse)
 
@@ -47,8 +181,7 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
   })
 
   it('rejects requests missing orderId with 400', async () => {
-    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
-    const req = { method: 'POST', body: {} } as VercelRequest
+    const req = { method: 'POST', body: { reconciliationReference: 'cartola 30-09' } } as VercelRequest
 
     await handler(req, mockRes as VercelResponse)
 
@@ -56,203 +189,274 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
     expect(jsonOutput.error).toContain('orderId')
   })
 
-  it('approves transfer, decrements product stock and updates order status atomically', async () => {
-    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
+  it('rejects requests missing the reconciliation reference with 400', async () => {
+    const req = { method: 'POST', body: { orderId: 'PRONTO-123' } } as VercelRequest
 
-    const mockOrderData = {
-      orderId: 'PRONTO-123',
-      status: 'PENDIENTE_TRANSFERENCIA',
-      items: [{ productId: 'odon-101', quantity: 2 }]
-    }
+    await handler(req, mockRes as VercelResponse)
 
-    const mockProductData = {
-      stockCount: 10,
-      inStock: true
-    }
+    expect(statusOutput).toBe(400)
+    expect(jsonOutput.error).toContain('reconciliationReference')
+  })
 
-    const mockOrderRef = {
-      get: vi.fn().mockResolvedValue({ exists: true })
-    }
-    const mockProductRef = {}
-
-    const mockAuditRef = { id: 'audit-123' }
-    const mockHistoryRef = { id: 'osh-123' }
-
-    let updateMock: ReturnType<typeof vi.fn> | undefined
-
-    const mockDb = {
-      collection: vi.fn((name: string) => {
-        if (name === 'orders') {
-          return {
-            doc: vi.fn(() => mockOrderRef),
-            where: vi.fn(() => ({
-              limit: vi.fn(() => ({
-                get: vi.fn().mockResolvedValue({ empty: false, docs: [{ ref: mockOrderRef }] })
-              }))
-            }))
-          }
-        }
-        if (name === 'products') {
-          return { doc: vi.fn(() => mockProductRef) }
-        }
-        if (name === 'order_status_history') {
-          return { doc: vi.fn(() => mockHistoryRef) }
-        }
-        if (name === 'inventory_audit_logs') {
-          return { doc: vi.fn(() => mockAuditRef) }
-        }
-        return { doc: vi.fn(() => ({})) }
-      }),
-      runTransaction: vi.fn(async (callback) => {
-        updateMock = vi.fn()
-        const mockTransaction = {
-          get: vi.fn(async (ref: unknown) => {
-            if (ref === mockOrderRef) {
-              return { exists: true, data: () => mockOrderData }
-            }
-            if (ref === mockProductRef) {
-              return { exists: true, data: () => mockProductData }
-            }
-            return { exists: false }
-          }),
-          update: updateMock,
-          set: vi.fn()
-        }
-        return await callback(mockTransaction)
-      })
-    }
-
+  it('approves transfer, decrements stock, records the reference and updates status atomically', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    const setDocs: Array<Record<string, unknown>> = []
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
-      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+      mockApproveDb({
+        onProductUpdate: (data) => (captured.update = data),
+        onSet: (data) => setDocs.push(data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
 
-    const req = { method: 'POST', body: { orderId: 'PRONTO-123' } } as VercelRequest
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09, abono $189.990' }
+    } as VercelRequest
 
     await handler(req, mockRes as VercelResponse)
 
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
     expect(jsonOutput.duplicate).toBe(false)
+    expect(captured.update?.stockCount).toBe(8) // 10 − 2
+
+    const historyDoc = setDocs.find((doc) => doc.newStatus === 'TRANSFERENCIA_APROBADA')
+    expect(historyDoc?.metadata).toMatchObject({ reconciliationReference: 'cartola 30-09, abono $189.990' })
   })
 
   it('consolidates duplicate line items for the same product to decrement stock cumulatively', async () => {
-    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
-
-    const mockOrderData = {
-      orderId: 'PRONTO-DUPLICATE',
-      status: 'PENDIENTE_TRANSFERENCIA',
-      items: [
-        { productId: 'odon-101', quantity: 2 },
-        { productId: 'odon-101', quantity: 3 }
-      ]
-    }
-
-    const mockProductData = {
-      stockCount: 10,
-      inStock: true
-    }
-
-    const mockOrderRef = {
-      get: vi.fn().mockResolvedValue({ exists: true })
-    }
-    const mockProductRef = {}
-    const capturedProductUpdate: { current: Record<string, unknown> | null } = { current: null }
-
-    const mockDb = {
-      collection: vi.fn((name: string) => {
-        if (name === 'orders') return { doc: vi.fn(() => mockOrderRef) }
-        if (name === 'products') return { doc: vi.fn(() => mockProductRef) }
-        return { doc: vi.fn(() => ({ id: 'mock-id' })) }
-      }),
-      runTransaction: vi.fn(async (callback) => {
-        const mockTransaction = {
-          get: vi.fn(async (ref: unknown) => {
-            if (ref === mockOrderRef) return { exists: true, data: () => mockOrderData }
-            if (ref === mockProductRef) return { exists: true, data: () => mockProductData }
-            return { exists: false }
-          }),
-          update: vi.fn((ref, data) => {
-            if (ref === mockProductRef) {
-              capturedProductUpdate.current = data
-            }
-          }),
-          set: vi.fn()
-        }
-        return await callback(mockTransaction)
-      })
-    }
-
+    const captured: { update: Record<string, unknown> | null } = { update: null }
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
-      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+      mockApproveDb({
+        orderData: {
+          orderId: 'PRONTO-DUPLICATE',
+          status: 'PENDIENTE_TRANSFERENCIA',
+          totalAmount: 474975,
+          items: [
+            { productId: 'odon-101', quantity: 2 },
+            { productId: 'odon-101', quantity: 3 }
+          ]
+        },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
 
-    const req = { method: 'POST', body: { orderId: 'PRONTO-DUPLICATE' } } as VercelRequest
-
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-DUPLICATE', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
     await handler(req, mockRes as VercelResponse)
 
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
-    // Initial 10 stock minus (2 + 3) = 5
-    expect(capturedProductUpdate.current).not.toBeNull()
-    expect(capturedProductUpdate.current?.stockCount).toBe(5)
+    expect(captured.update?.stockCount).toBe(5) // 10 − (2 + 3)
   })
 
-  it('falls back to query by orderId if direct doc lookup returns exists: false', async () => {
-    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
-
-    const mockOrderData = {
-      orderId: 'PRONTO-FALLBACK',
-      status: 'PENDIENTE_TRANSFERENCIA',
-      items: [{ productId: 'odon-101', quantity: 1 }]
-    }
-
-    const directDocRef = {
-      get: vi.fn().mockResolvedValue({ exists: false })
-    }
-    const queriedDocRef = {
-      get: vi.fn().mockResolvedValue({ exists: true })
-    }
-
-    const mockDb = {
-      collection: vi.fn((name: string) => {
-        if (name === 'orders') {
-          return {
-            doc: vi.fn(() => directDocRef),
-            where: vi.fn(() => ({
-              limit: vi.fn(() => ({
-                get: vi.fn().mockResolvedValue({
-                  empty: false,
-                  docs: [{ ref: queriedDocRef }]
-                })
-              }))
-            }))
-          }
-        }
-        return { doc: vi.fn(() => ({ id: 'mock-id' })) }
-      }),
-      runTransaction: vi.fn(async (callback) => {
-        const mockTransaction = {
-          get: vi.fn(async (ref: unknown) => {
-            if (ref === queriedDocRef) return { exists: true, data: () => mockOrderData }
-            return { exists: true, data: () => ({ stockCount: 5, inStock: true }) }
-          }),
-          update: vi.fn(),
-          set: vi.fn()
-        }
-        return await callback(mockTransaction)
-      })
-    }
-
+  it('falls back to the orderId query when the direct doc lookup misses', async () => {
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
-      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+      mockApproveDb({ directLookupMisses: true }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
 
-    const req = { method: 'POST', body: { orderId: 'PRONTO-FALLBACK' } } as VercelRequest
-
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
     await handler(req, mockRes as VercelResponse)
 
     expect(statusOutput).toBe(200)
     expect(jsonOutput.success).toBe(true)
+  })
+
+  it('rejects a WhatsApp quote order with 409 and writes nothing', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    const setDocs: Array<Record<string, unknown>> = []
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: { ...DEFAULT_ORDER, status: 'COTIZACION_SOLICITADA_WHATSAPP' },
+        onProductUpdate: (data) => (captured.update = data),
+        onSet: (data) => setDocs.push(data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(409)
+    expect(jsonOutput.success).toBe(false)
+    expect(jsonOutput.currentStatus).toBe('COTIZACION_SOLICITADA_WHATSAPP')
+    expect(captured.update).toBeNull()
+    // A refused approval must not leave an audit or history event behind.
+    expect(setDocs).toHaveLength(0)
+  })
+
+  it('approves a promo-discounted order when the stored total matches the discounted catalog total', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: {
+          ...DEFAULT_ORDER,
+          promoCode: 'PRONTO10',
+          // round(94995 × 0.90) × 2 = 170992 — the promo-aware expected total.
+          totalAmount: 170992
+        },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.success).toBe(true)
+    expect(captured.update?.stockCount).toBe(8)
+  })
+
+  it('rejects a promo order whose stored total is the undiscounted amount (409)', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: { ...DEFAULT_ORDER, promoCode: 'PRONTO10', totalAmount: 189990 },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(409)
+    expect(jsonOutput.error).toContain('total verificado')
+    expect(captured.update).toBeNull()
+  })
+
+  it('rejects an order with no stored total (409, no writes)', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: {
+          orderId: 'PRONTO-123',
+          status: 'PENDIENTE_TRANSFERENCIA',
+          items: [{ productId: 'odon-101', quantity: 2 }]
+        },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(409)
+    expect(captured.update).toBeNull()
+  })
+
+  it('rejects an already-dispatched order with 409 and no second deduction', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: { ...DEFAULT_ORDER, status: 'DESPACHADO' },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(409)
+    expect(captured.update).toBeNull()
+  })
+
+  it('rejects an order carrying an approvedAt settlement marker with 409', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: { ...DEFAULT_ORDER, approvedAt: '2026-09-01T12:00:00.000Z' },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(409)
+    expect(jsonOutput.error).toContain('rebaja')
+    expect(captured.update).toBeNull()
+  })
+
+  it('rejects an underpriced order when the stored total disagrees with the catalog (409)', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: { ...DEFAULT_ORDER, totalAmount: 1 },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(409)
+    expect(jsonOutput.error).toContain('total verificado')
+    expect(captured.update).toBeNull()
+  })
+
+  it('fails closed with 409 when a catalog product no longer exists', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        products: {},
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(409)
+    expect(jsonOutput.error).toContain('no existe en el catálogo')
+    expect(captured.update).toBeNull()
+  })
+
+  it('is idempotent: an already-approved order returns duplicate with no stock movement', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: { ...DEFAULT_ORDER, status: 'TRANSFERENCIA_APROBADA' },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.duplicate).toBe(true)
+    expect(captured.update).toBeNull()
   })
 
   describe('Transactional Emails on Approval (Resend)', () => {
@@ -273,56 +477,36 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
       else process.env.WAREHOUSE_NOTIFICATION_EMAIL = warehouseBackup
     })
 
-    function mockApprovableOrderDb() {
-      const mockOrderData = {
-        orderId: 'PRONTO-123',
-        status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
-        totalAmount: 189990,
-        items: [{ productId: 'odon-101', name: 'Turbina', quantity: 2, price: 94995 }],
-        customer: {
-          fullName: 'Dra. Andrea',
-          email: 'andrea@clinica.cl',
-          rut: '12345678-5',
-          address: 'Calle 1',
-          city: 'Melipilla'
-        }
+    const orderWithCustomer = {
+      orderId: 'PRONTO-123',
+      status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
+      totalAmount: 189990,
+      items: [{ productId: 'odon-101', name: 'Turbina', quantity: 2, price: 94995 }],
+      customer: {
+        fullName: 'Dra. Andrea',
+        email: 'andrea@clinica.cl',
+        rut: '12345678-5',
+        address: 'Calle 1',
+        city: 'Melipilla'
       }
-      const mockOrderRef = { get: vi.fn().mockResolvedValue({ exists: true }) }
-      const mockProductRef = {}
-      const mockDb = {
-        collection: vi.fn((name: string) => {
-          if (name === 'orders') return { doc: vi.fn(() => mockOrderRef) }
-          if (name === 'products') return { doc: vi.fn(() => mockProductRef) }
-          return { doc: vi.fn(() => ({ id: 'mock-id' })) }
-        }),
-        runTransaction: vi.fn(async (callback) => {
-          const mockTransaction = {
-            get: vi.fn(async (ref: unknown) => {
-              if (ref === mockOrderRef) return { exists: true, data: () => mockOrderData }
-              if (ref === mockProductRef) return { exists: true, data: () => ({ stockCount: 10, inStock: true }) }
-              return { exists: false }
-            }),
-            update: vi.fn(),
-            set: vi.fn()
-          }
-          return await callback(mockTransaction)
-        })
-      }
-      return mockDb
     }
 
     it('should send customer approval + warehouse alert emails after a successful approval', async () => {
       process.env.RESEND_API_KEY = 're_test_key'
       process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
-      vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
       const fetchSpy = vi
         .spyOn(global, 'fetch')
         .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
       vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
-        mockApprovableOrderDb() as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+        mockApproveDb({ orderData: orderWithCustomer }) as unknown as ReturnType<
+          typeof firebaseAdminLib.getAdminFirestore
+        >
       )
 
-      const req = { method: 'POST', body: { orderId: 'PRONTO-123' } } as VercelRequest
+      const req = {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+      } as VercelRequest
       await handler(req, mockRes as VercelResponse)
 
       expect(statusOutput).toBe(200)
@@ -335,58 +519,31 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
       expect(recipients).toContain('bodega@prontoinsumos.com')
     })
 
-    it('should record a stock shortfall in the audit/history metadata and the warehouse alert (Task 0.14e)', async () => {
+    it('should record a stock shortfall in the audit/history metadata and the warehouse alert', async () => {
       process.env.RESEND_API_KEY = 're_test_key'
       process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
-      vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
       const fetchSpy = vi
         .spyOn(global, 'fetch')
         .mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
 
-      const mockOrderData = {
-        orderId: 'PRONTO-SHORT',
-        status: 'TRANSFERENCIA_COMPROBANTE_SUBIDO',
-        totalAmount: 284985,
-        items: [{ productId: 'odon-101', name: 'Turbina', quantity: 3, price: 94995 }],
-        customer: {
-          fullName: 'Dra. Andrea',
-          email: 'andrea@clinica.cl',
-          rut: '12345678-5',
-          address: 'Calle 1',
-          city: 'Melipilla'
-        }
-      }
-      const mockOrderRef = { get: vi.fn().mockResolvedValue({ exists: true }) }
-      const mockProductRef = {}
       const setDocs: Array<Record<string, unknown>> = []
-      const mockDb = {
-        collection: vi.fn((name: string) => {
-          if (name === 'orders') return { doc: vi.fn(() => mockOrderRef) }
-          if (name === 'products') return { doc: vi.fn(() => mockProductRef) }
-          return { doc: vi.fn(() => ({ id: 'mock-id' })) }
-        }),
-        runTransaction: vi.fn(async (callback) => {
-          const mockTransaction = {
-            get: vi.fn(async (ref: unknown) => {
-              if (ref === mockOrderRef) return { exists: true, data: () => mockOrderData }
-              if (ref === mockProductRef) {
-                return { exists: true, data: () => ({ stockCount: 1, inStock: true, name: 'Turbina' }) }
-              }
-              return { exists: false }
-            }),
-            update: vi.fn(),
-            set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
-              setDocs.push(data)
-            })
-          }
-          return await callback(mockTransaction)
-        })
-      }
       vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
-        mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+        mockApproveDb({
+          orderData: {
+            ...orderWithCustomer,
+            orderId: 'PRONTO-SHORT',
+            totalAmount: 284985,
+            items: [{ productId: 'odon-101', name: 'Turbina', quantity: 3, price: 94995 }]
+          },
+          products: { 'odon-101': { stockCount: 1, inStock: true, isActive: true, name: 'Turbina', price: 94995 } },
+          onSet: (data) => setDocs.push(data)
+        }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
       )
 
-      const req = { method: 'POST', body: { orderId: 'PRONTO-SHORT' } } as VercelRequest
+      const req = {
+        method: 'POST',
+        body: { orderId: 'PRONTO-SHORT', reconciliationReference: 'cartola 30-09' }
+      } as VercelRequest
       await handler(req, mockRes as VercelResponse)
 
       expect(statusOutput).toBe(200)
@@ -410,14 +567,18 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
     it('should still return 200 when email sending fails (non-blocking)', async () => {
       process.env.RESEND_API_KEY = 're_test_key'
       process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
-      vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
       vi.spyOn(global, 'fetch').mockRejectedValue(new Error('resend down'))
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
-        mockApprovableOrderDb() as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+        mockApproveDb({ orderData: orderWithCustomer }) as unknown as ReturnType<
+          typeof firebaseAdminLib.getAdminFirestore
+        >
       )
 
-      const req = { method: 'POST', body: { orderId: 'PRONTO-123' } } as VercelRequest
+      const req = {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+      } as VercelRequest
       await handler(req, mockRes as VercelResponse)
 
       expect(statusOutput).toBe(200)

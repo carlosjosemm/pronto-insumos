@@ -1,14 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  setAdminResponseHeaders(res, 'GET, OPTIONS')
 
-  if (req.method === 'OPTIONS') {
+  if (isAdminPreflight(req)) {
     return res.status(200).end()
   }
 

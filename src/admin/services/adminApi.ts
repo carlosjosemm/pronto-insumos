@@ -114,13 +114,22 @@ export async function fetchAdminOrder(orderId: string): Promise<Order | null> {
   }
 }
 
-export async function approveBankTransfer(orderId: string): Promise<{ success: boolean; error?: string }> {
+/**
+ * Approves a bank transfer. `reconciliationReference` is the operator's
+ * attestation that the deposit settled in the Banco de Chile ledger (the
+ * cartola line) — the server requires it and records it in the order history;
+ * never pass bank credentials.
+ */
+export async function approveBankTransfer(
+  orderId: string,
+  reconciliationReference: string
+): Promise<{ success: boolean; error?: string }> {
   const headers = await getAuthHeaders()
   try {
     const res = await fetch('/api/admin/approve-transfer', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ orderId })
+      body: JSON.stringify({ orderId, reconciliationReference })
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok || !data.success) {

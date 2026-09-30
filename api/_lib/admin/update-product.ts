@@ -1,14 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+/** Upper bound for a CLP price — CLP is a whole-peso currency with no cents. */
+const MAX_CLP = 999_999_999
 
-  if (req.method === 'OPTIONS') {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  setAdminResponseHeaders(res)
+
+  if (isAdminPreflight(req)) {
     return res.status(200).end()
   }
 
@@ -26,6 +28,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ success: false, error: 'El parámetro "productId" es obligatorio' })
   }
 
+  // A price, when supplied, must be a whole-peso integer in range. Silently
+  // rounding a fractional or out-of-range value would let a typo change the
+  // charged catalog price.
+  if (price !== undefined) {
+    if (typeof price !== 'number' || !Number.isInteger(price) || price <= 0 || price > MAX_CLP) {
+      return res.status(400).json({
+        success: false,
+        error: `El precio debe ser un número entero en CLP entre 1 y ${MAX_CLP}.`
+      })
+    }
+  }
+
   const db = getAdminFirestore()
   if (!db) {
     return res.status(500).json({ success: false, error: 'Base de datos no inicializada' })
@@ -40,19 +54,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const productData = doc.data() || {}
     const nowIso = new Date().toISOString()
-    const updates: Record<string, any> = {
+    const updates: Record<string, unknown> = {
       updatedAt: nowIso
     }
 
     if (name && typeof name === 'string') updates.name = name.trim()
-    if (typeof price === 'number' && price > 0) {
-      updates.price = Math.round(price)
-      updates.priceNeto = Math.round(updates.price / 1.19)
+    if (price !== undefined) {
+      updates.price = price
+      updates.priceNeto = Math.round(price / 1.19)
     }
     if (description !== undefined) updates.description = String(description).trim()
-    if (category && typeof category === 'string') updates.category = category.trim()
+    // Categories are frozen uppercase keys shared with the storefront aliases,
+    // so a typed lowercase value must be normalized here.
+    if (category && typeof category === 'string') updates.category = category.trim().toUpperCase()
     if (typeof prescriptionRequired === 'boolean') updates.prescriptionRequired = prescriptionRequired
     if (tag !== undefined) updates.tag = String(tag).trim()
+
+    const previousPrice = typeof productData.price === 'number' ? productData.price : null
+    const priceChanged = price !== undefined && previousPrice !== price
+    const modifiedFields = Object.keys(updates).filter(k => k !== 'updatedAt')
 
     const batch = db.batch()
     batch.update(productRef, updates)
@@ -68,12 +88,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       newStock: productData.stockCount ?? null,
       delta: 0,
       reasonCode: 'correccion',
-      operatorNotes: `Actualización de metadatos: ${Object.keys(updates).filter(k => k !== 'updatedAt').join(', ')}`,
+      operatorNotes: `Actualización de metadatos: ${modifiedFields.join(', ')}${
+        priceChanged ? `; precio ${previousPrice ?? '—'} → ${price}` : ''
+      }`,
       changedBy: authResult.uid || 'admin',
       changedByEmail: authResult.email || null,
       actorRole: 'ADMIN',
       timestamp: nowIso,
-      metadata: { modifiedFields: Object.keys(updates).filter(k => k !== 'updatedAt') }
+      metadata: {
+        modifiedFields,
+        // The old/new price travel with the audit entry so a price change is
+        // auditable after the fact.
+        ...(priceChanged ? { previousPrice, newPrice: price } : {})
+      }
     })
 
     await batch.commit()
@@ -83,8 +110,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       productId,
       updates
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[Admin API Update Product] Error:', err)
-    return res.status(500).json({ success: false, error: err.message || 'Error al actualizar el producto' })
+    return res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Error al actualizar el producto'
+    })
   }
 }

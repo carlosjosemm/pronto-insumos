@@ -67,5 +67,7 @@ describe('Serverless Admin Auth Middleware (api/_lib/adminAuth.ts)', () => {
     expect(result.authenticated).toBe(true)
     expect(result.uid).toBe('admin-uid-999')
     expect(result.email).toBe('admin@prontoinsumos.cl')
+    // Revoke-aware: a revoked admin session must stop working immediately.
+    expect(mockVerify).toHaveBeenCalledWith('token-admin-valid', true)
   })
 })

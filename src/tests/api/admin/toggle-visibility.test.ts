@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import handler from '../../../../api/_lib/admin/update-stock'
+import handler from '../../../../api/_lib/admin/toggle-visibility'
 import * as adminAuth from '../../../../api/_lib/adminAuth'
 import * as firebaseAdminLib from '../../../../api/_lib/firebaseAdmin'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
@@ -12,17 +12,10 @@ vi.mock('../../../../api/_lib/firebaseAdmin', () => ({
   getAdminFirestore: vi.fn()
 }))
 
-interface StockDb {
-  db: Record<string, unknown>
-  updates: Array<{ ref: unknown; data: Record<string, unknown> }>
-  sets: Array<Record<string, unknown>>
-  transactionUsed: () => boolean
-}
-
-/** Firestore Admin double for the transactional stock adjustment. */
-function mockStockDb(productData: Record<string, unknown> | null): StockDb {
+/** Firestore Admin double for the visibility toggle transaction. */
+function mockVisibilityDb(productData: Record<string, unknown> | null) {
   const productRef = { id: 'product-ref', get: vi.fn().mockResolvedValue({ exists: Boolean(productData) }) }
-  const updates: Array<{ ref: unknown; data: Record<string, unknown> }> = []
+  const updates: Array<Record<string, unknown>> = []
   const sets: Array<Record<string, unknown>> = []
   let transactionUsed = false
 
@@ -32,8 +25,8 @@ function mockStockDb(productData: Record<string, unknown> | null): StockDb {
       transactionUsed = true
       const transaction = {
         get: vi.fn(async () => (productData ? { exists: true, data: () => productData } : { exists: false })),
-        update: vi.fn((ref: unknown, data: Record<string, unknown>) => {
-          updates.push({ ref, data })
+        update: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
+          updates.push(data)
         }),
         set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
           sets.push(data)
@@ -46,7 +39,7 @@ function mockStockDb(productData: Record<string, unknown> | null): StockDb {
   return { db, updates, sets, transactionUsed: () => transactionUsed }
 }
 
-describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
+describe('Serverless Admin Toggle Visibility (/api/admin/toggle-visibility)', () => {
   let mockRes: Partial<VercelResponse>
   let jsonOutput: Record<string, unknown> = {}
   let statusOutput: number
@@ -79,77 +72,60 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
     vi.restoreAllMocks()
   })
 
-  it.each([
-    ['a negative count', -5],
-    ['a fractional count', 3.5],
-    ['NaN', Number.NaN],
-    ['Infinity', Number.POSITIVE_INFINITY],
-    ['an out-of-range count', 1_000_001]
-  ])('rejects %s with 400', async (_label, newStock) => {
-    const req = {
-      method: 'POST',
-      body: { productId: 'odon-101', newStock, reason: 'merma' }
-    } as VercelRequest
-
-    await handler(req, mockRes as VercelResponse)
-
+  it('rejects a non-boolean visibility flag with 400', async () => {
+    await handler(
+      { method: 'POST', body: { productId: 'odon-101', visible: 'yes' } } as VercelRequest,
+      mockRes as VercelResponse
+    )
     expect(statusOutput).toBe(400)
-    expect(jsonOutput.error).toContain('newStock')
+    expect(jsonOutput.error).toContain('visible')
   })
 
-  it('adjusts the stock inside a transaction and records the audit reason', async () => {
-    const store = mockStockDb({ stockCount: 5, isActive: true, sku: 'OD-101', name: 'Turbina' })
+  it('activates a product with stock inside a transaction', async () => {
+    const store = mockVisibilityDb({ stockCount: 5, name: 'Turbina', sku: 'OD-101' })
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       store.db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
 
-    const req = {
-      method: 'POST',
-      body: { productId: 'odon-101', newStock: 12, reason: 'reposicion' }
-    } as VercelRequest
-
-    await handler(req, mockRes as VercelResponse)
+    await handler(
+      { method: 'POST', body: { productId: 'odon-101', visible: true } } as VercelRequest,
+      mockRes as VercelResponse
+    )
 
     expect(statusOutput).toBe(200)
-    expect(jsonOutput.success).toBe(true)
-    expect(jsonOutput.stockCount).toBe(12)
+    expect(jsonOutput.isActive).toBe(true)
     expect(jsonOutput.inStock).toBe(true)
     expect(store.transactionUsed()).toBe(true)
-    expect(store.updates[0]?.data).toMatchObject({ stockCount: 12, inStock: true })
-    expect(store.sets[0]).toMatchObject({ changeType: 'STOCK_ADJUSTMENT', reasonCode: 'reposicion', delta: 7 })
+    expect(store.updates[0]).toMatchObject({ isActive: true, inStock: true })
+    expect(store.sets[0]).toMatchObject({ changeType: 'VISIBILITY_TOGGLE', reasonCode: 'activacion_catalogo' })
   })
 
-  it('keeps inStock: false when a paused product (isActive: false) is restocked', async () => {
-    const store = mockStockDb({ stockCount: 0, isActive: false })
+  it('pauses a product with stock, keeping inStock false', async () => {
+    const store = mockVisibilityDb({ stockCount: 5, name: 'Turbina' })
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       store.db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
 
-    const req = {
-      method: 'POST',
-      body: { productId: 'odon-paused', newStock: 25, reason: 'reposicion' }
-    } as VercelRequest
-
-    await handler(req, mockRes as VercelResponse)
+    await handler(
+      { method: 'POST', body: { productId: 'odon-101', visible: false } } as VercelRequest,
+      mockRes as VercelResponse
+    )
 
     expect(statusOutput).toBe(200)
-    expect(jsonOutput.stockCount).toBe(25)
     expect(jsonOutput.inStock).toBe(false)
-    expect(store.updates[0]?.data).toMatchObject({ stockCount: 25, inStock: false })
+    expect(store.updates[0]).toMatchObject({ isActive: false, inStock: false })
   })
 
   it('returns 404 when the product does not exist', async () => {
-    const store = mockStockDb(null)
+    const store = mockVisibilityDb(null)
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       store.db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
 
-    const req = {
-      method: 'POST',
-      body: { productId: 'odon-ghost', newStock: 5 }
-    } as VercelRequest
-
-    await handler(req, mockRes as VercelResponse)
+    await handler(
+      { method: 'POST', body: { productId: 'odon-ghost', visible: true } } as VercelRequest,
+      mockRes as VercelResponse
+    )
 
     expect(statusOutput).toBe(404)
     expect(store.updates).toHaveLength(0)

@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
@@ -9,6 +10,7 @@ import {
   toOrderEmailData
 } from '../emailTemplates.js'
 import type { StockShortfall } from '../emailTemplates.js'
+import { normalizeQuantity } from '../../../src/utils/orderTotal.js'
 
 const RESOLUTIONS = ['approve', 'cancel'] as const
 const MAX_NOTES_LENGTH = 500
@@ -36,11 +38,9 @@ type ReviewOutcome =
  * approved order returns `duplicate`, never a double stock deduction).
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  setAdminResponseHeaders(res)
 
-  if (req.method === 'OPTIONS') {
+  if (isAdminPreflight(req)) {
     return res.status(200).end()
   }
 
@@ -68,6 +68,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const cleanOrderId = orderId.trim()
   const cleanNotes = typeof notes === 'string' ? notes.trim().slice(0, MAX_NOTES_LENGTH) : ''
+
+  // Approving moves money and deducts stock, so the operator must record what
+  // they reconciled (the receipt or the bank/MP ledger line). The system cannot
+  // verify the ledger itself, so the note is the evidence. Cancelling moves no
+  // stock and stays available without one.
+  if (resolution === 'approve' && cleanNotes.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error:
+        'Debes registrar una nota de conciliación (comprobante o cartola verificada) antes de confirmar el pago.'
+    })
+  }
 
   const db = getAdminFirestore()
   if (!db) {
@@ -161,7 +173,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const productId = (item.productId || item.id) as string | undefined
         if (!productId) continue
         const existing = consolidatedQty.get(productId) || { qty: 0, name: item.name as string | undefined }
-        existing.qty += typeof item.quantity === 'number' ? Math.max(1, item.quantity) : 1
+        // The shared clamp collapses NaN/fractional/garbage quantities to a
+        // positive integer; hand-rolling `Math.max(1, qty)` would write NaN or a
+        // fractional stockCount into the catalog for a malformed line.
+        existing.qty += normalizeQuantity(item.quantity)
         if (item.name) existing.name = item.name as string
         consolidatedQty.set(productId, existing)
       }

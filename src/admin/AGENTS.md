@@ -117,12 +117,14 @@ Chilean health regulations require verification of registered dental practitione
 
 ### 4.3 Atomic Stock Decrement on Transfer Approval
 When staff click **"Aprobar Transferencia y Rebajar Stock"**:
-1. Invokes `/api/admin/approve-transfer`.
-2. Verifies staff admin claims.
-3. Reads the order inside a Firestore transaction.
-4. Decrements `stockCount` for each ordered item in `products`.
-5. Updates order status to `'TRANSFERENCIA_APROBADA'`, recording `approvedBy` (admin email) and `approvedAt` (ISO timestamp).
-6. Ensures Melipilla warehouse physical inventory matches database counts in real-time.
+1. The panel requires a **Referencia de conciliación bancaria** (the Banco de Chile cartola line) before the button enables; the operator must verify the deposit settled first. Never enter bank credentials — the field is a free-text reference capped at 120 chars.
+2. Invokes `/api/admin/approve-transfer` with `{ orderId, reconciliationReference }`; a missing/empty reference is rejected with `400`.
+3. Verifies staff admin claims.
+4. Reads the order inside a Firestore transaction and enforces **source states**: only `PENDIENTE_TRANSFERENCIA` / `TRANSFERENCIA_COMPROBANTE_SUBIDO` may approve; `TRANSFERENCIA_APROBADA` is an idempotent `duplicate` (no second deduction); any other status — quote, dispatched, delivered, cancelled, MP-paid, review — or an order already carrying `approvedAt`/`paidAt` is refused with `409` and **no** stock movement.
+5. Rebuilds the payable total from the **current catalog** (promo-aware, via `resolvePromoPercent(order.promoCode)` + `computeDiscountedUnitPrice`) and requires it to equal `order.totalAmount`; a mismatch, an invalid catalog price, a **missing product** or an unidentifiable line fails closed (`409`) before any write — never a partial deduction.
+6. Decrements `stockCount` for each ordered item in `products`.
+7. Updates order status to `'TRANSFERENCIA_APROBADA'`, recording `approvedBy` (admin email) and `approvedAt` (ISO timestamp), and writes `reconciliationReference` + `reconciledAt` into the `order_status_history` metadata.
+8. Ensures Melipilla warehouse physical inventory matches database counts in real-time.
 
 **Stock shortfall (Task 0.14e):** when the catalog cannot cover a line, the clamp (`Math.max(0, …)`) still approves the payment — the money is in — but the shortfall is recorded in the `inventory_audit_logs` metadata (`stockShortfall`), the order-history metadata (`stockShortfalls`) and the warehouse alert (`Stock insuficiente: faltan N× …`). The same recording exists in the webhook approval path and in `resolve-payment-review`'s approve.
 
@@ -131,8 +133,9 @@ When staff click **"Aprobar Transferencia y Rebajar Stock"**:
 The Mercado Pago webhook never marks an order paid when the paid amount disagrees with the catalog-recomputed total — it parks the order in `PAGO_EN_REVISION` (no stock deducted, no customer "paid" email, warehouse alerted) and a human must reconcile it. The backoffice closes that loop:
 
 - **Filter chip:** `OrderTable.tsx` surfaces a `Pago en Revisión` chip second in `STATUS_FILTER_CHIPS` — the flagged queue is the one that blocks fulfillment, so it must not be buried in "Todos".
-- **Action block:** `OrderDetailPanel.tsx` renders a `--danger-bg` panel (only for `PAGO_EN_REVISION`) with an optional **Nota de conciliación** plus two resolutions calling `/api/admin/resolve-payment-review`:
-  - **Confirmar Pago y Rebajar Stock** (`resolution: 'approve'`) — verifies the money in the Mercado Pago/bank ledger, then sets `PAGADO_MERCADOPAGO` and decrements stock in one transaction (same trust level as transfer approval; recorded as `actorRole: 'ADMIN'` in `order_status_history` and `reasonCode: 'conciliacion_pago'` in `inventory_audit_logs`). Sends the customer "pago verificado" email + warehouse alert.
+- **Incident-specific reason:** the panel derives the actual reason from the latest `PAGO_EN_REVISION` entry in `order_status_history` (`metadata.event` → `PAGO_DUPLICADO` / `PAGO_ESTADO_INVALIDO` / `PAGO_REEMBOLSADO` / amount mismatch) and renders it with the stored `reason`, instead of a fixed "amount mismatch" message — a duplicate payment, an invalid source state and a refund/chargeback all land in `PAGO_EN_REVISION`.
+- **Action block:** `OrderDetailPanel.tsx` renders a `--danger-bg` panel (only for `PAGO_EN_REVISION`) with a **Nota de conciliación** plus two resolutions calling `/api/admin/resolve-payment-review`:
+  - **Confirmar Pago y Rebajar Stock** (`resolution: 'approve'`) — **requires a non-empty note** (the button stays disabled until one is entered; the server returns `400` otherwise), verifies the money in the Mercado Pago/bank ledger, then sets `PAGADO_MERCADOPAGO` and decrements stock in one transaction (same trust level as transfer approval; recorded as `actorRole: 'ADMIN'` in `order_status_history` and `reasonCode: 'conciliacion_pago'` in `inventory_audit_logs`). Sends the customer "pago verificado" email + warehouse alert.
   - **Cancelar Pedido** (`resolution: 'cancel'`) — sets `CANCELADO` with **no** stock movement. Refunds are not modelled (`src/types/AGENTS.md` §2.1), so the refund and customer contact stay manual; the warehouse gets the alert only.
 - **Guardrails:** only an order currently in `PAGO_EN_REVISION` can be resolved (`409` otherwise, so the action cannot race the webhook or a second administrator), re-resolving the target status returns `duplicate: true` without a second stock deduction, and a paid order can never be cancelled through this action. **At-most-once deduction (Task 0.14 R1):** approving an order that already carries a settlement marker (`paidAt`/`approvedAt` — e.g. the refunded payment the webhook parked in review) is refused with `409` and a specific message; cancelling stays available, which is the correct resolution for a refund.
 - `dashboard-stats` counts `PAGO_EN_REVISION` inside **pending** work, so unresolved money never disappears from the KPIs.

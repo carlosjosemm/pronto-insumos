@@ -12,6 +12,11 @@ export interface AdminAuthResult {
 /**
  * Verifies the Firebase Auth Bearer ID token and confirms the custom claim `admin === true`.
  * Returns the decoded admin user identity or descriptive error.
+ *
+ * `checkRevoked = true` makes Firebase reject a token whose session was revoked
+ * (staff deprovisioning, password reset, forced sign-out) instead of honouring it
+ * until it expires — admin actions settle money and deduct stock, so a revoked
+ * staff session must stop working immediately.
  */
 export async function verifyAdminToken(req: VercelRequest): Promise<AdminAuthResult> {
   const authHeader = req.headers.authorization
@@ -31,7 +36,7 @@ export async function verifyAdminToken(req: VercelRequest): Promise<AdminAuthRes
 
   try {
     const auth = getAuth(app)
-    const decoded = await auth.verifyIdToken(idToken)
+    const decoded = await auth.verifyIdToken(idToken, true)
 
     if (decoded.admin !== true) {
       return { authenticated: false, error: 'Acceso denegado: permisos administrativos requeridos' }
