@@ -68,6 +68,17 @@ export default tseslint.config(
   {
     ignores: ['dist/**', 'coverage/**', 'public/**', 'node_modules/**', '.vercel/**']
   },
+  // Pin project resolution to this repo for every linted file type: without
+  // it, an IDE with several candidate TSConfigRootDirs on disk (e.g. scratch
+  // dirs under /tmp) reports "No tsconfigRootDir was set" parsing errors.
+  {
+    files: ['**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname
+      }
+    }
+  },
   { ...js.configs.recommended, ignores: adminFiles },
   ...tseslint.configs.recommended.map((config) => ({ ...config, ignores: adminFiles })),
   {
@@ -76,6 +87,12 @@ export default tseslint.config(
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
+      // Pin project resolution to this repo: without it, an IDE with several
+      // candidate TSConfigRootDirs on disk (e.g. scratch dirs under /tmp)
+      // reports "No tsconfigRootDir was set" parsing errors.
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname
+      },
       globals: {
         ...globals.browser,
         ...globals.node
@@ -102,6 +119,9 @@ export default tseslint.config(
     files: adminFiles,
     languageOptions: {
       parser: tseslint.parser,
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname
+      },
       ecmaVersion: 2022,
       sourceType: 'module'
     }

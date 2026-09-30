@@ -3,6 +3,7 @@ export type FirestoreCollectionKey =
   | 'orders'
   | 'order_status_history'
   | 'inventory_audit_logs'
+  | 'payment_incidents'
 
 export type FirestoreEnvironment = 'production' | 'development' | 'test'
 
