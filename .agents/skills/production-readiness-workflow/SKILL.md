@@ -31,7 +31,7 @@ flowchart TD
     I --> J["10. Mark Checkbox [x] in TODO.md"]
     J --> K["11. Await Human Wrap-Up -> Conventional Git Commit"]
     K --> L["12. Push Branch & Create Pull Request (gh pr create)"]
-    L --> M["13. Walkthrough & Ready Next Task"]
+    L --> M["13. Walkthrough & Next 2 Tasks"]
 ```
 
 ### Step 1: Select the Next Pending Task
@@ -122,8 +122,9 @@ flowchart TD
   )"
   ```
 
-### Step 13: Walkthrough & Ready Next Task
+### Step 13: Walkthrough & Next 2 Tasks
 * Write/update `walkthrough.md` summarizing the completed changes, test results, and the link to the created PR.
+* **Report the next 2 open tasks (mandatory):** re-read the Active Action Board (§1) in [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md) and name the next 2 agent-executable tasks in priority order — task ID, one-line outcome/risk, and its gate. Skip suspended rows and owner-only checklist gates (mention those separately if still standing).
 * Report back to the user and await instructions to draft the implementation plan for the next task.
 
 ---

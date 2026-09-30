@@ -30,7 +30,7 @@ flowchart TD
     H --> I["9. Stage & Conventional Commit"]
     I --> J["10. Pre-PR Sync & Conflict Check"]
     J --> K["11. Push Branch & Create the Pull Request"]
-    K --> L["12. Walkthrough"]
+    K --> L["12. Walkthrough & Next 2 Tasks"]
 ```
 
 ---
@@ -115,3 +115,5 @@ Once authorized:
    * Report the PR URL back to the owner.
 
 5. **Walkthrough:** write/update `walkthrough.md` (gitignored local artifact) with the branch, commit, PR URL, verification results, human action items, and the disposition of every review finding.
+
+6. **Next 2 tasks (mandatory):** re-read the Active Action Board in `PRODUCTION_READINESS_TODO.md` §1 and report the **next 2 open tasks in priority order** to the owner in the wrap-up message — task ID, one-line outcome/risk, and its gate. Skip suspended rows and owner-only checklist gates (note them separately if they still stand); the two tasks must be agent-executable items from the P1→P2→P3 queue.
