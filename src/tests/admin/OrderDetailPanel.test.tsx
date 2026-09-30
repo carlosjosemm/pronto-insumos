@@ -223,4 +223,123 @@ describe('OrderDetailPanel Component', () => {
       else urlStatics[key] = original
     }
   })
+
+  describe('Dispatch record (Task 2.13)', () => {
+    it('renders the generated route code as an internal dispatch reference, never as a guía', () => {
+      const dispatched: Order = {
+        ...mockOrder,
+        status: 'DESPACHADO',
+        courier: 'Despacho Local Melipilla (Flota Directa)',
+        dispatch: {
+          carrier: 'despacho_local_melipilla',
+          reference: 'MEL-260929-07',
+          referenceSource: 'generated',
+          dispatchedAt: '2026-09-29T14:00:00.000Z',
+          dispatchedBy: 'bodega@pronto.cl'
+        }
+      }
+
+      render(<OrderDetailPanel order={dispatched} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      expect(screen.getByText('Despacho Registrado')).toBeInTheDocument()
+      expect(screen.getByText('Ref. Despacho:')).toBeInTheDocument()
+      expect(screen.getByText('MEL-260929-07')).toBeInTheDocument()
+      expect(screen.getByText('(código interno)')).toBeInTheDocument()
+      expect(screen.getByText('Despacho Local Melipilla (Flota Directa)')).toBeInTheDocument()
+    })
+
+    it('renders a typed courier guía as a guía and never labels it an internal code', () => {
+      const dispatched: Order = {
+        ...mockOrder,
+        status: 'DESPACHADO',
+        courier: 'Starken (Courier Regional)',
+        trackingNumber: 'STK-998877',
+        dispatch: {
+          carrier: 'starken',
+          trackingCode: 'STK-998877',
+          reference: 'STK-998877',
+          referenceSource: 'manual',
+          dispatchedAt: '2026-09-29T14:00:00.000Z',
+          dispatchedBy: 'bodega@pronto.cl'
+        }
+      }
+
+      render(<OrderDetailPanel order={dispatched} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      expect(screen.getByText('N° Guía:')).toBeInTheDocument()
+      expect(screen.getByText('STK-998877')).toBeInTheDocument()
+      expect(screen.queryByText('(código interno)')).not.toBeInTheDocument()
+    })
+
+    it('renders a pre-2.13 dispatch (tracking number only) as a guía', () => {
+      const dispatched: Order = {
+        ...mockOrder,
+        status: 'DESPACHADO',
+        courier: 'Starken (Courier Regional)',
+        trackingNumber: 'STK-0001'
+      }
+
+      render(<OrderDetailPanel order={dispatched} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      expect(screen.getByText('Despacho Registrado')).toBeInTheDocument()
+      expect(screen.getByText('N° Guía:')).toBeInTheDocument()
+      expect(screen.getByText('STK-0001')).toBeInTheDocument()
+      expect(screen.queryByText('(código interno)')).not.toBeInTheDocument()
+    })
+
+    it('renders no dispatch block for an order that was never dispatched', () => {
+      render(<OrderDetailPanel order={mockOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      expect(screen.queryByText('Despacho Registrado')).not.toBeInTheDocument()
+    })
+
+    it('surfaces the minted reference in the success banner after dispatching', async () => {
+      const dispatchSpy = vi.spyOn(adminApi, 'dispatchAdminOrder').mockResolvedValue({
+        success: true,
+        dispatchReference: 'MEL-260929-07',
+        referenceSource: 'generated'
+      })
+      const dispatchable: Order = { ...mockOrder, status: 'PAGADO_MERCADOPAGO', paymentMethod: 'mercadopago' }
+
+      render(<OrderDetailPanel order={dispatchable} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      fireEvent.click(screen.getByText(/Marcar como Despachado/i))
+
+      await waitFor(() => {
+        expect(dispatchSpy).toHaveBeenCalledWith({
+          orderId: 'PRONTO-998811',
+          carrier: 'despacho_local_melipilla',
+          trackingCode: undefined
+        })
+        expect(screen.getByText(/Ref\. Despacho: MEL-260929-07/)).toBeInTheDocument()
+      })
+
+      dispatchSpy.mockRestore()
+    })
+
+    it('labels the success banner as a guía when the warehouse typed a real code', async () => {
+      const dispatchSpy = vi.spyOn(adminApi, 'dispatchAdminOrder').mockResolvedValue({
+        success: true,
+        dispatchReference: 'STK-998877',
+        referenceSource: 'manual'
+      })
+      const dispatchable: Order = { ...mockOrder, status: 'PAGADO_MERCADOPAGO', paymentMethod: 'mercadopago' }
+
+      render(<OrderDetailPanel order={dispatchable} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      fireEvent.change(screen.getByPlaceholderText(/STK-948124/i), { target: { value: 'STK-998877' } })
+      fireEvent.click(screen.getByText(/Marcar como Despachado/i))
+
+      await waitFor(() => {
+        expect(dispatchSpy).toHaveBeenCalledWith({
+          orderId: 'PRONTO-998811',
+          carrier: 'despacho_local_melipilla',
+          trackingCode: 'STK-998877'
+        })
+        expect(screen.getByText(/N° Guía: STK-998877/)).toBeInTheDocument()
+      })
+
+      dispatchSpy.mockRestore()
+    })
+  })
 })

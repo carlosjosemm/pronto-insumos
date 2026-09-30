@@ -5,6 +5,7 @@ import type {
   OrderListResult,
   StockAdjustmentPayload,
   DispatchOrderPayload,
+  DispatchOrderResult,
   ProductUpdatePayload
 } from '../types'
 import type { Order, Product } from '../../types'
@@ -158,7 +159,7 @@ export async function resolvePaymentReview(
   }
 }
 
-export async function dispatchAdminOrder(payload: DispatchOrderPayload): Promise<{ success: boolean; error?: string }> {
+export async function dispatchAdminOrder(payload: DispatchOrderPayload): Promise<DispatchOrderResult> {
   const headers = await getAuthHeaders()
   try {
     const res = await fetch('/api/admin/dispatch-order', {
@@ -170,7 +171,16 @@ export async function dispatchAdminOrder(payload: DispatchOrderPayload): Promise
     if (!res.ok || !data.success) {
       return { success: false, error: data.error || `HTTP ${res.status}` }
     }
-    return { success: true }
+    return {
+      success: true,
+      dispatchReference: typeof data.dispatchReference === 'string' ? data.dispatchReference : undefined,
+      referenceSource:
+        data.referenceSource === 'manual'
+          ? 'manual'
+          : data.referenceSource === 'generated'
+            ? 'generated'
+            : undefined
+    }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error de conexión' }
   }

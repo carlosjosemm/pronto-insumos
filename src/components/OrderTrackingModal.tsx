@@ -634,6 +634,20 @@ export default function OrderTrackingModal({
                   <div>
                     <strong>Courier / Medio:</strong> {trackingData.fulfillment.courier}
                   </div>
+                  {/* Task 2.13 — a real courier guía wins; otherwise the internal route code
+                      minted at dispatch, explicitly labeled as an internal code. */}
+                  {trackingData.fulfillment.trackingNumber ? (
+                    <div>
+                      <strong>N° Guía / Seguimiento:</strong> {trackingData.fulfillment.trackingNumber}
+                    </div>
+                  ) : trackingData.fulfillment.dispatchReference ? (
+                    <div>
+                      <strong>Referencia de Despacho:</strong> {trackingData.fulfillment.dispatchReference}
+                      {trackingData.fulfillment.dispatchReferenceSource === 'generated' && (
+                        <span style={{ color: 'var(--text-secondary)' }}> (código interno)</span>
+                      )}
+                    </div>
+                  ) : null}
                   <div>
                     <strong>Método de Pago:</strong> {trackingData.paymentMethod.toUpperCase()}
                   </div>

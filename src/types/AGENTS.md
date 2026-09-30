@@ -9,7 +9,7 @@ This document is the **authoritative reference for data structures, domain contr
 * **Role:** The **single source of truth** for all business models in the application.
 * **Pure Typing (Zero Runtime Overhead):** Contains strictly TypeScript interfaces, type aliases, and string literal unions. No executable JavaScript code, classes, or runtime side effects.
 * **Single Location:** Components must never define ad-hoc interfaces (e.g. `interface OrderItem` inside a component file); all domain interfaces must be declared in [`src/types/index.ts`](./index.ts).
-* **File map:** `index.ts` is the only module. It exports the category unions (`ChileanDentalCategory`, `ProductCategory`, `Category`), `Product`, `CartItem`, the fiscal trio (`DocumentType`, `TaxBreakdown`, `BillingInfo`), `SanitaryVerification`, `CustomerInfo`, `PaymentMethod` (`'transferencia' | 'whatsapp' | 'mercadopago'`), `OrderStatus`, `Order`, `PromoCode` (a resolved catalog entry — `{ code, discountPercent, label }`; promo **policy** fields such as expiry, usage limits and product eligibility are unmodelled and tracked as Task 9.1), `Toast`, `SubmitOrderResult`, `OrderTrackingInfo`, `UploadVoucherResult`, and the audit trail contracts (`AuditActorRole`, `OrderStatusHistory`, `InventoryChangeType`, `InventoryAuditLog`).
+* **File map:** `index.ts` is the only module. It exports the category unions (`ChileanDentalCategory`, `ProductCategory`, `Category`), `Product`, `CartItem`, the fiscal trio (`DocumentType`, `TaxBreakdown`, `BillingInfo`), `SanitaryVerification`, `CustomerInfo`, `PaymentMethod` (`'transferencia' | 'whatsapp' | 'mercadopago'`), `OrderStatus`, `DispatchReferenceSource` (`'generated' | 'manual'` — the origin of the Task 2.13 dispatch reference), `Order`, `PromoCode` (a resolved catalog entry — `{ code, discountPercent, label }`; promo **policy** fields such as expiry, usage limits and product eligibility are unmodelled and tracked as Task 9.1), `Toast`, `SubmitOrderResult`, `OrderTrackingInfo`, `UploadVoucherResult`, and the audit trail contracts (`AuditActorRole`, `OrderStatusHistory`, `InventoryChangeType`, `InventoryAuditLog`).
 
 ---
 
@@ -104,6 +104,10 @@ export interface OrderTrackingInfo {
     statusDescription: string;
     courier?: string;
     trackingNumber?: string;
+    // Task 2.13 — present once the order was dispatched: the internal route code
+    // (`generated`, e.g. `MEL-260929-07`) or the typed courier guía (`manual`).
+    dispatchReference?: string;
+    dispatchReferenceSource?: DispatchReferenceSource;
   };
 }
 ```
@@ -162,7 +166,16 @@ export interface Order {
   // /api/upload-voucher inside the confirm transaction (a reservation released
   // best-effort when the Resend send fails). Never written by the client.
   voucherAlertSentAt?: string; voucherAlertCount?: number
-  dispatch?: { carrier: string; trackingCode?: string; dispatchedAt: string; dispatchedBy: string }
+  dispatch?: {
+    carrier: string
+    trackingCode?: string
+    // Task 2.13 — server-written by `dispatch-order` (never the client). `reference` is
+    // the customer-facing dispatch code — the minted internal route code or the typed
+    // courier guía — and `referenceSource` ('generated' | 'manual') says which it is.
+    reference?: string
+    referenceSource?: DispatchReferenceSource
+    dispatchedAt: string; dispatchedBy: string
+  }
   deliveredAt?: string
 }
 ```

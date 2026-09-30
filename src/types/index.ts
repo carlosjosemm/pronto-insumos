@@ -106,6 +106,14 @@ export type OrderStatus =
   | 'COTIZACION_SOLICITADA_WHATSAPP'
   | 'PENDIENTE_PAGO'
 
+/**
+ * Origin of the dispatch reference (Task 2.13). `generated` = minted by the
+ * `dispatch-order` handler for a courier-less delivery (a warehouse route code
+ * such as `MEL-260929-07` — NOT a courier guía); `manual` = typed by the
+ * warehouse (a real Starken/Chilexpress guía), which supersedes the generated one.
+ */
+export type DispatchReferenceSource = 'generated' | 'manual'
+
 export interface Order {
   orderId: string
   /**
@@ -159,6 +167,11 @@ export interface Order {
   dispatch?: {
     carrier: 'starken' | 'chilexpress' | 'blue_express' | 'despacho_local_melipilla' | string
     trackingCode?: string
+    // Task 2.13 — server-written by `dispatch-order`. `reference` is the customer-facing
+    // dispatch code (generated route code or the admin-typed guía), `referenceSource`
+    // says which of the two it is. Never client-written.
+    reference?: string
+    referenceSource?: DispatchReferenceSource
     dispatchedAt: string
     dispatchedBy: string
   }
@@ -222,6 +235,10 @@ export interface OrderTrackingInfo {
     statusDescription: string
     courier?: string
     trackingNumber?: string
+    // Task 2.13 — present once the order was dispatched: the real courier guía
+    // (`manual`) or the internal route code (`generated`) the customer can quote.
+    dispatchReference?: string
+    dispatchReferenceSource?: DispatchReferenceSource
   }
 }
 
