@@ -1,8 +1,14 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { OrderDetailPanel } from '../../admin/components/OrderDetailPanel'
 import * as adminApi from '../../admin/services/adminApi'
 import type { Order } from '../../types'
+
+// A test that throws mid-assertion must not leak its spies (e.g. a mocked
+// `resolveQuote` resolving success) into the next case in this file.
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 const mockOrder: Order = {
   orderId: 'PRONTO-998811',
@@ -379,6 +385,97 @@ describe('OrderDetailPanel Component', () => {
       })
 
       dispatchSpy.mockRestore()
+    })
+  })
+
+  describe('WhatsApp quote resolution', () => {
+    const quoteOrder: Order = {
+      ...mockOrder,
+      status: 'COTIZACION_SOLICITADA_WHATSAPP',
+      paymentMethod: 'whatsapp'
+    }
+
+    it('renders the resolution block for a quote order and keeps convert disabled until a reference is typed', () => {
+      const quoteSpy = vi.spyOn(adminApi, 'resolveQuote').mockResolvedValue({ success: true })
+
+      render(<OrderDetailPanel order={quoteOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      expect(screen.getByText(/verifica la venta fuera de la plataforma/i)).toBeInTheDocument()
+      const convertBtn = screen.getByText(/Confirmar Venta y Rebajar Stock/i).closest('button')
+      expect(convertBtn).toBeDisabled()
+      fireEvent.click(convertBtn as HTMLElement)
+      expect(quoteSpy).not.toHaveBeenCalled()
+
+      const declineBtn = screen.getByText(/Declinar Cotización \(sin rebajar stock\)/i).closest('button')
+      expect(declineBtn).toBeEnabled()
+
+      quoteSpy.mockRestore()
+    })
+
+    it('offers no quote block for non-quote orders', () => {
+      render(<OrderDetailPanel order={mockOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      expect(screen.queryByText(/verifica la venta fuera de la plataforma/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Confirmar Venta y Rebajar Stock/i)).not.toBeInTheDocument()
+    })
+
+    it('converts a quote with the typed reconciliation reference and refreshes the audit trail', async () => {
+      const quoteSpy = vi.spyOn(adminApi, 'resolveQuote').mockResolvedValue({ success: true })
+      const handleUpdated = vi.fn()
+
+      render(<OrderDetailPanel order={quoteOrder} onClose={vi.fn()} onOrderUpdated={handleUpdated} />)
+
+      fireEvent.change(screen.getByPlaceholderText(/cartola 30-09/i), {
+        target: { value: 'cartola 30-09, abono $379.980' }
+      })
+      fireEvent.click(screen.getByText(/Confirmar Venta y Rebajar Stock/i))
+
+      await waitFor(() => {
+        expect(quoteSpy).toHaveBeenCalledWith('PRONTO-998811', 'convert', 'cartola 30-09, abono $379.980', undefined)
+        expect(handleUpdated).toHaveBeenCalledTimes(1)
+        expect(screen.getByText(/Cotización convertida en venta verificada/i)).toBeInTheDocument()
+      })
+
+      quoteSpy.mockRestore()
+    })
+
+    it('declines a quote without requiring a reference, carrying the closing note', async () => {
+      const quoteSpy = vi.spyOn(adminApi, 'resolveQuote').mockResolvedValue({ success: true })
+
+      render(<OrderDetailPanel order={quoteOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      fireEvent.change(screen.getByPlaceholderText(/sin respuesta tras 7 días/i), {
+        target: { value: 'Venta registrada en PRONTO-77777777' }
+      })
+      fireEvent.click(screen.getByText(/Declinar Cotización \(sin rebajar stock\)/i))
+
+      await waitFor(() => {
+        expect(quoteSpy).toHaveBeenCalledWith(
+          'PRONTO-998811',
+          'decline',
+          undefined,
+          'Venta registrada en PRONTO-77777777'
+        )
+        expect(screen.getByText(/Cotización cerrada sin venta/i)).toBeInTheDocument()
+      })
+
+      quoteSpy.mockRestore()
+    })
+
+    it('surfaces a server refusal in the error banner', async () => {
+      const quoteSpy = vi
+        .spyOn(adminApi, 'resolveQuote')
+        .mockResolvedValue({ success: false, error: 'El pedido no es una cotización WhatsApp pendiente' })
+
+      render(<OrderDetailPanel order={quoteOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      fireEvent.click(screen.getByText(/Declinar Cotización \(sin rebajar stock\)/i))
+
+      await waitFor(() => {
+        expect(screen.getByText(/no es una cotización WhatsApp pendiente/i)).toBeInTheDocument()
+      })
+
+      quoteSpy.mockRestore()
     })
   })
 })

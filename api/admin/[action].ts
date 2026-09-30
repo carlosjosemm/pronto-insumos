@@ -5,6 +5,7 @@ import orderHistory from '../_lib/admin/order-history.js'
 import products from '../_lib/admin/products.js'
 import approveTransfer from '../_lib/admin/approve-transfer.js'
 import resolvePaymentReview from '../_lib/admin/resolve-payment-review.js'
+import resolveQuote from '../_lib/admin/resolve-quote.js'
 import dispatchOrder from '../_lib/admin/dispatch-order.js'
 import markDelivered from '../_lib/admin/mark-delivered.js'
 import updateStock from '../_lib/admin/update-stock.js'
@@ -32,6 +33,7 @@ const ADMIN_ACTIONS: Record<string, AdminHandler> = {
   products: products,
   'approve-transfer': approveTransfer,
   'resolve-payment-review': resolvePaymentReview,
+  'resolve-quote': resolveQuote,
   'dispatch-order': dispatchOrder,
   'mark-delivered': markDelivered,
   'update-stock': updateStock,
