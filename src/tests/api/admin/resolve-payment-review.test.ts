@@ -140,7 +140,10 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
     vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: false, error: 'Unauthorized' })
 
     await handler(
-      { method: 'POST', body: { orderId: 'PRONTO-1', resolution: 'approve' } } as VercelRequest,
+      {
+        method: 'POST',
+        body: { orderId: 'PRONTO-1', resolution: 'approve', notes: 'Conciliado contra cartola' }
+      } as VercelRequest,
       mockRes as VercelResponse
     )
 
@@ -165,11 +168,24 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
     expect(jsonOutput.error).toContain('resolution')
   })
 
+  it('refuses to approve without an operator note (400)', async () => {
+    await handler(
+      { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+      mockRes as VercelResponse
+    )
+
+    expect(statusOutput).toBe(400)
+    expect(jsonOutput.error).toContain('nota de conciliación')
+  })
+
   it('returns 500 when Firestore Admin is unavailable', async () => {
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(null)
 
     await handler(
-      { method: 'POST', body: { orderId: 'PRONTO-1', resolution: 'approve' } } as VercelRequest,
+      {
+        method: 'POST',
+        body: { orderId: 'PRONTO-1', resolution: 'approve', notes: 'Conciliado contra cartola' }
+      } as VercelRequest,
       mockRes as VercelResponse
     )
 
@@ -183,7 +199,10 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
     )
 
     await handler(
-      { method: 'POST', body: { orderId: 'PRONTO-GHOST', resolution: 'approve' } } as VercelRequest,
+      {
+        method: 'POST',
+        body: { orderId: 'PRONTO-GHOST', resolution: 'approve', notes: 'Conciliado contra cartola' }
+      } as VercelRequest,
       mockRes as VercelResponse
     )
 
@@ -200,7 +219,10 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
     )
 
     await handler(
-      { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+      {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123456', resolution: 'approve', notes: 'Conciliado contra cartola' }
+      } as VercelRequest,
       mockRes as VercelResponse
     )
 
@@ -211,13 +233,45 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
     expect(captured.current?.inStock).toBe(true)
   })
 
+  it.each([
+    ['a fractional quantity', 2.5, 7],
+    ['a NaN quantity', Number.NaN, 9]
+  ])('normalizes %s instead of writing a corrupt stock count', async (_label, quantity, expectedStock) => {
+    const captured: { current: Record<string, unknown> | null } = { current: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockReviewDb({
+        orderData: {
+          orderId: 'PRONTO-123456',
+          status: 'PAGO_EN_REVISION',
+          items: [{ productId: 'odon-101', quantity }]
+        },
+        onProductUpdate: (data) => (captured.current = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler(
+      {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123456', resolution: 'approve', notes: 'Conciliado' }
+      } as VercelRequest,
+      mockRes as VercelResponse
+    )
+
+    expect(statusOutput).toBe(200)
+    expect(captured.current?.stockCount).toBe(expectedStock)
+    expect(Number.isInteger(captured.current?.stockCount)).toBe(true)
+  })
+
   it('approves through the orderId query fallback when the direct doc key misses', async () => {
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       mockReviewDb({ directLookupMisses: true }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
 
     await handler(
-      { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+      {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123456', resolution: 'approve', notes: 'Conciliado contra cartola' }
+      } as VercelRequest,
       mockRes as VercelResponse
     )
 
@@ -239,7 +293,10 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
     )
 
     await handler(
-      { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+      {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123456', resolution: 'approve', notes: 'Conciliado contra cartola' }
+      } as VercelRequest,
       mockRes as VercelResponse
     )
 
@@ -299,7 +356,10 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
     )
 
     await handler(
-      { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+      {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123456', resolution: 'approve', notes: 'Conciliado contra cartola' }
+      } as VercelRequest,
       mockRes as VercelResponse
     )
 
@@ -345,7 +405,10 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
     )
 
     await handler(
-      { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+      {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123456', resolution: 'approve', notes: 'Conciliado contra cartola' }
+      } as VercelRequest,
       mockRes as VercelResponse
     )
 
@@ -422,7 +485,10 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
       )
 
       await handler(
-        { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+        {
+          method: 'POST',
+          body: { orderId: 'PRONTO-123456', resolution: 'approve', notes: 'Conciliado contra cartola' }
+        } as VercelRequest,
         mockRes as VercelResponse
       )
 
@@ -479,7 +545,10 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
       )
 
       await handler(
-        { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+        {
+          method: 'POST',
+          body: { orderId: 'PRONTO-123456', resolution: 'approve', notes: 'Conciliado contra cartola' }
+        } as VercelRequest,
         mockRes as VercelResponse
       )
 
@@ -513,7 +582,10 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
       )
 
       await handler(
-        { method: 'POST', body: { orderId: 'PRONTO-123456', resolution: 'approve' } } as VercelRequest,
+        {
+          method: 'POST',
+          body: { orderId: 'PRONTO-123456', resolution: 'approve', notes: 'Conciliado contra cartola' }
+        } as VercelRequest,
         mockRes as VercelResponse
       )
 

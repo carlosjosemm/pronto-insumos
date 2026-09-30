@@ -1,14 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  setAdminResponseHeaders(res)
 
-  if (req.method === 'OPTIONS') {
+  if (isAdminPreflight(req)) {
     return res.status(200).end()
   }
 
@@ -32,55 +31,96 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const ordersCol = getCollectionName('orders')
+  const cleanOrderId = orderId.trim()
 
   try {
-    let orderRef = db.collection(ordersCol).doc(orderId.trim())
-    let doc = await orderRef.get()
-    if (!doc.exists) {
-      const querySnap = await db.collection(ordersCol).where('orderId', '==', orderId.trim()).limit(1).get()
+    let orderRef = db.collection(ordersCol).doc(cleanOrderId)
+    const initialCheck = await orderRef.get()
+    if (!initialCheck.exists) {
+      const querySnap = await db.collection(ordersCol).where('orderId', '==', cleanOrderId).limit(1).get()
       if (querySnap.empty) {
         return res.status(404).json({ success: false, error: 'Pedido no encontrado' })
       }
-      doc = querySnap.docs[0]
-      orderRef = doc.ref
+      orderRef = querySnap.docs[0].ref
     }
 
-    const currentStatus = doc.data()?.status || null
     const nowIso = new Date().toISOString()
-    const historyRef = db.collection(getCollectionName('order_status_history')).doc()
 
-    const batch = db.batch()
-    batch.update(orderRef, {
-      status: 'ENTREGADO',
-      deliveredAt: nowIso,
-      updatedAt: nowIso
-    })
-
-    batch.set(historyRef, {
-      id: historyRef.id,
-      orderId: orderId.trim(),
-      previousStatus: currentStatus,
-      newStatus: 'ENTREGADO',
-      changedBy: authResult.uid || 'admin',
-      changedByEmail: authResult.email || null,
-      actorRole: 'ADMIN',
-      timestamp: nowIso,
-      reason: 'Confirmación final de entrega y recepción conforme',
-      metadata: {
-        confirmedBy: authResult.email || authResult.uid || 'admin'
+    // The status decision and the write run in ONE transaction so two concurrent
+    // confirmations cannot both observe DESPACHADO and append duplicate history
+    // events for a single delivery.
+    const result = await db.runTransaction(async (transaction) => {
+      const orderDoc = await transaction.get(orderRef)
+      if (!orderDoc.exists) {
+        throw new Error(`Pedido "${cleanOrderId}" no encontrado en Firestore`)
       }
+
+      const currentStatus = String((orderDoc.data() || {}).status || '')
+
+      // Receipt may only close a dispatched order; anything else (pending, paid
+      // but not shipped, cancelled, quote) must not jump straight to ENTREGADO.
+      if (currentStatus === 'ENTREGADO') {
+        return { outcome: 'duplicate' as const, currentStatus }
+      }
+      if (currentStatus !== 'DESPACHADO') {
+        return { outcome: 'conflict' as const, currentStatus }
+      }
+
+      transaction.update(orderRef, {
+        status: 'ENTREGADO',
+        deliveredAt: nowIso,
+        updatedAt: nowIso
+      })
+
+      const historyRef = db.collection(getCollectionName('order_status_history')).doc()
+      transaction.set(historyRef, {
+        id: historyRef.id,
+        orderId: cleanOrderId,
+        previousStatus: currentStatus,
+        newStatus: 'ENTREGADO',
+        changedBy: authResult.uid || 'admin',
+        changedByEmail: authResult.email || null,
+        actorRole: 'ADMIN',
+        timestamp: nowIso,
+        reason: 'Confirmación final de entrega y recepción conforme',
+        metadata: {
+          confirmedBy: authResult.email || authResult.uid || 'admin'
+        }
+      })
+
+      return { outcome: 'ok' as const }
     })
 
-    await batch.commit()
+    if (result.outcome === 'conflict') {
+      return res.status(409).json({
+        success: false,
+        error: `Solo un pedido despachado puede marcarse como entregado (estado actual: ${
+          result.currentStatus || 'desconocido'
+        }).`,
+        currentStatus: result.currentStatus
+      })
+    }
+
+    if (result.outcome === 'duplicate') {
+      return res.status(200).json({
+        success: true,
+        orderId: cleanOrderId,
+        status: 'ENTREGADO',
+        duplicate: true
+      })
+    }
 
     return res.status(200).json({
       success: true,
-      orderId,
+      orderId: cleanOrderId,
       status: 'ENTREGADO',
       deliveredAt: nowIso
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[Admin API Mark Delivered] Error:', err)
-    return res.status(500).json({ success: false, error: err.message || 'Error al marcar como entregado' })
+    return res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Error al marcar como entregado'
+    })
   }
 }

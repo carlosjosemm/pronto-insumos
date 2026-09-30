@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
@@ -6,11 +7,9 @@ import { validateProductSchema } from '../../../src/utils/schemaValidation.js'
 import type { Product, InventoryAuditLog } from '../../../src/types'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  setAdminResponseHeaders(res)
 
-  if (req.method === 'OPTIONS') {
+  if (isAdminPreflight(req)) {
     return res.status(200).end()
   }
 

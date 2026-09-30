@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { isAdminPreflight, setAdminResponseHeaders } from "./adminHttp.js";
 import { getAdminFirestore } from "../firebaseAdmin.js";
 import { verifyAdminToken } from "../adminAuth.js";
 import { getCollectionName } from "../firestoreEnv.js";
@@ -9,13 +10,40 @@ import {
   toOrderEmailData,
 } from "../emailTemplates.js";
 import type { StockShortfall } from "../emailTemplates.js";
+import { resolvePromoPercent } from "../../../src/config/promos.js";
+import { computeDiscountedUnitPrice, normalizeQuantity } from "../../../src/utils/orderTotal.js";
 
+/** Source states from which a bank transfer may be approved. */
+const APPROVABLE_STATUSES = new Set([
+  "PENDIENTE_TRANSFERENCIA",
+  "TRANSFERENCIA_COMPROBANTE_SUBIDO",
+]);
+
+const MAX_RECONCILIATION_REFERENCE_LENGTH = 120;
+
+/**
+ * Transaction outcome, discriminated so the response and email paths narrow
+ * cleanly. `conflict` carries the operator-facing reason for a 409.
+ */
+type ApprovalOutcome =
+  | { outcome: "duplicate"; currentStatus: string }
+  | { outcome: "conflict"; currentStatus: string; message: string }
+  | { outcome: "approved"; approvedAt: string };
+
+/**
+ * Approves a bank transfer: verifies the order is genuinely pending transfer,
+ * re-derives the payable total from the CURRENT catalog (promo-aware), then
+ * deducts stock and marks the order approved in one transaction.
+ *
+ * A voucher upload is not evidence that the money settled, and the server cannot
+ * read the bank ledger — so the operator must attest with a reconciliation
+ * reference (the Banco de Chile cartola line), which is recorded in the order
+ * history. Never store bank credentials, only the reference.
+ */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  setAdminResponseHeaders(res);
 
-  if (req.method === "OPTIONS") {
+  if (isAdminPreflight(req)) {
     return res.status(200).end();
   }
 
@@ -30,12 +58,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ success: false, error: authResult.error });
   }
 
-  const { orderId } = req.body || {};
+  const { orderId, reconciliationReference } = req.body || {};
   if (!orderId || typeof orderId !== "string") {
     return res
       .status(400)
       .json({ success: false, error: 'El parámetro "orderId" es obligatorio' });
   }
+  if (
+    typeof reconciliationReference !== "string" ||
+    reconciliationReference.trim().length === 0
+  ) {
+    return res.status(400).json({
+      success: false,
+      error:
+        'El parámetro "reconciliationReference" es obligatorio: verifica el abono en la cartola de Banco de Chile y registra la referencia (nunca credenciales bancarias).',
+    });
+  }
+  const cleanReference = reconciliationReference
+    .trim()
+    .slice(0, MAX_RECONCILIATION_REFERENCE_LENGTH);
+  // Normalize once: the lookup trims, so every written field must use the same
+  // value or order-history queries (which filter on `orderId`) would miss it.
+  const cleanOrderId = orderId.trim();
 
   const db = getAdminFirestore();
   if (!db) {
@@ -47,24 +91,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ordersCol = getCollectionName("orders");
 
   try {
-    let orderRef = db.collection(ordersCol).doc(orderId.trim());
+    let orderRef = db.collection(ordersCol).doc(cleanOrderId);
     const initialCheck = await orderRef.get();
     if (!initialCheck.exists) {
       const querySnap = await db
         .collection(ordersCol)
-        .where("orderId", "==", orderId.trim())
+        .where("orderId", "==", cleanOrderId)
         .limit(1)
         .get();
       if (querySnap.empty) {
         return res.status(404).json({
           success: false,
-          error: `Pedido "${orderId}" no encontrado en Firestore`,
+          error: `Pedido "${cleanOrderId}" no encontrado en Firestore`,
         });
       }
       orderRef = querySnap.docs[0].ref;
     }
 
-    let orderDataForEmail: any = null;
+    let orderDataForEmail: Record<string, unknown> | null = null;
     // Oversold lines are recorded on approval. Reset inside the
     // transaction callback, which Firestore may re-run on contention.
     const stockShortfalls: StockShortfall[] = [];
@@ -73,42 +117,83 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stockShortfalls.length = 0;
       const orderDoc = await transaction.get(orderRef);
       if (!orderDoc.exists) {
-        throw new Error(`Pedido "${orderId}" no encontrado en Firestore`);
+        throw new Error(`Pedido "${cleanOrderId}" no encontrado en Firestore`);
       }
 
       const orderData = orderDoc.data() || {};
       orderDataForEmail = orderData;
-      const currentStatus = orderData.status;
+      const currentStatus = String(orderData.status || "");
 
-      // Idempotency: If already approved or paid, acknowledge without double decrementing
-      if (
-        currentStatus === "TRANSFERENCIA_APROBADA" ||
-        currentStatus === "PAGADO_TRANSFERENCIA" ||
-        currentStatus === "PAGADO_MERCADOPAGO"
-      ) {
-        return { duplicate: true, currentStatus };
+      // Idempotency: a retried approval of the SAME order is a no-op, never a
+      // second stock deduction.
+      if (currentStatus === "TRANSFERENCIA_APROBADA") {
+        return { outcome: "duplicate", currentStatus } satisfies ApprovalOutcome;
       }
 
-      const items: any[] = Array.isArray(orderData.items)
-        ? orderData.items
+      // Only a pending transfer may be approved. A quote, cancelled, dispatched,
+      // delivered, MP-paid or review-parked order must never deduct stock here.
+      if (!APPROVABLE_STATUSES.has(currentStatus)) {
+        return {
+          outcome: "conflict",
+          currentStatus,
+          message: `El pedido no está pendiente de transferencia (estado actual: ${
+            currentStatus || "desconocido"
+          }). No se rebajó stock.`,
+        } satisfies ApprovalOutcome;
+      }
+
+      // A settlement marker (`approvedAt` / `paidAt`) means the lines were
+      // already deducted by an earlier payment; approving again must not deduct.
+      if (orderData.approvedAt || orderData.paidAt) {
+        return {
+          outcome: "conflict",
+          currentStatus,
+          message:
+            "El pedido ya registra un pago o rebaja anterior; no se rebaja stock por segunda vez. Cancela el pedido o concilia el reembolso manualmente.",
+        } satisfies ApprovalOutcome;
+      }
+
+      const items: Array<Record<string, unknown>> = Array.isArray(orderData.items)
+        ? (orderData.items as Array<Record<string, unknown>>)
         : [];
 
-      // Consolidate line item quantities by productId to prevent duplicate snapshot overwrite
+      // The promo percent comes from the shared catalog via the order's own code —
+      // never from the request — so the verified total cannot be dictated by a caller.
+      const discountPercent = resolvePromoPercent(orderData.promoCode);
+
+      // Consolidate line quantities by productId so a duplicated line cannot
+      // overwrite its own snapshot.
       const consolidatedQty = new Map<string, { qty: number; name?: string }>();
       for (const item of items) {
-        const productId = item.productId || item.id;
-        if (!productId) continue;
-        const existing = consolidatedQty.get(productId) || {
+        const rawProductId = item.productId || item.id;
+        if (typeof rawProductId !== "string" || rawProductId.length === 0) {
+          return {
+            outcome: "conflict",
+            currentStatus,
+            message:
+              "El pedido tiene una línea sin producto identificable; no se puede verificar el monto. No se rebajó stock.",
+          } satisfies ApprovalOutcome;
+        }
+        const existing = consolidatedQty.get(rawProductId) || {
           qty: 0,
-          name: item.name,
+          name: typeof item.name === "string" ? item.name : undefined,
         };
-        existing.qty +=
-          typeof item.quantity === "number" ? Math.max(1, item.quantity) : 1;
-        if (item.name) existing.name = item.name;
-        consolidatedQty.set(productId, existing);
+        existing.qty += normalizeQuantity(item.quantity);
+        if (typeof item.name === "string") existing.name = item.name;
+        consolidatedQty.set(rawProductId, existing);
       }
 
-      // Read all products referenced in order items
+      if (consolidatedQty.size === 0) {
+        return {
+          outcome: "conflict",
+          currentStatus,
+          message:
+            "El pedido no tiene insumos registrados; no se puede aprobar la transferencia.",
+        } satisfies ApprovalOutcome;
+      }
+
+      // Read every product first (all reads before all writes) and rebuild the
+      // payable total from the CURRENT catalog prices.
       const productDocsToUpdate: {
         ref: FirebaseFirestore.DocumentReference;
         productId: string;
@@ -120,6 +205,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         shortfall: number;
         isActive: boolean;
       }[] = [];
+      let expectedTotal = 0;
 
       for (const [productId, itemInfo] of consolidatedQty.entries()) {
         const productRef = db
@@ -127,40 +213,75 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .doc(productId);
         const productDoc = await transaction.get(productRef);
 
-        if (productDoc.exists) {
-          const productData = productDoc.data() || {};
-          const currentStock =
-            typeof productData.stockCount === "number"
-              ? productData.stockCount
-              : 0;
-          const newStock = Math.max(0, currentStock - itemInfo.qty);
-          const isActive = productData.isActive !== false;
-          const lineName = productData.name || itemInfo.name || productId;
-          const shortfall = Math.max(0, itemInfo.qty - currentStock);
-          // An approval that oversells is still approved (the money
-          // is in) but the shortfall is recorded and alerted — never hidden by
-          // the Math.max clamp.
-          if (shortfall > 0) {
-            stockShortfalls.push({
-              productId,
-              name: lineName,
-              requested: itemInfo.qty,
-              available: currentStock,
-            });
-          }
+        // A missing product fails closed: a partial deduction must never be
+        // recorded as a full approval.
+        if (!productDoc.exists) {
+          return {
+            outcome: "conflict",
+            currentStatus,
+            message: `El producto "${
+              itemInfo.name || productId
+            }" ya no existe en el catálogo; no se puede verificar el monto. No se rebajó stock.`,
+          } satisfies ApprovalOutcome;
+        }
 
-          productDocsToUpdate.push({
-            ref: productRef,
+        const productData = productDoc.data() || {};
+        const catalogPrice = Number(productData.price);
+        if (!Number.isInteger(catalogPrice) || catalogPrice <= 0) {
+          return {
+            outcome: "conflict",
+            currentStatus,
+            message: `El producto "${
+              productData.name || productId
+            }" no tiene un precio de catálogo válido; no se puede aprobar la transferencia.`,
+          } satisfies ApprovalOutcome;
+        }
+        expectedTotal += computeDiscountedUnitPrice(catalogPrice, discountPercent) * itemInfo.qty;
+
+        const currentStock =
+          typeof productData.stockCount === "number"
+            ? productData.stockCount
+            : 0;
+        const newStock = Math.max(0, currentStock - itemInfo.qty);
+        const isActive = productData.isActive !== false;
+        const lineName = productData.name || itemInfo.name || productId;
+        const shortfall = Math.max(0, itemInfo.qty - currentStock);
+        // An approval that oversells is still approved (the money
+        // is in) but the shortfall is recorded and alerted — never hidden by
+        // the Math.max clamp.
+        if (shortfall > 0) {
+          stockShortfalls.push({
             productId,
             name: lineName,
-            sku: productData.sku || "",
-            previousStock: currentStock,
-            newStock,
-            delta: -itemInfo.qty,
-            shortfall,
-            isActive,
+            requested: itemInfo.qty,
+            available: currentStock,
           });
         }
+
+        productDocsToUpdate.push({
+          ref: productRef,
+          productId,
+          name: lineName,
+          sku: productData.sku || "",
+          previousStock: currentStock,
+          newStock,
+          delta: -itemInfo.qty,
+          shortfall,
+          isActive,
+        });
+      }
+
+      // Server-authoritative amount check: the stored total must equal the total
+      // recomputed from the current catalog before any stock moves.
+      const storedTotal = Number(orderData.totalAmount);
+      if (!Number.isInteger(storedTotal) || storedTotal !== expectedTotal) {
+        return {
+          outcome: "conflict",
+          currentStatus,
+          message: `El total verificado del pedido (${expectedTotal}) no coincide con el monto registrado (${
+            orderData.totalAmount ?? "sin registro"
+          }). Corrige el pedido o cotiza por WhatsApp; no se rebajó stock.`,
+        } satisfies ApprovalOutcome;
       }
 
       const nowIso = new Date().toISOString();
@@ -187,13 +308,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           newStock: update.newStock,
           delta: update.delta,
           reasonCode: "venta_manual",
-          operatorNotes: `Rebaja automática por aprobación de transferencia de orden ${orderId}`,
+          operatorNotes: `Rebaja automática por aprobación de transferencia de orden ${cleanOrderId}`,
           changedBy: authResult.uid || "admin",
           changedByEmail: authResult.email || null,
           actorRole: "ADMIN",
           timestamp: nowIso,
           metadata: {
-            orderId,
+            orderId: cleanOrderId,
             ...(update.shortfall > 0
               ? { stockShortfall: update.shortfall }
               : {}),
@@ -209,41 +330,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updatedAt: nowIso,
       });
 
-      // Record order status history
+      // Record order status history, carrying the operator's reconciliation
+      // reference so the approval is auditable without ever storing bank secrets.
       const historyRef = db
         .collection(getCollectionName("order_status_history"))
         .doc();
       transaction.set(historyRef, {
         id: historyRef.id,
-        orderId,
+        orderId: cleanOrderId,
         previousStatus: currentStatus,
         newStatus: "TRANSFERENCIA_APROBADA",
         changedBy: authResult.uid || "admin",
         changedByEmail: authResult.email || null,
         actorRole: "ADMIN",
         timestamp: nowIso,
-        reason:
-          "Aprobación de transferencia bancaria y rebaja de stock en bodega Melipilla",
+        reason: `Aprobación de transferencia verificada en cartola (ref. ${cleanReference}) y rebaja de stock en bodega Melipilla`,
         metadata: {
           approvedBy: adminActor,
+          reconciliationReference: cleanReference,
+          reconciledAt: nowIso,
           itemsCount: items.length,
+          orderTotalAmount: storedTotal,
           // Oversold lines travel with the approval so the
           // shortfall is auditable, not just emailed.
           ...(stockShortfalls.length > 0 ? { stockShortfalls } : {}),
         },
       });
 
-      return { duplicate: false, approvedAt: nowIso };
+      return { outcome: "approved", approvedAt: nowIso } satisfies ApprovalOutcome;
     });
 
+    if (result.outcome === "conflict") {
+      return res.status(409).json({
+        success: false,
+        error: result.message,
+        currentStatus: result.currentStatus,
+      });
+    }
+
     // Transactional emails (fail-safe): customer approval notice + warehouse alert
-    if (!result.duplicate && orderDataForEmail) {
+    if (result.outcome === "approved" && orderDataForEmail) {
+      // Cast because the assignment happens inside the transaction callback, which
+      // TypeScript's control-flow analysis does not follow across the `await`.
+      const approvedData = orderDataForEmail as Record<string, unknown>;
       const emailData = toOrderEmailData(String(orderId).trim(), {
-        ...orderDataForEmail,
+        ...approvedData,
         status: "TRANSFERENCIA_APROBADA",
       });
       const customerEmail = String(
-        orderDataForEmail.customer?.email || "",
+        (approvedData.customer as { email?: string } | undefined)?.email || "",
       ).trim();
       if (customerEmail) {
         await sendEmail({
@@ -266,14 +401,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({
       success: true,
-      orderId,
-      ...result,
+      orderId: cleanOrderId,
+      duplicate: result.outcome === "duplicate",
+      ...(result.outcome === "approved"
+        ? { approvedAt: result.approvedAt }
+        : {}),
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[Admin API Approve Transfer] Error:", err);
     return res.status(500).json({
       success: false,
-      error: err.message || "Error al aprobar la transferencia",
+      error:
+        err instanceof Error
+          ? err.message
+          : "Error al aprobar la transferencia",
     });
   }
 }

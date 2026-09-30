@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
@@ -12,12 +13,24 @@ import {
 } from '../dispatchReference.js'
 import type { DispatchReferenceSource } from '../../../src/types'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+/**
+ * Statuses from which an order may be marked `DESPACHADO`. `DESPACHADO` is
+ * included so an already-shipped order can be re-dispatched to add or correct
+ * its courier guía (covered by the handler tests); a pending, cancelled, quote
+ * or review-parked order must never ship.
+ */
+const DISPATCHABLE_STATUSES = new Set([
+  'PAGADO_MERCADOPAGO',
+  'TRANSFERENCIA_APROBADA',
+  'PAGADO_TRANSFERENCIA',
+  'EN_PREPARACION',
+  'DESPACHADO'
+])
 
-  if (req.method === 'OPTIONS') {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  setAdminResponseHeaders(res)
+
+  if (isAdminPreflight(req)) {
     return res.status(200).end()
   }
 
@@ -75,6 +88,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const orderData = orderDoc.data() || {}
       const currentStatus = orderData.status || null
       const existingDispatch = orderData.dispatch || {}
+
+      // Only a paid/approved order (or an already-dispatched one being
+      // re-dispatched) may ship. A pending, cancelled, quote or review-parked
+      // order must never be handed to a courier.
+      if (!DISPATCHABLE_STATUSES.has(String(currentStatus))) {
+        return { conflict: true as const, currentStatus: String(currentStatus || '') }
+      }
 
       // A dispatch written before references existed stored its guía only in
       // `dispatch.trackingCode`; promote it
@@ -166,8 +186,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       })
 
-      return { reference, referenceSource, dispatchData }
+      return { conflict: false as const, reference, referenceSource, dispatchData }
     })
+
+    if (dispatch.conflict) {
+      return res.status(409).json({
+        success: false,
+        error: `El pedido no está listo para despacho (estado actual: ${dispatch.currentStatus || 'desconocido'}).`,
+        currentStatus: dispatch.currentStatus
+      })
+    }
 
     return res.status(200).json({
       success: true,

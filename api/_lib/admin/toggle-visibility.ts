@@ -1,14 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  setAdminResponseHeaders(res)
 
-  if (req.method === 'OPTIONS') {
+  if (isAdminPreflight(req)) {
     return res.status(200).end()
   }
 
@@ -36,53 +35,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const productRef = db.collection(getCollectionName('products')).doc(productId.trim())
-    const doc = await productRef.get()
-    if (!doc.exists) {
+    const nowIso = new Date().toISOString()
+
+    // Read-modify-write in ONE transaction: deriving `inStock` from a stock value
+    // read outside the transaction would let a concurrent webhook deduction leave
+    // `inStock` stale (visible product reported out of stock, or vice versa).
+    const result = await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(productRef)
+      if (!doc.exists) {
+        return { notFound: true as const }
+      }
+
+      const productData = doc.data() || {}
+      const currentStock = typeof productData.stockCount === 'number' ? productData.stockCount : 0
+      const computedInStock = currentStock > 0 && visible
+
+      transaction.update(productRef, {
+        isActive: visible,
+        inStock: computedInStock,
+        updatedAt: nowIso
+      })
+
+      const auditRef = db.collection(getCollectionName('inventory_audit_logs')).doc()
+      transaction.set(auditRef, {
+        id: auditRef.id,
+        productId: productId.trim(),
+        productSku: productData.sku || '',
+        productName: productData.name || productId.trim(),
+        changeType: 'VISIBILITY_TOGGLE',
+        previousStock: productData.stockCount ?? null,
+        newStock: productData.stockCount ?? null,
+        delta: 0,
+        reasonCode: visible ? 'activacion_catalogo' : 'pausa_catalogo',
+        operatorNotes: `Visibilidad cambiada a ${visible ? 'VISIBLE' : 'PAUSADO'}`,
+        changedBy: authResult.uid || 'admin',
+        changedByEmail: authResult.email || null,
+        actorRole: 'ADMIN',
+        timestamp: nowIso
+      })
+
+      return { notFound: false as const, computedInStock }
+    })
+
+    if (result.notFound) {
       return res.status(404).json({ success: false, error: 'Producto no encontrado' })
     }
-
-    const productData = doc.data() || {}
-    const nowIso = new Date().toISOString()
-    const currentStock = typeof productData.stockCount === 'number' ? productData.stockCount : 0
-    const isNowActive = visible
-
-    const batch = db.batch()
-    batch.update(productRef, {
-      isActive: isNowActive,
-      inStock: currentStock > 0 && isNowActive,
-      updatedAt: nowIso
-    })
-
-    const auditRef = db.collection(getCollectionName('inventory_audit_logs')).doc()
-    batch.set(auditRef, {
-      id: auditRef.id,
-      productId: productId.trim(),
-      productSku: productData.sku || '',
-      productName: productData.name || productId.trim(),
-      changeType: 'VISIBILITY_TOGGLE',
-      previousStock: productData.stockCount ?? null,
-      newStock: productData.stockCount ?? null,
-      delta: 0,
-      reasonCode: visible ? 'activacion_catalogo' : 'pausa_catalogo',
-      operatorNotes: `Visibilidad cambiada a ${visible ? 'VISIBLE' : 'PAUSADO'}`,
-      changedBy: authResult.uid || 'admin',
-      changedByEmail: authResult.email || null,
-      actorRole: 'ADMIN',
-      timestamp: nowIso
-    })
-
-    await batch.commit()
-
-    const computedInStock = currentStock > 0 && isNowActive
 
     return res.status(200).json({
       success: true,
       productId,
-      isActive: isNowActive,
-      inStock: computedInStock
+      isActive: visible,
+      inStock: result.computedInStock
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[Admin API Toggle Visibility] Error:', err)
-    return res.status(500).json({ success: false, error: err.message || 'Error al cambiar la visibilidad del producto' })
+    return res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Error al cambiar la visibilidad del producto'
+    })
   }
 }
