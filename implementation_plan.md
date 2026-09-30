@@ -1,180 +1,90 @@
-# Task 2.15: Bound Orphan Voucher Uploads and Legacy Payloads
+# Task 4.3 (follow-up): Close the `create-product` Price/Unit Hardening Gap
 
-**Branch:** `fix/task-2.15-voucher-upload-bounding` (primary working tree — no worktree; cut from `main` @ `85144e0`)
-**Status:** **Implemented, reviewed, remediated — gates green; awaiting owner "wrap up and proceed".** 93 suites / 1064 tests (89-suite baseline + 4 new; rebased onto `origin/main` @ Task 2.18). Adversarial review returned *approve with findings* (M1/M2 doc sync, m1/m2, n1–n4); all code findings remediated, doc findings land in the as-built pass (step 8).
-**Baseline on this branch:** `pnpm test` → 1014/1014 (89 suites) green after rebasing onto `origin/main` (Task 0.18 merge `85144e0`).
+**Branch:** `fix/task-4.3-create-product-price-bound` (primary working tree — no worktree; cut from `main` @ `718a4cd`, which already includes Task 2.15 / PR #42)
+**Status:** **Implemented, reviewed, remediated — gates green; awaiting owner "wrap up and proceed".** 93 suites / 1084 tests (+20). Adversarial review returned *approve with findings* (D1–D3 doc drift, N1 note, P1/P2 pre-existing); no code change required, doc findings remediated.
 
 ---
 
 ## 1. Context & Problem Statement
 
-`PRODUCTION_READINESS_TODO.md` **2.15 (P2)** — three follow-ups left over from Task 2.9 (the browser→Storage voucher flow):
+**Task 4.3 (`PRODUCTION_READINESS_TODO.md`, P1) is already implemented and merged** — PR **#36**, commit `6444114 fix(admin): harden admin state, amount and inventory mutations (Task 4.3)` (merge `ef67f2e`). Its Accept criteria are covered by passing suites (`approve-transfer` 20, `dispatch-order` 18, `resolve-payment-review` 23, `OrderDetailPanel` 22, `update-stock` 8, `update-product` 6, `mark-delivered` 6, `adminAuth` 4, `adminHttp` 4, `toggle-visibility` 4).
 
-1. **Unconfirmed uploads are never cleaned up.** `handleSign` (`api/upload-voucher.ts:88-145`) mints a fresh
-   `vouchers/{env}/{orderId}/{epochMs}-{token}.{ext}` object path on every call and mints a signed PUT URL
-   with **no lifetime cap**. The Task 8.8 throttle bounds *attempts per 15-minute window*, so minting is
-   bounded per window but **repeatable forever**. An upload that is signed and PUT but never `confirm`ed
-   (tab closed, network drop) leaves an orphan object of up to 5 MiB under `vouchers/…` with no owner and
-   no cleanup path — Cloud Storage bills it indefinitely. `handleConfirm` only deletes the object it
-   *replaces* (`:329-331`), never an abandoned one.
+**The one real residual** is on the *create* path. 4.3's rule — *"CLP price/total inputs must be finite integers within permitted bounds … never silently `Math.round`"* — was applied to `update-product` and `update-stock`, but **not** to `api/_lib/admin/create-product.ts`, which still coerces with `parseInt(String(...))`:
 
-2. **Legacy base64 vouchers bloat the admin list response.** Pre-2.9 order docs may carry the whole voucher
-   as a `data:` URL in `voucherUrl` (up to ~1 MiB). `api/_lib/admin/orders.ts:47-58` spreads **every** field
-   of **every** order into the list response, so a handful of legacy vouchers can exceed Vercel's **4.5 MB**
-   response cap and break the entire backoffice order list. `/api/track-order` already hides `data:` URLs
-   (`:226-231`); the admin list was not covered.
+| Input | Current behaviour (`create-product`) | `update-product` / `update-stock` |
+| :-- | :-- | :-- |
+| `price: 189.99` | silently becomes **189** | `400` |
+| `price: '189.99'` | silently becomes **189** | `400` (number-only) |
+| `price: '12abc'` | silently becomes **12** | `400` |
+| `price: '1e3'` | silently becomes **1** | `400` |
+| `price: 1_000_000_000` | **accepted** (no ceiling) | `400` (`MAX_CLP`) |
+| `stockCount: 3.5` | silently becomes **3** | `400` |
+| `stockCount: 2_000_000` | **accepted** (no ceiling) | `400` (`MAX_STOCK_UNITS`) |
 
-3. **`voucherUrl` is a permanent capability URL.** The Firebase download token never expires unless rotated.
-   Acceptable today (only the RUT-authenticated customer and admins ever see it) — this is a documentation
-   item, not a code change.
+So a typo at creation time can persist a catalog price or stock level that the sibling edit handlers would refuse — the exact failure class 4.3 closed everywhere else, and the `999_999_999` / `1_000_000` bounds currently exist as **two private copies** that can drift.
 
-**Chosen direction (owner-confirmed):**
-- Orphan uploads → **durable per-order sign counter (Firestore) + an authenticated housekeeping sweep on the
-  existing `/api/admin/[action]` dispatcher** (no new serverless-function slot), triggered from the admin UI.
-- Legacy payloads → **`orders.ts` list returns `hasVoucher` instead of `voucherUrl`; the `?orderId=` detail
-  request still returns the full document**, and the admin UI fetches the detail on select. No data migration.
+Secondary: the Active Action Board row for 4.3 (`PRODUCTION_READINESS_TODO.md:26`) is still unticked while the detail entry is `[x]` with an as-built note.
 
 ---
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-- **No new credentials, secrets or environment variables.** Both new bounds are code constants; nothing is
-  added to `.env.example`.
-- **Operator action (documented, optional):** the housekeeping sweep is exposed as a button in
-  `#settings`. The owner may run it periodically (e.g. after a campaign) to reclaim abandoned uploads.
-- **Deployment:** no new Vercel function is added (the admin action rides the existing `api/admin/[action]`
-  slot), so the Hobby 12-function cap is untouched (stays at 6 used).
-- **Note for the owner (recorded, no action):** `voucherUrl` remains a non-expiring capability URL; if
-  voucher revocation is ever required, the download token must be rotated / the object deleted.
+- **None.** No new credentials, secrets or environment variables; nothing added to `.env.example`.
+- **Unchanged human gate (4.3):** the bank-deposit / Mercado Pago-ledger verification before approving a transfer or a review case remains a manual operator step (no bank API exists) — this follow-up does not alter it.
 
 ---
 
 ## 3. Proposed Changes
 
-### 3.1 Durable per-order sign cap (orphan bounding)
+- **[NEW]** `api/_lib/admin/adminLimits.ts` — one shared authority for the numeric bounds:
+  - `MAX_CLP = 999_999_999` (CLP has no cents) and `MAX_STOCK_UNITS = 1_000_000`.
+  - `isValidClpAmount(value): value is number` → `number`, integer, `1…MAX_CLP`.
+  - `isValidStockUnits(value): value is number` → `number`, integer, `0…MAX_STOCK_UNITS`.
+  - Self-contained header comment on **why it is shared**: three handlers must reject exactly the same values; three private copies drift and let one endpoint accept what another refuses.
+- **[MODIFY]** `api/_lib/admin/create-product.ts` — replace both `parseInt(String(price), 10)` / `parseInt(String(stockCount), 10)` calls with the shared guards. **Number-only**, matching `update-product`/`update-stock` (the admin UI already sends `Math.round(price)` / `Math.max(0, Math.round(stockCount))` numbers — `ProductEditModal.tsx:124-125`). `stockCount` keeps its `= 10` default when the key is omitted. Error messages mirror the sibling handlers (they include the bound).
+- **[MODIFY]** `api/_lib/admin/update-product.ts` — import `MAX_CLP` + `isValidClpAmount` from the shared module; drop the private constant. Behaviour and message unchanged.
+- **[MODIFY]** `api/_lib/admin/update-stock.ts` — import `MAX_STOCK_UNITS` + `isValidStockUnits`; drop the private constant. Behaviour and message unchanged.
+- **[MODIFY]** `PRODUCTION_READINESS_TODO.md` — tick the 4.3 board row and append one line to the 4.3 as-built recording this follow-up (create-path parity + the shared bounds module).
+- **[MODIFY]** `api/AGENTS.md` — §7 table: note the shared `adminLimits.ts` bounds on the `create-product` / `update-product` / `update-stock` rows.
 
-- **[MODIFY]** `api/upload-voucher.ts`
-  - New constant `VOUCHER_MAX_SIGNS_PER_ORDER = 10` with a self-contained comment explaining that this is a
-    **lifetime** bound (unlike the 15-minute throttle) and why 10 is generous for legitimate replacements.
-  - New helper `reserveVoucherSignSlot(adminDb, order, cap)` → runs a Firestore transaction on the order doc:
-    read fresh, `current = Number(voucherSignCount) || 0`; if `current >= cap` → `{ allowed: false, count }`;
-    else `transaction.update(ref, { voucherSignCount: current + 1 })` → `{ allowed: true, count: current + 1 }`.
-    Transactional so concurrent signs serialize on the order document (a plain read-then-write could exceed
-    the cap). Reserve **before** minting: a slot is spent even if `getSignedUrl` later throws (conservative,
-    documented inline).
-  - `handleSign` gains `adminDb` + `order` parameters and calls the helper after the lifecycle guard, before
-    `buildVoucherStoragePath`. On refusal: `429` + a Chilean-Spanish message pointing to WhatsApp (no
-    `Retry-After` — the cap is not time-bound). On a counter-write failure: fail **closed** (`500`, loud log)
-    — we must not mint an unbounded URL because the bound could not be recorded.
-- **[MODIFY]** `src/types/index.ts` — add `voucherSignCount?: number` to `Order` (server-written, never
-  client-written; Admin SDK bypasses `firestore.rules`, so no rules change is needed).
+### Non-goals
 
-### 3.2 Housekeeping sweep (orphan cleanup)
+- No new dependency, no UI change, no `firestore.rules` / schema change, no other handler touched.
+- Not re-opening 4.3's already-merged guards; this is strictly the missing create-path parity.
 
-- **[NEW]** `api/_lib/admin/voucher-housekeeping.ts` — `POST` admin handler:
-  - `setAdminResponseHeaders` / `isAdminPreflight` / `verifyAdminToken` / `405` on non-POST, mirroring the
-    other admin handlers.
-  - Body: `{ orderId?: string, dryRun?: boolean, limit?: number }`.
-  - Loads orders (single doc when `orderId` given; otherwise the collection read — the same
-    full read the existing admin order list already performs — sorted `createdAt` desc and
-    capped at `limit`, default 100 / max 500). Orders are never deletable (`firestore.rules`
-    denies client deletes and no handler deletes them), so **per-order folder listing is
-    complete** — every voucher folder belongs to a live order. Listing per loaded order (not
-    one whole-prefix listing) guarantees an object is only ever deleted when its own order was
-    read, so an unscanned order can never be mistaken for an orphan. The admin UI exposes the
-    `limit` so an operator can widen the scan to reach older orders (the server clamps to 500).
-  - For each order: `bucket.getFiles({ prefix: vouchers/{env}/{orderId}/ })`; keep the object equal to the
-    order's `voucherStoragePath`; delete every other object whose `timeCreated` is older than
-    `VOUCHER_ORPHAN_GRACE_MS = 60 min` (the signed PUT TTL is 10 min, so 60 min can never race an in-flight
-    upload); objects with an unknown age are skipped (conservative).
-  - Response: `{ success, dryRun, scannedOrders, scannedObjects, deletedCount, keptReferenced,
-    skippedRecent, deletedSample: string[], failures: string[] }` — counts + a capped sample, never a dump.
-  - Guards: `deleteVoucherObject` (existing helper) already refuses any path outside `vouchers/`; a delete
-    failure is recorded in `failures` and never aborts the sweep.
-- **[MODIFY]** `api/admin/[action].ts` — register `'voucher-housekeeping': voucherHousekeeping` (now **14**
-  actions) and correct the stale "12 administrative handlers" comment.
-- **[MODIFY]** `src/admin/types.ts` — add `VoucherHousekeepingResult`.
-- **[MODIFY]** `src/admin/services/adminApi.ts` — `runVoucherHousekeeping({ orderId?, dryRun?, limit? })`.
-- **[MODIFY]** `src/admin/components/AdminSettings.tsx` — a "Mantenimiento de Comprobantes" card with a
-  **Revisar huérfanos** (dry-run) button and a **Eliminar huérfanos** button; renders the returned counts or
-  the error. No new CSS framework; reuses `admin-card` / `admin-btn` classes.
+### Deliberate behaviour change (called out for approval)
 
-### 3.3 Legacy base64 bounding in the admin list
-
-- **[MODIFY]** `api/_lib/admin/orders.ts`
-  - List path: destructure `voucherUrl` out of each doc and add
-    `hasVoucher: Boolean(data.voucherUrl || data.voucherStoragePath)` (same predicate `track-order` uses).
-  - Detail path (`?orderId=`, both the doc-key hit and the `where('orderId','==')` fallback): return the full
-    document unchanged, including `voucherUrl`.
-- **[MODIFY]** `src/types/index.ts` — add `hasVoucher?: boolean` to `Order`, documented as a **list-projection**
-  flag (the list omits `voucherUrl`; the detail request supplies it).
-- **[MODIFY]** `src/admin/components/AdminOrders.tsx`
-  - On select, show the list row immediately then `fetchAdminOrder(orderId)` and replace with the full detail
-    (guarded against out-of-order responses). Deep-link `initialOrderId` fetches the detail directly.
-  - `onOrderUpdated` now refreshes the selected order's detail as well as the list — fixes the stale-selection
-    panel after an approve/dispatch action (today `selectedOrder` is never re-read).
-- **[MODIFY]** `src/admin/components/OrderDetailPanel.tsx` — the voucher block also renders when
-  `order.hasVoucher` is true but the detail URL has not loaded, showing a neutral "no se pudo cargar el
-  enlace" note instead of silently hiding an attached voucher.
-
-### 3.4 Documentation
-
-- **[MODIFY]** `api/AGENTS.md` — sign-phase cap, the housekeeping action, the list/detail voucher projection,
-  and the permanent-capability-URL note.
-- **[MODIFY]** `src/admin/AGENTS.md`, `src/types/AGENTS.md`, `src/tests/AGENTS.md` — as-built notes + counts.
-- **[MODIFY]** `PRODUCTION_READINESS_TODO.md` — mark 2.15 `[x]` and move it to Resolved History at wrap-up.
-
-### 3.5 Non-goals
-
-- No GCS lifecycle rule, no `pending/` path redesign, no object "move".
-- No legacy base64 → Storage migration script.
-- No new serverless function (Hobby cap preserved), no new dependency, no rules change.
+`create-product` stops accepting **numeric strings** (`'8990'`). The sole consumer (`ProductEditModal` → `createProductDetails`) already sends numbers, so no client breaks; the tightening is what makes the three handlers consistent.
 
 ---
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-All boundaries mocked at the edge (`firebase-admin/storage`, `firebase-admin/firestore`, `adminAuth`); no real
-network. New/updated suites:
+Boundaries mocked at the edge (`adminAuth`, `firebaseAdmin`), mirroring the existing doubles. **Suite count stays 93** (extend existing files, no new suite).
 
 | Suite | Cases |
 | :-- | :-- |
-| `src/tests/api/admin/orders.test.ts` **(NEW — also closes the TODO 4.2 `orders` gap)** | `405`/`OPTIONS`/`403`/db-down `500`; list **omits** `voucherUrl` for a legacy `data:` order and sets `hasVoucher: true`; `hasVoucher: true` for a Storage-only order; `hasVoucher: false` when no voucher; other fields (customer/items/total/status) preserved; detail doc-key hit **returns** `voucherUrl`; detail `where` fallback returns `voucherUrl`; detail `404`; status filter + search |
-| `src/tests/api/upload-voucher.test.ts` **(MODIFY)** | sign reserves exactly one slot (`voucherSignCount: 1`) and mints the URL; sign at the cap → `429` + message and **no** `getSignedUrl` call; sign counter write failure → `500` fail-closed, no URL minted; existing "mints a scoped signed URL" case updated to assert the counter write is the **only** write |
-| `src/tests/api/admin/voucher-housekeeping.test.ts` **(NEW)** | `403`/`405`/`OPTIONS`/db-or-bucket-down `500`; deletes only unreferenced + older-than-grace objects; keeps the referenced `voucherStoragePath`; keeps a young orphan; `dryRun` deletes nothing but reports counts; `orderId` scoping lists only that folder; a `delete` rejection lands in `failures` without aborting; a path outside the voucher prefix is never deleted |
-| `src/tests/api/admin/admin-router.test.ts` **(MODIFY)** | add `'voucher-housekeeping'` to `ROUTES` (the "maps every declared action" case then covers it) |
-| `src/tests/admin/AdminSettings.test.tsx` **(NEW)** | renders the maintenance card; "Revisar" calls the service with `dryRun: true`; "Eliminar" calls with `dryRun: false`; counts render; a service error renders the message |
-| `src/tests/admin/AdminOrders.test.tsx` **(NEW)** | selecting a row calls `fetchAdminOrder` and the panel receives the detailed order (voucher link appears from the detail payload, not the list row); the list row has no `voucherUrl` |
-| `src/tests/admin/OrderDetailPanel.test.tsx` **(MODIFY)** | `hasVoucher: true` with no `voucherUrl` renders the fallback note (no anchor) |
+| `src/tests/api/admin/create-product.test.ts` **(extend)** | `it.each` over rejected prices → `400` + `precio`: fractional `189.99`, `NaN`, `Infinity`, `0`, `-500`, out-of-range `1_000_000_000`, and the junk strings the old `parseInt` accepted (`'189.99'`, `'12abc'`, `'1e3'`, `''`); boundary **accepted**: `MAX_CLP` → `200`; `it.each` over rejected `stockCount` → `400` + `stock`: fractional `3.5`, negative `-1`, out-of-range `1_000_001`, `NaN`, `'15'`; omitted `stockCount` still defaults to `10`; the existing create/audit happy path is unchanged |
+| `src/tests/api/admin/update-product.test.ts` **(extend)** | boundary **accepted**: `price: MAX_CLP` → `200` (pins the shared ceiling); existing fractional/NaN/out-of-range rejections stay green |
+| `src/tests/api/admin/update-stock.test.ts` **(extend)** | boundary **accepted**: `newStock: MAX_STOCK_UNITS` → `200`; existing rejection table stays green |
 
-Conventions: mirror `src/tests/api/admin/mark-delivered.test.ts` (handler doubles) and
-`src/tests/admin/OrderTable.test.tsx` (RTL). **Zero-regression:** the full 89-suite / 1014-test baseline plus
-the new cases must be green.
+Zero-regression: the full 93-suite / 1064-test baseline plus the new cases must pass.
 
 ---
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-- `api/AGENTS.md`: sign-phase durable cap (`voucherSignCount`), the `voucher-housekeeping` action + its
-  contract, the admin list/detail voucher projection, and the capability-URL note.
-- `src/admin/AGENTS.md`: the detail-fetch-on-select change, the settings maintenance card, the new action.
-- `src/types/AGENTS.md`: `Order.hasVoucher` / `Order.voucherSignCount`.
-- `src/tests/AGENTS.md`: new suite names + updated counts.
-- `PRODUCTION_READINESS_TODO.md`: `[x]` on 2.15 + Resolved History row at wrap-up.
+- `api/AGENTS.md` §7 — the three handler rows reference the shared `adminLimits.ts` bounds.
+- `PRODUCTION_READINESS_TODO.md` — 4.3 board row `[x]`; as-built line notes the create-path parity.
 
 ## 6. Risks & Edge Cases
 
-- **Slot spent on a failed mint** — conservative by design (documented inline); the cap is 10, so a customer
-  is not realistically locked out.
-- **Sweep listing cost** — one `getFiles` per scanned order, bounded by `limit` (≤500); it is an operator
-  action, not a hot path.
-- **`hasVoucher` without a detail fetch** — the panel shows the fallback note rather than hiding an attached
-  voucher; the detail fetch normally supplies the URL.
-- **Existing sign test** asserted "no Firestore writes" — intentionally updated to "only the counter is
-  written"; this is the one deliberate contract change and is called out in the PR.
+- **Number-only tightening** — only reachable breakage is a non-UI caller sending strings; documented and flagged above.
+- **Refactor of two merged handlers** — behaviour-preserving by construction (same guard, same message, bound imported rather than re-declared); their existing suites are the regression net.
+- **`stockCount` default** — applied before validation, so an omitted key still yields `10` rather than a `400`.
 
 ## 7. Verification
 
-`pnpm test` (89 suites + 4 new → 93, 1064 tests), `pnpm build`, `pnpm lint`, `pnpm format:check`,
-`pnpm exec tsc --noEmit` (+ the documented `api/` strict check). Then the adversarial `code-review` subagent,
-remediation, as-built docs, roadmap checkbox, commit + PR.
+`pnpm test` (expect 93 suites, >1064 tests), `pnpm build`, `pnpm lint`, `pnpm format:check`,
+`pnpm exec tsc --noEmit` + the documented `api/` strict check. Then the adversarial `code-review`
+subagent, remediation, as-built docs, roadmap tick, commit + PR.

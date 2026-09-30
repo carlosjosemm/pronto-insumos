@@ -3,9 +3,7 @@ import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
-
-/** Upper bound for a CLP price — CLP is a whole-peso currency with no cents. */
-const MAX_CLP = 999_999_999
+import { MAX_CLP, isValidClpAmount } from './adminLimits.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setAdminResponseHeaders(res)
@@ -32,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // rounding a fractional or out-of-range value would let a typo change the
   // charged catalog price.
   if (price !== undefined) {
-    if (typeof price !== 'number' || !Number.isInteger(price) || price <= 0 || price > MAX_CLP) {
+    if (!isValidClpAmount(price)) {
       return res.status(400).json({
         success: false,
         error: `El precio debe ser un número entero en CLP entre 1 y ${MAX_CLP}.`

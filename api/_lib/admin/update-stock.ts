@@ -3,9 +3,7 @@ import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
-
-/** Upper bound for a physical warehouse count — rejects absurd or overflow input. */
-const MAX_STOCK_UNITS = 1_000_000
+import { MAX_STOCK_UNITS, isValidStockUnits } from './adminLimits.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setAdminResponseHeaders(res)
@@ -29,12 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   // `newStock` is a count of whole units: a NaN, Infinity, fractional, negative
   // or absurd value is rejected outright rather than silently rounded.
-  if (
-    typeof newStock !== 'number' ||
-    !Number.isInteger(newStock) ||
-    newStock < 0 ||
-    newStock > MAX_STOCK_UNITS
-  ) {
+  if (!isValidStockUnits(newStock)) {
     return res.status(400).json({
       success: false,
       error: `El parámetro "newStock" debe ser un número entero entre 0 y ${MAX_STOCK_UNITS} unidades`

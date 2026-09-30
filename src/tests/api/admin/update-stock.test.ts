@@ -97,6 +97,23 @@ describe('Serverless Admin Update Stock (/api/admin/update-stock)', () => {
     expect(jsonOutput.error).toContain('newStock')
   })
 
+  it('accepts a count exactly at the MAX_STOCK_UNITS bound (shared adminLimits ceiling)', async () => {
+    const store = mockStockDb({ stockCount: 5, isActive: true, sku: 'OD-101', name: 'Turbina' })
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      store.db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { productId: 'odon-101', newStock: 1_000_000, reason: 'reposicion' }
+    } as VercelRequest
+
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.stockCount).toBe(1_000_000)
+  })
+
   it('adjusts the stock inside a transaction and records the audit reason', async () => {
     const store = mockStockDb({ stockCount: 5, isActive: true, sku: 'OD-101', name: 'Turbina' })
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(

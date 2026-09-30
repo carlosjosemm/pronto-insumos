@@ -108,6 +108,35 @@ describe('Serverless Admin Update Product (/api/admin/update-product)', () => {
     expect(jsonOutput.error).toContain('precio')
   })
 
+  it('accepts a price exactly at the MAX_CLP bound (shared adminLimits ceiling)', async () => {
+    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
+
+    const mockBatch = { update: vi.fn(), set: vi.fn(), commit: vi.fn().mockResolvedValue([]) }
+    const mockDoc = {
+      get: vi.fn().mockResolvedValue({
+        exists: true,
+        data: () => ({ id: 'odon-101', name: 'Turbina LED', price: 189990 })
+      })
+    }
+    const mockDb = {
+      collection: vi.fn(() => ({ doc: vi.fn(() => mockDoc) })),
+      batch: vi.fn(() => mockBatch)
+    }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockDb as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { productId: 'odon-101', price: 999_999_999 }
+    } as VercelRequest
+
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect((jsonOutput.updates as Record<string, unknown>).price).toBe(999_999_999)
+  })
+
   it('normalizes the category and audits the price change', async () => {
     vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: true, uid: 'admin-1' })
 
