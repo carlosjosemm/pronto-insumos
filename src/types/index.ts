@@ -107,7 +107,7 @@ export type OrderStatus =
   | 'PENDIENTE_PAGO'
 
 /**
- * Origin of the dispatch reference (Task 2.13). `generated` = minted by the
+ * Origin of the dispatch reference. `generated` = minted by the
  * `dispatch-order` handler for a courier-less delivery (a warehouse route code
  * such as `MEL-260929-07` — NOT a courier guía); `manual` = typed by the
  * warehouse (a real Starken/Chilexpress guía), which supersedes the generated one.
@@ -138,9 +138,9 @@ export interface Order {
     quantity: number
     price: number
   }[]
-  // Bank-transfer voucher trail (Task 2.9): the bytes live in Firebase Storage —
+  // Bank-transfer voucher trail: the bytes live in Firebase Storage —
   // `voucherUrl` is a download-token URL and `voucherStoragePath` the object key.
-  // A `data:` URL here means a legacy pre-2.9 document.
+  // A `data:` URL here means a legacy document written before the Storage flow.
   voucherUrl?: string
   voucherStoragePath?: string
   voucherFileName?: string
@@ -148,7 +148,7 @@ export interface Order {
   voucherSizeBytes?: number
   voucherUploadedAt?: string
   // Promo trail — persisted so the payment webhook can recompute the verified
-  // payable total from the catalog (Task 0.9); written only at order creation.
+  // payable total from the catalog; written only at order creation.
   promoCode?: string
   discountAmount?: number
   courier?: string
@@ -158,7 +158,7 @@ export interface Order {
   approvedAt?: string
   approvedBy?: string
   confirmationEmailSentAt?: string
-  // Warehouse-alert budget for the "voucher received" email (Task 8.8): server-written.
+  // Warehouse-alert budget for the "voucher received" email: server-written.
   // The stamp is a RESERVATION committed inside the confirm transaction (so concurrent
   // confirms serialize on the order document) and released best-effort when the Resend
   // send fails — never written by the client.
@@ -167,7 +167,7 @@ export interface Order {
   dispatch?: {
     carrier: 'starken' | 'chilexpress' | 'blue_express' | 'despacho_local_melipilla' | string
     trackingCode?: string
-    // Task 2.13 — server-written by `dispatch-order`. `reference` is the customer-facing
+    // Server-written by `dispatch-order`. `reference` is the customer-facing
     // dispatch code (generated route code or the admin-typed guía), `referenceSource`
     // says which of the two it is. Never client-written.
     reference?: string
@@ -235,7 +235,7 @@ export interface OrderTrackingInfo {
     statusDescription: string
     courier?: string
     trackingNumber?: string
-    // Task 2.13 — present once the order was dispatched: the real courier guía
+    // Present once the order was dispatched: the real courier guía
     // (`manual`) or the internal route code (`generated`) the customer can quote.
     dispatchReference?: string
     dispatchReferenceSource?: DispatchReferenceSource

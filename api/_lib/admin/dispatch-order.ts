@@ -63,7 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       trackingCode === undefined || trackingCode === null ? '' : String(trackingCode).trim()
     const adminActor = authResult.email || authResult.uid || 'admin'
 
-    // Task 2.13: the dispatch and its reference are written in ONE transaction, so a
+    // The dispatch and its reference are written in ONE transaction, so a
     // dispatch can never be recorded without its route code and the daily counter can
     // never be bumped by a dispatch that failed. All reads precede all writes.
     const dispatch = await db.runTransaction(async (transaction) => {
@@ -76,7 +76,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const currentStatus = orderData.status || null
       const existingDispatch = orderData.dispatch || {}
 
-      // A pre-2.13 dispatch stored its guía only in `dispatch.trackingCode`; promote it
+      // A dispatch written before references existed stored its guía only in
+      // `dispatch.trackingCode`; promote it
       // so a code-less re-dispatch keeps that guía instead of minting a route code that
       // would mask it (the admin panel and the customer both prefer `reference`).
       const legacyTrackingCode =
@@ -119,7 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dispatchedBy: adminActor
       }
 
-      // Task 0.15: the Admin SDK rejects `undefined` field values, and the local
+      // The Admin SDK rejects `undefined` field values, and the local
       // Melipilla fleet usually ships without a tracking code — so the keys are
       // omitted entirely instead of written as `undefined`. A code-less re-dispatch
       // keeps the guía recorded by the previous dispatch (the whole `dispatch` map

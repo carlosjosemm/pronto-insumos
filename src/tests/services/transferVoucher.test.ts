@@ -187,7 +187,7 @@ describe('Transfer Voucher Service (src/services/transferVoucher)', () => {
     })
 
     it('should surface the uniform 404 lookup failure from the endpoint (Task 8.8)', async () => {
-      // Since Task 8.8 a wrong RUT and an unknown order id are the SAME response — the
+      // A wrong RUT and an unknown order id are the SAME response — the
       // old 401 RUT-mismatch contract no longer exists server-side.
       vi.spyOn(global, 'fetch').mockResolvedValueOnce(
         jsonResponse(

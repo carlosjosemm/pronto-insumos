@@ -19,7 +19,7 @@ function createMockRes() {
 }
 
 /**
- * Orders-collection double for the canonical lookup (Task 0.12): the document key
+ * Orders-collection double for the canonical lookup: the document key
  * resolves to the first fixture document — mirroring `resolveOrderByCanonicalId` —
  * and the legacy `orderId` field query returns the same fixtures.
  */
@@ -44,7 +44,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.restoreAllMocks()
-    // Deterministic simulation policy (Task 0.10): every test starts outside
+    // Deterministic simulation policy: every test starts outside
     // production with no override; the production-gate tests set VERCEL_ENV explicitly.
     delete process.env.VERCEL_ENV
     delete process.env.ALLOW_SIMULATED_PAYMENTS
@@ -108,7 +108,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
   })
 
   it('should acknowledge 200 when Mercado Pago reports the payment does not exist (404)', async () => {
-    // Task 0.14a: 404 is the ONE MP failure that is safe to acknowledge — there
+    // 404 is the ONE MP failure that is safe to acknowledge — there
     // is no payment to reconcile. Every other failure is refused with 502.
     vi.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: false,

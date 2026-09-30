@@ -29,8 +29,8 @@ interface UrlBootstrap {
   /** True when the URL carried payment-return or tracking parameters to consume. */
   hasParams: boolean
   /**
-   * True only when an approved return names the order THIS tab just created
-   * (Task 2.12) — the URL alone is forgeable and Mercado Pago writes it before
+   * True only when an approved return names the order THIS tab just created —
+   * the URL alone is forgeable and Mercado Pago writes it before
    * the webhook verifies the payment, so it may never reset the cart on its own.
    */
   clearsCart: boolean
@@ -81,7 +81,7 @@ function parseUrlBootstrap(): UrlBootstrap {
 
   const bootstrap: UrlBootstrap = {
     hasParams: Boolean(status) || shouldTrack,
-    // Task 2.12: an approved return only resets the cart when it names the order
+    // An approved return only resets the cart when it names the order
     // this tab created — a forged or foreign URL must leave the cart untouched.
     clearsCart: status === 'approved' && isSessionOrder(normalizedOrderId),
     paymentReturn: {
@@ -115,7 +115,7 @@ export default function App() {
 
   const [products, setProducts] = useState<Product[]>([])
   // Unfiltered catalog for the category pills — counting the filtered `products` would
-  // drop every unselected pill to 0 as soon as a filter is applied (review finding F1).
+  // drop every unselected pill to 0 as soon as a filter is applied.
   const [catalog, setCatalog] = useState<Product[]>([])
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [catalogRetryKey, setCatalogRetryKey] = useState(0)
@@ -124,7 +124,7 @@ export default function App() {
 
   // `loading` is derived from which request has completed, so a filter change
   // flips it to true during render instead of via a state-setting effect. The retry
-  // key (Task 2.11) re-arms both the request and the loading state after a failure.
+  // key re-arms both the request and the loading state after a failure.
   const catalogRequestKey = `${selectedCategory}|${search}|${sortBy}|${inStockOnly}|${catalogRetryKey}`
   const loading = loadedRequestKey !== catalogRequestKey
 
@@ -182,7 +182,7 @@ export default function App() {
         setCatalog(res.catalog)
         setCatalogError(res.source === 'unavailable' ? res.error || 'No pudimos cargar el catálogo.' : null)
 
-        // Task 2.11: only the live catalog may revalidate the persisted cart — fixture
+        // Only the live catalog may revalidate the persisted cart — fixture
         // data (or an unavailable catalog) would otherwise classify every saved line as
         // "discontinued" and empty the cart. The one-shot flag is consumed only by a
         // trustworthy load, so a later success still revalidates.
@@ -229,7 +229,7 @@ export default function App() {
     saveCartToStorage(cart, appliedPromo)
   }, [cart, appliedPromo])
 
-  /** Re-arms the catalog request after an unavailable/failed load (Task 2.11). */
+  /** Re-arms the catalog request after an unavailable/failed load. */
   const handleRetryCatalog = useCallback(() => {
     setCatalogRetryKey((key) => key + 1)
   }, [])
@@ -243,7 +243,7 @@ export default function App() {
   // Consume the payment-return / tracking parameters. The state they seed was
   // already created by the lazy initializers above; this effect only performs
   // the external side effects of resetting the matched cart and tidying the
-  // address bar. The session marker is dropped with it (Task 2.12) so a replayed
+  // address bar. The session marker is dropped with it so a replayed
   // return URL cannot wipe a cart the shopper refilled after paying.
   useEffect(() => {
     if (!bootstrap.hasParams || typeof window === 'undefined') return
@@ -305,7 +305,7 @@ export default function App() {
   const cartQuantityById = useMemo(() => Object.fromEntries(cart.map((i) => [i.product.id, i.quantity])), [cart])
 
   // Payable total: IVA-inclusive catalog prices minus the verified promo discount.
-  // Same helper the webhook uses to assert the Mercado Pago charge (Task 0.9).
+  // Same helper the webhook uses to assert the Mercado Pago charge.
   // The percent is re-resolved from the code on every render — never read off the
   // `appliedPromo` object, so a tampered/stale persisted entry cannot diverge from
   // the amount the serverless payment layer charges.

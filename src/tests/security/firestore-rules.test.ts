@@ -42,7 +42,7 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
   it('should strictly limit order creation to pending statuses and never allow client-side approved status', () => {
     const content = fs.readFileSync(rulesPath, 'utf8')
 
-    // Validate isValidOrderCreate function (Task 0.12: the path variable is a parameter)
+    // Validate isValidOrderCreate function (the path variable is a parameter)
     expect(content).toContain('function isValidOrderCreate(orderId)')
     expect(content).toContain('PENDIENTE_PAGO_MERCADOPAGO')
     expect(content).toContain('PENDIENTE_TRANSFERENCIA')
@@ -62,7 +62,7 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     expect(content).toContain('data.items is list')
     expect(content).toContain('data.items.size() > 0')
 
-    // Task 0.9: per-line shape guards (productId / quantity / price) on the first 10 lines
+    // Per-line shape guards (productId / quantity / price) on the first 10 lines
     expect(content).toContain('function isValidOrderItem(item)')
     expect(content).toContain('item.productId is string && item.productId.size() > 0')
     expect(content).toContain('item.quantity is int && item.quantity >= 1')
@@ -124,7 +124,7 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
       'confirmationEmailSentAt',
       'mercadopagoPaymentId',
       'paidAt',
-      // Task 8.8: the warehouse-alert reservation is written by /api/upload-voucher only.
+      // The warehouse-alert reservation is written by /api/upload-voucher only.
       'voucherAlertSentAt',
       'voucherAlertCount'
     ]) {

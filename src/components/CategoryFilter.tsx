@@ -53,10 +53,10 @@ export default function CategoryFilter({
   totalResults,
   catalog
 }: CategoryFilterProps) {
-  // Task 2.11: counts come from the live catalog only, and from the *unfiltered* set —
+  // Counts come from the live catalog only, and from the *unfiltered* set —
   // the previous `products || PRODUCTS` fallback silently counted the 11 prototype
   // fixtures whenever the catalog was empty or unavailable (`App` never passed it, so it
-  // always did), and counting the filtered view would zero every unselected pill (F1).
+  // always did), and counting the filtered view would zero every unselected pill.
   const categoryCounts = React.useMemo(() => {
     const counts: Record<string, number> = { all: catalog.length }
     catalog.forEach((p) => {

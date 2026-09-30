@@ -63,7 +63,7 @@ export function getAdminFirestore(): Firestore | null {
 
   try {
     const firestore = getFirestore(app)
-    // Task 0.15 defense-in-depth: the Admin SDK throws on `undefined` field values
+    // Defense-in-depth: the Admin SDK throws on `undefined` field values
     // (which is what 500'd `dispatch-order` when no tracking code was supplied).
     // Handlers still omit absent keys; this keeps a stray `undefined` in any admin
     // handler from taking the endpoint down. Settings are only accepted before the

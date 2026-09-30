@@ -97,7 +97,7 @@ export default function Navbar({
       {/* Main Navbar */}
       <header className="navbar">
         <div className="nav-container">
-          {/* Brand Identity — code-rendered wordmark lockup (§10.3) */}
+          {/* Brand Identity — code-rendered wordmark lockup */}
           <a href="#" className="brand-logo" aria-label="PRONTO Insumos Odontológicos">
             <span className="brand-lockup">
               <span className="brand-wordmark">

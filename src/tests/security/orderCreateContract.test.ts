@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 
 /**
- * Drift guard for Task 0.12 — the public `orders` create contract.
+ * Drift guard for the public `orders` create contract.
  *
  * `firestore.rules` allowlists the exact key set `submitOrder()` writes. A key added
  * to the payload without a matching rules update makes Firestore reject the WHOLE
@@ -69,7 +69,7 @@ const ADMIN_ONLY_FIELDS = [
   'confirmationEmailSentAt',
   'mercadopagoPaymentId',
   'paidAt',
-  // Task 8.8: the warehouse-alert reservation is written by /api/upload-voucher only.
+  // The warehouse-alert reservation is written by /api/upload-voucher only.
   'voucherAlertSentAt',
   'voucherAlertCount'
 ]

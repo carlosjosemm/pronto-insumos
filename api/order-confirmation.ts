@@ -72,7 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
     }
 
-    // Abuse throttling (Task 8.8): this endpoint sends a customer email on success, so
+    // Abuse throttling: this endpoint sends a customer email on success, so
     // the attempt budgets are also what bounds Resend-quota abuse — an attacker's own
     // order can trigger at most one confirmation (idempotency), and the IP/order
     // budgets cap how many such calls one source can make per window.
@@ -87,11 +87,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return respondThrottled(res, orderDecision.retryAfterSeconds);
     }
 
-    // Resolve the order by document key first (Task 0.12); the `orderId` field
-    // query is only a legacy fallback — see api/_lib/orderLookup.ts.
+    // Resolve the order by document key first; the `orderId` field
+    // query is only a legacy fallback (resolveOrderByCanonicalId).
     const resolvedOrder = await resolveOrderByCanonicalId(adminDb, cleanOrderId);
 
-    // Uniform failure (Task 8.8): "no such order" and "RUT mismatch" are the SAME
+    // Uniform failure: "no such order" and "RUT mismatch" are the SAME
     // response — the old 404/401 split was an enumeration oracle.
     const orderCustomerRut = normalizeRut(
       resolvedOrder?.data.customer?.rut || resolvedOrder?.data.billing?.rut || "",

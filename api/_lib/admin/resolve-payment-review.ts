@@ -29,8 +29,7 @@ type ReviewOutcome =
  *     transaction — the same trust level as `approve-transfer`, which already lets
  *     an administrator settle a manual payment and rebajar stock.
  *   - `cancel`: the order is closed as `CANCELADO` with **no** stock movement. Any
- *     refund is handled off-platform (refunds are not modelled — see
- *     `src/types/AGENTS.md` §2.1).
+ *     refund is handled off-platform; the order schema does not model refunds.
  *
  * Any other starting status is refused: an order must be in review before it can be
  * reconciled, which keeps this action from racing the webhook (a concurrently
@@ -92,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     let orderDataForEmail: Record<string, unknown> | null = null
-    // Task 0.14e — oversold lines recorded on approval. Reset inside the
+    // Oversold lines are recorded on approval. Reset inside the
     // transaction callback, which Firestore may re-run on contention.
     const stockShortfalls: StockShortfall[] = []
 
@@ -120,7 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return { outcome: 'conflict', currentStatus } satisfies ReviewOutcome
       }
 
-      // Task 0.14 (R1): an order's lines are deducted AT MOST ONCE. `paidAt` /
+      // An order's lines are deducted AT MOST ONCE. `paidAt` /
       // `approvedAt` mark an earlier settlement — e.g. the refunded payment that
       // parked this order in review — so approving must not deduct again.
       // Cancelling stays available: that is the correct resolution for a refund.
@@ -190,7 +189,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const newStock = Math.max(0, currentStock - itemInfo.qty)
           const lineName = productData.name || itemInfo.name || productId
           const shortfall = Math.max(0, itemInfo.qty - currentStock)
-          // Task 0.14e: a reconciliation that oversells is still approved (the
+          // A reconciliation that oversells is still approved (the
           // money is in) but the shortfall is recorded and alerted — never hidden
           // by the Math.max clamp.
           if (shortfall > 0) {
@@ -277,7 +276,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           itemsCount: items.length,
           paymentId: orderData.mercadopagoPaymentId || null,
           orderTotalAmount: orderData.totalAmount ?? null,
-          // Task 0.14e: oversold lines travel with the approval so the
+          // Oversold lines travel with the approval so the
           // shortfall is auditable, not just emailed.
           ...(stockShortfalls.length > 0 ? { stockShortfalls } : {})
         }

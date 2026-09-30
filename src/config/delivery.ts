@@ -7,7 +7,7 @@ export type DeliveryZone = (typeof DELIVERY_ZONES)[number]
 export const DEFAULT_DELIVERY_ZONE: DeliveryZone = 'Melipilla'
 
 /**
- * Prefix of the internal dispatch reference minted per zone (Task 2.13):
+ * Prefix of the internal dispatch reference minted per zone:
  * `MEL-260929-07`. A warehouse route code — never a courier guía.
  */
 export const DELIVERY_ZONE_REFERENCE_CODES: Record<DeliveryZone, string> = {

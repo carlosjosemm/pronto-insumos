@@ -42,6 +42,10 @@ Agents modifying this codebase must adhere to these absolute guardrails:
 6. **NO Git Worktrees or Sibling Working Copies:**
    * All task work happens in the **primary working tree**, on a dedicated branch (`git checkout -b …`).
    * ❌ Do **NOT** run `git worktree add`, create sibling task directories (`../PRONTO-<task>`), or open a second workspace per task — the worktree-based protocol is retired (owner decision, 2026-09-28; see the `development-workflow` skill).
+7. **Self-Contained Comments (owner decision, 2026-09-29):**
+   * Every code comment and JSDoc must carry its full explanation inline — a reader with only the source file open must understand the rule without opening any other file.
+   * ❌ Do **NOT** reference external documents inside comments: no `.md` file references, no task numbers (`Task 0.14`), no `§` section references, no roadmap-title mentions. Pointers are forbidden outright, not merely discouraged.
+   * Enforced mechanically by the `self-contained-comments/no-external-doc-pointers` ESLint rule (inline plugin in `eslint.config.js`, applied to every linted file including `api/**` and `src/admin/**`); `pnpm lint` fails on violations. The agent-facing policy lives in `.devin/rules/self-contained-comments.md`.
 
 ---
 

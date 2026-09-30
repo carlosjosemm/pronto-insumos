@@ -6,7 +6,7 @@ import {
 import type { DispatchReferenceSource } from '../../src/types'
 
 /**
- * Internal dispatch reference (Task 2.13).
+ * Internal dispatch reference.
  *
  * The storefront has no courier API, and the default "Despacho Local Melipilla
  * (Flota Directa)" route ships without a guía — so `dispatch-order` mints a
@@ -85,7 +85,7 @@ export function planDispatchReference(input: {
   existingReference?: string
   existingSource?: unknown
 }): DispatchReferencePlan {
-  // Same coercion rule as the handler's Task 0.15 contract: a numeric code the
+  // Same coercion rule as the handler: a numeric code the
   // warehouse typed is a string, never a missing value.
   const typedCode =
     input.typedCode === undefined || input.typedCode === null ? '' : String(input.typedCode).trim()

@@ -76,7 +76,7 @@ export default function ProductCard({
   const hasPhoto = Boolean(product.images && product.images.length > 0 && !imgError)
 
   // Transient confirmation shown on the CTA right after the first add, before the
-  // stepper takes over (redesign proposal §10.7 / C.9).
+  // stepper takes over.
   const [justAdded, setJustAdded] = React.useState<boolean>(false)
 
   React.useEffect(() => {
@@ -156,7 +156,7 @@ export default function ProductCard({
 
       {/* Product Content Body */}
       <div className="product-card-body">
-        {/* REF-first procurement hierarchy (§8.3): REF → unit of sale → price */}
+        {/* REF-first procurement hierarchy: REF → unit of sale → price */}
         <span className="product-card-ref">REF: {skuRef}</span>
 
         {/* Badges Row (Dedicated top row for marketing & regulatory pills) */}

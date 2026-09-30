@@ -15,7 +15,7 @@ describe('CategoryShowcase Component (Section 5.4 Category Assets)', () => {
     expect(screen.getByText('Esterilización, Bioseguridad y Pabellón')).toBeInTheDocument()
     expect(screen.getByText('Endodoncia y Diagnóstico Clínico')).toBeInTheDocument()
 
-    // The hub is unboxed and the per-card tag pill overlay is gone (§10.4)
+    // The hub is unboxed and the per-card tag pill overlay is gone
     expect(container.querySelectorAll('.category-card-tag-pill')).toHaveLength(0)
 
     // Clicking a category card should invoke onSelectCategory

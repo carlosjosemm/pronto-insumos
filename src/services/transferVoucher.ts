@@ -91,7 +91,7 @@ async function readEndpointError(response: Response): Promise<string | null> {
  * Uploads a bank transfer voucher: authorize (sign) → direct upload to the private
  * bucket → confirm. Real HTTP errors surface to the customer — only a demonstrably
  * absent endpoint degrades to the simulated result, and only outside a production
- * runtime (`isSimulatedFallbackAllowed`, the same gate as Task 2.8).
+ * runtime (`isSimulatedFallbackAllowed`).
  */
 export async function uploadTransferVoucher({
   orderId,
@@ -144,7 +144,7 @@ export async function uploadTransferVoucher({
     }
 
     // `x-goog-content-length-range` is part of the signed URL: sending it verbatim is what
-    // makes Storage itself reject any upload above the 5 MB cap (Task 2.9).
+    // makes Storage itself reject any upload above the 5 MB cap.
     const uploadHeaders: Record<string, string> = {
       'Content-Type': signPayload.contentType || contentType
     }

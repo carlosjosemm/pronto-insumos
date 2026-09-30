@@ -3,7 +3,7 @@ import { getStorage } from 'firebase-admin/storage'
 import { getAdminApp } from './firebaseAdmin.js'
 
 /**
- * Bank-transfer voucher storage helpers (Task 2.9).
+ * Bank-transfer voucher storage helpers.
  *
  * Voucher bytes NEVER live in Firestore: the order document holds only the object
  * path, the file metadata and a download-token URL. The browser uploads directly to
@@ -52,14 +52,13 @@ export function extensionForVoucherContentType(contentType: string): string {
 export function sanitizeVoucherFileName(raw: unknown): string {
   const cleaned = String(raw ?? '')
     .replace(/[\\/]/g, '-')
-    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
   return (cleaned || 'comprobante').slice(0, 120)
 }
 
-/** Canonical, path-safe order id (`PRONTO-XXXXXXXX` — 8 Crockford base32 chars since Task 8.8; legacy 6-digit ids still resolve). */
+/** Canonical, path-safe order id (`PRONTO-XXXXXXXX` — 8 Crockford base32 chars; legacy 6-digit ids still resolve). */
 export function sanitizeOrderIdForPath(orderId: unknown): string {
   return String(orderId ?? '')
     .trim()

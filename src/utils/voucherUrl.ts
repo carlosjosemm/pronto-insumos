@@ -1,5 +1,5 @@
 /**
- * Voucher-URL policy (Task 0.13).
+ * Voucher-URL policy.
  *
  * `order.voucherUrl` is a string that any anonymous visitor could once write
  * straight into a new order document, and the admin panel opened whatever it

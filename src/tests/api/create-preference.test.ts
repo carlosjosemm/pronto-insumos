@@ -27,7 +27,7 @@ function createMockRes() {
  * Firestore Admin double answering order + product lookups from fixture maps.
  *
  * `products` is keyed by product id, `orders` by order document id. Every order
- * fixture must carry its own `items`: since Task 0.14g the endpoint builds the
+ * fixture must carry its own `items`: the endpoint builds the
  * preference lines from the ORDER DOCUMENT, never from the request body — the
  * order is the same document the webhook later asserts the payment against.
  * Passing an explicit map also exercises the `where('orderId','==')` fallback,
@@ -73,7 +73,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     vi.clearAllMocks()
     vi.restoreAllMocks()
     delete process.env.MERCADOPAGO_ACCESS_TOKEN
-    // Deterministic simulation policy (Task 0.10): every test starts outside
+    // Deterministic simulation policy: every test starts outside
     // production with no override; the production-gate tests set VERCEL_ENV explicitly.
     delete process.env.VERCEL_ENV
     delete process.env.ALLOW_SIMULATED_PAYMENTS
@@ -118,7 +118,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
   })
 
   it('should return 400 Bad Request when orderId is missing', async () => {
-    // Since Task 0.14g the request `items` are ignored (the order document owns
+    // The request `items` are ignored (the order document owns
     // the lines), so the only required parameter is the order id.
     const req = {
       method: 'POST',

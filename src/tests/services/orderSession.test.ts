@@ -8,7 +8,7 @@ import {
 } from '../../services/orderSession'
 
 /**
- * Task 2.12 — the session marker that decides whether a Mercado Pago return URL
+ * The session marker that decides whether a Mercado Pago return URL
  * may reset the shopper's cart. Every case here is a security-relevant branch:
  * the marker must match only the order this tab created, and must fail safe
  * (no match, no throw) whenever the session store is unavailable.

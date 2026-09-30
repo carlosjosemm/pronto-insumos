@@ -20,7 +20,7 @@ const app = initializeApp(firebaseConfig)
 // `ignoreUndefinedProperties` keeps the optional domain fields (`razonSocial?`,
 // `giroComercial?`, `sanitaryVerification?`) writable. The Web SDK throws
 // `Unsupported field value: undefined` on them by default, which made EVERY
-// checkout write fail silently (the Task 0.11 "ghost order" root cause).
+// checkout write fail silently (the "ghost order" root cause).
 export const db = initializeFirestore(app, { ignoreUndefinedProperties: true })
 export const auth = getAuth(app)
 

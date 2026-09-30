@@ -1,5 +1,5 @@
 /**
- * Session-scoped record of the order this browser tab created (Task 2.12).
+ * Session-scoped record of the order this browser tab created.
  *
  * The Mercado Pago return URL (`/?status=approved&orderId=…`) is trivially
  * forgeable, and Mercado Pago writes it *before* our webhook has verified the

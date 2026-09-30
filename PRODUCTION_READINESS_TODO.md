@@ -338,7 +338,7 @@ This section separates source-level capability from independently verified produ
 <a id="task-8-10"></a>
 
 - [ ] **8.10. Widen Lint/Format Scope to `api/` and `src/admin/`** _(P3)_
-  - Both sit in ESLint `ignores`. Measured 2026-09-29 by lifting the ignore: 65 problems (63 errors, 2 warnings) — `StockAdjustModal` `rules-of-hooks` errors (4.4), `ProductEditModal` `set-state-in-effect`, 12× `no-explicit-any` in `adminApi.ts`, unused imports in `src/admin/types.ts`, plus `any` in handlers. Fix in a dedicated pass, then delete the carve-out (root `AGENTS.md` §8.3).
+  - No longer wholly ignored: the self-contained-comments pointer rule (2026-09-29) already parses and lints both trees. What remains here is applying the **full TypeScript rule set**: measured 2026-09-29 by lifting the ignore: 65 problems (63 errors, 2 warnings) — `StockAdjustModal` `rules-of-hooks` errors (4.4), `ProductEditModal` `set-state-in-effect`, 12× `no-explicit-any` in `adminApi.ts`, unused imports in `src/admin/types.ts`, plus `any` in handlers. Fix in a dedicated pass, then delete the carve-out (root `AGENTS.md` §8.3).
 
 <a id="task-8-11"></a>
 

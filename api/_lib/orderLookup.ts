@@ -3,7 +3,7 @@ import type { Firestore, DocumentReference, DocumentData } from 'firebase-admin/
 import { getCollectionName } from './firestoreEnv.js'
 
 /**
- * The single lookup-failure response for every public dual-factor endpoint (Task 8.8).
+ * The single lookup-failure response for every public dual-factor endpoint.
  *
  * Before this, `/api/track-order`, `/api/upload-voucher` and `/api/order-confirmation`
  * answered `404` for an unknown order id but `401` for a wrong RUT — an enumeration
@@ -24,14 +24,13 @@ export interface ResolvedOrder {
   /**
    * Raw order fields, typed exactly as `DocumentReference.get()` returns them.
    * Deliberately kept as the SDK's own `DocumentData` so this extraction does not
-   * change how the endpoints read untrusted document fields — tightening those
-   * reads is the separate TODO 8.2/8.10 work.
+   * change how the endpoints read untrusted document fields.
    */
   data: DocumentData
 }
 
 /**
- * Canonical order lookup (Task 0.12).
+ * Canonical order lookup.
  *
  * The Firestore document id IS the canonical order id — `submitOrder()` writes
  * `setDoc(doc(db, getCollectionName('orders'), orderId), payload)` — so every

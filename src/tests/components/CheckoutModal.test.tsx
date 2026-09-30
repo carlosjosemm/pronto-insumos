@@ -67,7 +67,7 @@ const defaultProps: CheckoutModalProps = {
 describe('CheckoutModal Component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // The Task 2.12 session marker is real browser storage — keep it per-test.
+    // The session order marker is real browser storage — keep it per-test.
     window.sessionStorage.clear()
     vi.mocked(submitOrder).mockResolvedValue({
       success: true,

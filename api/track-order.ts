@@ -42,9 +42,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const adminDb = getAdminFirestore()
     if (!adminDb) {
-      // FAIL-CLOSED (Task 0.16): a production runtime must never fabricate tracking
+      // FAIL-CLOSED: a production runtime must never fabricate tracking
       // data — a lost FIREBASE_* credential would otherwise show customers a fake
-      // order instead of an error. Same shared gate as 0.10 / 2.9.
+      // order instead of an error. Same shared simulation gate as the other endpoints.
       if (!isSimulatedPaymentAllowed()) {
         console.error(
           '[track-order] Firestore Admin unavailable in a production runtime — refusing to fabricate a tracking response.'
@@ -91,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
-    // Abuse throttling (Task 8.8): consume the IP budget first (cheapest rejection),
+    // Abuse throttling: consume the IP budget first (cheapest rejection),
     // then the order budget. A locked key is refused before any order read.
     const clientIp = getClientIp(req)
     const ipDecision = await consumeThrottleAttempt(adminDb, 'track-order', 'ip', clientIp)
@@ -104,11 +104,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return respondThrottled(res, orderDecision.retryAfterSeconds)
     }
 
-    // Resolve the order by document key first (Task 0.12); the `orderId` field
-    // query is only a legacy fallback — see api/_lib/orderLookup.ts.
+    // Resolve the order by document key first; the `orderId` field
+    // query is only a legacy fallback (resolveOrderByCanonicalId).
     const resolvedOrder = await resolveOrderByCanonicalId(adminDb, cleanOrderId)
 
-    // Uniform failure (Task 8.8): "no such order" and "RUT mismatch" are the SAME
+    // Uniform failure: "no such order" and "RUT mismatch" are the SAME
     // response — the old 404/401 split was an enumeration oracle.
     const orderCustomerRut = normalizeRut(
       resolvedOrder?.data.customer?.rut || resolvedOrder?.data.billing?.rut || ''
@@ -120,7 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const orderData = resolvedOrder.data
 
-    // Task 2.13 — the dispatch reference: the admin-typed courier guía (`manual`)
+    // The dispatch reference: the admin-typed courier guía (`manual`)
     // or the internal route code minted by `dispatch-order` (`generated`). An
     // unknown `referenceSource` is treated as `generated`, so a malformed document
     // can never label an internal code as a courier guía.

@@ -129,7 +129,7 @@ describe('App Shopping Cart Persistence (localStorage)', () => {
     // The matching order was created by this tab, so the cart reset is legitimate.
     expect(window.localStorage.getItem(CART_STORAGE_KEY)).toBeNull()
     // …and the marker is consumed, so replaying the same URL cannot wipe a cart
-    // the shopper refilled afterwards (Task 2.12).
+    // the shopper refilled afterwards.
     expect(window.sessionStorage.getItem(SESSION_ORDER_STORAGE_KEY)).toBeNull()
   })
 

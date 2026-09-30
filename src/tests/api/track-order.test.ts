@@ -446,11 +446,11 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
   })
 
   /**
-   * Admin SDK double for the canonical order lookup (Task 0.12): the document key
+   * Admin SDK double for the canonical order lookup: the document key
    * resolves first; the `orderId` field query is only consulted when the key is
    * missing (or when `legacyFieldOnly` forces the legacy path).
    *
-   * Since Task 8.8 the same double also backs the `abuse_counters` collection and the
+   * The same double also backs the `abuse_counters` collection and the
    * throttling transactions (`counters`), so the real counter code runs.
    */
   function mockOrderDb(

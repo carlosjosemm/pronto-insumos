@@ -64,8 +64,8 @@ describe('Serverless Admin Dispatch Order (/api/admin/dispatch-order)', () => {
 
   /**
    * Deep scan for `undefined` values. `JSON.stringify` drops them silently, which is
-   * exactly the Task 0.15 failure mode: the Admin SDK rejects the write only when the
-   * raw payload still carries the key.
+   * exactly the failure mode being guarded against: the Admin SDK rejects the write
+   * only when the raw payload still carries the key.
    */
   function containsUndefined(value: unknown): boolean {
     if (value === undefined) return true

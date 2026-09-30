@@ -28,10 +28,10 @@ function createMockRes() {
 }
 
 /**
- * Admin SDK double for the canonical order lookup (Task 0.12): the document key
+ * Admin SDK double for the canonical order lookup: the document key
  * resolves first, the `orderId` field query only when the key is missing.
  *
- * Since Task 8.8 the double also backs the `abuse_counters` collection and the
+ * The double also backs the `abuse_counters` collection and the
  * throttling transactions (`db.counters`), so the real counter code runs.
  */
 function mockDbWithOrder(

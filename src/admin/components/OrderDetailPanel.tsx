@@ -52,7 +52,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
 
   if (!order) return null
 
-  // Task 0.13 — the stored voucher URL decides how (or whether) it can be opened:
+  // The stored voucher URL decides how (or whether) it can be opened:
   // 'storage' → direct link, 'legacy-data' → Blob conversion behind a MIME gate,
   // 'unsafe' → plain text, no anchor, no click handler.
   const voucherUrl = order.voucherUrl
@@ -134,9 +134,9 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   }
 
   /**
-   * Legacy (pre-Task 2.9) vouchers were stored as Base64 `data:` URLs, which Chrome
+   * Legacy vouchers were stored as Base64 `data:` URLs, which Chrome
    * refuses to open through top-frame navigation. Convert those to a Blob URL on
-   * click, but ALWAYS re-wrap the bytes with the allowlisted type (Task 0.13): a
+   * click, but ALWAYS re-wrap the bytes with the allowlisted type: a
    * `blob:` URL inherits this origin, so an un-typed (or HTML-typed) Blob would
    * become script running in the ADMIN origin. The `blob.type` check below is
    * belt-and-braces — for a `data:` URL the fetched type IS the declared one, which
@@ -176,7 +176,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   // paid — a human must reconcile before anything is dispatched.
   const isInPaymentReview = order.status === 'PAGO_EN_REVISION'
 
-  // Task 2.13 — the dispatch record: carrier + reference (the typed courier guía,
+  // The dispatch record: carrier + reference (the typed courier guía,
   // or the internal route code minted by the dispatch handler).
   const hasDispatchRecord = Boolean(order.dispatch || order.trackingNumber)
   const dispatchCarrierLabel = order.dispatch?.carrier
@@ -280,7 +280,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
             </div>
           </div>
 
-          {/* Dispatch record (Task 2.13) */}
+          {/* Dispatch record */}
           {hasDispatchRecord && (
             <div style={{ background: 'var(--surface-muted)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
               <div style={{ fontWeight: '800', fontSize: '0.85rem', color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -342,7 +342,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
             </div>
           </div>
 
-          {/* Transfer Voucher Section (Task 0.13: only allowlisted URLs are openable) */}
+          {/* Transfer Voucher Section (only allowlisted URLs are openable) */}
           {voucherUrl && (
             <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 'var(--radius-sm)', padding: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
               <div>

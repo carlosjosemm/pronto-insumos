@@ -161,8 +161,8 @@ export function parseEnvFile(path: string): ParsedEnv {
  *
  * A `vercel` on PATH may be ancient — this machine has 34.1.9, which predates
  * `env ls --json` and fails with "unknown or unexpected option". Pinning to
- * `@latest` matches the repo's documented deployment flow (AGENTS.md §7) and
- * guarantees the subcommands this script depends on actually exist.
+ * `@latest` keeps the deployment flow uniform for everyone and guarantees the
+ * subcommands this script depends on actually exist.
  */
 function vercelInvocation(): { cmd: string; baseArgs: string[] } {
   const override = process.env.VERCEL_CLI

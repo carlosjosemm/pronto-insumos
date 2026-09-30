@@ -21,7 +21,7 @@ import { db } from '../../services/firebase'
 
 describe('Firebase client initialization (src/services/firebase.ts)', () => {
   it('should initialize Firestore with ignoreUndefinedProperties so optional domain fields never reject the write', () => {
-    // Root cause of the Task 0.11 "ghost order": the Web SDK throws
+    // Root cause of the "ghost order" bug: the Web SDK throws
     // `Unsupported field value: undefined` on optional fields (`razonSocial?`,
     // `giroComercial?`, `sanitaryVerification?`) unless this setting is present.
     expect(mocks.initializeFirestore).toHaveBeenCalledWith(expect.anything(), {

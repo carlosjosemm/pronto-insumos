@@ -32,7 +32,7 @@ import {
 
 const VOUCHER_SUBMITTED_STATUS = 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
 
-/** Statuses from which a voucher may be attached or replaced (Task 2.9 lifecycle guard). */
+/** Statuses from which a voucher may be attached or replaced (lifecycle guard). */
 const VOUCHER_UPLOADABLE_STATUSES = ['PENDIENTE_TRANSFERENCIA', VOUCHER_SUBMITTED_STATUS]
 
 const UPLOAD_UNAVAILABLE_MESSAGE =
@@ -41,7 +41,7 @@ const PERSISTENCE_ERROR_MESSAGE =
   'No pudimos registrar el comprobante en tu pedido. Por favor reintenta o escríbenos por WhatsApp.'
 
 /**
- * Warehouse-alert budget for one order (Task 8.8).
+ * Warehouse-alert budget for one order.
  *
  * A customer may legitimately replace a voucher while the transfer is still being
  * verified, and every accepted upload used to email the warehouse again — so a free
@@ -227,7 +227,7 @@ async function handleConfirm(
   // authorization read and this write can never be regressed by a voucher upload.
   let conflictedStatus = ''
   let latestData: Record<string, unknown> = order.data
-  // Task 8.8: the warehouse-alert budget is decided (and reserved) inside the transaction.
+  // The warehouse-alert budget is decided (and reserved) inside the transaction.
   let alertBudget: VoucherAlertBudget = { send: false, nextCount: 0 }
   let outcome: 'persisted' | 'duplicate' | 'status-changed'
   // No recipient configured ⇒ never reserve a slot for an alert that cannot be sent.
@@ -253,7 +253,7 @@ async function handleConfirm(
         return 'status-changed'
       }
 
-      // Task 8.8 — reserve the warehouse alert here, in the same transaction that stores
+      // Reserve the warehouse alert here, in the same transaction that stores
       // the voucher. The decision reads the FRESH document and the stamp is committed with
       // it, so two concurrent confirms of different objects serialize on the order document
       // (the SDK retries the losing transaction, which then sees the fresh stamp and skips).
@@ -330,7 +330,7 @@ async function handleConfirm(
     await deleteVoucherObject(bucket, previousStoragePath)
   }
 
-  // Warehouse alert (fail-safe + budgeted, Task 8.8): voucher received — verify against
+  // Warehouse alert (fail-safe + budgeted): voucher received — verify against
   // Banco de Chile. The budget was already reserved inside the transaction above (never
   // when no recipient is configured); a failed send releases the reservation (best-effort)
   // so an email outage does not consume the cooldown or a cap slot and the alert stays
@@ -399,7 +399,7 @@ async function handleConfirm(
 }
 
 /**
- * Bank-transfer voucher intake (Task 2.9).
+ * Bank-transfer voucher intake.
  *
  * Two-phase, action-dispatched endpoint — no serverless-function slot is added:
  *   * `action: 'sign'`    → authorize + validate, return a short-lived V4 signed PUT URL
@@ -474,7 +474,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
-    // Abuse throttling (Task 8.8): covers both phases (sign and confirm), so a locked
+    // Abuse throttling: covers both phases (sign and confirm), so a locked
     // key never reaches Firestore for the order read and one order cannot mint signed
     // URLs without bound.
     const clientIp = getClientIp(req)
@@ -490,7 +490,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const order = await resolveOrderByCanonicalId(adminDb, cleanOrderId)
 
-    // Uniform failure (Task 8.8): "no such order" and "RUT mismatch" are the SAME
+    // Uniform failure: "no such order" and "RUT mismatch" are the SAME
     // response — the old 404/401 split was an enumeration oracle.
     const orderCustomerRut = normalizeRut(
       ((order?.data.customer as { rut?: string } | undefined)?.rut ||
