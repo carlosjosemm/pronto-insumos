@@ -255,6 +255,16 @@ describe('Email Templates (api/_lib/emailTemplates.ts)', () => {
     expect(refunded.text).toContain('contracargado')
   })
 
+  it('should distinguish a manual cancellation (no payment collected) from a review cancellation', () => {
+    const manual = buildWarehouseAlertEmail(sampleOrderData, 'CANCELACION_MANUAL')
+    expect(manual.subject).toContain('sin pago acreditado')
+    expect(manual.text).toContain('no hay reembolso que gestionar')
+
+    // The review-parked cancellation keeps its own refund-oriented hint.
+    const review = buildWarehouseAlertEmail(sampleOrderData, 'CANCELADO')
+    expect(review.text).toContain('reembolso manualmente')
+  })
+
   it('should append the stock shortfall sentence to the warehouse alert (Task 0.14e)', () => {
     const tpl = buildWarehouseAlertEmail(sampleOrderData, 'PAGADO_MERCADOPAGO', [
       { productId: 'odon-101', name: 'Turbina', requested: 3, available: 1 }

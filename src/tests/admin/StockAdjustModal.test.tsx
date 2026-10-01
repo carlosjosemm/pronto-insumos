@@ -89,6 +89,26 @@ describe('StockAdjustModal Component', () => {
     })
   })
 
+  it('sends the traceability note with the adjustment', async () => {
+    const updateSpy = vi.spyOn(adminApi, 'updateStockCount').mockResolvedValue({ success: true })
+
+    render(<StockAdjustModal product={mockProduct} onClose={vi.fn()} onSuccess={vi.fn()} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/devolución del pedido/i), {
+      target: { value: 'devolución del pedido PRONTO-7K3M9Q2Z, 2 cajas en buen estado' }
+    })
+    fireEvent.click(screen.getByText('Guardar Ajuste'))
+
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenCalledWith({
+        productId: 'odon-101',
+        newStock: 8,
+        reason: 'reposicion',
+        notes: 'devolución del pedido PRONTO-7K3M9Q2Z, 2 cajas en buen estado'
+      })
+    })
+  })
+
   it('re-seeds the stock draft when a different product is opened', () => {
     const handleClose = vi.fn()
     const handleSuccess = vi.fn()

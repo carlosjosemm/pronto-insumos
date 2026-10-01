@@ -14,6 +14,8 @@ import createProduct from '../_lib/admin/create-product.js'
 import toggleVisibility from '../_lib/admin/toggle-visibility.js'
 import voucherHousekeeping from '../_lib/admin/voucher-housekeeping.js'
 import resendOrderEmail from '../_lib/admin/resend-order-email.js'
+import cancelOrder from '../_lib/admin/cancel-order.js'
+import recordOrderIncident from '../_lib/admin/record-order-incident.js'
 
 type AdminHandler = (req: VercelRequest, res: VercelResponse) => unknown
 
@@ -43,7 +45,9 @@ const ADMIN_ACTIONS: Record<string, AdminHandler> = {
   'create-product': createProduct,
   'toggle-visibility': toggleVisibility,
   'voucher-housekeeping': voucherHousekeeping,
-  'resend-order-email': resendOrderEmail
+  'resend-order-email': resendOrderEmail,
+  'cancel-order': cancelOrder,
+  'record-order-incident': recordOrderIncident
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

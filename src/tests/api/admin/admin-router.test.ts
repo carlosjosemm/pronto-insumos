@@ -16,6 +16,8 @@ vi.mock('../../../../api/_lib/admin/create-product', () => ({ default: vi.fn() }
 vi.mock('../../../../api/_lib/admin/toggle-visibility', () => ({ default: vi.fn() }))
 vi.mock('../../../../api/_lib/admin/voucher-housekeeping', () => ({ default: vi.fn() }))
 vi.mock('../../../../api/_lib/admin/resend-order-email', () => ({ default: vi.fn() }))
+vi.mock('../../../../api/_lib/admin/cancel-order', () => ({ default: vi.fn() }))
+vi.mock('../../../../api/_lib/admin/record-order-incident', () => ({ default: vi.fn() }))
 
 import handler from '../../../../api/admin/[action]'
 import dashboardStats from '../../../../api/_lib/admin/dashboard-stats'
@@ -33,6 +35,8 @@ import createProduct from '../../../../api/_lib/admin/create-product'
 import toggleVisibility from '../../../../api/_lib/admin/toggle-visibility'
 import voucherHousekeeping from '../../../../api/_lib/admin/voucher-housekeeping'
 import resendOrderEmail from '../../../../api/_lib/admin/resend-order-email'
+import cancelOrder from '../../../../api/_lib/admin/cancel-order'
+import recordOrderIncident from '../../../../api/_lib/admin/record-order-incident'
 
 const ROUTES: Record<string, ReturnType<typeof vi.fn>> = {
   'dashboard-stats': vi.mocked(dashboardStats),
@@ -49,7 +53,9 @@ const ROUTES: Record<string, ReturnType<typeof vi.fn>> = {
   'create-product': vi.mocked(createProduct),
   'toggle-visibility': vi.mocked(toggleVisibility),
   'voucher-housekeeping': vi.mocked(voucherHousekeeping),
-  'resend-order-email': vi.mocked(resendOrderEmail)
+  'resend-order-email': vi.mocked(resendOrderEmail),
+  'cancel-order': vi.mocked(cancelOrder),
+  'record-order-incident': vi.mocked(recordOrderIncident)
 }
 
 describe('Serverless Admin Router (/api/admin/[action])', () => {

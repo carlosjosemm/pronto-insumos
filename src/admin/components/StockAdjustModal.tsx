@@ -34,6 +34,7 @@ interface StockAdjustFormProps {
 const StockAdjustForm: React.FC<StockAdjustFormProps> = ({ product, onClose, onSuccess }) => {
   const [newStock, setNewStock] = useState(product.stockCount || 0)
   const [reason, setReason] = useState<StockAdjustmentReason>('reposicion')
+  const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -49,7 +50,8 @@ const StockAdjustForm: React.FC<StockAdjustFormProps> = ({ product, onClose, onS
     const res = await updateStockCount({
       productId: product.id,
       newStock: Math.round(newStock),
-      reason
+      reason,
+      notes: notes.trim() || undefined
     })
     setLoading(false)
 
@@ -146,6 +148,19 @@ const StockAdjustForm: React.FC<StockAdjustFormProps> = ({ product, onClose, onS
                   <option key={k} value={k}>{label}</option>
                 ))}
               </select>
+            </div>
+
+            {/* Trace note: a return's restock must name the order it came from, so the
+                movement can be followed back from the audit entry. */}
+            <div className="admin-form-group">
+              <label className="admin-label">Nota de trazabilidad (opcional)</label>
+              <input
+                type="text"
+                className="admin-input"
+                placeholder="Ej: devolución del pedido PRONTO-7K3M9Q2Z, 2 cajas en buen estado"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+              />
             </div>
           </div>
 

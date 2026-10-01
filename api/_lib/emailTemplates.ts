@@ -332,6 +332,9 @@ const WAREHOUSE_EVENT_LABELS: Record<string, string> = {
   PAGADO_TRANSFERENCIA: 'Venta de cotización WhatsApp confirmada (transferencia verificada)',
   PAGO_EN_REVISION: 'Pago Mercado Pago en revisión — monto inconsistente',
   CANCELADO: 'Pedido cancelado por administración',
+  // A never-settled order closed by the operator (cancel-order): no payment was
+  // ever collected, so the alert must not ask the depot to refund anything.
+  CANCELACION_MANUAL: 'Pedido cancelado manualmente — sin pago acreditado',
   // Part of a collected charge was returned by Mercado Pago while the payment
   // stayed `approved` (raised by the webhook).
   PAGO_REEMBOLSO_PARCIAL: 'Reembolso parcial detectado — revisión manual',
@@ -353,6 +356,8 @@ const WAREHOUSE_ACTION_HINTS: Record<string, string> = {
     'Parte del cobro fue devuelto por Mercado Pago (sin reembolso automático). Conciliar contra la ledger de Mercado Pago y decidir reposición de las unidades devueltas y contacto con el cliente según el SOP manual.',
   CANCELADO:
     'Pedido cancelado al conciliar un pago inconsistente. NO despachar: gestionar el reembolso manualmente si corresponde.',
+  CANCELACION_MANUAL:
+    'NO despachar: el pedido se canceló antes de acreditarse un pago, así que no hay reembolso que gestionar. Si aparece un abono posterior, registra una incidencia y sigue el SOP manual.',
   PAGO_DUPLICADO:
     'Ya existe un pago acreditado para este pedido. NO despachar: verificar el segundo cobro y gestionar su reembolso manual.',
   PAGO_ESTADO_INVALIDO:

@@ -5,14 +5,16 @@ import { formatCLP } from '../../utils/currency'
 import { formatRut } from '../../utils/rut'
 import {
   approveBankTransfer,
+  cancelAdminOrder,
   dispatchAdminOrder,
   markOrderDelivered,
   fetchOrderHistory,
+  recordOrderIncident,
   resolvePaymentReview,
   resolveQuote,
   resendOrderEmail
 } from '../services/adminApi'
-import { CARRIER_LABELS, type CarrierType } from '../types'
+import { CARRIER_LABELS, INCIDENT_KIND_LABELS, type CarrierType, type OrderIncidentKind } from '../types'
 import type { EmailDeliveryEntry, Order, OrderStatusHistory } from '../../types'
 import { EMAIL_CLAIM_TTL_MS, isSettledOrderStatus } from '../../utils/orderLifecycle'
 import { classifyVoucherUrl, normalizeAllowedVoucherMime, type VoucherLinkKind } from '../../utils/voucherUrl'
@@ -34,6 +36,9 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   const [reviewNotes, setReviewNotes] = useState('')
   const [quoteReference, setQuoteReference] = useState('')
   const [quoteNotes, setQuoteNotes] = useState('')
+  const [cancelReason, setCancelReason] = useState('')
+  const [incidentKind, setIncidentKind] = useState<OrderIncidentKind>('REEMBOLSO')
+  const [incidentNote, setIncidentNote] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState('')
   const [actionSuccess, setActionSuccess] = useState('')
@@ -134,6 +139,62 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
       onOrderUpdated()
     } else {
       setActionError(res.error || 'Error al cerrar la cotización')
+    }
+  }
+
+  /**
+   * Cancels a never-settled order. The server re-asserts the eligible statuses, so
+   * this only needs the operator's reason (the required evidence).
+   */
+  const handleCancelOrder = async () => {
+    const reason = cancelReason.trim()
+    if (!reason) {
+      setActionError('Registra el motivo de la cancelación antes de continuar.')
+      return
+    }
+    setActionLoading(true)
+    setActionError('')
+    setActionSuccess('')
+    const res = await cancelAdminOrder(order.orderId, reason)
+    setActionLoading(false)
+    if (res.success) {
+      setActionSuccess(
+        res.duplicate
+          ? 'El pedido ya estaba cancelado; no se realizó ningún cambio adicional.'
+          : '¡Pedido cancelado! No se movió stock; la bodega fue notificada.'
+      )
+      setCancelReason('')
+      setHistoryRefreshKey(k => k + 1)
+      onOrderUpdated()
+    } else {
+      setActionError(res.error || 'Error al cancelar el pedido')
+    }
+  }
+
+  /**
+   * Records a manual incident (refund, return, chargeback) as a same-status history
+   * entry. No status change and no stock movement — the audit trail only.
+   */
+  const handleRecordIncident = async () => {
+    const note = incidentNote.trim()
+    if (!note) {
+      setActionError('Registra la evidencia de la incidencia antes de continuar.')
+      return
+    }
+    setActionLoading(true)
+    setActionError('')
+    setActionSuccess('')
+    const res = await recordOrderIncident(order.orderId, incidentKind, note)
+    setActionLoading(false)
+    if (res.success) {
+      setActionSuccess(
+        'Incidencia registrada en el historial del pedido. No se modificó el estado ni el stock.'
+      )
+      setIncidentNote('')
+      setHistoryRefreshKey(k => k + 1)
+      onOrderUpdated()
+    } else {
+      setActionError(res.error || 'Error al registrar la incidencia')
     }
   }
 
@@ -249,6 +310,15 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   // through the operator's resolution (verified sale or declined/timeout close).
   const isQuote = order.status === 'COTIZACION_SOLICITADA_WHATSAPP'
 
+  // Cancellation is offered only for orders that were never settled and never
+  // shipped; the server re-asserts exactly this set. Paid/approved/dispatched/
+  // delivered orders are handled through the incident note + manual refund runbook.
+  const isCancelable =
+    order.status === 'PENDIENTE_PAGO_MERCADOPAGO' ||
+    order.status === 'PENDIENTE_PAGO' ||
+    order.status === 'PENDIENTE_TRANSFERENCIA' ||
+    order.status === 'TRANSFERENCIA_COMPROBANTE_SUBIDO'
+
   // The real reason the order was parked lives in its history event: a duplicate
   // payment, an invalid source state or a refund/chargeback all land in
   // PAGO_EN_REVISION, not just an amount mismatch.
@@ -305,6 +375,18 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
     : order.courier || 'No especificado'
   const dispatchReference = order.dispatch?.reference || order.trackingNumber || ''
   const dispatchReferenceLabel = order.dispatch?.referenceSource === 'generated' ? 'Ref. Despacho' : 'N° Guía'
+
+  /**
+   * Label for a manual incident in the audit timeline. Without it a refund, a
+   * return, a chargeback and a cancellation note all render as the same repeated
+   * status plus free text — the kind is stored precisely so it can be told apart.
+   */
+  const incidentKindLabel = (ev: OrderStatusHistory): string | null => {
+    if (ev.metadata?.event !== 'INCIDENTE_MANUAL') return null
+    const kind = ev.metadata?.incidentKind
+    if (typeof kind !== 'string') return null
+    return INCIDENT_KIND_LABELS[kind as OrderIncidentKind] || kind
+  }
 
   return (
     <div className="admin-slide-overlay" onClick={onClose}>
@@ -585,20 +667,40 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {history.map(ev => (
-                  <div key={ev.id} style={{ borderLeft: '2px solid var(--teal-600)', paddingLeft: '0.6rem', fontSize: '0.75rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.15rem' }}>
-                      <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{ev.newStatus}</span>
-                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>
-                        {new Date(ev.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })} ({new Date(ev.timestamp).toLocaleDateString('es-CL')})
-                      </span>
+                {history.map(ev => {
+                  const kindLabel = incidentKindLabel(ev)
+                  return (
+                    <div key={ev.id} style={{ borderLeft: '2px solid var(--teal-600)', paddingLeft: '0.6rem', fontSize: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.15rem' }}>
+                        <span style={{ fontWeight: '700', color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          {ev.newStatus}
+                          {kindLabel && (
+                            <span
+                              style={{
+                                fontSize: '0.65rem',
+                                fontWeight: '800',
+                                color: 'var(--accent-info)',
+                                background: 'var(--accent-info-bg)',
+                                border: '1px solid var(--accent-info)',
+                                borderRadius: '999px',
+                                padding: '0.05rem 0.4rem'
+                              }}
+                            >
+                              {kindLabel}
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>
+                          {new Date(ev.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })} ({new Date(ev.timestamp).toLocaleDateString('es-CL')})
+                        </span>
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', marginBottom: '0.1rem' }}>{ev.reason}</div>
+                      <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                        Por: <strong>{ev.changedByEmail || ev.changedBy}</strong> ({ev.actorRole})
+                      </div>
                     </div>
-                    <div style={{ color: 'var(--text-secondary)', marginBottom: '0.1rem' }}>{ev.reason}</div>
-                    <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
-                      Por: <strong>{ev.changedByEmail || ev.changedBy}</strong> ({ev.actorRole})
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -810,6 +912,84 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
                 <span>{actionLoading ? 'Actualizando...' : 'Marcar como Entregado en Clínica'}</span>
               </button>
             )}
+
+            {/* Manual operations: cancellation for never-settled orders, and the
+                incident note that gives refunds/returns/chargebacks an audit trail
+                without inventing a status change. */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.6rem',
+                background: '#f8fafc',
+                padding: '0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border-subtle)'
+              }}
+            >
+              <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--navy-900)' }}>
+                Operaciones Manuales
+              </div>
+
+              {isCancelable && (
+                <div className="admin-form-group">
+                  <label className="admin-label">Motivo de cancelación (obligatorio)</label>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    placeholder="Ej: sin abono en cartola tras 7 días"
+                    value={cancelReason}
+                    onChange={e => setCancelReason(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    disabled={actionLoading || cancelReason.trim().length === 0}
+                    onClick={handleCancelOrder}
+                    className="admin-btn admin-btn-danger"
+                    style={{ width: '100%', padding: '0.65rem', marginTop: '0.5rem' }}
+                  >
+                    <X size={16} />
+                    <span>{actionLoading ? 'Cancelando...' : 'Cancelar Pedido'}</span>
+                  </button>
+                </div>
+              )}
+
+              <div className="admin-form-group">
+                <label className="admin-label">Tipo de incidencia</label>
+                <select
+                  className="admin-select"
+                  value={incidentKind}
+                  onChange={e => setIncidentKind(e.target.value as OrderIncidentKind)}
+                >
+                  {Object.entries(INCIDENT_KIND_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  className="admin-input"
+                  placeholder="Evidencia: cartola, comprobante o contacto con el cliente"
+                  value={incidentNote}
+                  onChange={e => setIncidentNote(e.target.value)}
+                  style={{ marginTop: '0.4rem' }}
+                />
+                <button
+                  type="button"
+                  disabled={actionLoading || incidentNote.trim().length === 0}
+                  onClick={handleRecordIncident}
+                  className="admin-btn admin-btn-secondary"
+                  style={{ width: '100%', padding: '0.65rem', marginTop: '0.5rem' }}
+                >
+                  <FileText size={16} />
+                  <span>{actionLoading ? 'Registrando...' : 'Registrar Incidencia'}</span>
+                </button>
+              </div>
+
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                La reposición de stock se hace en Inventario (ajuste auditado), solo por unidades
+                recibidas y utilizables. Sigue el SOP de operaciones manuales.
+              </div>
+            </div>
           </div>
         </div>
       </div>
