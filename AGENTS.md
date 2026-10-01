@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (1157 tests across 96 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (1222 tests across 99 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -139,12 +139,16 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 96 suites / 1157 tests)
+# Run all automated tests (Vitest, 99 suites / 1222 tests)
 pnpm test
 
 # Run tests with live file watcher (or a V8 coverage report)
 pnpm test:watch
 pnpm test:coverage
+
+# --- The pre-release gate: run this before ANY deploy or pull request ---
+pnpm run verify        # pnpm test && pnpm exec tsc --noEmit && pnpm build
+pnpm run verify:full   # the above + pnpm lint + pnpm format:check (the PR gate)
 
 # Lint the repo (ESLint flat config, zero errors expected)
 pnpm lint
@@ -195,6 +199,11 @@ pnpm run catalog:import          # Import CSV into production products — requi
 # --- Operator scripts without pnpm aliases (run via tsx) ---
 pnpm dlx tsx scripts/fix-catalog-data-quality.ts                    # dev by default; prod needs --env=prod --confirm-production-fix
 pnpm dlx tsx scripts/send-test-comms.ts [--only=email|whatsapp]     # Resend/WhatsApp smoke test against TEST_EMAIL
+
+# Read-only smoke test of a deployed preview — the request-time half of the
+# release gate (API ESM, admin auth, public-endpoint validation, both shells).
+# It refuses the production host, needs no credential and mutates nothing.
+pnpm run smoke:preview -- --base=https://pronto-insumos-<hash>.vercel.app
 ```
 
 Always verify that `pnpm test` passes completely without regressions after making changes.
@@ -205,7 +214,7 @@ Always verify that `pnpm test` passes completely without regressions after makin
 
 ## 🚀 7. Deployment & CI/CD Workflow (Vercel CLI)
 
-The deployment and CI/CD strategy for this project is deliberately simple, lean, and direct. We do not use complex external CI pipelines, Docker containers, or multi-stage cloud runners. All previews and production releases are deployed directly using the **Vercel CLI**.
+The deployment and CI/CD strategy for this project is deliberately simple, lean, and direct. We do not use complex external CI pipelines, Docker containers, or multi-stage cloud runners. All previews and production releases are deployed directly using the **Vercel CLI** — the one GitHub Actions workflow is a pull-request *verification* gate that never deploys (see below).
 
 ### 📋 Prerequisites & Linking
 
@@ -215,9 +224,8 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 ### 🛠️ Deployment Commands
 
 ```bash
-# 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 1157 tests pass
-pnpm build         # Validate TypeScript compilation and production bundle build
+# 1. Mandatory Pre-Flight Verification — ONE command, run locally before deploying
+pnpm run verify    # pnpm test && pnpm exec tsc --noEmit && pnpm build
 
 # 2. Sync environment variables to Vercel (DRY RUN by default — see §7.1)
 pnpm run env:sync -- --target preview            # prints the plan, writes nothing
@@ -226,13 +234,29 @@ pnpm run env:sync -- --target preview --apply    # writes only NEW vars
 # 3. Deploy a Staging / Preview Release (Generates a unique preview URL)
 pnpm dlx vercel
 
-# 4. Deploy directly to Production (Promotes live to production domain)
+# 4. Smoke the preview at request time (read-only; refuses the production host)
+pnpm run smoke:preview -- --base=https://pronto-insumos-<hash>.vercel.app
+
+# 5. Deploy directly to Production (Promotes live to production domain)
 pnpm dlx vercel --prod
 ```
 
+### ✅ Pull Request Verification (`.github/workflows/ci.yml`)
+
+One job, no matrix, no cache warmers, and **no deployment**: on every pull request (and on a push to `main`) GitHub Actions runs `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm test`, `pnpm exec tsc --noEmit` and `pnpm build` on Node 22 with pnpm read from `package.json`'s `packageManager`. That is `pnpm run verify` plus lint — the CI job exists so a pull request carries automated evidence, not so the pipeline can deploy. **Lint belongs in CI because it enforces the self-contained-comment policy** (guardrail 7), not merely style; `format:check` stays local (`pnpm run verify:full`) because a PR should not fail on whitespace, and guardrail 5 rules out a heavier pipeline. ❌ **Do not add deploy steps, matrices, containers or staging runners here** — Vercel CLI remains the only release path.
+
+### 🧪 Runtime / Operator Acceptance Gate (preview, before promoting)
+
+A green Vite build proves nothing about the deployed app: the build succeeds with *zero* environment variables set (the storefront then renders blank), and `api/` is transpiled in place so an ESM resolution fault surfaces as HTTP 500 `FUNCTION_INVOCATION_FAILED` only at request time. Promote to production only after **both** halves below pass on the preview deployment.
+
+1. **Automated, credential-free half** — `pnpm run smoke:preview -- --base=https://<preview-host>`. Nine read-only probes: both HTML shells are served, the Mercado Pago webhook module loads under the deployed runtime, the routed admin endpoint answers its preflight and refuses an unauthenticated read with `403`, and the four public endpoints reject a malformed body before touching Firestore or Storage. Any `500` is reported as a runtime/ESM or provider-configuration failure. The tool refuses the production host (and its subdomains) outright and never sends an `Authorization` header.
+   * **What it cannot prove — do not read a green run as more than it is:** the shell probes are HTTP `200` checks, so they cannot see the storefront blank page (a server-side request never executes the client bundle); the `403` on the admin read is answered identically by a healthy deployment and by one with no Admin SDK credentials; and the `OPTIONS` answer is produced before any CORS header is set. The blank page and the real admin read are covered only by step 2.
+   * **Deployment Protection:** a preview behind Vercel's Deployment Protection answers every probe with a login redirect or a `401`, so all nine fail. Disable protection for the deployment under test (or probe through its sharing link).
+2. **Manual, credential-bearing half** — with **Mercado Pago TEST credentials and non-customer test data only**, and **never against production**: load the storefront in a browser and confirm it renders (this is the only step that catches a blank page from a bad `VITE_FIREBASE_API_KEY`), complete a test checkout and a test payment end to end, upload a bank-transfer voucher for a test order, log into `/admin` and read the order, then approve the test transfer (or adjust stock) and confirm the inventory audit entry. Use the owner's own test account and a synthetic customer (never a real clinic's data), and delete or cancel the test order afterwards.
+
 ### 🛡️ Deployment Guardrails
 
-* **Pre-Flight Testing:** Never execute `vercel --prod` without first confirming that `pnpm test` and `pnpm build` succeed without errors.
+* **Pre-Flight Testing:** Never execute `vercel --prod` without first confirming that `pnpm run verify` succeeds (and, before a pull request, `pnpm run verify:full`). A green `vercel --prod` on its own proves nothing — see the runtime/operator gate above.
 * **Environment Variable Sync:** when introducing new variables, add them to `.env.example` and push them up with `pnpm run env:sync` (§7.1) before deploying. ❌ **Never paste `.env.local` wholesale** — it carries `FIRESTORE_ENV=development`, and copying that into Production would silently point the live storefront at the `dev_*` collections.
 * **A green `vercel --prod` proves nothing about the app.** The build succeeds with *zero* environment variables set; the storefront then renders a **blank page** (the module-scope `getAuth()` in `src/services/firebase.ts` throws `auth/invalid-api-key` and aborts the whole import graph) while the build log stays clean. Verify with `pnpm dlx vercel@latest env ls` **and** by loading the deployed URL — never by the build log alone.
 * **`public/og-preview.jpg` — social-share card (delivered):** `index.html` references `https://pronto-insumos.vercel.app/og-preview.jpg` from `og:image`, `twitter:image` and the JSON-LD `image`. It is a **human-produced asset** (redesign proposal Appendix B.1) shipped at **1200×630 JPEG, ~128 KB**. **Format deviation from the proposal (as built):** Appendix B.0 specified *PNG ≤300 KB*, but PNG is lossless and a photorealistic 1200×630 banner lands at ~1 MB; the JPEG carries the identical composition at 128 KB. ❌ **Never generate a substitute image.** If this asset is ever replaced, re-verify it is exactly 1200×630 and that `index.html`'s three references match the filename before promoting — a missing file silently breaks every link preview, including the WhatsApp shares that are one of PRONTO's own sales channels. The favicon, by contrast, has a final turnkey SVG already committed at `public/favicon.svg`.

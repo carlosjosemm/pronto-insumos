@@ -1,0 +1,64 @@
+name: CI
+
+# Verification gate for pull requests and for main. This workflow runs the test
+# suite, the TypeScript check and the production build — it never deploys.
+# Previews and production releases stay on the Vercel CLI, which is the single
+# supported release path for this project; this job only decides whether a
+# change is safe to promote.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege: the job reads the repository and nothing else.
+permissions:
+  contents: read
+
+# A superseded push cancels the run it replaced, so a stale branch never holds
+# the queue while a newer commit waits.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The job never pushes, so the token is left out of .git/config —
+          # one less credential for a compromised step to reach.
+          persist-credentials: false
+
+      # Reads `packageManager` (pnpm@10.30.1) from package.json, so the pnpm
+      # version is declared once and cannot drift between local and CI.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # The suite needs Node >= 22.12: the jsdom chain require()s an
+          # ESM-only package, which fails to collect on Node 20.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The pre-release gate (`pnpm run verify` locally), plus lint. Lint is in
+      # CI because it enforces the repository's self-contained-comment policy,
+      # not just style; formatting stays a local gate (`pnpm run verify:full`)
+      # so this job never fails a pull request on whitespace noise.
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Production build
+        run: pnpm build

@@ -15,6 +15,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "verify": "pnpm test && pnpm exec tsc --noEmit && pnpm build",
+    "verify:full": "pnpm run verify && pnpm lint && pnpm format:check",
     "deploy:rules": "pnpm dlx firebase-tools deploy --only firestore:rules",
     "deploy:indexes": "pnpm dlx firebase-tools deploy --only firestore:indexes",
     "deploy:storage-rules": "pnpm dlx firebase-tools deploy --only storage",
@@ -28,7 +30,8 @@
     "schema:purge:dev": "pnpm dlx tsx scripts/manage-firestore-schema.ts --purge-and-seed --force --env=dev",
     "catalog:import": "pnpm dlx tsx scripts/import-catalog-csv.ts --env=prod",
     "catalog:import:dev": "pnpm dlx tsx scripts/import-catalog-csv.ts --env=dev",
-    "env:sync": "pnpm dlx tsx scripts/sync-env-to-vercel.ts"
+    "env:sync": "pnpm dlx tsx scripts/sync-env-to-vercel.ts",
+    "smoke:preview": "pnpm dlx tsx scripts/smoke-preview.ts"
   },
   "dependencies": {
     "firebase": "^12.16.0",
