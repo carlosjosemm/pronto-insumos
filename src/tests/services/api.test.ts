@@ -23,10 +23,18 @@ import {
   validatePromo,
   submitOrder,
   generateOrderId,
-  CATALOG_FETCH_TIMEOUT_MS
+  invalidateCatalogCache,
+  CATALOG_FETCH_TIMEOUT_MS,
+  CATALOG_CACHE_TTL_MS
 } from '../../services/api'
 import { PRODUCTS } from '../../data/products'
 import { Product } from '../../types'
+
+// The catalog cache is module-level state: reset it before every case so one
+// test's read cannot satisfy (or starve) the next one.
+beforeEach(() => {
+  invalidateCatalogCache()
+})
 
 describe('fetchProducts - filtering', () => {
   it('should return all products when no filters applied', async () => {
@@ -566,5 +574,120 @@ describe('fetchProducts - catalog source (Task 2.11)', () => {
     expect(res.source).toBe('firestore')
     expect(res.products).toEqual([])
     expect(res.catalog).toHaveLength(1)
+  })
+})
+
+describe('fetchProducts - in-memory catalog cache', () => {
+  // A fresh Response per call: a shared object cannot be read twice, which
+  // would make the second read fall back for the wrong reason.
+  const mockCatalogEndpoint = (body: unknown, status = 200) => {
+    const spy = vi
+      .spyOn(global, 'fetch')
+      .mockImplementation(async () => new Response(JSON.stringify(body), { status }) as unknown as Response)
+    return spy
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+    vi.useRealTimers()
+  })
+
+  it('reads the endpoint once across category, search, sort and stock changes', async () => {
+    vi.stubEnv('VITE_VERCEL_ENV', 'preview')
+    const fetchSpy = mockCatalogEndpoint([{ ...PRODUCTS[0], id: 'pronto-001', inStock: true, stockCount: 2 }])
+
+    await fetchProducts({ category: 'all' })
+    await fetchProducts({ category: 'OPERATORIA' })
+    await fetchProducts({ search: 'turbina' })
+    await fetchProducts({ sortBy: 'price-low' })
+    await fetchProducts({ inStockOnly: true })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-reads after invalidateCatalogCache()', async () => {
+    vi.stubEnv('VITE_VERCEL_ENV', 'preview')
+    const fetchSpy = mockCatalogEndpoint([{ ...PRODUCTS[0], id: 'pronto-001', inStock: true }])
+
+    await fetchProducts()
+    invalidateCatalogCache()
+    await fetchProducts()
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('re-reads once the idle window elapses', async () => {
+    vi.stubEnv('VITE_VERCEL_ENV', 'preview')
+    vi.useFakeTimers()
+    const fetchSpy = mockCatalogEndpoint([{ ...PRODUCTS[0], id: 'pronto-001', inStock: true }])
+
+    await fetchProducts()
+    await vi.advanceTimersByTimeAsync(CATALOG_CACHE_TTL_MS + 1)
+    await fetchProducts()
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not cache an unavailable result, so a retry re-reads', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubEnv('VITE_VERCEL_ENV', 'production')
+    const fetchSpy = mockCatalogEndpoint({ error: 'down' }, 503)
+
+    const first = await fetchProducts()
+    const second = await fetchProducts()
+
+    expect(first.source).toBe('unavailable')
+    expect(second.source).toBe('unavailable')
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('shares one in-flight read across overlapping calls', async () => {
+    vi.stubEnv('VITE_VERCEL_ENV', 'preview')
+    const fetchSpy = mockCatalogEndpoint([{ ...PRODUCTS[0], id: 'pronto-001', inStock: true }])
+
+    // Fire several calls before any resolves — a keystroke burst must not fan
+    // out into one endpoint read per key.
+    const results = await Promise.all([
+      fetchProducts({ search: 't' }),
+      fetchProducts({ search: 'tu' }),
+      fetchProducts({ search: 'tur' })
+    ])
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    for (const res of results) expect(res.source).toBe('firestore')
+  })
+
+  it('never lets a sorted read mutate the cached catalog', async () => {
+    vi.stubEnv('VITE_VERCEL_ENV', 'preview')
+    mockCatalogEndpoint([
+      { ...PRODUCTS[0], id: 'pronto-expensive', price: 500000, inStock: true, stockCount: 5 },
+      { ...PRODUCTS[0], id: 'pronto-cheap', price: 1000, inStock: true, stockCount: 5 }
+    ])
+
+    const sorted = await fetchProducts({ sortBy: 'price-low' })
+    expect(sorted.products.map((p) => p.id)).toEqual(['pronto-cheap', 'pronto-expensive'])
+
+    // A later read must see the original order, not the previous sort.
+    const plain = await fetchProducts()
+    expect(plain.products.map((p) => p.id)).toEqual(['pronto-expensive', 'pronto-cheap'])
+    expect(plain.catalog.map((p) => p.id)).toEqual(['pronto-expensive', 'pronto-cheap'])
+  })
+
+  it('keeps the source-aware result shape and still applies filters from the cache', async () => {
+    vi.stubEnv('VITE_VERCEL_ENV', 'preview')
+    mockCatalogEndpoint([
+      { ...PRODUCTS[0], id: 'pronto-001', category: 'OPERATORIA', inStock: true, stockCount: 5 },
+      { ...PRODUCTS[0], id: 'pronto-002', category: 'ENDODONCIA', inStock: true, stockCount: 5 }
+    ])
+
+    const all = await fetchProducts()
+    const filtered = await fetchProducts({ category: 'ENDODONCIA' })
+
+    expect(all.source).toBe('firestore')
+    expect(all.catalog).toHaveLength(2)
+    expect(filtered.source).toBe('firestore')
+    expect(filtered.catalog).toHaveLength(2)
+    expect(filtered.products.map((p) => p.id)).toEqual(['pronto-002'])
   })
 })

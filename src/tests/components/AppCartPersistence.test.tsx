@@ -77,6 +77,7 @@ vi.mock('../../services/api', () => ({
       }
     ]
   }),
+  invalidateCatalogCache: vi.fn(),
   validatePromo: vi.fn().mockResolvedValue({ success: false })
 }))
 

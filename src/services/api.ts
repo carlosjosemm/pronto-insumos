@@ -63,6 +63,131 @@ export const CATALOG_FETCH_TIMEOUT_MS = 10_000
 
 const CATALOG_UNAVAILABLE_MESSAGE = 'No pudimos cargar el catálogo de insumos. Revisa tu conexión y reintenta.'
 
+/**
+ * How long an idle catalog read stays valid. The cache timestamp is refreshed
+ * on every read (sliding window), so an active shopper keeps the catalog while
+ * a tab that goes untouched for this long re-reads it on the next request.
+ */
+export const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000
+
+interface RawCatalog {
+  catalog: Product[]
+  source: CatalogSource
+  error?: string
+}
+
+interface CachedCatalog extends RawCatalog {
+  cachedAt: number
+}
+
+/**
+ * The raw (unfiltered) catalog, held for the page session. The catalog is
+ * filter-independent, so `fetchProducts` re-reads it at most once across
+ * category/search/sort/stock changes instead of re-requesting `/api/catalog`
+ * on every toggle.
+ */
+let catalogCache: CachedCatalog | null = null
+
+/** The endpoint read shared by every caller that arrives while one is in flight. */
+let inFlightCatalogRead: Promise<RawCatalog> | null = null
+
+/** Drops the cached catalog so the next read goes to the endpoint (manual retry). */
+export function invalidateCatalogCache(): void {
+  catalogCache = null
+}
+
+/**
+ * Reads the endpoint and classifies the result. FAIL-CLOSED in a production
+ * runtime: an unavailable endpoint, a rejected read, an empty catalog or a
+ * timeout all resolve to `unavailable` — the prototype `PRODUCTS` fixtures are
+ * never served to real shoppers. Outside production the fixtures remain the
+ * offline fallback, flagged `fixtures`.
+ */
+async function readCatalogEndpoint(): Promise<RawCatalog> {
+  let catalog: Product[]
+  let source: CatalogSource
+
+  const allowFixtureFallback = isSimulatedFallbackAllowed()
+
+  try {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+    const response = await Promise.race([
+      fetch('/api/catalog', { headers: { Accept: 'application/json' } }),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error('Catalog endpoint timeout')), CATALOG_FETCH_TIMEOUT_MS)
+      })
+    ]).finally(() => clearTimeout(timeoutHandle))
+
+    if (!response.ok) {
+      throw new Error(`Catalog endpoint answered ${response.status}`)
+    }
+    const liveProducts = (await response.json()) as Product[]
+    if (!Array.isArray(liveProducts)) {
+      throw new Error('Catalog endpoint returned a non-array payload')
+    }
+
+    if (liveProducts.length > 0) {
+      catalog = liveProducts
+      source = 'firestore'
+    } else if (allowFixtureFallback) {
+      console.warn(
+        'Catalog endpoint returned an empty catalog; using the local products fixture (non-production runtime).'
+      )
+      catalog = [...PRODUCTS]
+      source = 'fixtures'
+    } else {
+      console.error(
+        'Catalog endpoint returned an empty catalog in a production runtime; refusing to serve the local fixtures.'
+      )
+      return { catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
+    }
+  } catch (err: unknown) {
+    if (!allowFixtureFallback) {
+      console.error(
+        'Catalog endpoint unavailable in a production runtime; refusing to serve the local fixtures:',
+        err instanceof Error ? err.message : err
+      )
+      return { catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
+    }
+    console.warn('Catalog endpoint fallback to local products:', err instanceof Error ? err.message : err)
+    catalog = [...PRODUCTS]
+    source = 'fixtures'
+  }
+
+  return { catalog, source }
+}
+
+/**
+ * Serves the raw catalog from the in-memory cache, reading the endpoint only on
+ * a miss or once the idle window has elapsed. An `unavailable` result is never
+ * cached, so a retry (or the next filter change) re-reads instead of pinning a
+ * failure for the session.
+ *
+ * Overlapping calls share one in-flight read: a burst of keystrokes (each a new
+ * `search` → a new request) must not fan out into one endpoint read per key.
+ */
+async function loadRawCatalog(): Promise<RawCatalog> {
+  const now = Date.now()
+  if (catalogCache && now - catalogCache.cachedAt < CATALOG_CACHE_TTL_MS) {
+    catalogCache.cachedAt = now
+    return catalogCache
+  }
+
+  if (!inFlightCatalogRead) {
+    inFlightCatalogRead = readCatalogEndpoint()
+      .then((fresh) => {
+        if (fresh.source !== 'unavailable') {
+          catalogCache = { ...fresh, cachedAt: Date.now() }
+        }
+        return fresh
+      })
+      .finally(() => {
+        inFlightCatalogRead = null
+      })
+  }
+  return inFlightCatalogRead
+}
+
 export interface SubmitOrderOptions {
   orderId?: string
   items: CartItem[]
@@ -119,57 +244,15 @@ export async function fetchProducts({
   sortBy = 'featured',
   inStockOnly = false
 }: FetchProductsOptions = {}): Promise<CatalogResult> {
-  let catalog: Product[]
-  let source: CatalogSource
-
-  const allowFixtureFallback = isSimulatedFallbackAllowed()
-
-  try {
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
-    const response = await Promise.race([
-      fetch('/api/catalog', { headers: { Accept: 'application/json' } }),
-      new Promise<never>((_, reject) => {
-        timeoutHandle = setTimeout(() => reject(new Error('Catalog endpoint timeout')), CATALOG_FETCH_TIMEOUT_MS)
-      })
-    ]).finally(() => clearTimeout(timeoutHandle))
-
-    if (!response.ok) {
-      throw new Error(`Catalog endpoint answered ${response.status}`)
-    }
-    const liveProducts = (await response.json()) as Product[]
-    if (!Array.isArray(liveProducts)) {
-      throw new Error('Catalog endpoint returned a non-array payload')
-    }
-
-    if (liveProducts.length > 0) {
-      catalog = liveProducts
-      source = 'firestore'
-    } else if (allowFixtureFallback) {
-      console.warn(
-        'Catalog endpoint returned an empty catalog; using the local products fixture (non-production runtime).'
-      )
-      catalog = [...PRODUCTS]
-      source = 'fixtures'
-    } else {
-      console.error(
-        'Catalog endpoint returned an empty catalog in a production runtime; refusing to serve the local fixtures.'
-      )
-      return { products: [], catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
-    }
-  } catch (err: unknown) {
-    if (!allowFixtureFallback) {
-      console.error(
-        'Catalog endpoint unavailable in a production runtime; refusing to serve the local fixtures:',
-        err instanceof Error ? err.message : err
-      )
-      return { products: [], catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
-    }
-    console.warn('Catalog endpoint fallback to local products:', err instanceof Error ? err.message : err)
-    catalog = [...PRODUCTS]
-    source = 'fixtures'
+  const raw = await loadRawCatalog()
+  if (raw.source === 'unavailable') {
+    return { products: [], catalog: [], source: 'unavailable', error: raw.error }
   }
+  const { catalog, source } = raw
 
-  let result = catalog
+  // Copy before sorting: the cached array must never be mutated in place, or
+  // one shopper's sort order would leak into the next read of the same cache.
+  let result = catalog.slice()
 
   // Filter by category
   if (category && category !== 'all') {
@@ -214,7 +297,9 @@ export async function fetchProducts({
   const outOfStockList = result.filter((p) => !isAvailableStock(p))
   result = [...inStockList, ...outOfStockList]
 
-  return { products: result, catalog, source }
+  // `catalog` is copied too: it is the shared cache array, and a consumer that
+  // sorted it in place would corrupt the cache for every later read.
+  return { products: result, catalog: catalog.slice(), source }
 }
 
 export async function validatePromo(code: string): Promise<{ success: boolean; promo?: PromoCode; error?: string }> {
