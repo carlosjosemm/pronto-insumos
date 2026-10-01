@@ -104,9 +104,11 @@ export const AdminInventory: React.FC = () => {
         />
       )}
 
-      {/* Edit Existing Product */}
+      {/* Edit Existing Product — keyed by product id so opening a different
+          product remounts the modal and re-seeds every form field. */}
       {selectedForEdit && (
         <ProductEditModal
+          key={selectedForEdit.id}
           product={selectedForEdit}
           existingCategories={existingCategories}
           onClose={() => setSelectedForEdit(null)}
@@ -114,9 +116,11 @@ export const AdminInventory: React.FC = () => {
         />
       )}
 
-      {/* Register Brand New Product */}
+      {/* Register Brand New Product — keyed so the create-mode defaults re-seed
+          after a previous edit session. */}
       {isCreatingProduct && (
         <ProductEditModal
+          key="create"
           product={null}
           isOpen={true}
           existingCategories={existingCategories}

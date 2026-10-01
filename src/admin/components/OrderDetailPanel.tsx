@@ -466,7 +466,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
           {/* Status & Lifecycle Audit Trail */}
           <div style={{ background: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0.85rem' }}>
             <div style={{ fontWeight: '800', fontSize: '0.825rem', color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
-              <History size={16} style={{ color: 'var(--primary)' }} />
+              <History size={16} style={{ color: 'var(--teal-600)' }} />
               <span>Historial de Estados y Auditoría</span>
             </div>
 
@@ -479,7 +479,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {history.map(ev => (
-                  <div key={ev.id} style={{ borderLeft: '2px solid var(--primary)', paddingLeft: '0.6rem', fontSize: '0.75rem' }}>
+                  <div key={ev.id} style={{ borderLeft: '2px solid var(--teal-600)', paddingLeft: '0.6rem', fontSize: '0.75rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.15rem' }}>
                       <span style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{ev.newStatus}</span>
                       <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>

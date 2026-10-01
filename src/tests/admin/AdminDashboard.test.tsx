@@ -24,6 +24,8 @@ describe('AdminDashboard Component', () => {
     await waitFor(() => {
       expect(screen.getByText('Ventas Hoy')).toBeInTheDocument()
       expect(screen.getByText('$540.000')).toBeInTheDocument()
+      // The value is totalAmount (IVA-inclusive), so the copy stops calling it net.
+      expect(screen.getByText('Facturación confirmada hoy (IVA incluido)')).toBeInTheDocument()
       expect(screen.getByText('Pedidos Pendientes')).toBeInTheDocument()
       expect(screen.getByText('4')).toBeInTheDocument()
       expect(screen.getByText('Stock Bajo / Crítico')).toBeInTheDocument()

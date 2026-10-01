@@ -62,7 +62,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <MetricCard
           label="Ventas Hoy"
           value={formatCLP(stats.salesToday)}
-          subtitle="Facturación neta confirmada hoy"
+          subtitle="Facturación confirmada hoy (IVA incluido)"
           icon={<DollarSign size={20} />}
           accentColor="var(--teal-600)"
         />

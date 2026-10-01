@@ -20,7 +20,7 @@ This skill codifies the mechanics for executing a development task in the **PRON
 
 ```mermaid
 flowchart TD
-    A["1. Task Intake & Branch Formulation"] --> B["2. Draft implementation_plan.md"]
+    A["1. Task Intake & Branch Formulation"] --> B["2. Draft .devin/artifacts/task-X.Y/implementation_plan.md"]
     B --> C["3. Await Human Approval (Proceed)"]
     C --> D["4. Execute Changes & Unit Tests"]
     D --> E["5. Verify: test, build, lint, format, tsc"]
@@ -53,13 +53,14 @@ flowchart TD
 
 All work must strictly observe the **PRONTO Master Guardrails** in [AGENTS.md](../../../AGENTS.md).
 
-1. **Draft `implementation_plan.md`** — overwrite the volatile artifact with the 5 mandatory sections:
+1. **Draft the implementation plan in the task's artifact folder** — `.devin/artifacts/task-X.Y/implementation_plan.md` (owner decision, 2026-09-30): every task owns a persistent sub-folder under `.devin/artifacts/` named after the task (`task-0.18/`, `task-2.15/`, …), so plans and walkthroughs never collide across parallel branches and remain in the repository for decision audits. Create the folder if it does not exist and write the plan there with the 5 mandatory sections:
    1. *Context & Problem Statement* (reference [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md)).
    2. *Human Action Items & Placeholders* (safe placeholders in `.env.example`).
    3. *Proposed Changes* (`[NEW]`, `[MODIFY]`, `[DELETE]`).
    4. *Robust Unit Testing Plan* (Vitest suites in `src/tests/`).
    5. *As-Built Documentation & Roadmap Sync Plan*.
    * Note the branch name and status in the header. **STOP and await explicit human approval ("Proceed").**
+   * ❌ Never write task artifacts to the repository root — the old volatile root `implementation_plan.md` is retired (it was the recurring rebase conflict on every PR, since every in-flight branch overwrote the same file).
 
 2. **Execute the changes** — minimal and lean. No extraneous libraries (no Redux, no Tailwind, no Express). Chilean localization: integer CLP, Modulo 11 RUT, Boleta/Factura separation.
 
@@ -114,6 +115,6 @@ Once authorized:
    * Body sections: Objective & reference · Changes implemented (grouped by area) · Chilean localization compliance · Verification (test counts, build/lint/format results) · Strict guardrails verification.
    * Report the PR URL back to the owner.
 
-5. **Walkthrough:** write/update `walkthrough.md` (gitignored local artifact) with the branch, commit, PR URL, verification results, human action items, and the disposition of every review finding.
+5. **Walkthrough:** write `.devin/artifacts/task-X.Y/walkthrough.md` (the same per-task artifact folder as the plan, committed with the task) with the branch, commit, PR URL, verification results, human action items, and the disposition of every review finding. The folder is the audit record: keep the plan's status line current (drafted → implemented → wrapped up) so a reviewer can reconstruct every decision from the repository alone.
 
 6. **Next 2 tasks (mandatory):** re-read the Active Action Board in `PRODUCTION_READINESS_TODO.md` §1 and report the **next 2 open tasks in priority order** to the owner in the wrap-up message — task ID, one-line outcome/risk, and its gate. Skip suspended rows and owner-only checklist gates (note them separately if they still stand); the two tasks must be agent-executable items from the P1→P2→P3 queue.

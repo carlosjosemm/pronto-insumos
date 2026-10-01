@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { X, CheckCircle2, AlertCircle, PlusCircle } from 'lucide-react'
 import { updateProductDetails, createProductDetails } from '../services/adminApi'
 import { formatCLP } from '../../utils/currency'
@@ -40,46 +40,24 @@ export const ProductEditModal: React.FC<ProductEditModalProps> = ({
     return Array.from(set).sort()
   }, [existingCategories, product])
 
-  const [name, setName] = useState('')
-  const [price, setPrice] = useState(0)
-  const [stockCount, setStockCount] = useState(10)
-  const [brand, setBrand] = useState('')
-  const [description, setDescription] = useState('')
-  const [category, setCategory] = useState(BASE_CHILEAN_CATEGORIES[0])
+  // Form fields are seeded once from the product at mount. The parent remounts
+  // the modal per open (`key={product?.id ?? 'create'}`), so opening a different
+  // product re-seeds every field instead of keeping the previous product's
+  // values — the same convention StockAdjustModal follows. The previous shape
+  // populated the fields inside a useEffect, the synchronous-setState-in-effect
+  // pattern `react-hooks/set-state-in-effect` forbids.
+  const [name, setName] = useState(product?.name || '')
+  const [price, setPrice] = useState(product?.price || 0)
+  const [stockCount, setStockCount] = useState(typeof product?.stockCount === 'number' ? product.stockCount : 10)
+  const [brand, setBrand] = useState(product?.brand || product?.manufacturer || '')
+  const [description, setDescription] = useState(product?.description || '')
+  const [category, setCategory] = useState(product?.category || BASE_CHILEAN_CATEGORIES[0])
   const [isCustomCategory, setIsCustomCategory] = useState(false)
   const [customCategoryName, setCustomCategoryName] = useState('')
-  const [prescriptionRequired, setPrescriptionRequired] = useState(false)
-  const [tag, setTag] = useState('')
+  const [prescriptionRequired, setPrescriptionRequired] = useState(!!product?.prescriptionRequired)
+  const [tag, setTag] = useState(product?.tag || '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (product) {
-      setName(product.name || '')
-      setPrice(product.price || 0)
-      setStockCount(typeof product.stockCount === 'number' ? product.stockCount : 10)
-      setBrand(product.brand || product.manufacturer || '')
-      setDescription(product.description || '')
-      setCategory(product.category || BASE_CHILEAN_CATEGORIES[0])
-      setIsCustomCategory(false)
-      setCustomCategoryName('')
-      setPrescriptionRequired(!!product.prescriptionRequired)
-      setTag(product.tag || '')
-    } else {
-      // Defaults for create mode
-      setName('')
-      setPrice(0)
-      setStockCount(10)
-      setBrand('')
-      setDescription('')
-      setCategory(BASE_CHILEAN_CATEGORIES[0])
-      setIsCustomCategory(false)
-      setCustomCategoryName('')
-      setPrescriptionRequired(false)
-      setTag('')
-    }
-    setError('')
-  }, [product, isOpen])
 
   if (!isOpen && !product) return null
 

@@ -64,7 +64,7 @@ To strictly follow the **Anti-Overshooting Principle** in [AGENTS.md](../../AGEN
   - Amber Warning: `var(--warning)` (`#d97706`, `--warning-bg #fffbeb`) — pending transfer clearance
   - Emerald Green: `var(--success)` (`#059669`, `--success-bg #ecfdf5`) — paid, delivered, approved
   - Info Blue: `var(--accent-info)` (`#2563eb`, `--accent-info-bg #eff6ff`)
-* ⚠️ **Known broken token:** `OrderDetailPanel.tsx` references `var(--primary)` twice (the `History` icon colour and the audit-timeline `borderLeft`), but `--primary` is **never defined** in `admin.css` — both declarations silently drop (the icon inherits, the timeline loses its accent border). Use `var(--teal-600)` instead when touching that file.
+* ⚠️ **Resolved broken token:** `OrderDetailPanel.tsx` used to reference `var(--primary)` twice (the `History` icon colour and the audit-timeline `borderLeft`), but `--primary` was never defined in `admin.css` — both declarations silently dropped. Both sites now use `var(--teal-600)`.
 
 ---
 
@@ -229,18 +229,18 @@ The admin topbar ([`src/admin/components/AdminTopbar.tsx`](./components/AdminTop
 
 ## ⚠️ 6. Deliberate Placeholders & Known Issues
 
-### 6.1 "Fase 5" placeholder cards — intentional, not dead code
+### 6.1 Deferred placeholder cards — intentional, not dead code
 
-Two surfaces render greyed `Fase 5` placeholder cards for deferred roadmap work; leave them in place (their roadmap anchors are in `PRODUCTION_READINESS_TODO.md`):
+Three surfaces render greyed placeholder cards for deferred roadmap work; leave them in place (their roadmap anchors are in `PRODUCTION_READINESS_TODO.md`):
 
-- `AdminDashboard.tsx` — `Visitas Web y Sesiones` (→ Google Tag Manager) and `Tasa de Conversión Checkout` (→ GA4 telemetría).
-- `AdminSettings.tsx` — `Configuración de Tarifas de Envío y Zonas Rurales` (dynamic courier/comuna pricing).
+- `AdminDashboard.tsx` — `Visitas Web y Sesiones` and `Tasa de Conversión Checkout` → **Task 8.5** (add monitoring / analytics if useful; the owner chooses the minimal signals and the alert path — no telemetry is implied until then).
+- `AdminSettings.tsx` — `Configuración de Tarifas de Envío y Zonas Rurales` → **suspended 3.1** (owner decision: no freight below `$150.000`; PRONTO absorbs courier cost — do not unsuspend or implement).
 
 ### 6.2 Known issues (as built — fix deliberately, do not opportunistically rewrite)
 
 - **`StockAdjustModal.tsx` — hook-order hardening (as built).** The component's prop is `Product | null`, so it must tolerate a null product without breaking React's invariant that the same hooks run in the same order on every render. It now returns `null` from a hook-free guard and renders a separate stateful `StockAdjustForm` (four unconditional `useState`, lazily seeded from the product, `key={product.id}`) only while a product exists; `AdminInventory.tsx` also mounts it conditionally (`{selectedForStock && …}`), matching `ProductEditModal`. The previous shape (`if (!product) return null` **before** the four hooks) was a `react-hooks/rules-of-hooks` violation. React 18.3.1 happened to tolerate the zero-hook→four-hook transition — it dispatches a render whose previous committed state is `null` to the mount path, so no hook-count comparison runs — which means the reported runtime crash was latent, not observed; the pattern is still undefined behavior and becomes a real crash the moment a hook is added above the guard. The keyed inner form additionally re-seeds the stock draft when a different product is opened instead of keeping the previous product's value.
-- **`ProductEditModal.tsx` — prop→state sync `useEffect`.** Form fields are populated from `product` inside a `useEffect` — the exact synchronous-setState-in-effect pattern `react-hooks/set-state-in-effect` forbids on the storefront (see [src/components/AGENTS.md](../components/AGENTS.md) §2.1). It works today only because the parent remounts the modal per open; a lint sweep or refactor must replace it with the storefront's remount/lazy-initializer convention, not copy it elsewhere.
-- **`var(--primary)` unresolved in `OrderDetailPanel.tsx`** — see §2.3.
+- **`ProductEditModal.tsx` — prop→state sync `useEffect` (resolved).** Form fields used to be populated from `product` inside a `useEffect` — the synchronous-setState-in-effect pattern `react-hooks/set-state-in-effect` forbids on the storefront. The effect is gone: the fields are seeded once with lazy `useState` initializers and the parent (`AdminInventory.tsx`) remounts the modal per open (`key={selectedForEdit.id}` for edit, `key="create"` for create mode), so a different product re-seeds every field instead of keeping the previous product's values — the same convention `StockAdjustModal` follows.
+- **`var(--primary)` unresolved in `OrderDetailPanel.tsx` (resolved)** — see §2.3. Both references now use `var(--teal-600)`, which is defined in `admin.css`.
 - **`AdminOrders.tsx` header copy** still reads `…depósitos dentales en Melipilla y RM` — there are no RM delivery zones (root [AGENTS.md](../../AGENTS.md) §3.4). Internal-facing, but stale.
 
 ---

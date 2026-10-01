@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { OrderTable } from './OrderTable'
 import { OrderDetailPanel } from './OrderDetailPanel'
 import { fetchAdminOrders, fetchAdminOrder } from '../services/adminApi'
-import { RefreshCw } from 'lucide-react'
+import { AlertCircle, RefreshCw } from 'lucide-react'
 import type { Order } from '../../types'
 
 interface AdminOrdersProps {
@@ -13,6 +13,7 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({ initialOrderId }) => {
   const [orders, setOrders] = useState<Order[]>([])
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   // Monotonic token: a slow detail response must never overwrite a newer selection (or
   // reopen the panel after it was closed).
   const selectionToken = useRef(0)
@@ -33,15 +34,48 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({ initialOrderId }) => {
 
   const loadOrders = async ({ openInitial = true }: { openInitial?: boolean } = {}) => {
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await fetchAdminOrders()
-      setOrders(res.orders || [])
+      const loaded = res.orders || []
+      setOrders(loaded)
+
+      // REFRESH PATH WINS — when an order is already selected, re-find it in the
+      // freshly loaded page so a deep link in the URL cannot re-assert itself over
+      // the order the operator just acted on. The list projection omits `voucherUrl`,
+      // so the refreshed snapshot is completed by the detail request.
+      if (selectedOrder) {
+        const updated = loaded.find(o => o.orderId === selectedOrder.orderId)
+        if (updated) {
+          const token = ++selectionToken.current
+          setSelectedOrder(updated)
+          const detail = await fetchAdminOrder(updated.orderId)
+          if (detail && token === selectionToken.current) setSelectedOrder(detail)
+          return
+        }
+      }
+
       if (openInitial && initialOrderId) {
-        const found = res.orders?.find(o => o.orderId === initialOrderId)
-        if (found) await openOrder(found)
+        const found = loaded.find(o => o.orderId === initialOrderId)
+        if (found) {
+          await openOrder(found)
+        } else {
+          // Deep link beyond the first page: the list only renders a bounded
+          // window, so `#orders/<id>` fetches the order directly to open the
+          // inspector from any queue depth.
+          const direct = await fetchAdminOrder(initialOrderId)
+          if (direct) {
+            await openOrder(direct)
+          } else {
+            // A deep link to a missing/unreadable order must say so — the same
+            // failure-vs-empty honesty the list banner provides.
+            setLoadError(`No se encontró el pedido ${initialOrderId}. Verifica el código e reintenta.`)
+          }
+        }
       }
     } catch (err) {
       console.error('[Admin Orders] Error loading orders:', err)
+      setLoadError('No fue posible cargar los pedidos. Verifica tu conexión y reintenta.')
     } finally {
       setLoading(false)
     }
@@ -78,6 +112,38 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({ initialOrderId }) => {
           <span>Actualizar Lista</span>
         </button>
       </div>
+
+      {/* Read failure — distinct from an empty queue: without this banner a failed
+          load renders the same blank table a genuinely empty filter would. */}
+      {loadError && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            background: 'var(--danger-bg)',
+            border: '1px solid #fecaca',
+            color: 'var(--danger)',
+            padding: '0.75rem 1rem',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '0.825rem',
+            fontWeight: '600'
+          }}
+        >
+          <AlertCircle size={17} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>{loadError}</span>
+          <button
+            type="button"
+            className="admin-btn admin-btn-secondary"
+            onClick={() => loadOrders()}
+            disabled={loading}
+            style={{ padding: '0.35rem 0.7rem', fontSize: '0.775rem' }}
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       <OrderTable
         orders={orders}
