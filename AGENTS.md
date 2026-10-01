@@ -168,6 +168,11 @@ pnpm preview
 # One-time per machine: `pnpm dlx firebase-tools login` — the script invokes the CLI via pnpm dlx
 pnpm run deploy:rules
 
+# Deploy Firestore composite indexes (firestore.indexes.json). Required by the admin
+# order list's status-filtered query: `orders(status ASC, createdAt DESC)`. Firestore
+# builds a new index asynchronously, so the first filtered request may wait for `Ready`.
+pnpm run deploy:indexes
+
 # Provision an administrator account for the backoffice portal (/admin)
 # (the Auth client must come from getAuth(app) — never a bare `auth` identifier)
 pnpm run setup:admin tu-email@prontoinsumos.cl TuPasswordSegura123!

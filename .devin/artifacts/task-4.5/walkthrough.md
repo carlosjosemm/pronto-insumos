@@ -49,8 +49,10 @@ resolved by combining both sides, not by choosing one:
 ## Housekeeping (doc-only)
 
 Ticked the **4.2**, **4.4** and **2.18** board rows and added the as-built notes their merged PRs
-never got (PR #44 / #34 / #41), plus Resolved History rows. ⚠️ 4.2's as-built records that its new
-composite index (`orders`: `status` ASC + `createdAt` DESC) still needs deploying to Firestore.
+never got (PR #44 / #34 / #41), plus Resolved History rows. 4.2's composite index
+(`orders`: `status` ASC + `createdAt` DESC) was already declared, deployed and verified live during
+that task; `pnpm run deploy:indexes` was added so a future index change has a documented command
+alongside `deploy:rules` / `deploy:storage-rules`.
 
 ## Verification Results
 
@@ -84,4 +86,4 @@ Verdict: **approve with findings**. No code blocker.
   runs against the `dev_*` collections and is safe.
 - **No** new secrets, environment variables, rules, migrations or serverless functions.
 - Standing, unrelated owner gates: **0.12** (production Firestore rules deploy), **8.9** (production
-  env), **9.1** (promo codes) — plus 4.2's Firestore index deploy.
+  env), **9.1** (promo codes).
