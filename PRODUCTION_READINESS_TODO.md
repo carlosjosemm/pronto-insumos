@@ -1,8 +1,12 @@
 # PRONTO INSUMOS ODONTOLÓGICOS — Production Readiness TODO
 
+<!-- markdownlint-disable MD033 -->
+
 A working task list, not a changelog. Finished work is one line in [§5 Resolved History](#5-resolved-history); its as-built detail lives in the `AGENTS.md` of the directory it touches (mostly `api/AGENTS.md`, `src/admin/AGENTS.md`, `src/services/AGENTS.md`). **Open tasks keep their IDs** (they are referenced from code comments and `AGENTS.md` files) — do not renumber. New IDs are appended at the end of each phase.
 
 **Last updated:** 2026-09-30 (condensed + full static re-audit + owner answers, rebased onto `main@3418420`) · **Audit provenance:** static source audit; no live infrastructure, Firestore data, provider dashboard or production behavior was verified. · **Market:** Melipilla & San Antonio, Chile (storefront audience: Región Metropolitana clinics) · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze) · Mercado Pago Chile · Resend
+
+**Audit coverage:** two passes. Pass 1 read the payment, webhook, voucher, tracking, rules, admin auth/router/orders/approve/update-product, e-mail and `submitOrder` paths. Pass 2 read the remaining admin handlers (dispatch, deliver, cancel, review, stock, visibility, stats, products, history, housekeeping, stale sweep), the shared libraries (voucher storage, signature, payment incidents), the admin UI shell, API client, login and `OrderDetailPanel`'s action logic, the cart, `App`, footer, tracking, payment-return and quick-view components, the key stylesheet sections, and the operator scripts and build config. **Not read line by line:** the long inline-style markup of `OrderDetailPanel` (lines 340–998) and `OrderTrackingModal` (380–780), `AdminInventory`, `InventoryTable`, `AdminSettings` and `StockAdjustModal` internals, `resolve-quote`, `record-order-incident`, `resend-order-email`, `emailDelivery`, `import-catalog-csv`, `manage-firestore-schema`, `configure-storage-cors`, the rest of `index.css`, and the legal copy — they are covered by their tests and the findings above, not by review.
 
 **Baseline re-run for this update:** on `main@3418420`, `pnpm run verify` (tests + `tsc --noEmit` + build) passes with 1255/1255 tests in 101 suites, and `pnpm lint` is clean. `pnpm audit --prod` reports **3 findings** (1 high, 1 moderate, 1 low — see 8.14). `pnpm run format:check` was not re-run. Counts quoted in other docs disagree with each other (the 8.13 note says 1206/99) — see 8.20.
 
@@ -31,11 +35,14 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 | [0.21](#task-0-21) **NEW** | Customer e-mail is unverified and attacker-composed content is sent from the verified PRONTO domain | Abuse path bounded (App Check 8.16 + catalog-sourced content + per-recipient budget) |
 | [0.22](#task-0-22) **NEW** | Delivery zone is a free-text claim; owner decision: out-of-zone buyers may order but only via WhatsApp | Zone normalizer, "Otra comuna" → WhatsApp-only, server-side minimum |
 | [2.14](#task-2-14) | **Owner decision:** remove exact stock from the public; only low stock (≤ 3) is visible | Stock-free `/api/catalog`, rules flip, badge at ≤ 3 |
+| [2.24](#task-2-24) **NEW** | Unsubstantiated storefront claims ("Boleta Electrónica Inmediata", "Certificado/Homologado ISP", "Fichas de Seguridad", fake-rating UI) and a free-shipping nudge that implies a charge that does not exist | Owner substantiates or approves neutral wording (§4 H–J) |
 | [2.19](#task-2-19) **NEW** | Owner design: last-moment price/stock check at the Pago step with visible feedback | Changes shown and acknowledged before the order is written |
 | [2.20](#task-2-20) **NEW** | Every filter/sort/stock toggle re-reads the whole `products` collection (billed per visitor) | One catalog read per session, client-side filtering (after 2.14) |
+| [4.11](#task-4-11) **NEW** | Payment incidents (a paid payment with no matching order) exist only in Firestore and an e-mail — the console cannot see them | Console list + resolve action |
 | [5.4](#task-5-4) **NEW** | Customer e-mails are bare-bones and there is no mail at dispatch/delivery/cancel | Redesigned shared layout + lifecycle e-mails, previewable offline |
 | [8.16](#task-8-16) | App Check abuse friction for public order creation | Preview checkout works with enforcement |
 | [8.18](#task-8-18) **NEW** | Raw error messages and provider bodies returned to public callers; no `no-store` on PII responses | Generic public errors, `Cache-Control: no-store` |
+| [8.23](#task-8-23) **NEW** | A production build with missing `VITE_FIREBASE_*` ships a blank storefront without failing (it already happened once) | Build fails fast on a production target |
 | [8.21](#task-8-21) **NEW** | Pending bank transfers have no follow-up (reminder, stale list) | Reminder at 24 h, operator list at 72 h, never auto-cancelled |
 | [9.1](#task-9-1) | Promo codes `PRONTO10` / `DENT20` are public and unlimited | Owner confirms codes are intentional/margin-safe or disables them |
 
@@ -46,8 +53,14 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 | [0.23](#task-0-23) **NEW** | Quantity/stock handling differs across preference, webhook and transfer approval | One shared normalizer; consolidated stock check |
 | [2.16](#task-2-16) | Customer-friendly courier label | Legacy carrier keys render through shared labels |
 | [2.21](#task-2-21) **NEW** | Tracking deep link accepts the RUT (second factor) in the URL | Remove `rut` query support |
+| [2.22](#task-2-22) **NEW** | Motion foundation: tokens, no implicit `transition: all`, matched exit animations for every overlay and toast | Design of record: [STOREFRONT_MOTION_DESIGN.md](./STOREFRONT_MOTION_DESIGN.md); after 2.19 / 2.20 / 0.22 |
+| [2.23](#task-2-23) **NEW** | Micro-interactions and loading polish (press states, add-to-cart, value flash, directional checkout steps, calmer grid) | Depends on 2.22; same design document |
+| [2.25](#task-2-25) **NEW** | Accessibility gaps (unnamed dialogs, misused tab roles, un-grouped radios, small touch target) and a missing `spin` keyframe | Dialogs named, roles correct, keyboard check |
 | [4.7](#task-4-7) **NEW** | Failed admin authentication is invisible; no idle sign-out (no MFA by owner decision) | Logged, generic error |
 | [4.8](#task-4-8) **NEW** | Admin search covers only the loaded page | Exact id/RUT server lookup |
+| [4.9](#task-4-9) **NEW** | Dashboard KPIs undercount (sold-out products invisible, month and sales windows capped) and admin text inputs are unbounded | Aggregation queries, input caps |
+| [4.10](#task-4-10) **NEW** | Nothing ever moves an order to `EN_PREPARACION`, so the customer's "Preparando en bodega" step is unreachable | Owner decision (§4 K), then one small action |
+| [8.22](#task-8-22) **NEW** | Operator scripts run unpinned `pnpm dlx tsx` / `firebase-tools` / `vercel@latest` with production credentials; `setup:admin` takes the password on the command line | Pinned dev dependencies, no secret on argv |
 | [6.2](#task-6-2) / [6.3](#task-6-3) / [6.4](#task-6-4) | Datasheets · catalog by specialty · fate of `odon-*` fixtures | Owner prioritizes |
 | [8.1](#task-8-1) / [8.11](#task-8-11) | Bundle cost · resilient Firebase init | Measured reduction / invalid config cannot blank the storefront |
 | [8.2](#task-8-2) | Type-check serverless functions consistently | Lean server check |
@@ -110,8 +123,10 @@ Separates source-level capability from independently verified production and own
 - [ ] **0.19. Tighten the Public `orders` Create Rule** _(P1 · NEW; deploy with the 0.12 gate; coordinate with 8.16 and 0.22)_
   - **Evidence:** `firestore.rules:121` only requires `'createdAt' in data` — any type is accepted; `:119-120` bound `orderId` to length ≤ 32 and the doc id but not to the `PRONTO-XXXXXXXX` format; `:74` accepts any `customer.city` string (≤ 80); `:26-27` allow unbounded `quantity` and fractional `price`; `:148-157` shape-check only the first 10 of up to 25 lines; `email` is length-checked only.
   - **Risk:** the admin queue reads `orderBy('createdAt','desc')` (`api/_lib/admin/orders.ts:56`) and continues with `startAfter(new Date(cursor))` built from `String(createdAt)` (`:78,:143`). Firestore sorts values by type (numbers < timestamps < strings), so an order written with `createdAt: "zzz"` sorts to the **top forever**, and a page ending on it yields a cursor that is not a date — the client re-requests the first page indefinitely. Numeric `createdAt` values sink below every real order. The dashboard's bounded recent-orders read orders by the same field. Static analysis; not reproduced against a live project.
+  - **Second risk (found in the second pass) — voucher-folder collision:** `sanitizeOrderIdForPath` (`api/_lib/voucherStorage.ts:62-67`) _strips_ disallowed characters instead of rejecting them, and the public rule lets anyone choose a document id. An attacker can create an order whose id is a victim's id plus a stripped character (for example `PRONTO-ABCD1234.`); every voucher path derived from it then points into the **victim's** folder. `voucher-housekeeping` lists by that sanitized prefix and treats every object the scanned order does not reference as an orphan, so sweeping the attacker's order would delete the victim's voucher (older than the 60-minute grace window). Exploiting it needs the victim's order id (40 bits, not guessable, but it appears in e-mails and tracking links) and an admin running the sweep; the impact is evidence loss, not money.
   - **Fix:** `data.createdAt == request.time` (the client already writes `serverTimestamp()`); `data.orderId.matches('^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$')` (legacy `PRONTO-NNNNNN` ids are never re-created); `customer.city in ['Melipilla','San Antonio']` **unless** `paymentMethod == 'whatsapp'` (out-of-zone buyers settle by WhatsApp quote — see 0.22); `quantity` int in `[1, 999]`, `price` int; basic e-mail shape. Lines beyond 10 stay a server-side concern (webhook/approve recompute) unless 8.16 chooses a server create path. Make the admin cursor robust regardless (a `createdAt` that is not a timestamp is skipped/flagged, not echoed).
-  - **Accept:** rules/drift-guard tests cover string/number `createdAt`, malformed ids, foreign zone with each payment method, huge quantity; admin pagination test with a non-timestamp `createdAt`; rules redeployed and verified by the owner.
+  - **Defense in depth for the collision:** make `sanitizeOrderIdForPath` _reject_ (return empty) when any character would be stripped, and make `voucher-housekeeping` skip any order whose document id is not canonical.
+  - **Accept:** rules/drift-guard tests cover string/number `createdAt`, malformed ids, foreign zone with each payment method, huge quantity; admin pagination test with a non-timestamp `createdAt`; a voucher test proving a non-canonical id never maps into another order's folder and is skipped by the sweep; rules redeployed and verified by the owner.
 
 <a id="task-0-20"></a>
 
@@ -191,6 +206,54 @@ Separates source-level capability from independently verified production and own
 - [ ] **2.21. Remove the RUT from the Tracking Deep Link** _(P3 · NEW)_
   - `src/App.tsx:96-102` pre-fills `rut` from the URL query. The RUT is the second authentication factor; in a URL it lands in browser history, Vercel request logs and `Referer`. E-mails only link `?track=<orderId>`, so nothing legitimate needs it. Drop the `rut` parameter (keep order id prefill) and clear it from the address bar if present.
 
+<a id="task-2-22"></a>
+
+- [ ] **2.22. Motion Foundation: Tokens and Matched Exit Animations** _(P3 · NEW; owner request 2026-09-30; **design of record: [STOREFRONT_MOTION_DESIGN.md](./STOREFRONT_MOTION_DESIGN.md) — read it first, it decides every timing, distance and behaviour**)_
+  - **Why:** the storefront already has motion (36 `transition:` declarations, 9 keyframes, reduced-motion handling), but it is a set of one-offs. Every `transition: var(--transition-fast)` has no property list, so it is an implicit `transition: all`; every overlay animates in and snaps out (`Cart`, `CheckoutModal`, `OrderTrackingModal`, `PaymentReturnModal` return `null` the instant `isOpen` flips; `ProductQuickView`, `LegalModal` and toasts are removed from state); `toastDrain` and `.progress-fill` animate `width`. The goal is a quieter, more consistent and more "established" feel — not more movement.
+  - **Sequencing:** start **after 2.19, 2.20 and 0.22** — they touch `CheckoutModal`, `App.tsx` and the product grid, and this task rewrites the same open/close plumbing. No dependency on 2.14.
+  - **Scope (all from the design document):**
+    1. Add the `--motion-*`, `--ease-*`, `--motion-shift-*`, `--motion-drawer-from`, `--motion-scale-from` and `--transition-interactive` tokens (§3); keep `--transition-fast` / `--transition-base` as aliases; delete `--transition` (the explicit `all`) and replace every bare `transition: var(--transition-*)` with an explicit property list.
+    2. Replace the two scattered `prefers-reduced-motion` blocks with the single token-driven block (§7): distances/scale zeroed so every keyframe degrades to a fade; shimmer and countdown stop.
+    3. Add `src/config/motion.ts` (`MOTION_EXIT_MS = 180`) and `src/hooks/usePresence.ts` (`usePresence` + `usePresenceValue`, §6.1) with the symmetric `data-state="open" | "closed"` contract.
+    4. Give every overlay its matched enter/exit pair (§5): scrim, modal card, cart drawer, toast. Closing surfaces get `pointer-events: none` and `aria-hidden="true"`; scroll lock and focus trap release at the **start** of the exit. Preserve `OrderTrackingModal`'s remount-on-open behaviour and `ProductQuickView`'s `key={product.id}`.
+    5. Toasts: `closing` phase at `3000 − MOTION_EXIT_MS`, removal at 3000 ms; countdown bar rewritten with `transform: scaleX`.
+    6. Convert `.progress-fill` from `width` to `transform: scaleX(var(--progress))`.
+    7. Define the missing `@keyframes spin` that `OrderTrackingModal`'s loading icon already references (stopped under reduced motion).
+  - **Do not:** add any dependency or animation library; use `will-change`; animate layout properties; add a test-only branch to production code (update the tests that assert synchronous removal to advance fake timers instead); put task numbers or `.md` pointers in code comments (`pnpm lint` rejects them — state the constraint inline).
+  - **Accept:** the automated checks in the design document §9 items 1–7 and 9 (token/constant twin guard, no `transition: all`, no layout-property animation, single reduced-motion block, `usePresence` unit tests, per-overlay exit tests, suite green) plus the manual checklist in §9 on a preview or the `browser_preview` (open/close every overlay at 390 px and desktop; reduced-motion emulation; 4× CPU throttle; keyboard focus return). `pnpm run verify:full` clean. Update `src/components/AGENTS.md`, `src/hooks/AGENTS.md` and `src/config/AGENTS.md` as listed in §10 of the design document.
+
+<a id="task-2-23"></a>
+
+- [ ] **2.23. Micro-interactions and Loading Polish** _(P3 · NEW; depends on 2.22; same design document)_
+  - **Scope (design document §4, §6.2–§6.9):**
+    1. Press feedback (`:active` 1 px, `--motion-instant`) on buttons, quantity buttons and the close button; hover lifts and image zooms gated behind `@media (hover: hover) and (pointer: fine)` and retuned to tokens.
+    2. **Add-to-cart confirmation:** width-stable label/check swap on `btn-add-cart` for 1400 ms in accent colours; retuned cart-badge pulse (`scale 1.15`, 260 ms). No fly-to-cart.
+    3. **Value flash** (900 ms `--accent-soft` fade, re-triggered via `key`) on changed amounts: cart total, checkout total and the repriced lines surfaced by the 2.19 notice. No counting-up numbers.
+    4. **Directional checkout steps:** `data-direction` on `.checkout-panel`, ±6 px horizontal entrance, no exit.
+    5. Inline validation errors: fade + 4 px rise, border-colour transition; no height animation.
+    6. **Grid:** card entrance only on first render and "Cargar más" batches (stagger `min(index % 4, 3) * 40ms`); filter/sort/stock toggles ease the grid container's opacity (0.55 → 1) instead of replaying card entrances; skeleton shimmer 1.6 s, lower contrast, static under reduced motion; images keep `imageFadeIn` (opacity only, no fill-mode).
+  - **Accept:** stylesheet-guard tests for hover gating and the reduced-motion degradation of every new keyframe; component tests for the add-to-cart confirmed state (label swap, no width change, resets after 1400 ms with fake timers), `data-direction` forward/back, the value-flash `key` re-trigger, and "a filter toggle does not apply `product-card-entrance` to already-visible cards"; the manual checklist from the design document §9 including Slow-4G skeleton → image sequence with CLS ≤ 0.05; `pnpm run verify:full` clean; as-built notes added to `src/components/AGENTS.md`.
+
+<a id="task-2-24"></a>
+
+- [ ] **2.24. Unsubstantiated Storefront Claims and Misleading Nudges** _(P2 · NEW; owner decision on wording — §4 H, I, J; not a lawyer review, so it does not reopen suspended 7.1)_
+  - **Evidence (customer-facing strings):**
+    - `Footer.tsx:165` "Boleta Electrónica **Inmediata** (19% IVA)", and `:242,:262` "Boleta Electrónica SII" — no issuance path exists (1.5 is suspended), and the suspension's own rule is that no copy may claim a Boleta is issued.
+    - Certification claims about the business and the products with no substantiation in the repository: `Footer.tsx:28` "Insumos Médicos Certificados", `:167` "Dispositivos Homologados Registro ISP", `:250` "Dispositivos Médicos · Registro ISP Chile", `:261` "Depósito Dental Certificado"; `Hero.tsx:84` "Insumos Certificados ISP", `:113` "…Instrumental Clínico Homologado"; `ProductQuickView.tsx:401` "Normativa ISP Homologada". `Footer.tsx:168` "Fichas de Seguridad de Materiales" promises documents that task 6.2 has not built.
+    - `Footer.tsx:238` "Pago 100% Seguro" is an absolute guarantee; a factual alternative is "Pago procesado por Mercado Pago".
+    - **Rating UI without a review system:** `ProductCard.tsx:191-204` and `ProductQuickView.tsx:279-292` render stars and "(N reseñas clínicas verificadas)" whenever `reviewsCount > 0`, and `CategoryFilter.tsx:139-141` offers "Mejor Calificados" / "Más Reseñas" sorting. Nothing in the product collects reviews, yet `create-product`, the CSV import and the seed script all write `rating: 5.0`; any non-zero `reviewsCount` would display fabricated social proof, and today the two sorts order by a constant.
+    - **Free-shipping nudge:** `Cart.tsx:136-147` says "Agrega $X más para Despacho GRATIS" with a progress bar toward `$150.000`, but while 3.1 is suspended no freight is charged at any amount — the nudge implies a charge that does not exist.
+  - **Risk:** misleading-advertising exposure under Chilean consumer law (Ley 19.496) for claims PRONTO cannot document, on a store whose product category is regulated; separate from the draft legal pages.
+  - **Fix (after the owner answers H–J):** reword each unsupported claim to what is provable (for example "Boleta electrónica · IVA 19%", "Pago procesado por Mercado Pago"), or keep it only where the owner can document it (SEREMI sanitary authorization number, ISP registration per product); remove the rating/review UI and the two sorts until a real review system exists (leave the data fields); change the cart bar to a plain statement ("Despacho sin costo a Melipilla y San Antonio") while 3.1 is suspended. Copy must be approved by the owner before editing, per the copy-deck rule in `src/components/AGENTS.md`; existing tests that pin the current strings (`ClinicalStorefront.test.tsx`) are updated in the same change.
+  - **Accept:** no string in the list above remains unless the owner supplied its substantiation; tests pin the new wording; no rating UI or rating sort is reachable.
+
+<a id="task-2-25"></a>
+
+- [ ] **2.25. Storefront Accessibility Pass and the Missing `spin` Keyframe** _(P3 · NEW)_
+  - **Evidence:** `CheckoutModal.tsx:447` and `OrderTrackingModal.tsx:224` put `role="dialog" aria-modal="true"` on the full-screen scrim with **no accessible name** (`PaymentReturnModal`, `LegalModal` and `ProductQuickView` do use `aria-labelledby`; `Cart` uses `aria-label`); `CategoryFilter.tsx:94-109` declares `role="tablist"`/`role="tab"` on filter buttons that control no tab panel and have no arrow-key behaviour (should be buttons with `aria-pressed`); the payment-method radios (`CheckoutModal.tsx:1070-1136`) have a visual label but no `fieldset`/`legend`; the tracking submit button is forced to `height: 38px`, below the 44 px tap target the rest of the app keeps; `OrderTrackingModal.tsx:372` animates `spin 2s linear infinite`, but **no `@keyframes spin` exists anywhere**, so the loading clock never rotates; each modal registers its own `window` Escape listener, so stacked overlays would all close together.
+  - **Fix:** give both dialogs a named heading (`aria-labelledby`) and move the dialog role to the card; convert the category pills to `aria-pressed` buttons; wrap the payment choices in a `fieldset` with a visible `legend`; restore the 44 px target; define `@keyframes spin` (token-driven, stopped under reduced motion — coordinate with 2.22); a keyboard-only walkthrough of cart → checkout → tracking.
+  - **Accept:** tests assert the accessible names and roles; the loading indicator rotates; Tab order and Escape behaviour are unchanged.
+
 ### Phase 3 — Logistics & Copy — SUSPENDED (owner decision, 2026-09-29)
 
 > Do not select, plan or implement. IDs and wording retained for when the suspension is lifted.
@@ -224,6 +287,29 @@ Separates source-level capability from independently verified production and own
 - [ ] **4.8. Admin Search Beyond the Loaded Page** _(P3 · NEW)_
   - `orders.ts` filters `search` only inside the loaded page (≤ 200). Support an exact order-id or exact-RUT lookup server-side (`doc()` read / `customer.rut ==` equality, which needs a single-field index) and keep fuzzy name search page-local, with a visible "buscando en N pedidos cargados" hint.
 
+<a id="task-4-9"></a>
+
+- [ ] **4.9. Dashboard Accuracy and Admin Input Bounds** _(P3 · NEW)_
+  - **Dashboard (`api/_lib/admin/dashboard-stats.ts`):** the low-stock KPI queries `stockCount <= 5` and then drops every product with `inStock === false` (`:74-82`), so a **sold-out** product — the most urgent case — is not counted anywhere; `ordersThisMonth` and `salesToday` come from one `orderBy('createdAt','desc').limit(400)` read (`:88`), so a busy month silently caps at 400 and a transfer created weeks ago but approved today falls outside the window. The same read orders by `createdAt`, which 0.19 hardens. Fix: a separate _Agotados_ count; `count()` with a `createdAt >= startOfMonth` range for the month; sales from two single-field range queries on `paidAt` and `approvedAt` (today's start) instead of a creation-ordered page.
+  - **Unbounded admin text:** `dispatch-order` stores any `carrier` string and an unbounded `trackingCode` (both are shown to customers and will be rendered in the dispatch e-mail — 5.4); `update-stock` stores unbounded `reason` / `notes`; `create-product` / `update-product` accept unbounded `name`, `description`, `tag` (a document is capped at 1 MiB). Fix: validate `carrier` against the `CarrierType` allowlist, cap tracking code at ~60 characters, notes at 500, names at 200, descriptions at 2000.
+  - **Price-typo guard:** `ProductEditModal` sends whatever integer is typed (a missing zero silently reprices a product). Warn and require a second confirmation when a price changes by more than 50 % or by a factor of ten.
+  - **Silent history failure:** `fetchOrderHistory` returns `[]` on any error, so a failed audit-timeline load looks like an order with no history and the review panel falls back to the generic reason; surface a retryable error like the order list does (4.2).
+  - **Accept:** handler tests for the new counts and bounds; component tests for the price confirmation and the history error state.
+
+<a id="task-4-10"></a>
+
+- [ ] **4.10. Order Never Reaches `EN_PREPARACION`** _(P3 · NEW; owner decision — §4 K)_
+  - **Evidence:** `EN_PREPARACION` is read in `dispatch-order`, the webhook, `track-order` (step 3 "Preparando en Bodega") and the console, but **no handler ever writes it** (checked across `api/`); an order jumps from "Pago Acreditado" (step 2) to "En Ruta" (step 4), so the customer-facing timeline's third step is unreachable and the `EN_PREPARACION` branches are dead.
+  - **Fix (if the owner wants the step):** one small admin action `mark-preparing` on the dispatcher (paid/approved only, idempotent, history event, no stock, no e-mail) and a button in the panel; otherwise remove the dead step from the timeline copy. **Accept:** handler and panel tests, or the timeline reduced to four steps with updated tracking tests.
+
+<a id="task-4-11"></a>
+
+- [ ] **4.11. Payment Incidents Are Invisible in the Console** _(P2 · NEW; coordinate with the resolved 0.17)_
+  - **Evidence:** `api/_lib/paymentIncidents.ts` persists a payment that cannot be joined to any order (`REFERENCIA_NO_UTILIZABLE` / `PEDIDO_NO_ENCONTRADO`) as `payment_incidents/mp-<paymentId>` with `resolved: false`, and tells the warehouse by e-mail — which is deliberately fail-safe. No admin handler reads or resolves these documents and the console has no screen for them.
+  - **Risk:** this is real money with no order. If the e-mail is lost, or simply buried, nobody opens the Firebase console to look; the incident stays `PENDIENTE_RECONCILIACION_MANUAL` indefinitely.
+  - **Fix:** a read-only `payment-incidents` admin action (bounded, newest first) plus a `resolve-payment-incident` action that records the operator, a required note (refund issued, order created manually, duplicate) and `resolved: true`; a count badge on the dashboard and a list in `#settings`. No automatic refund, no stock movement.
+  - **Accept:** handler tests (auth, bounded read, idempotent resolve, required note), panel test, dashboard badge test.
+
 ### Phase 5 — Transactional Communications
 
 <a id="task-5-4"></a>
@@ -232,6 +318,7 @@ Separates source-level capability from independently verified production and own
   - **Evidence (`api/_lib/emailTemplates.ts`, `api/_lib/email.ts`):** one flat `div` + inline-CSS layout (`:111-131`) for every message — no logo/wordmark treatment, no preheader, links as plain underlined URLs instead of a button, no "what happens next" section, no status timeline, no contact block (WhatsApp) in the footer; no `Reply-To` (`email.ts:66-72`) although the footer says "do not reply", so replies go nowhere useful; the transfer instructions are a small text block with no emphasised amount, no "usa el N° de pedido como glosa/referencia" instruction and no payment deadline; `div`/`border-radius`/`max-width` layout renders poorly in Outlook, common in clinics; the warehouse alert has no deep link to `/admin#orders/<id>` (the console already supports it).
   - **Lifecycle gap:** customers get mail at order received, payment confirmed, transfer approved and review resolved — and **nothing** at voucher received, dispatched (courier/reference/tracking), delivered, cancelled or quote declined. For B2B buyers the only signal today is the tracking page.
   - **Config smells fixed in the same pass:** `BANK` literals silently fall back to hard-coded account data when `VITE_BANK_*` is missing server-side (`:94-101`) — log loudly in production; `siteUrl()` defaults to `https://prontoinsumos.com` (`:104`), not the accepted host (8.9); sender `pedidos@prontoinsumos.com` vs bank contact `pagos@prontoinsumos.cl` use different domains (§4 question D).
+  - **New free text the lifecycle e-mails will carry:** the courier name, tracking code / dispatch reference and cancellation reason come from operator input — escape them like every other interpolation and cap their length (4.9).
   - **Unchanged by owner decision:** the header line "Melipilla & Región Metropolitana" stays; the Resend sending domain is already verified.
   - **Fix (lean, no template engine):** shared table-based layout helpers in `emailTemplates.ts` (header with wordmark, preheader, CTA button, order summary card, timeline strip, footer with WhatsApp + legal line), mobile-first and Outlook-safe; `Reply-To` support in `sendEmail` (optional `EMAIL_REPLY_TO`); transfer block with amount, glosa and deadline (3 days, see 8.21); new templates `dispatched`, `delivered`, `cancelled`, `voucherReceived` (and the 8.21 transfer reminder) wired into `dispatch-order`, `mark-delivered`, `cancel-order` and `upload-voucher` through the existing `emailDelivery` claim/telemetry so failures stay visible and resendable (extend the kinds, `resend-order-email` and the "Correos transaccionales" panel); keep the guardrails — never state a Boleta was issued (1.5), "Total referencial" until verified, escape every interpolation.
   - **Preview/test:** extend `scripts/send-test-comms.ts` to render every template to `.html` files and to send to a TEST inbox; snapshot-style tests assert escaping, absence of forbidden claims, link targets and plain-text parity.
@@ -327,8 +414,23 @@ Separates source-level capability from independently verified production and own
 - [ ] **8.21. Pending Bank Transfers: Reminder and Stale List (never auto-cancel)** _(P2 · NEW; follow-up to the built 8.13; coordinate with 5.4)_
   - **Evidence:** the 8.13 sweep only closes `PENDIENTE_PAGO_MERCADOPAGO` / `PENDIENTE_PAGO`, because it can consult the Mercado Pago ledger. `PENDIENTE_TRANSFERENCIA` orders have no equivalent — and no stock is reserved at order creation (stock moves only on approval), so an old pending transfer costs nothing except price drift (`approve-transfer` re-verifies against the live catalog and answers `409` on a mismatch) and queue clutter.
   - **Recommended windows (answer to the owner's question):** 24 h is **not too long — it is too short** for a B2B transfer: clinics often pay through an accountant the next business day, and a Friday evening order would be cancelled before the weekend. Use **a reminder at 24 h** (e-mail "tu pedido sigue pendiente de transferencia", with the amount and the order number as the transfer reference) and **a flag at 72 h** (listed for the operator, who cancels manually with a reason through `cancel-order`). **Never auto-cancel a transfer**: the bank ledger cannot be consulted programmatically, so a transfer could have arrived without a voucher; orders with an uploaded voucher are never swept — the operator verifies those.
-  - **Fix:** extend the `close-stale-orders` report (read-only) with a transfer-candidates section (`PENDIENTE_TRANSFERENCIA`, no voucher, older than 72 h) and surface it in the console's *Pedidos Pendientes Antiguos* card with a per-order *Cancelar* shortcut; reminder via a new `emailDelivery` kind sent from an admin button (a scheduler is out of scope on the Hobby plan; revisit with a Vercel cron only if volume justifies it).
-  - **Accept:** tests for the 24 h/72 h classification, voucher-bearing orders excluded, no status write by the report, reminder claimed once and recorded.
+  - **Fix:** extend the `close-stale-orders` report (read-only) with a transfer-candidates section (`PENDIENTE_TRANSFERENCIA`, no voucher, older than 72 h) and surface it in the console's _Pedidos Pendientes Antiguos_ card with a per-order _Cancelar_ shortcut; reminder via a new `emailDelivery` kind sent from an admin button (a scheduler is out of scope on the Hobby plan; revisit with a Vercel cron only if volume justifies it).
+  - **Also fix in the built sweep (second-pass finding):** `close-stale-orders` scans `where status in [...]` with `limit(n)` and **no ordering**, so Firestore returns the same first `n` documents by document id on every run. If those happen to be fresh pending orders, the stale ones beyond them are never reached while the run reports a clean result (it does report `truncated`, so the operator can notice). Order the scan by `createdAt` ascending (the `status, createdAt` index already exists for the production collection; the `dev_*` twin would need its own index) or page through the candidates.
+  - **Accept:** tests for the 24 h/72 h classification, voucher-bearing orders excluded, no status write by the report, reminder claimed once and recorded, and a sweep test where the first `n` documents are all fresh.
+
+<a id="task-8-22"></a>
+
+- [ ] **8.22. Pin the Operator Tooling; Keep Secrets Off the Command Line** _(P3 · NEW)_
+  - **Evidence:** `package.json` runs every operator script through `pnpm dlx tsx …`, `pnpm dlx firebase-tools …` and (in `scripts/sync-env-to-vercel.ts`) `pnpm dlx vercel@latest`. `dlx` resolves the newest published version on each run, outside the lockfile, and these scripts load the production service-account key from `.env.local` — a compromised release would execute with production credentials. `scripts/setup-admin.ts` accepts the new administrator's password as `process.argv[3]`, which lands in shell history and the process list.
+  - **Fix:** add `tsx` and `firebase-tools` as pinned `devDependencies` and call them with `pnpm exec`; pin the Vercel CLI to a reviewed version (with a documented bump procedure); have `setup-admin` read the password from an environment variable or a hidden prompt and refuse an argv password; keep the dependency-age rule (prefer versions published at least 7 days ago).
+  - **Accept:** no `dlx` of an unpinned package remains in `package.json` or the scripts; `pnpm run verify` and the script help paths still work.
+
+<a id="task-8-23"></a>
+
+- [ ] **8.23. Fail the Production Build on a Missing Firebase Configuration** _(P2 · NEW; pairs with 8.11)_
+  - **Evidence:** `vite.config.ts` has no environment validation, and `src/services/firebase.ts` builds its config from `import.meta.env.VITE_FIREBASE_*` with `|| ''` fallbacks. The header of `scripts/sync-env-to-vercel.ts` records that the Vercel project once lost all its variables and "every production build shipped with an empty Firebase config (blank storefront) without the build ever failing".
+  - **Fix:** a small check in `vite.config.ts` (or a `prebuild` script) that, when `VERCEL_ENV === 'production'`, fails the build if `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_PROJECT_ID` / `VITE_FIREBASE_APP_ID` are empty or still contain the `YOUR_` placeholder, naming the missing keys but never printing values; preview and local builds are unaffected. Add the same check to `scripts/smoke-preview.ts` expectations only if cheap.
+  - **Accept:** a unit test of the validator (missing, placeholder, complete) and a documented failure message; `pnpm run verify` unchanged for local builds.
 
 ### Phase 9 — Commercial Promotions
 
@@ -362,6 +464,10 @@ Separates source-level capability from independently verified production and own
 - **E. Rules deployment.** Are the current Firestore rules, indexes and storage rules deployed to production? (The environment variables were confirmed; the rules were not.)
 - **F. Regulated products and Boleta.** Please confirm the live catalog has no `prescriptionRequired` items (1.6 is suspended on that assumption) and that "no Boleta claims anywhere" remains the policy while 1.5 is suspended.
 - **G. Low-stock wording.** Public threshold is 3 units; the admin low-stock KPI uses ≤ 5 — keep them different (operations vs. customer pressure) or align both to 3? Badge wording: "Últimas unidades" or "Quedan N"?
+- **H. Trust and compliance wording (2.24).** Can you document the claims the storefront makes — a SEREMI sanitary authorization for the depot ("Depósito Dental Certificado"), and ISP registration for the products you list ("Dispositivos Homologados Registro ISP", "Insumos Certificados ISP")? Where you cannot, may I propose neutral wording for your approval? In particular "Boleta Electrónica **Inmediata**" cannot stay while no Boleta issuance path exists.
+- **I. Free-shipping bar (2.24).** Since no freight is charged at any amount while 3.1 is suspended, may the cart bar change from "Agrega $X más para Despacho GRATIS" to a plain "Despacho sin costo a Melipilla y San Antonio"?
+- **J. Ratings (2.24).** There is no review system. May the star ratings, the "reseñas clínicas verificadas" line and the "Mejor Calificados" / "Más Reseñas" sort options be removed until reviews exist?
+- **K. Preparation step (4.10).** Do you want a "Marcar en preparación" action so customers see "Preparando en bodega", or should that step be dropped from the tracking timeline?
 
 ---
 
