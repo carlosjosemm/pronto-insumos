@@ -4,6 +4,7 @@ import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
 import { getCollectionName } from '../firestoreEnv.js'
 import { sendEmail, getWarehouseEmail } from '../email.js'
+import { markEmailFailed, markEmailSent } from '../emailDelivery.js'
 import {
   buildPaymentReviewResolvedEmail,
   buildWarehouseAlertEmail,
@@ -326,7 +327,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const emailData = toOrderEmailData(cleanOrderId, { ...resolvedData, status: 'PAGADO_MERCADOPAGO' })
         const customerEmail = String((resolvedData.customer as { email?: string } | undefined)?.email || '').trim()
         if (customerEmail) {
-          await sendEmail({ to: customerEmail, ...buildPaymentReviewResolvedEmail(emailData) })
+          const emailResult = await sendEmail({ to: customerEmail, ...buildPaymentReviewResolvedEmail(emailData) })
+          // The resolution is already committed — the send outcome is stamped
+          // for backoffice visibility (and manual resend), never rolled back.
+          if (emailResult.sent) {
+            await markEmailSent(db, orderRef, 'payment', undefined)
+          } else {
+            await markEmailFailed(db, orderRef, 'payment', emailResult.reason || 'send_failed')
+          }
+        } else {
+          // Same visibility rule as the confirmation kind: an order without a
+          // customer email is a recorded failure, not an invisible skip.
+          await markEmailFailed(db, orderRef, 'payment', 'missing_customer_email')
         }
         if (warehouseEmail) {
           await sendEmail({

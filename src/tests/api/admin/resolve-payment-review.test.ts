@@ -17,6 +17,7 @@ interface MockDbOptions {
   productData?: Record<string, unknown> | null
   directLookupMisses?: boolean
   onProductUpdate?: (data: Record<string, unknown>) => void
+  onOrderUpdate?: (data: Record<string, unknown>) => void
   onSet?: (data: Record<string, unknown>) => void
 }
 
@@ -31,6 +32,7 @@ function mockReviewDb(options: MockDbOptions = {}) {
     productData = { stockCount: 10, inStock: true, name: 'Turbina', sku: 'OD-101' },
     directLookupMisses = false,
     onProductUpdate,
+    onOrderUpdate,
     onSet
   } = options
 
@@ -76,6 +78,7 @@ function mockReviewDb(options: MockDbOptions = {}) {
           return { exists: false }
         }),
         update: vi.fn((ref: unknown, data: Record<string, unknown>) => {
+          if (ref === mockOrderRef) onOrderUpdate?.(data)
           if (ref === mockProductRef) onProductUpdate?.(data)
         }),
         set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
@@ -591,6 +594,35 @@ describe('Serverless Admin Resolve Payment Review (/api/admin/resolve-payment-re
 
       expect(statusOutput).toBe(200)
       expect(jsonOutput.success).toBe(true)
+    })
+
+    it('stamps the payment-email result on the order — a failed send is recorded, the resolution stands', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      vi.spyOn(global, 'fetch').mockRejectedValue(new Error('resend down'))
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const orderUpdates: Array<Record<string, unknown>> = []
+      vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+        mockReviewDb({
+          orderData: orderWithCustomer,
+          onOrderUpdate: (data) => orderUpdates.push(data)
+        }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+      )
+
+      await handler(
+        {
+          method: 'POST',
+          body: { orderId: 'PRONTO-123456', resolution: 'approve', notes: 'Conciliado contra cartola' }
+        } as VercelRequest,
+        mockRes as VercelResponse
+      )
+
+      expect(statusOutput).toBe(200)
+      expect(jsonOutput.success).toBe(true)
+      expect(orderUpdates.some((data) => data.status === 'PAGADO_MERCADOPAGO')).toBe(true)
+      const stamp = orderUpdates.find((data) => 'emailDelivery.payment.failedAt' in data)
+      expect(stamp?.['emailDelivery.payment.failedAt']).toEqual(expect.any(String))
+      expect(stamp?.['emailDelivery.payment.failureReason']).toEqual(expect.any(String))
     })
   })
 })

@@ -3,6 +3,11 @@ import { getAdminFirestore } from "./_lib/firebaseAdmin.js";
 import { resolveOrderByCanonicalId, respondOrderLookupFailed } from "./_lib/orderLookup.js";
 import { sendEmail } from "./_lib/email.js";
 import {
+  claimEmailSend,
+  markEmailFailed,
+  markEmailSent,
+} from "./_lib/emailDelivery.js";
+import {
   buildOrderConfirmationEmail,
   toOrderEmailData,
 } from "./_lib/emailTemplates.js";
@@ -26,8 +31,11 @@ function normalizeRut(raw: string): string {
  *
  * Security: dual-factor lookup identical to /api/track-order — the request must
  * present the canonical orderId AND the purchaser's Chilean Modulo-11 RUT.
- * Idempotency: orders stamped with `confirmationEmailSentAt` are not re-emailed.
- * The stamp is only written after a successful Resend send, so a failed send can retry.
+ * Idempotency: orders stamped with `confirmationEmailSentAt` (or the
+ * `emailDelivery.confirmation` sent marker) are not re-emailed, and a send is
+ * claimed inside a transaction first so two concurrent calls send at most once.
+ * A failed send is recorded on the order and stays retryable (or resendable
+ * from the backoffice); an unavailable database answers 503, never "sent".
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -60,16 +68,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const adminDb = getAdminFirestore();
     if (!adminDb) {
-      console.warn(
-        "Firestore Admin not available. Skipping order confirmation email.",
+      // Fail closed: without the database there is no lookup, no send and no
+      // telemetry — reporting success here claimed "not sent" was a normal
+      // outcome, which hid real outages.
+      console.error(
+        "[Order Confirmation] Firestore Admin not available — refusing to report a send that cannot happen.",
       );
-      return res
-        .status(200)
-        .json({
-          success: true,
-          emailSent: false,
-          note: "Firestore Admin unavailable",
-        });
+      return res.status(503).json({
+        success: false,
+        emailSent: false,
+        error: "Servicio no disponible temporalmente. Reintenta más tarde.",
+      });
     }
 
     // Abuse throttling: this endpoint sends a customer email on success, so
@@ -102,10 +111,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const orderRef = resolvedOrder.ref;
-    const orderData = resolvedOrder.data;
 
-    // Idempotency: confirmation already sent
-    if (orderData.confirmationEmailSentAt) {
+    // Claim the send inside a transaction: concurrent callers serialize on the
+    // order document, so the second one sees the claim (or the sent marker)
+    // instead of double-sending. The claim re-reads the document fresh — use
+    // that data for the email, not the pre-lookup snapshot.
+    const claim = await claimEmailSend(adminDb, orderRef, "confirmation");
+
+    if (claim.outcome === "already-sent") {
       return res.status(200).json({
         success: true,
         emailSent: false,
@@ -115,10 +128,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const customerEmail = String(orderData.customer?.email || "").trim();
+    if (claim.outcome === "in-flight") {
+      return res.status(200).json({
+        success: true,
+        emailSent: false,
+        inFlight: true,
+        orderId: cleanOrderId,
+        message: "El correo de confirmación ya se está enviando para este pedido.",
+      });
+    }
+
+    const orderData = claim.orderData;
+    const customerEmail = String(
+      (orderData.customer as { email?: string } | undefined)?.email || "",
+    ).trim();
     if (!customerEmail) {
       console.warn(
         `[Order Confirmation] Order ${cleanOrderId} has no customer email; skipping send.`,
+      );
+      await markEmailFailed(
+        adminDb,
+        orderRef,
+        "confirmation",
+        "missing_customer_email",
+        claim.claimIso,
       );
       return res
         .status(200)
@@ -133,20 +166,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const template = buildOrderConfirmationEmail(emailData);
     const result = await sendEmail({ to: customerEmail, ...template });
 
-    // Stamp idempotency flag only after a successful send (failed sends may retry).
-    // A stamp failure must not error the request — the email already went out.
+    // Commit or release the claim: a success stamps the sent marker (a stamp
+    // failure must not error the request — the email already went out), a
+    // failure releases the claim and records the cause so the send stays
+    // retryable and visible in the backoffice.
     if (result.sent) {
-      try {
-        const nowIso = new Date().toISOString();
-        await orderRef.update({
-          confirmationEmailSentAt: nowIso,
-          updatedAt: nowIso,
-        });
-      } catch (stampErr: any) {
-        console.warn(
-          `[Order Confirmation] Email sent but failed to stamp flag for ${cleanOrderId}: ${stampErr?.message || stampErr}`,
-        );
-      }
+      await markEmailSent(adminDb, orderRef, "confirmation", claim.claimIso);
+    } else {
+      await markEmailFailed(
+        adminDb,
+        orderRef,
+        "confirmation",
+        result.reason || "send_failed",
+        claim.claimIso,
+      );
     }
 
     return res.status(200).json({

@@ -4,6 +4,7 @@ import { verifyMercadoPagoSignature } from "../_lib/mercadopagoSignature.js";
 import { getCollectionName } from "../_lib/firestoreEnv.js";
 import { resolveOrderByCanonicalId } from "../_lib/orderLookup.js";
 import { sendEmail, getWarehouseEmail } from "../_lib/email.js";
+import { markEmailFailed, markEmailSent } from "../_lib/emailDelivery.js";
 import {
   buildPaymentConfirmedEmail,
   buildWarehouseAlertEmail,
@@ -12,6 +13,7 @@ import {
 import type { StockShortfall } from "../_lib/emailTemplates.js";
 import { resolvePromoPercent } from "../../src/config/promos.js";
 import { computeOrderTotal } from "../../src/utils/orderTotal.js";
+import { isSettledOrderStatus } from "../../src/utils/orderLifecycle.js";
 import { formatCLP } from "../../src/utils/currency.js";
 import { hasRealMercadoPagoToken, isSimulatedPaymentAllowed } from "../_lib/simulationPolicy.js";
 import {
@@ -27,14 +29,6 @@ import {
  * PAGO_EN_REVISION — and stock is NEVER deducted for them.
  */
 const PAYABLE_STATUSES = new Set(["PENDIENTE_PAGO_MERCADOPAGO", "PAGO_EN_REVISION"]);
-const SETTLED_STATUSES = new Set([
-  "PAGADO_MERCADOPAGO",
-  "TRANSFERENCIA_APROBADA",
-  "PAGADO_TRANSFERENCIA",
-  "EN_PREPARACION",
-  "DESPACHADO",
-  "ENTREGADO",
-]);
 /**
  * Payment statuses that reverse an already-collected charge.
  * `cancelled` is deliberately absent: Mercado Pago only cancels payments that
@@ -641,7 +635,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // order in review). A settled order gets an incident record + alert —
           // never a second stock deduction, never a status flip that would
           // regress customer tracking.
-          const settledStatus = SETTLED_STATUSES.has(freshStatus);
+          const settledStatus = isSettledOrderStatus(freshStatus);
           const alreadyDeducted = Boolean(
             freshOrderData?.paidAt || freshOrderData?.approvedAt,
           );
@@ -969,7 +963,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
 
         // Transactional emails (fail-safe, awaited before the 200 so Vercel does
-        // not terminate the send): customer payment confirmation + warehouse alert
+        // not terminate the send): customer payment confirmation + warehouse alert.
+        // The customer send's outcome is stamped on the order (`emailDelivery.payment`)
+        // so a Resend outage stays visible and manually resendable — never a
+        // reason to roll back the committed paid state.
         if (stockDeducted) {
           const emailData = toOrderEmailData(cleanOrderId, {
             ...orderData,
@@ -979,10 +976,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             orderData.customer?.email || "",
           ).trim();
           if (customerEmail) {
-            await sendEmail({
+            const paymentEmailResult = await sendEmail({
               to: customerEmail,
               ...buildPaymentConfirmedEmail(emailData),
             });
+            if (paymentEmailResult.sent) {
+              await markEmailSent(adminDb, orderRef, "payment", undefined);
+            } else {
+              await markEmailFailed(
+                adminDb,
+                orderRef,
+                "payment",
+                paymentEmailResult.reason || "send_failed",
+              );
+            }
+          } else {
+            // Same visibility rule as the confirmation kind: an order without a
+            // customer email is a recorded failure, not an invisible skip.
+            await markEmailFailed(adminDb, orderRef, "payment", "missing_customer_email");
           }
           const warehouseEmail = getWarehouseEmail();
           if (warehouseEmail) {
