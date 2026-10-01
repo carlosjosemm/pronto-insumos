@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import type { Transaction, DocumentReference } from 'firebase-admin/firestore'
 import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
@@ -194,10 +195,10 @@ interface TransitionInput {
  */
 async function applyTransition(
   db: NonNullable<ReturnType<typeof getAdminFirestore>>,
-  orderRef: FirebaseFirestore.DocumentReference,
+  orderRef: DocumentReference,
   input: TransitionInput
 ): Promise<TransitionOutcome> {
-  return db.runTransaction(async (transaction) => {
+  return db.runTransaction(async (transaction: Transaction) => {
     const fresh = await transaction.get(orderRef)
     if (!fresh.exists) return 'missing'
 

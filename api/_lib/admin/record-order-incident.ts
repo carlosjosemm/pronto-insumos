@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import type { Transaction } from 'firebase-admin/firestore'
 import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
@@ -91,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // The status pair is read inside the transaction: recording it from an earlier
     // read could label the incident with a status the order no longer has.
-    await db.runTransaction(async (transaction) => {
+    await db.runTransaction(async (transaction: Transaction) => {
       const orderDoc = await transaction.get(orderRef)
       if (!orderDoc.exists) {
         throw new Error(`Pedido "${cleanOrderId}" no encontrado en Firestore`)

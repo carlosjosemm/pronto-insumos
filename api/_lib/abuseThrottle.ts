@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import type { Firestore } from 'firebase-admin/firestore'
+import type { Firestore, Transaction } from 'firebase-admin/firestore'
 import { Timestamp } from 'firebase-admin/firestore'
 import { createHash } from 'node:crypto'
 import { getCollectionName } from './firestoreEnv.js'
@@ -167,7 +167,7 @@ export async function consumeThrottleAttempt(
   try {
     const ref = throttleRef(db, scope, kind, rawKey)
 
-    return await db.runTransaction(async (transaction) => {
+    return await db.runTransaction(async (transaction: Transaction) => {
       const snapshot = await transaction.get(ref)
       const data = (snapshot.exists ? snapshot.data() : {}) as Record<string, unknown>
 
@@ -242,7 +242,7 @@ async function recordFailure(
   try {
     const ref = throttleRef(db, scope, kind, rawKey)
 
-    await db.runTransaction(async (transaction) => {
+    await db.runTransaction(async (transaction: Transaction) => {
       const snapshot = await transaction.get(ref)
       const data = (snapshot.exists ? snapshot.data() : {}) as Record<string, unknown>
 

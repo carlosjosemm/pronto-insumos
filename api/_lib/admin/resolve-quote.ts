@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import type { Transaction, DocumentReference } from 'firebase-admin/firestore'
 import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
@@ -138,7 +139,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // transaction callback, which Firestore may re-run on contention.
     const stockShortfalls: StockShortfall[] = []
 
-    const result = await db.runTransaction(async (transaction) => {
+    const result = await db.runTransaction(async (transaction: Transaction) => {
       stockShortfalls.length = 0
       const orderDoc = await transaction.get(orderRef)
       if (!orderDoc.exists) {
@@ -256,7 +257,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Read every product first (all reads before all writes) and rebuild the
       // payable total from the CURRENT catalog prices.
       const productDocsToUpdate: {
-        ref: FirebaseFirestore.DocumentReference
+        ref: DocumentReference
         productId: string
         name: string
         sku: string

@@ -1,0 +1,28 @@
+{
+  // Type-check gate for the serverless functions (`api/**`) — the Node
+  // counterpart of the browser-side `tsconfig.json`. Vercel transpiles these
+  // files per-function with its own resolution, so this project is what keeps
+  // the server layer covered by the repository's `verify` gate instead.
+  //
+  // Two flags here are load-bearing and must not be dropped:
+  //  - "target": "ES2022" — under the default ES5 target the api sources fail
+  //    with TS2802 (Map iterator loops need ES2015+ iteration) — the arrays
+  //    from the Admin SDK are iterated with for..of/spread in several handlers.
+  //  - "skipLibCheck": true — without it the check reports TS18028 errors
+  //    raised inside node_modules type declarations the repo does not own.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "types": ["node"],
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  // Every public route, the routed admin dispatcher (`api/admin/[action].ts`
+  // — nothing imports it, so leaving it out of the globs would silently
+  // uncheck it), the shared library modules, the admin handlers and the
+  // webhook. `_`-prefixed `_lib` paths are excluded from Vercel's function
+  // count but NOT from type-checking.
+  "include": ["api/*.ts", "api/admin/*.ts", "api/_lib/*.ts", "api/_lib/admin/*.ts", "api/webhooks/*.ts"]
+}

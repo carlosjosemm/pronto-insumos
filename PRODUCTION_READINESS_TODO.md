@@ -62,7 +62,6 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 | [8.22](#task-8-22) **NEW** | Operator scripts run unpinned `pnpm dlx tsx` / `firebase-tools` / `vercel@latest` with production credentials; `setup:admin` takes the password on the command line | Pinned dev dependencies, no secret on argv |
 | [6.2](#task-6-2) / [6.3](#task-6-3) / [6.4](#task-6-4) | Datasheets · catalog by specialty · fate of `odon-*` fixtures | Owner prioritizes |
 | [8.1](#task-8-1) / [8.11](#task-8-11) | Bundle cost · resilient Firebase init | Measured reduction / invalid config cannot blank the storefront |
-| [8.2](#task-8-2) | Type-check serverless functions consistently | Lean server check |
 | [8.5](#task-8-5) | Monitoring / analytics | Owner picks minimal signals + alert path |
 | [8.9](#task-8-9) | `.env.example` `SITE_URL` default contradicts the accepted host | Document + correct |
 | [8.10](#task-8-10) | Widen lint/format coverage | Findings fixed before ignores removed |
@@ -376,10 +375,6 @@ Separates source-level capability from independently verified production and own
 
 - [ ] **8.1. Bundle Optimization** _(P3)_ — `vendor-firebase` is ~672 kB (the remaining >500 kB warning; `main` 137 kB, `vendor-react` 141 kB). The storefront imports `getAuth` (`src/services/firebase.ts:25`) but only the admin needs it, and the admin bundle also pulls the `odon-*` fixtures through that module; fixing 8.11 is the biggest win, then `React.lazy()` for `CheckoutModal` / `ProductQuickView`. After 2.14 the storefront no longer needs the Firestore **read** API at all (only `setDoc`).
 
-<a id="task-8-2"></a>
-
-- [ ] **8.2. Type-Check the Serverless Functions** _(P3)_ — `tsconfig.json` covers only `src/**/*`. `api/**` passes `pnpm exec tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --types node --skipLibCheck api/*.ts api/_lib/*.ts api/_lib/admin/*.ts api/webhooks/*.ts` — `--target es2022` and `--skipLibCheck` are **required** (else `TS2802`/`TS18028`). Add a `tsconfig.server.json` with those flags and run it in `pnpm run verify` (8.4). Vercel's own per-function check logs `TS7006` (implicit-`any` transaction callbacks) and `TS2503` (`FirebaseFirestore` namespace) on deploy — harmless today, a hard failure if Vercel tightens it; annotate the `runTransaction`/`map` callbacks when picked up.
-
 <a id="task-8-5"></a>
 
 - [ ] **8.5. Real-Time Error Monitoring & Analytics (Sentry & GA4)** _(P3)_ — Sentry for unhandled client errors; GA4 e-commerce events; and the missing production alert path — fail-closed 500s (0.10), webhook/incident alerts and the 8.13 sweep report currently rely on someone reading Vercel logs or the console.
@@ -530,3 +525,4 @@ Outcomes only; detail lives in the relevant `AGENTS.md` and git history. Items m
 | 8.13 † | `close-stale-orders` admin action (on the existing dispatcher, still 6 function slots): scans abandoned `PENDIENTE_PAGO_MERCADOPAGO` / `PENDIENTE_PAGO` orders, consults the Mercado Pago ledger first (approved payment ⇒ parked in `PAGO_EN_REVISION`, never cancelled; unreadable ledger ⇒ untouched), transaction re-asserts the pending status, `dryRun` defaults to true, 7 s wall-clock budget, console card in `#settings`. Transfers are intentionally out of scope (see 8.21). |
 | 8.17 † | Catalog imports/seeds are non-destructive and identity-stable (name-bound ids, metadata-only updates, soft-retire `odon-*`, explicit `--confirm-production-*`, `--dry-run`). |
 | 8.16 † | App Check (reCAPTCHA v3) initializes between `initializeApp` and the Firestore instance in `src/services/firebase.ts`; the order-create rules pin the delivery zone, Boleta-only `documentType`, canonical RUT shape, a commit-time-bounded `createdAt` and all 25 item lines; `submitOrder` stores the canonical cleaned RUT. Console registration, enforcement and the preview verification are owner steps. |
+| 8.2 | `tsconfig.server.json` type-checks the full `api/` tree (including `api/admin/[action].ts`) inside `pnpm run verify` and CI; every `runTransaction` callback is annotated and the `FirebaseFirestore` namespace replaced by named imports, so Vercel's per-function TS7006/TS2503 deploy noise is fixed at the source. |

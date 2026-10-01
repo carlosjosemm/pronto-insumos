@@ -1,5 +1,5 @@
 import { FieldValue } from 'firebase-admin/firestore'
-import type { Firestore, DocumentReference } from 'firebase-admin/firestore'
+import type { Firestore, DocumentReference, Transaction } from 'firebase-admin/firestore'
 import { EMAIL_CLAIM_TTL_MS } from '../../src/utils/orderLifecycle.js'
 import type { EmailDeliveryEntry } from '../../src/types'
 
@@ -94,7 +94,7 @@ export async function claimEmailSend(
   let claimIso: string | undefined
   let orderData: Record<string, unknown> = {}
 
-  const outcome = await db.runTransaction(async (transaction) => {
+  const outcome = await db.runTransaction(async (transaction: Transaction) => {
     const snap = await transaction.get(orderRef)
     orderData = (snap.data() || {}) as Record<string, unknown>
     const entry = readDeliveryEntry(orderData, kind)
@@ -153,7 +153,7 @@ export async function markEmailSent(
 
   try {
     let superseded = false
-    await db.runTransaction(async (transaction) => {
+    await db.runTransaction(async (transaction: Transaction) => {
       const snap = await transaction.get(orderRef)
       const entry = readDeliveryEntry((snap.data() || {}) as Record<string, unknown>, kind)
       // A FRESH claim held by someone else wins — its owner will stamp its own
@@ -198,7 +198,7 @@ export async function markEmailFailed(
   }
 
   try {
-    await db.runTransaction(async (transaction) => {
+    await db.runTransaction(async (transaction: Transaction) => {
       const snap = await transaction.get(orderRef)
       const entry = readDeliveryEntry((snap.data() || {}) as Record<string, unknown>, kind)
 

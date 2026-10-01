@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import type { Firestore } from 'firebase-admin/firestore'
+import type { Firestore, Transaction } from 'firebase-admin/firestore'
 import { FieldValue } from 'firebase-admin/firestore'
 import { getAdminFirestore } from './_lib/firebaseAdmin.js'
 import { getCollectionName } from './_lib/firestoreEnv.js'
@@ -74,7 +74,7 @@ async function reserveVoucherSignSlot(
   order: ResolvedOrder,
   cap: number = VOUCHER_MAX_SIGNS_PER_ORDER
 ): Promise<VoucherSignReservation> {
-  return adminDb.runTransaction(async (transaction) => {
+  return adminDb.runTransaction(async (transaction: Transaction) => {
     const fresh = await transaction.get(order.ref)
     const freshData = (fresh.data() || {}) as Record<string, unknown>
     const current = Number(freshData.voucherSignCount) || 0
@@ -304,7 +304,7 @@ async function handleConfirm(
   const alertsEnabled = Boolean(getWarehouseEmail())
 
   try {
-    outcome = await adminDb.runTransaction(async (transaction) => {
+    outcome = await adminDb.runTransaction(async (transaction: Transaction) => {
       const fresh = await transaction.get(order.ref)
       const freshData = (fresh.data() || {}) as Record<string, unknown>
       const freshStatus = String(freshData.status || '')
@@ -423,7 +423,7 @@ async function handleConfirm(
       const previousSentAt = latestData.voucherAlertSentAt
       const previousCount = latestData.voucherAlertCount
       try {
-        await adminDb.runTransaction(async (transaction) => {
+        await adminDb.runTransaction(async (transaction: Transaction) => {
           const fresh = await transaction.get(order.ref)
           const freshData = (fresh.data() || {}) as Record<string, unknown>
           const stillOurs =

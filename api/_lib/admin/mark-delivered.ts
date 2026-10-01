@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import type { Transaction } from 'firebase-admin/firestore'
 import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
@@ -49,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // The status decision and the write run in ONE transaction so two concurrent
     // confirmations cannot both observe DESPACHADO and append duplicate history
     // events for a single delivery.
-    const result = await db.runTransaction(async (transaction) => {
+    const result = await db.runTransaction(async (transaction: Transaction) => {
       const orderDoc = await transaction.get(orderRef)
       if (!orderDoc.exists) {
         throw new Error(`Pedido "${cleanOrderId}" no encontrado en Firestore`)

@@ -150,8 +150,11 @@ pnpm test:watch
 pnpm test:coverage
 
 # --- The pre-release gate: run this before ANY deploy or pull request ---
-pnpm run verify        # pnpm test && pnpm exec tsc --noEmit && pnpm build
+pnpm run verify        # pnpm test && pnpm exec tsc --noEmit && pnpm run typecheck:server && pnpm build
 pnpm run verify:full   # the above + pnpm lint + pnpm format:check (the PR gate)
+
+# Type-check the serverless api/ tree (Node context, tsconfig.server.json)
+pnpm run typecheck:server
 
 # Lint the repo (ESLint flat config, zero errors expected)
 pnpm lint
@@ -228,7 +231,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification — ONE command, run locally before deploying
-pnpm run verify    # pnpm test && pnpm exec tsc --noEmit && pnpm build
+pnpm run verify    # pnpm test && pnpm exec tsc --noEmit && pnpm run typecheck:server && pnpm build
 
 # 2. Sync environment variables to Vercel (DRY RUN by default — see §7.1)
 pnpm run env:sync -- --target preview            # prints the plan, writes nothing
@@ -246,7 +249,7 @@ pnpm dlx vercel --prod
 
 ### ✅ Pull Request Verification (`.github/workflows/ci.yml`)
 
-One job, no matrix, no cache warmers, and **no deployment**: on every pull request (and on a push to `main`) GitHub Actions runs `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm test`, `pnpm exec tsc --noEmit` and `pnpm build` on Node 22 with pnpm read from `package.json`'s `packageManager`. That is `pnpm run verify` plus lint — the CI job exists so a pull request carries automated evidence, not so the pipeline can deploy. **Lint belongs in CI because it enforces the self-contained-comment policy** (guardrail 7), not merely style; `format:check` stays local (`pnpm run verify:full`) because a PR should not fail on whitespace, and guardrail 5 rules out a heavier pipeline. ❌ **Do not add deploy steps, matrices, containers or staging runners here** — Vercel CLI remains the only release path.
+One job, no matrix, no cache warmers, and **no deployment**: on every pull request (and on a push to `main`) GitHub Actions runs `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm test`, `pnpm exec tsc --noEmit`, `pnpm run typecheck:server` (the Node-context check of the `api/` tree via `tsconfig.server.json`) and `pnpm build` on Node 22 with pnpm read from `package.json`'s `packageManager`. That is `pnpm run verify` plus lint — the CI job exists so a pull request carries automated evidence, not so the pipeline can deploy. **Lint belongs in CI because it enforces the self-contained-comment policy** (guardrail 7), not merely style; `format:check` stays local (`pnpm run verify:full`) because a PR should not fail on whitespace, and guardrail 5 rules out a heavier pipeline. ❌ **Do not add deploy steps, matrices, containers or staging runners here** — Vercel CLI remains the only release path.
 
 ### 🧪 Runtime / Operator Acceptance Gate (preview, before promoting)
 
