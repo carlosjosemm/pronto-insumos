@@ -388,4 +388,78 @@ describe('Email Templates (api/_lib/emailTemplates.ts)', () => {
     expect(data.totalAmount).toBe(0)
     expect(data.customer.fullName).toBe('')
   })
+
+  it('prefers catalog-sourced line names and never renders the client-written name when a name map is given', () => {
+    const orderData = {
+      totalAmount: 189990,
+      items: [
+        { productId: 'odon-101', name: 'Evil relay text', quantity: 1, price: 189990 },
+        { productId: 'odon-gone', name: 'Producto eliminado', quantity: 1, price: 1000 }
+      ],
+      customer: {
+        fullName: 'Dra. Andrea',
+        email: 'a@clinica.cl',
+        rut: '12345678-5',
+        address: 'Calle 1',
+        city: 'Melipilla'
+      }
+    }
+
+    const data = toOrderEmailData('PRONTO-CAT', orderData, { itemNames: { 'odon-101': 'Turbina LED' } })
+
+    expect(data.items[0].name).toBe('Turbina LED')
+    // A product that cannot be resolved renders the neutral label — the stored
+    // (attacker-composable) name is never echoed.
+    expect(data.items[1].name).toBe('Insumo odontológico')
+    expect(data.items.map((item) => item.name)).not.toContain('Evil relay text')
+  })
+
+  it('keeps the stored line name when no catalog name map is supplied (server/admin templates)', () => {
+    const data = toOrderEmailData('PRONTO-STORE', {
+      totalAmount: 1000,
+      items: [{ productId: 'odon-1', name: 'Kit Composite', quantity: 1, price: 1000 }]
+    })
+
+    expect(data.items[0].name).toBe('Kit Composite')
+  })
+
+  it('clamps the free-text name and address echoes before they reach a branded message', () => {
+    const data = toOrderEmailData('PRONTO-LONG', {
+      totalAmount: 1000,
+      items: [],
+      customer: {
+        fullName: 'A'.repeat(200),
+        email: 'a@clinica.cl',
+        rut: '12345678-5',
+        address: 'B'.repeat(300),
+        city: 'C'.repeat(100),
+        razonSocial: 'D'.repeat(300)
+      }
+    })
+
+    expect(data.customer.fullName).toHaveLength(80)
+    expect(data.customer.address).toHaveLength(120)
+    expect(data.customer.city).toHaveLength(40)
+    expect(data.customer.razonSocial).toHaveLength(80)
+  })
+
+  it('adds a WhatsApp "this was not you" escape hatch to the order-received confirmation', () => {
+    const tpl = buildOrderConfirmationEmail({
+      orderId: 'PRONTO-ABC123',
+      paymentMethod: 'transferencia',
+      totalAmount: 189990,
+      items: [{ name: 'Turbina', quantity: 1, price: 189990 }],
+      customer: {
+        fullName: 'Dra. Andrea',
+        email: 'a@clinica.cl',
+        rut: '12345678-5',
+        address: 'Calle 1',
+        city: 'Melipilla'
+      }
+    })
+
+    expect(tpl.html).toContain('wa.me/')
+    expect(tpl.html).toContain('no reconoces este pedido')
+    expect(tpl.text).toContain('no reconoces este pedido')
+  })
 })

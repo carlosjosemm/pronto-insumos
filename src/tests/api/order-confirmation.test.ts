@@ -69,7 +69,7 @@ function applyOrderUpdate(target: Record<string, unknown>, update: Record<string
 function mockDbWithOrder(
   orderData: Record<string, unknown>,
   updateSpy = vi.fn().mockResolvedValue({}),
-  options: { legacyFieldOnly?: boolean } = {}
+  options: { legacyFieldOnly?: boolean; products?: Record<string, { name: string }> } = {}
 ) {
   const orderRef = { update: updateSpy }
   // The transaction double mutates `state.current` on every update — clone so
@@ -88,26 +88,41 @@ function mockDbWithOrder(
     counters,
     state,
     txUpdates,
-    collection: vi.fn().mockImplementation((name: string) =>
-      String(name).includes('abuse_counters')
-        ? counters.collection(name)
-        : {
-            doc: vi.fn().mockReturnValue({
-              get: vi
-                .fn()
-                .mockResolvedValue(
-                  options.legacyFieldOnly
-                    ? { exists: false, ref: orderRef, data: () => undefined }
-                    : { exists: true, ref: orderRef, data: () => state.current }
-                )
-            }),
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({
-                get: vi.fn().mockResolvedValue({ empty: false, docs: [orderDoc] })
-              })
-            })
-          }
-    ),
+    collection: vi.fn().mockImplementation((name: string) => {
+      const collectionName = String(name)
+      if (collectionName.includes('abuse_counters')) return counters.collection(name)
+      // The confirmation renders line names from the CATALOG, so the products
+      // collection must resolve independently of the order fixture.
+      if (collectionName.includes('products')) {
+        return {
+          doc: vi.fn().mockImplementation((id: string) => ({
+            get: vi
+              .fn()
+              .mockResolvedValue(
+                options.products && options.products[id]
+                  ? { exists: true, data: () => options.products![id] }
+                  : { exists: false }
+              )
+          }))
+        }
+      }
+      return {
+        doc: vi.fn().mockReturnValue({
+          get: vi
+            .fn()
+            .mockResolvedValue(
+              options.legacyFieldOnly
+                ? { exists: false, ref: orderRef, data: () => undefined }
+                : { exists: true, ref: orderRef, data: () => state.current }
+            )
+        }),
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({ empty: false, docs: [orderDoc] })
+          })
+        })
+      }
+    }),
     runTransaction: counters.runTransaction
   }
   return db
@@ -258,7 +273,7 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
   it('locks the order key after N failed lookups (Task 8.8)', async () => {
     const db = mockDbWithoutOrder()
     vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
-    const maxFailures = THROTTLE_POLICIES['order-confirmation'].order.maxFailures
+    const maxFailures = THROTTLE_POLICIES['order-confirmation'].order.maxFailures!
 
     for (let attempt = 0; attempt < maxFailures; attempt += 1) {
       const res = createMockRes()
@@ -440,6 +455,72 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
       (db.state.current.emailDelivery as Record<string, Record<string, unknown>>).confirmation.claimedAt
     ).toBeUndefined()
     expect(db.state.current.confirmationEmailSentAt).toEqual(expect.any(String))
+  })
+
+  it('renders line names from the catalog, never the client-written order document, and adds a WhatsApp escape hatch', async () => {
+    process.env.RESEND_API_KEY = 're_test_key'
+    const db = mockDbWithOrder(
+      {
+        ...validOrder,
+        items: [
+          { productId: 'odon-101', name: 'Evil relay text', quantity: 1, price: 189990 },
+          { productId: 'odon-gone', name: 'Producto eliminado', quantity: 1, price: 1000 }
+        ],
+        // The free-text echo is clamped before it reaches the branded message.
+        customer: { ...validOrder.customer, fullName: 'A'.repeat(200) }
+      },
+      vi.fn().mockResolvedValue({}),
+      { products: { 'odon-101': { name: 'Turbina LED contra-ángulo' } } }
+    )
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
+
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'email_xyz' })
+    } as Response)
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12345678-5' } } as VercelRequest, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+    // The catalog name renders; the client-written names never do — a product that
+    // cannot be resolved falls back to the neutral label.
+    expect(body.html).toContain('Turbina LED contra-ángulo')
+    expect(body.html).not.toContain('Evil relay text')
+    expect(body.html).not.toContain('Producto eliminado')
+    expect(body.html).toContain('Insumo odontológico')
+    // The free-text name echo is clamped.
+    expect(body.html).toContain('A'.repeat(80))
+    expect(body.html).not.toContain('A'.repeat(81))
+    // The "was this not you?" escape hatch routes to a human.
+    expect(body.html).toContain('wa.me/')
+    expect(body.text).toContain('no reconoces este pedido')
+  })
+
+  it('refuses with 429, sends nothing and releases the claim once the recipient budget is exhausted', async () => {
+    process.env.RESEND_API_KEY = 're_test_key'
+    // The stored address differs only by case: the recipient key is case-folded, so
+    // it must land on the SAME budget as the seeded (lower-cased) one.
+    const db = mockDbWithOrder({
+      ...validOrder,
+      customer: { ...validOrder.customer, email: 'Andrea@Clinica.CL' }
+    })
+    db.counters.seedLocked('order-confirmation', 'recipient', 'andrea@clinica.cl')
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fetchSpy = vi.spyOn(global, 'fetch')
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12345678-5' } } as VercelRequest, res)
+
+    expect(res.status).toHaveBeenCalledWith(429)
+    expect(res.json).toHaveBeenCalledWith({ error: THROTTLE_MESSAGE })
+    expect(fetchSpy).not.toHaveBeenCalled()
+    // The claim is released so a later legitimate attempt can still retry.
+    const delivery = db.state.current.emailDelivery as Record<string, Record<string, unknown>>
+    expect(delivery.confirmation.claimedAt).toBeUndefined()
+    expect(delivery.confirmation.failureReason).toBe('recipient_budget')
   })
 
   it('releases the claim and records the failure when Resend send fails (retry stays possible)', async () => {

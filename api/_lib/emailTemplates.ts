@@ -40,31 +40,63 @@ export interface OrderEmailData {
   }
 }
 
+/** Neutral label for a line whose product cannot be resolved in the catalog. */
+const FALLBACK_ITEM_NAME = 'Insumo odontológico'
+
+/**
+ * Free-text echo caps for the customer name/address. The order document already
+ * bounds these (120/200 characters at the rules boundary), but this endpoint mails
+ * an address the caller chose, so the free-text echoes are clamped further — the
+ * less attacker-composed text a branded message can carry, the less useful it is
+ * as a relay.
+ */
+const ECHO_MAX = { fullName: 80, address: 120, city: 40, razonSocial: 80 } as const
+
+function clampEcho(value: unknown, max: number): string {
+  return String(value ?? '').slice(0, max)
+}
+
+export interface ToOrderEmailDataOptions {
+  /**
+   * Catalog-sourced line names, keyed by product id. When supplied, EVERY line name
+   * comes from this map and the client-written `items[].name` is never rendered —
+   * the confirmation endpoint is public, so the stored name is attacker-composable.
+   * A product that cannot be resolved renders `FALLBACK_ITEM_NAME`. Omitted by the
+   * server/admin-initiated templates, which render the stored name.
+   */
+  itemNames?: Record<string, string>
+}
+
 /** Maps a raw Firestore order document to the sanitized email payload. */
-export function toOrderEmailData(orderId: string, orderData: any): OrderEmailData {
+export function toOrderEmailData(orderId: string, orderData: any, options?: ToOrderEmailDataOptions): OrderEmailData {
   const items = Array.isArray(orderData?.items) ? orderData.items : []
+  const catalogNames = options?.itemNames
   return {
     orderId,
     status: orderData?.status,
     paymentMethod: orderData?.paymentMethod,
     totalAmount: Number(orderData?.totalAmount) || 0,
     items: items.map((i: any) => ({
-      name: String(i?.name || 'Insumo odontológico'),
+      name: catalogNames
+        ? catalogNames[String(i?.productId || i?.id || '')] || FALLBACK_ITEM_NAME
+        : String(i?.name || FALLBACK_ITEM_NAME),
       quantity: Math.max(1, Number(i?.quantity) || 1),
       price: Number(i?.price) || 0
     })),
     customer: {
-      fullName: String(orderData?.customer?.fullName || ''),
+      fullName: clampEcho(orderData?.customer?.fullName, ECHO_MAX.fullName),
       email: String(orderData?.customer?.email || ''),
       // Display formatting at the render boundary: the order document stores
       // the canonical cleaned shape (`12345678-5`), while customer-facing copy
       // follows the Chilean commercial notation (`12.345.678-5`). Legacy
       // documents that stored a dotted RUT render identically.
       rut: formatRut(String(orderData?.customer?.rut || '')),
-      address: String(orderData?.customer?.address || ''),
-      city: String(orderData?.customer?.city || ''),
+      address: clampEcho(orderData?.customer?.address, ECHO_MAX.address),
+      city: clampEcho(orderData?.customer?.city, ECHO_MAX.city),
       documentType: orderData?.customer?.documentType,
       razonSocial: orderData?.customer?.razonSocial
+        ? clampEcho(orderData.customer.razonSocial, ECHO_MAX.razonSocial)
+        : orderData?.customer?.razonSocial
     },
     billing: orderData?.billing
       ? {
@@ -103,6 +135,17 @@ const BANK = {
   rut: process.env.VITE_BANK_RUT || '77.892.410-2',
   companyName: process.env.VITE_BANK_COMPANY_NAME || 'PRONTO INSUMOS ODONTOLÓGICOS SPA',
   email: process.env.VITE_BANK_EMAIL || 'pagos@prontoinsumos.cl'
+}
+
+/**
+ * WhatsApp contact — mirrors src/config/contact.ts (same `VITE_WHATSAPP_NUMBER`).
+ * The API cannot import the browser config module (it reads `import.meta.env`), so
+ * the digits-only normalization and the fallback literal live here too.
+ */
+const WHATSAPP_DIGITS = (process.env.VITE_WHATSAPP_NUMBER || '56929831595').replace(/[^0-9]/g, '') || '56929831595'
+
+function whatsappLink(text: string): string {
+  return `https://wa.me/${WHATSAPP_DIGITS}?text=${encodeURIComponent(text)}`
 }
 
 function siteUrl(): string {
@@ -234,6 +277,13 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailTemplate
       ? `\nDatos para Transferencia Bancaria:\n  Banco: ${BANK.bankName}\n  ${BANK.accountType} N° ${BANK.accountNumber}\n  RUT: ${BANK.rut}\n  Nombre: ${BANK.companyName}\n  Email comprobante: ${BANK.email}\n\nSube tu comprobante en: ${trackingUrl(data.orderId)}`
       : ''
 
+  // This endpoint is public: anyone can create an order naming any recipient, so the
+  // message closes with a "was this not you?" escape hatch that routes to a human.
+  const notYouText = `Si no reconoces este ${isQuote ? 'cotización' : 'pedido'}, escríbenos por WhatsApp y lo revisamos.`
+  const notYouUrl = whatsappLink(
+    `Hola, recibí un correo de ${isQuote ? 'cotización' : 'pedido'} (${data.orderId}) que no reconozco.`
+  )
+
   const html = layout(`
     <h2 style="margin:0 0 8px;font-size:20px;color:#102748;">${isQuote ? 'Cotización registrada' : '¡Gracias por tu pedido!'}</h2>
     <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">${intro}</p>
@@ -244,9 +294,13 @@ export function buildOrderConfirmationEmail(data: OrderEmailData): EmailTemplate
     <p style="margin:20px 0 0;font-size:13px;color:#374151;">
       Puedes revisar el estado de tu pedido en cualquier momento:<br>
       <a href="${trackingUrl(data.orderId)}" style="color:#102748;font-weight:bold;">${trackingUrl(data.orderId)}</a>
+    </p>
+    <p style="margin:16px 0 0;font-size:12px;color:#6b7280;line-height:1.6;">
+      ${escapeHtml(notYouText)}<br>
+      <a href="${notYouUrl}" style="color:#102748;font-weight:bold;">Escribir por WhatsApp</a>
     </p>`)
 
-  const text = `${isQuote ? 'Cotización registrada' : 'Pedido recibido'} — ${data.orderId}\n\n${itemsText(data)}\n\nTotal referencial (IVA incluido): ${formatCLP(data.totalAmount)} — monto sujeto a confirmación.${bankText}\n\nSeguimiento: ${trackingUrl(data.orderId)}\n\nPRONTO Insumos Odontológicos — Melipilla, Chile`
+  const text = `${isQuote ? 'Cotización registrada' : 'Pedido recibido'} — ${data.orderId}\n\n${itemsText(data)}\n\nTotal referencial (IVA incluido): ${formatCLP(data.totalAmount)} — monto sujeto a confirmación.${bankText}\n\nSeguimiento: ${trackingUrl(data.orderId)}\n\n${notYouText}\nWhatsApp: ${notYouUrl}\n\nPRONTO Insumos Odontológicos — Melipilla, Chile`
 
   return { subject, html, text }
 }

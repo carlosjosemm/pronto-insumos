@@ -392,7 +392,7 @@ describe('Voucher Upload Serverless Endpoint (/api/upload-voucher)', () => {
     it('locks the order key after N failed lookups, even from rotating IPs (Task 8.8)', async () => {
       const bucket = createMockBucket()
       const db = setupAdmin(null, bucket)
-      const maxFailures = THROTTLE_POLICIES['upload-voucher'].order.maxFailures
+      const maxFailures = THROTTLE_POLICIES['upload-voucher'].order.maxFailures!
 
       for (let attempt = 0; attempt < maxFailures; attempt += 1) {
         const res = createMockRes()

@@ -190,11 +190,66 @@ describe('consumeThrottleAttempt (Task 8.8)', () => {
   })
 })
 
+describe('per-kind window override (the 24-hour recipient budget)', () => {
+  it('honors the policy window and lockout instead of the shared 15-minute ones', async () => {
+    const { db, counters } = createDb()
+    const scope = 'order-confirmation' as const
+    const policy = THROTTLE_POLICIES[scope].recipient!
+    const now = 1_700_000_000_000
+
+    for (let i = 0; i < policy.maxAttempts; i += 1) {
+      await expect(consumeThrottleAttempt(db, scope, 'recipient', 'a@clinica.cl', now)).resolves.toEqual({
+        allowed: true
+      })
+    }
+
+    await expect(consumeThrottleAttempt(db, scope, 'recipient', 'a@clinica.cl', now)).resolves.toEqual({
+      allowed: false,
+      retryAfterSeconds: Math.ceil(policy.lockoutMs! / 1000)
+    })
+    expect(counters.read(scope, 'recipient', 'a@clinica.cl')?.lockedUntil).toBe(now + policy.lockoutMs!)
+
+    // The window is the policy's 24 h, not the shared 15 minutes: an UN-locked key
+    // keeps its window and its attempt count past what would otherwise be a reset.
+    // (With the 15-minute default this would read attempts: 1 at the new window.)
+    await consumeThrottleAttempt(db, scope, 'recipient', 'b@clinica.cl', now)
+    const later = now + THROTTLE_WINDOW_MS + 1
+    await consumeThrottleAttempt(db, scope, 'recipient', 'b@clinica.cl', later)
+    expect(counters.read(scope, 'recipient', 'b@clinica.cl')).toMatchObject({
+      attempts: 2,
+      windowStartedAt: now
+    })
+  })
+
+  it('keeps the counter document alive past its own window + lock so a TTL sweep cannot reset it', async () => {
+    const { db, counters } = createDb()
+    const scope = 'order-confirmation' as const
+    const policy = THROTTLE_POLICIES[scope].recipient!
+    const now = 1_700_000_000_000
+
+    await consumeThrottleAttempt(db, scope, 'recipient', 'a@clinica.cl', now)
+
+    const counter = counters.read(scope, 'recipient', 'a@clinica.cl')
+    expect((counter?.expiresAt as Timestamp).toMillis()).toBe(now + policy.windowMs! + policy.lockoutMs!)
+    expect((counter?.expiresAt as Timestamp).toMillis()).toBeGreaterThan(now + THROTTLE_DOC_TTL_MS)
+  })
+
+  it('never throttles a key kind that has no policy for the scope', async () => {
+    const { db, counters } = createDb()
+
+    // `track-order` has no recipient budget — an address is not a lookup key there.
+    await expect(consumeThrottleAttempt(db, 'track-order', 'recipient', 'a@clinica.cl')).resolves.toEqual({
+      allowed: true
+    })
+    expect(counters.runTransaction).not.toHaveBeenCalled()
+  })
+})
+
 describe('recordThrottleFailures (Task 8.8)', () => {
   it('locks the key once the failure budget is reached', async () => {
     const { db, counters } = createDb()
     const scope = 'order-confirmation' as const
-    const maxFailures = THROTTLE_POLICIES[scope].order.maxFailures
+    const maxFailures = THROTTLE_POLICIES[scope].order.maxFailures!
     const now = 1_700_000_000_000
 
     for (let i = 0; i < maxFailures - 1; i += 1) {

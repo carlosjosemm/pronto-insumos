@@ -30,7 +30,6 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 
 | ID | Outcome / risk | Gate |
 | :-- | :-- | :-- |
-| [0.21](#task-0-21) **NEW** | Customer e-mail is unverified and attacker-composed content is sent from the verified PRONTO domain | Abuse path bounded (App Check 8.16 + catalog-sourced content + per-recipient budget) |
 | [0.22](#task-0-22) **NEW** | Delivery zone is a free-text claim; owner decision: out-of-zone buyers may order but only via WhatsApp | Zone normalizer, "Otra comuna" → WhatsApp-only, server-side minimum |
 | [2.14](#task-2-14) | **Owner decision:** remove exact stock from the public; only low stock (≤ 3) is visible | Stock-free `/api/catalog`, rules flip, badge at ≤ 3 |
 | [2.24](#task-2-24) **NEW** | Owner-approved neutral wording replaces unsubstantiated claims; ratings disabled; cart shipping bar simplified | Source-content guard test; no old string remains |
@@ -116,14 +115,6 @@ Separates source-level capability from independently verified production and own
 ## 3. Open Tasks
 
 ### Phase 0 — Security & Payment Integrity
-
-<a id="task-0-21"></a>
-
-- [ ] **0.21. Unverified Customer E-mail Is a Branded Relay** _(P2 · NEW; coordinate with 8.16 and 5.4)_
-  - **Evidence:** a visitor can create an order (public create) with any `customer.email`, then call `/api/order-confirmation` with the order id and **their own** RUT (`api/order-confirmation.ts:101-167`); the e-mail is sent from the verified PRONTO sender with attacker-chosen `fullName`, `address`, and item `name` text (all HTML-escaped, but free text up to 120–200 chars each).
-  - **Risk:** spam/phishing delivered to arbitrary third parties from the verified PRONTO domain, plus domain-reputation and Resend-quota damage. Per-order idempotency and the IP/order throttles bound one order, but orders themselves are unthrottled (8.16).
-  - **Fix (lean):** (1) land 8.16; (2) in the confirmation template render item names from the **catalog** (server lookup by `productId`) rather than the client-written `name`, and omit or hard-truncate free-text address/name echoes; (3) per-recipient-address budget in `abuseThrottle` (hashed e-mail, e.g. 3 confirmations/24 h); (4) add an "if this wasn't you, write to us on WhatsApp" line (5.4). No `Reply-To` (deferred by the owner) and no e-mail verification flow unless the abuse materializes.
-  - **Accept:** tests for catalog-sourced names, per-recipient budget (`429`, no send), and unchanged happy path.
 
 <a id="task-0-22"></a>
 
@@ -505,3 +496,4 @@ Outcomes only; detail lives in the relevant `AGENTS.md` and git history. Items m
 | 8.11 | `getAuth` moved behind the admin-only `getAdminAuth()` accessor (`src/admin/services/adminFirebase.ts`): a broken Firebase config no longer blanks the storefront (catalog degrades per request; the admin console surfaces the configuration error), and `firebase/auth` left the storefront bundle (`vendor-firebase` 672 kB → 548 kB). |
 | 0.19 † | Public `orders` create rule tightened: the id is pinned to `PRONTO-` + 8 Crockford base32 characters, `quantity` is bounded at the admin stock cap and `price` is integer CLP, `email` has a shape guard no stricter than the form's own validity, and the delivery zone is pinned with a WhatsApp-quote exception. `sanitizeOrderIdForPath` now rejects instead of stripping (closing the voucher-folder collision) and `voucher-housekeeping` skips non-canonical ids; the admin order list flags a non-timestamp `createdAt` and omits the cursor rather than looping. Rules redeploy + verification is the owner step. |
 | 0.20 † | The charged amount is frozen onto the order at preference time (`pricedTotal` + a per-line `priceSnapshot`) and the Mercado Pago link expires with it after 24 h (`expires` + `expiration_date_from`/`to` in the Chilean-offset form). The webhook asserts against the freeze (catalog recomputation remains the fallback for orders without one), requires `currency_id === 'CLP'`, and treats a catalog that drifted from the freeze as a soft alert instead of parking a legitimately paid order in review. |
+| 0.21 | The public confirmation e-mail can no longer be used as a branded relay: line names come from the catalog (never the client-written document; an unresolvable product renders a neutral label), the free-text name/address/company echoes are clamped, a case-folded per-recipient budget bounds sends to 5 per 24 h, and the message carries a "si no reconoces este pedido" WhatsApp escape hatch. Residual: provider-local address aliasing (`+tag`, dotted locals) still yields distinct counters, and the rendered line prices/totals remain client-supplied (the totals block is already labelled referencial). |

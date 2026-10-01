@@ -16,11 +16,21 @@ import { getCollectionName } from './firestoreEnv.js'
  * The counters are Firestore documents in `abuse_counters` (env-scoped, like every
  * other collection), one per `{scope, kind, key}`:
  *
- *   * `kind: 'ip'`    — keyed by the Vercel-computed client IP (SHA-256 hashed; the
- *                       raw address is never persisted).
- *   * `kind: 'order'` — keyed by the canonical order id.
+ *   * `kind: 'ip'`        — keyed by the Vercel-computed client IP (SHA-256 hashed;
+ *                           the raw address is never persisted).
+ *   * `kind: 'order'`     — keyed by the canonical order id.
+ *   * `kind: 'recipient'` — keyed by the SHA-256 hash of the case-folded recipient
+ *                           e-mail address. Only `order-confirmation` uses it, because
+ *                           it is the only public endpoint that mails an address the
+ *                           caller chose; it runs on its own 24-hour window so a
+ *                           branded-relay flood is bounded to a handful of messages per
+ *                           address per day. The bound is per LITERAL address: the
+ *                           caller's case folding collapses `Victim@` and `victim@`,
+ *                           but provider-local aliasing (`+tag`, dotted locals) still
+ *                           produces distinct counters.
  *
- * Two budgets per key, both inside one fixed 15-minute window:
+ * Two budgets per key, both inside one fixed window (15 minutes by default, overridable
+ * per key kind):
  *
  *   * `maxAttempts` — requests allowed per window; the request that would exceed it
  *                     is refused with `429` and the key is locked.
@@ -48,14 +58,28 @@ export const THROTTLE_MESSAGE =
   'Demasiados intentos. Por seguridad, espera unos minutos antes de volver a intentarlo.'
 
 export type ThrottleScope = 'track-order' | 'upload-voucher' | 'order-confirmation' | 'create-preference'
-export type ThrottleKeyKind = 'ip' | 'order'
+export type ThrottleKeyKind = 'ip' | 'order' | 'recipient'
 
 export interface ThrottlePolicy {
   /** Requests allowed per key per window; the request that would exceed it is refused. */
   maxAttempts: number
-  /** Failed lookups tolerated per key per window; the failure that reaches it locks the key. */
-  maxFailures: number
+  /**
+   * Failed lookups tolerated per key per window; the failure that reaches it locks
+   * the key. Omit for a key kind that records no failures — the `recipient` kind
+   * bounds SENDS, not lookups, so it carries no failure budget.
+   */
+  maxFailures?: number
+  /** Window override for this key kind; defaults to `THROTTLE_WINDOW_MS`. */
+  windowMs?: number
+  /** Lockout override for this key kind; defaults to `THROTTLE_LOCKOUT_MS`. */
+  lockoutMs?: number
 }
+
+/** The `ip` and `order` budgets are mandatory; `recipient` exists only where a send targets one. */
+export type ThrottlePolicies = Record<
+  ThrottleScope,
+  { ip: ThrottlePolicy; order: ThrottlePolicy; recipient?: ThrottlePolicy }
+>
 
 /**
  * Per-endpoint budgets. The `order` failure budget is the tightest on
@@ -65,8 +89,16 @@ export interface ThrottlePolicy {
  * `create-preference` sits in between: a shopper legitimately retries a
  * rejected preference a few times (stock moved, a stale total), but repeated
  * preference creation against the same order must be bounded.
+ *
+ * `order-confirmation` also carries a `recipient` budget — the confirmation is the
+ * only public endpoint that mails an address the caller chose, so the recipient
+ * address is bounded on its OWN 24-hour window rather than the shared 15-minute one:
+ * a handful of messages per literal address per day is what stops the endpoint being
+ * used as a branded relay, while a clinic placing several orders in a day still
+ * receives its confirmations. It counts SENDS (consumed after the send claim), so an
+ * idempotent duplicate never spends a slot.
  */
-export const THROTTLE_POLICIES: Record<ThrottleScope, Record<ThrottleKeyKind, ThrottlePolicy>> = {
+export const THROTTLE_POLICIES: ThrottlePolicies = {
   'track-order': {
     ip: { maxAttempts: 60, maxFailures: 12 },
     order: { maxAttempts: 60, maxFailures: 25 }
@@ -77,7 +109,12 @@ export const THROTTLE_POLICIES: Record<ThrottleScope, Record<ThrottleKeyKind, Th
   },
   'order-confirmation': {
     ip: { maxAttempts: 40, maxFailures: 12 },
-    order: { maxAttempts: 20, maxFailures: 10 }
+    order: { maxAttempts: 20, maxFailures: 10 },
+    recipient: {
+      maxAttempts: 5,
+      windowMs: 24 * 60 * 60 * 1000,
+      lockoutMs: 24 * 60 * 60 * 1000
+    }
   },
   'create-preference': {
     ip: { maxAttempts: 30, maxFailures: 15 },
@@ -163,6 +200,12 @@ export async function consumeThrottleAttempt(
   if (!rawKey) return ALLOWED
 
   const policy = THROTTLE_POLICIES[scope][kind]
+  // A key kind with no policy for this scope is never throttled (e.g. a recipient
+  // budget on a scope that does not send mail).
+  if (!policy) return ALLOWED
+
+  const windowMs = policy.windowMs ?? THROTTLE_WINDOW_MS
+  const lockoutMs = policy.lockoutMs ?? THROTTLE_LOCKOUT_MS
 
   try {
     const ref = throttleRef(db, scope, kind, rawKey)
@@ -177,7 +220,7 @@ export async function consumeThrottleAttempt(
       }
 
       const windowStartedAt = toNumber(data.windowStartedAt)
-      const expired = now - windowStartedAt >= THROTTLE_WINDOW_MS
+      const expired = now - windowStartedAt >= windowMs
       const attempts = (expired ? 0 : toNumber(data.attempts)) + 1
       const failures = expired ? 0 : toNumber(data.failures)
       const locked = attempts > policy.maxAttempts
@@ -188,19 +231,21 @@ export async function consumeThrottleAttempt(
         attempts,
         failures,
         windowStartedAt: expired ? now : windowStartedAt,
-        lockedUntil: locked ? now + THROTTLE_LOCKOUT_MS : 0,
+        lockedUntil: locked ? now + lockoutMs : 0,
         updatedAt: now,
-        expiresAt: Timestamp.fromMillis(now + THROTTLE_DOC_TTL_MS)
+        // The counter document must outlive its own window + lock, so a TTL sweep
+        // can never reset a budget that is still in force.
+        expiresAt: Timestamp.fromMillis(now + Math.max(THROTTLE_DOC_TTL_MS, windowMs + lockoutMs))
       })
 
       if (!locked) return ALLOWED
 
       console.warn(
         `[abuseThrottle] ${scope}/${kind} attempt budget exhausted (${policy.maxAttempts}) — locked for ${Math.round(
-          THROTTLE_LOCKOUT_MS / 60000
+          lockoutMs / 60000
         )} min.`
       )
-      return { allowed: false, retryAfterSeconds: Math.ceil(THROTTLE_LOCKOUT_MS / 1000) }
+      return { allowed: false, retryAfterSeconds: Math.ceil(lockoutMs / 1000) }
     })
   } catch (err: unknown) {
     console.error(
@@ -238,6 +283,13 @@ async function recordFailure(
   now: number
 ): Promise<void> {
   const policy = THROTTLE_POLICIES[scope][kind]
+  if (!policy) return
+  // A kind with no failure budget (the recipient kind) records nothing.
+  const maxFailures = policy.maxFailures
+  if (!maxFailures) return
+
+  const windowMs = policy.windowMs ?? THROTTLE_WINDOW_MS
+  const lockoutMs = policy.lockoutMs ?? THROTTLE_LOCKOUT_MS
 
   try {
     const ref = throttleRef(db, scope, kind, rawKey)
@@ -251,12 +303,12 @@ async function recordFailure(
       if (lockedUntil > now) return
 
       const windowStartedAt = toNumber(data.windowStartedAt)
-      const expired = now - windowStartedAt >= THROTTLE_WINDOW_MS
+      const expired = now - windowStartedAt >= windowMs
       // This request's attempt was already consumed (or the window rolled over between
       // the two calls) — never let the counter read as "no attempts".
       const attempts = expired ? 1 : Math.max(1, toNumber(data.attempts))
       const failures = (expired ? 0 : toNumber(data.failures)) + 1
-      const locked = failures >= policy.maxFailures
+      const locked = failures >= maxFailures
 
       transaction.set(ref, {
         scope,
@@ -264,15 +316,15 @@ async function recordFailure(
         attempts,
         failures,
         windowStartedAt: expired ? now : windowStartedAt,
-        lockedUntil: locked ? now + THROTTLE_LOCKOUT_MS : 0,
+        lockedUntil: locked ? now + lockoutMs : 0,
         updatedAt: now,
-        expiresAt: Timestamp.fromMillis(now + THROTTLE_DOC_TTL_MS)
+        expiresAt: Timestamp.fromMillis(now + Math.max(THROTTLE_DOC_TTL_MS, windowMs + lockoutMs))
       })
 
       if (locked) {
         console.warn(
-          `[abuseThrottle] ${scope}/${kind} failure budget exhausted (${policy.maxFailures}) — locked for ${Math.round(
-            THROTTLE_LOCKOUT_MS / 60000
+          `[abuseThrottle] ${scope}/${kind} failure budget exhausted (${maxFailures}) — locked for ${Math.round(
+            lockoutMs / 60000
           )} min.`
         )
       }
