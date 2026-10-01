@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth'
-import { auth } from '../../services/firebase'
+import { getAdminAuth } from '../services/adminFirebase'
 import { Shield, Lock, Mail, AlertCircle, ArrowRight, Stethoscope } from 'lucide-react'
 
 interface AdminLoginProps {
@@ -17,6 +17,18 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
     e.preventDefault()
     setError('')
     setLoading(true)
+
+    // `null` = authentication is unavailable (broken/missing Firebase config).
+    // The form surfaces the configuration error instead of throwing into the
+    // generic credential handler below, and never calls the sign-in API.
+    const auth = getAdminAuth()
+    if (!auth) {
+      setError(
+        'La autenticación administrativa no está disponible. Revisa la configuración de Firebase (VITE_FIREBASE_API_KEY) e inténtalo de nuevo.'
+      )
+      setLoading(false)
+      return
+    }
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password)

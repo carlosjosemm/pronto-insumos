@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
-import { auth } from '../services/firebase'
+import { getAdminAuth } from './services/adminFirebase'
 import { AdminLogin } from './components/AdminLogin'
 import { AdminLayout } from './components/AdminLayout'
 import { AdminDashboard } from './components/AdminDashboard'
@@ -19,6 +19,17 @@ export const AdminApp: React.FC = () => {
 
   // Listen to Auth State
   useEffect(() => {
+    // `null` = authentication is unavailable (broken/missing Firebase
+    // config). The app stays on the login screen — which surfaces its own
+    // configuration error on submit — instead of crashing, and no auth
+    // listener is registered.
+    const auth = getAdminAuth()
+    if (!auth) {
+      console.error('[Admin App] Firebase Auth no está disponible; el panel permanece en la pantalla de acceso.')
+      setAuthChecking(false)
+      return
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         try {
@@ -75,7 +86,12 @@ export const AdminApp: React.FC = () => {
 
   const handleSignOut = async () => {
     try {
-      await signOut(auth)
+      // When authentication is unavailable there is no server session to
+      // close — clearing the local state is the whole sign-out.
+      const auth = getAdminAuth()
+      if (auth) {
+        await signOut(auth)
+      }
       setUser(null)
       setIsAdmin(false)
     } catch (err) {
@@ -99,7 +115,7 @@ export const AdminApp: React.FC = () => {
       <AdminLogin
         onLoginSuccess={() => {
           setIsAdmin(true)
-          setUser(auth.currentUser)
+          setUser(getAdminAuth()?.currentUser ?? null)
         }}
       />
     )

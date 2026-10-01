@@ -16,8 +16,12 @@ export default defineConfig({
       },
       output: {
         manualChunks: {
+          // firebase/auth is deliberately absent: only the admin entry
+          // (src/admin/main.tsx) imports it, so it stays out of the
+          // storefront bundle — listing it here would merge it back into the
+          // storefront-loaded vendor chunk and undo that split.
           'vendor-react': ['react', 'react-dom'],
-          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore']
+          'vendor-firebase': ['firebase/app', 'firebase/firestore']
         }
       }
     }

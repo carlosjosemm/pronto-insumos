@@ -1,6 +1,5 @@
 import { initializeApp } from 'firebase/app'
 import { initializeFirestore, collection, doc, setDoc, getDocs, serverTimestamp } from 'firebase/firestore'
-import { getAuth } from 'firebase/auth'
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check'
 import { getCollectionName } from './firestoreEnv'
 import { PRODUCTS } from '../data/products'
@@ -17,7 +16,7 @@ const firebaseConfig = {
 }
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig)
+export const app = initializeApp(firebaseConfig)
 
 // App Check is abuse friction for the public `orders` create path (checkout runs
 // client-side): once the Firebase Console enforces it, Firestore rejects
@@ -69,8 +68,14 @@ if (appCheckSiteKey) {
 // `giroComercial?`, `sanitaryVerification?`) writable. The Web SDK throws
 // `Unsupported field value: undefined` on them by default, which made EVERY
 // checkout write fail silently (the "ghost order" root cause).
+//
+// Auth is deliberately NOT initialized here: `getAuth(app)` throws
+// synchronously (`auth/invalid-api-key`) when the API key is missing/invalid,
+// and a module-scope call would blank the whole storefront at import time —
+// over an admin-only concern the storefront never uses. The admin tree owns
+// the guarded accessor (src/admin/services/adminFirebase.ts), which also
+// keeps firebase/auth out of the storefront bundle.
 export const db = initializeFirestore(app, { ignoreUndefinedProperties: true })
-export const auth = getAuth(app)
 
 export interface SeedResult {
   success: boolean

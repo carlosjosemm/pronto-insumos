@@ -37,7 +37,12 @@ const mocks = vi.hoisted(() => {
     }),
     ReCaptchaV3Provider: vi.fn((siteKey: string) => ({ provider: 'recaptcha-v3', siteKey })),
     initializeFirestore: vi.fn((_app: unknown, settings: Record<string, unknown>) => ({ settings })),
-    getAuth: vi.fn(() => ({}))
+    // Deliberately hostile: if any storefront module ever calls getAuth at
+    // import time again, this throw reproduces the blank-storefront failure
+    // (`auth/invalid-api-key`) and fails the import.
+    getAuth: vi.fn(() => {
+      throw new Error('auth/invalid-api-key')
+    })
   }
 })
 
@@ -103,7 +108,7 @@ describe('Firebase client initialization (src/services/firebase.ts)', () => {
     expect(db).toBe(mocks.initializeFirestore.mock.results[mocks.initializeFirestore.mock.calls.length - 1].value)
   })
 
-  it('should initialize App Check after the app but before Firestore and Auth, with the reCAPTCHA v3 provider', async () => {
+  it('should initialize App Check after the app but before Firestore, with the reCAPTCHA v3 provider', async () => {
     mutableEnv.VITE_FIREBASE_RECAPTCHA_SITE_KEY = 'test-site-key'
     await importFirebase()
 
@@ -114,10 +119,23 @@ describe('Firebase client initialization (src/services/firebase.ts)', () => {
       isTokenAutoRefreshEnabled: true
     })
 
-    // Order: initializeApp → initializeAppCheck → initializeFirestore / getAuth.
+    // Order: initializeApp → initializeAppCheck → initializeFirestore.
     expect(firstCallOrder(mocks.initializeApp)).toBeLessThan(firstCallOrder(mocks.initializeAppCheck))
     expect(firstCallOrder(mocks.initializeAppCheck)).toBeLessThan(firstCallOrder(mocks.initializeFirestore))
-    expect(firstCallOrder(mocks.initializeAppCheck)).toBeLessThan(firstCallOrder(mocks.getAuth))
+  })
+
+  it('must never call getAuth at import time — a broken auth config cannot blank the storefront', async () => {
+    // The getAuth mock is deliberately hostile (it throws the
+    // auth/invalid-api-key error). Auth init now lives behind the admin-only
+    // accessor, so importing the storefront's Firebase module must succeed
+    // no matter what the auth layer would do.
+    const { db } = await importFirebase()
+
+    expect(mocks.getAuth).not.toHaveBeenCalled()
+    expect(mocks.initializeFirestore).toHaveBeenCalledWith(expect.anything(), {
+      ignoreUndefinedProperties: true
+    })
+    expect(db).toBeDefined()
   })
 
   it('should enable the App Check debug flag outside a production runtime, before initialization', async () => {

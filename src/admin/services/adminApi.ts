@@ -1,4 +1,4 @@
-import { auth } from '../../services/firebase'
+import { getAdminAuth } from './adminFirebase'
 import type {
   DashboardStats,
   OrderListParams,
@@ -14,7 +14,10 @@ import type {
 import type { Order, Product } from '../../types'
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const user = auth?.currentUser
+  // `null` means authentication is unavailable (broken Firebase config) — the
+  // request then goes out without a bearer token and the server answers 401,
+  // which the admin UI surfaces. No crash, no fabricated token.
+  const user = getAdminAuth()?.currentUser
   if (!user) {
     return { 'Content-Type': 'application/json' }
   }

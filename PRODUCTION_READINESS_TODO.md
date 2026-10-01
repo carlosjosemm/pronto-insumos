@@ -42,7 +42,7 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 | [4.11](#task-4-11) **NEW** | Payment incidents (a paid payment with no matching order) exist only in Firestore and an e-mail — the console cannot see them | Console list + resolve action |
 | [5.4](#task-5-4) **NEW** | The existing customer and warehouse e-mails use one bare layout (Outlook-poor, no CTA button, weak transfer instructions) | Redesigned shared layout for the existing templates only, previewable offline; no new e-mail |
 | [8.18](#task-8-18) **NEW** | Raw error messages and provider bodies returned to public callers; no `no-store` on PII responses | Generic public errors, `Cache-Control: no-store` |
-| [8.23](#task-8-23) **NEW** | A production build with missing `VITE_FIREBASE_*` ships a blank storefront without failing (it already happened once) | Build fails fast on a production target |
+| [8.23](#task-8-23) **NEW** | A production build with missing `VITE_FIREBASE_*` silently ships a degraded storefront (catalog-unavailable card since 8.11) without failing | Build fails fast on a production target |
 | [8.21](#task-8-21) **NEW** | Unpaid bank transfers are never closed | Daily 72 h auto-close (Vercel cron, no e-mail), admin reopen action |
 | [9.1](#task-9-1) | Promo codes `PRONTO10` / `DENT20` are public and unlimited | Owner confirms codes are intentional/margin-safe or disables them |
 
@@ -61,7 +61,7 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 | [4.9](#task-4-9) **NEW** | Dashboard KPIs undercount (sold-out products invisible, month and sales windows capped) and admin text inputs are unbounded | Aggregation queries, input caps |
 | [8.22](#task-8-22) **NEW** | Operator scripts run unpinned `pnpm dlx tsx` / `firebase-tools` / `vercel@latest` with production credentials; `setup:admin` takes the password on the command line | Pinned dev dependencies, no secret on argv |
 | [6.2](#task-6-2) / [6.3](#task-6-3) / [6.4](#task-6-4) | Datasheets · catalog by specialty · fate of `odon-*` fixtures | Owner prioritizes |
-| [8.1](#task-8-1) / [8.11](#task-8-11) | Bundle cost · resilient Firebase init | Measured reduction / invalid config cannot blank the storefront |
+| [8.1](#task-8-1) | Bundle cost (admin/Firestore graph — the storefront firebase/auth cost is already gone) | Measured reduction |
 | [8.5](#task-8-5) | Monitoring / analytics | Owner picks minimal signals + alert path |
 | [8.9](#task-8-9) | `.env.example` `SITE_URL` default contradicts the accepted host | Document + correct |
 | [8.10](#task-8-10) | Widen lint/format coverage | Findings fixed before ignores removed |
@@ -373,7 +373,7 @@ Separates source-level capability from independently verified production and own
 
 <a id="task-8-1"></a>
 
-- [ ] **8.1. Bundle Optimization** _(P3)_ — `vendor-firebase` is ~672 kB (the remaining >500 kB warning; `main` 137 kB, `vendor-react` 141 kB). The storefront imports `getAuth` (`src/services/firebase.ts:25`) but only the admin needs it, and the admin bundle also pulls the `odon-*` fixtures through that module; fixing 8.11 is the biggest win, then `React.lazy()` for `CheckoutModal` / `ProductQuickView`. After 2.14 the storefront no longer needs the Firestore **read** API at all (only `setDoc`).
+- [ ] **8.1. Bundle Optimization** _(P3)_ — `vendor-firebase` is ~548 kB (8.11 already removed the storefront's `firebase/auth` cost from it); `main` is 137 kB, `vendor-react` 141 kB. The remaining wins are `React.lazy()` for `CheckoutModal` / `ProductQuickView`, and the admin bundle still pulls the `odon-*` fixtures through the shared firebase module. After 2.14 the storefront no longer needs the Firestore **read** API at all (only `setDoc`).
 
 <a id="task-8-5"></a>
 
@@ -387,10 +387,6 @@ Separates source-level capability from independently verified production and own
 <a id="task-8-10"></a>
 
 - [ ] **8.10. Widen Lint/Format Scope to `api/` and `src/admin/`** _(P3)_ — the pointer-comment rule already lints both trees; what remains is the full TypeScript rule set (measured earlier: ~65 problems, e.g. 12× `no-explicit-any` in `adminApi.ts`, handler `any`s, unused imports in `src/admin/types.ts`). Fix in a dedicated pass, then delete the carve-out.
-
-<a id="task-8-11"></a>
-
-- [ ] **8.11. Resilient Firebase Init** _(P3)_ — `src/services/firebase.ts:25` calls `getAuth(app)` unguarded at module scope: a missing/invalid `VITE_FIREBASE_API_KEY` throws `auth/invalid-api-key` at import and blanks the page. Make `auth` nullable or admin-only (touches `adminApi.ts`, `AdminApp.tsx`, `AdminLogin.tsx`); also the 8.1 bundle win.
 
 <a id="task-8-14"></a>
 
@@ -436,7 +432,7 @@ Separates source-level capability from independently verified production and own
 <a id="task-8-23"></a>
 
 - [ ] **8.23. Fail the Production Build on a Missing Firebase Configuration** _(P2 · NEW; pairs with 8.11)_
-  - **Evidence:** `vite.config.ts` has no environment validation, and `src/services/firebase.ts` builds its config from `import.meta.env.VITE_FIREBASE_*` with `|| ''` fallbacks. The header of `scripts/sync-env-to-vercel.ts` records that the Vercel project once lost all its variables and "every production build shipped with an empty Firebase config (blank storefront) without the build ever failing".
+  - **Evidence:** `vite.config.ts` has no environment validation, and `src/services/firebase.ts` builds its config from `import.meta.env.VITE_FIREBASE_*` with `|| ''` fallbacks. The header of `scripts/sync-env-to-vercel.ts` records that the Vercel project once lost all its variables and "every production build shipped with an empty Firebase config (a blank storefront at the time; since 8.11 it degrades to the catalog-unavailable card) without the build ever failing".
   - **Fix:** a small check in `vite.config.ts` (or a `prebuild` script) that, when `VERCEL_ENV === 'production'`, fails the build if `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_PROJECT_ID` / `VITE_FIREBASE_APP_ID` are empty or still contain the `YOUR_` placeholder, naming the missing keys but never printing values; preview and local builds are unaffected. Add the same check to `scripts/smoke-preview.ts` expectations only if cheap.
   - **Accept:** a unit test of the validator (missing, placeholder, complete) and a documented failure message; `pnpm run verify` unchanged for local builds.
 
@@ -526,3 +522,4 @@ Outcomes only; detail lives in the relevant `AGENTS.md` and git history. Items m
 | 8.17 † | Catalog imports/seeds are non-destructive and identity-stable (name-bound ids, metadata-only updates, soft-retire `odon-*`, explicit `--confirm-production-*`, `--dry-run`). |
 | 8.16 † | App Check (reCAPTCHA v3) initializes between `initializeApp` and the Firestore instance in `src/services/firebase.ts`; the order-create rules pin the delivery zone, Boleta-only `documentType`, canonical RUT shape, a commit-time-bounded `createdAt` and all 25 item lines; `submitOrder` stores the canonical cleaned RUT. Console registration, enforcement and the preview verification are owner steps. |
 | 8.2 | `tsconfig.server.json` type-checks the full `api/` tree (including `api/admin/[action].ts`) inside `pnpm run verify` and CI; every `runTransaction` callback is annotated and the `FirebaseFirestore` namespace replaced by named imports, so Vercel's per-function TS7006/TS2503 deploy noise is fixed at the source. |
+| 8.11 | `getAuth` moved behind the admin-only `getAdminAuth()` accessor (`src/admin/services/adminFirebase.ts`): a broken Firebase config no longer blanks the storefront (catalog degrades per request; the admin console surfaces the configuration error), and `firebase/auth` left the storefront bundle (`vendor-firebase` 672 kB → 548 kB). |
