@@ -498,4 +498,88 @@ describe('OrderDetailPanel Component', () => {
       quoteSpy.mockRestore()
     })
   })
+
+  describe('Transactional email telemetry (Correos al Cliente)', () => {
+    it('renders sent / failed / not-sent states from the order emailDelivery map', () => {
+      const order: Order = {
+        ...mockOrder,
+        status: 'PAGADO_MERCADOPAGO',
+        paymentMethod: 'mercadopago',
+        emailDelivery: {
+          confirmation: { sentAt: '2026-09-29T15:00:00.000Z' },
+          payment: { failedAt: '2026-09-29T16:00:00.000Z', failureReason: 'http_500' }
+        }
+      }
+
+      render(<OrderDetailPanel order={order} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      expect(screen.getByText('Correos al Cliente')).toBeInTheDocument()
+      expect(screen.getByText('Confirmación de pedido')).toBeInTheDocument()
+      expect(screen.getByText('Confirmación de pago')).toBeInTheDocument()
+      expect(screen.getByText(/Enviado el/i)).toBeInTheDocument()
+      expect(screen.getByText(/Último intento falló/i)).toBeInTheDocument()
+      expect(screen.getByText(/proveedor rechazó/i)).toBeInTheDocument()
+    })
+
+    it('honors the legacy confirmationEmailSentAt marker as a sent confirmation', () => {
+      const order: Order = { ...mockOrder, confirmationEmailSentAt: '2026-09-21T10:00:00.000Z' }
+
+      render(<OrderDetailPanel order={order} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      expect(screen.getByText(/Enviado el/i)).toBeInTheDocument()
+      expect(screen.getByText('No enviado')).toBeInTheDocument()
+    })
+
+    it('calls resendOrderEmail with the kind and refreshes on success', async () => {
+      const resendSpy = vi.spyOn(adminApi, 'resendOrderEmail').mockResolvedValue({ success: true })
+      const handleUpdated = vi.fn()
+      const order: Order = { ...mockOrder, status: 'PAGADO_MERCADOPAGO', paymentMethod: 'mercadopago' }
+
+      render(<OrderDetailPanel order={order} onClose={vi.fn()} onOrderUpdated={handleUpdated} />)
+
+      fireEvent.click(screen.getByText('Reenviar correo de pago'))
+
+      await waitFor(() => {
+        expect(resendSpy).toHaveBeenCalledWith('PRONTO-998811', 'payment')
+        expect(handleUpdated).toHaveBeenCalledTimes(1)
+      })
+
+      resendSpy.mockRestore()
+    })
+
+    it('offers no payment resend for an unpaid order — a "paid" email cannot be requested early', () => {
+      render(<OrderDetailPanel order={mockOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      expect(screen.getByText('Reenviar confirmación')).toBeInTheDocument()
+      expect(screen.queryByText('Reenviar correo de pago')).not.toBeInTheDocument()
+    })
+
+    it('keeps the resend button disabled while a send is in flight', () => {
+      const order: Order = {
+        ...mockOrder,
+        emailDelivery: { confirmation: { claimedAt: new Date().toISOString() } }
+      }
+
+      render(<OrderDetailPanel order={order} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      expect(screen.getByText(/Envío en curso/i)).toBeInTheDocument()
+      expect(screen.getByText('Reenviar confirmación').closest('button')).toBeDisabled()
+    })
+
+    it('surfaces a server refusal in the error banner', async () => {
+      const resendSpy = vi
+        .spyOn(adminApi, 'resendOrderEmail')
+        .mockResolvedValue({ success: false, error: 'Límite de reenvíos alcanzado para este correo' })
+
+      render(<OrderDetailPanel order={mockOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      fireEvent.click(screen.getByText('Reenviar confirmación'))
+
+      await waitFor(() => {
+        expect(screen.getByText(/Límite de reenvíos alcanzado/i)).toBeInTheDocument()
+      })
+
+      resendSpy.mockRestore()
+    })
+  })
 })

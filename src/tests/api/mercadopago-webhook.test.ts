@@ -218,8 +218,10 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     expect(res.status).toHaveBeenCalledWith(200)
     expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
 
-    // Verify atomic transaction was executed
-    expect(mockAdminDb.runTransaction).toHaveBeenCalledTimes(1)
+    // The settlement transaction commits stock+status; the second transaction
+    // is the best-effort email-telemetry write (this fixture has no customer
+    // email, so the failure stamp is what runs).
+    expect(mockAdminDb.runTransaction).toHaveBeenCalledTimes(2)
 
     // Verify order update inside transaction
     expect(mockTransactionUpdate).toHaveBeenCalledWith(
@@ -228,6 +230,15 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
         status: 'PAGADO_MERCADOPAGO',
         mercadopagoPaymentId: '998877',
         paidAt: expect.any(String)
+      })
+    )
+
+    // An order without a customer email records the missing recipient instead
+    // of silently skipping the payment notice.
+    expect(mockTransactionUpdate).toHaveBeenCalledWith(
+      orderRef,
+      expect.objectContaining({
+        'emailDelivery.payment.failureReason': 'missing_customer_email'
       })
     )
 
@@ -1265,6 +1276,54 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       expect(warehouseSend).toBeDefined()
       const payload = JSON.parse(((warehouseSend?.[1] as RequestInit | undefined)?.body ?? '{}') as string)
       expect(payload.text).toContain('Stock insuficiente')
+    })
+
+    it('stamps the payment-email sent marker on the order after the customer notice goes out', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      const fetchSpy = mockFetchBoundaries()
+      const { mockAdminDb, mockTransactionUpdate } = mockSuccessfulPaymentDb()
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(resendCalls(fetchSpy).length).toBeGreaterThan(0)
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'order-doc-abc' }),
+        expect.objectContaining({ 'emailDelivery.payment.sentAt': expect.any(String) })
+      )
+    })
+
+    it('records the payment-email failure on the order — the paid state is never rolled back', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      const fetchSpy = mockFetchBoundaries(false)
+      const { mockAdminDb, mockTransactionUpdate } = mockSuccessfulPaymentDb()
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      // The ack and the paid state stand; the failure is stamped for recovery.
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
+      expect(resendCalls(fetchSpy).length).toBeGreaterThan(0)
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'order-doc-abc' }),
+        expect.objectContaining({ status: 'PAGADO_MERCADOPAGO' })
+      )
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'order-doc-abc' }),
+        expect.objectContaining({
+          'emailDelivery.payment.failedAt': expect.any(String),
+          'emailDelivery.payment.failureReason': 'http_500'
+        })
+      )
     })
   })
 

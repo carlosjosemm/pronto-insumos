@@ -223,7 +223,11 @@ describe('Serverless Admin Resolve Quote (/api/admin/resolve-quote)', () => {
     const setDocs: Array<Record<string, unknown>> = []
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       mockQuoteDb({
-        onOrderUpdate: (data) => (captured.order = data),
+        // The conversion write is the order update that carries `status` —
+        // the post-commit email-telemetry stamp is a separate update.
+        onOrderUpdate: (data) => {
+          if (typeof data.status === 'string') captured.order = data
+        },
         onProductUpdate: (data) => (captured.product = data),
         onSet: (data) => setDocs.push(data)
       }).db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
@@ -635,6 +639,27 @@ describe('Serverless Admin Resolve Quote (/api/admin/resolve-quote)', () => {
 
       expect(statusOutput).toBe(200)
       expect(jsonOutput.success).toBe(true)
+    })
+
+    it('stamps the payment-email failure on the order — the conversion is never rolled back', async () => {
+      vi.spyOn(global, 'fetch').mockRejectedValue(new Error('resend down'))
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const orderUpdates: Array<Record<string, unknown>> = []
+      vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+        mockQuoteDb({ onOrderUpdate: (data) => orderUpdates.push(data) }).db as unknown as ReturnType<
+          typeof firebaseAdminLib.getAdminFirestore
+        >
+      )
+
+      await handler({ method: 'POST', body: convertBody } as VercelRequest, mockRes as VercelResponse)
+
+      // The conversion stands; the failure is stamped for the operator to retry.
+      expect(statusOutput).toBe(200)
+      expect(jsonOutput.success).toBe(true)
+      expect(orderUpdates.some((data) => data.status === 'PAGADO_TRANSFERENCIA')).toBe(true)
+      const stamp = orderUpdates.find((data) => 'emailDelivery.payment.failedAt' in data)
+      expect(stamp?.['emailDelivery.payment.failedAt']).toEqual(expect.any(String))
+      expect(stamp?.['emailDelivery.payment.failureReason']).toEqual(expect.any(String))
     })
   })
 })

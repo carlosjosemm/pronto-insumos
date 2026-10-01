@@ -9,7 +9,7 @@ This document is the **authoritative reference for data structures, domain contr
 * **Role:** The **single source of truth** for all business models in the application.
 * **Pure Typing (Zero Runtime Overhead):** Contains strictly TypeScript interfaces, type aliases, and string literal unions. No executable JavaScript code, classes, or runtime side effects.
 * **Single Location:** Components must never define ad-hoc interfaces (e.g. `interface OrderItem` inside a component file); all domain interfaces must be declared in [`src/types/index.ts`](./index.ts).
-* **File map:** `index.ts` is the only module. It exports the category unions (`ChileanDentalCategory`, `ProductCategory`, `Category`), `Product`, `CartItem`, the fiscal trio (`DocumentType`, `TaxBreakdown`, `BillingInfo`), `SanitaryVerification`, `CustomerInfo`, `PaymentMethod` (`'transferencia' | 'whatsapp' | 'mercadopago'`), `OrderStatus`, `DispatchReferenceSource` (`'generated' | 'manual'` — the origin of the Task 2.13 dispatch reference), `Order`, `PromoCode` (a resolved catalog entry — `{ code, discountPercent, label }`; promo **policy** fields such as expiry, usage limits and product eligibility are unmodelled and tracked as Task 9.1), `Toast`, `SubmitOrderResult`, `OrderTrackingInfo`, `UploadVoucherResult`, and the audit trail contracts (`AuditActorRole`, `OrderStatusHistory`, `InventoryChangeType`, `InventoryAuditLog`).
+* **File map:** `index.ts` is the only module. It exports the category unions (`ChileanDentalCategory`, `ProductCategory`, `Category`), `Product`, `CartItem`, the fiscal trio (`DocumentType`, `TaxBreakdown`, `BillingInfo`), `SanitaryVerification`, `CustomerInfo`, `PaymentMethod` (`'transferencia' | 'whatsapp' | 'mercadopago'`), `OrderStatus`, `DispatchReferenceSource` (`'generated' | 'manual'` — the origin of the Task 2.13 dispatch reference), `Order`, `EmailDeliveryEntry` (Task 5.3 — the per-kind transactional-mail telemetry record on `Order.emailDelivery`), `PromoCode` (a resolved catalog entry — `{ code, discountPercent, label }`; promo **policy** fields such as expiry, usage limits and product eligibility are unmodelled and tracked as Task 9.1), `Toast`, `SubmitOrderResult`, `OrderTrackingInfo`, `UploadVoucherResult`, and the audit trail contracts (`AuditActorRole`, `OrderStatusHistory`, `InventoryChangeType`, `InventoryAuditLog`).
 
 ---
 
@@ -161,7 +161,17 @@ export interface Order {
   courier?: string; trackingNumber?: string
   mercadopagoPaymentId?: string; paidAt?: string
   approvedAt?: string; approvedBy?: string
-  confirmationEmailSentAt?: string     // idempotency flag for /api/order-confirmation
+  confirmationEmailSentAt?: string     // legacy idempotency flag for /api/order-confirmation
+  // Transactional-mail telemetry (Task 5.3) — server-written only by
+  // api/_lib/emailDelivery (the client may read it for the OrderDetailPanel
+  // "Correos" block but never writes it; the rules update allowlist is unchanged).
+  // Each kind records `sentAt` | `claimedAt` (in-flight send claim, expires after
+  // 5 minutes) | `failedAt` + `failureReason` | `resendCount`. `confirmation` also
+  // honors the legacy `confirmationEmailSentAt` flag above.
+  emailDelivery?: {
+    confirmation?: EmailDeliveryEntry
+    payment?: EmailDeliveryEntry
+  }
   // WhatsApp-quote resolution trail — server-written by `resolve-quote` only.
   // `quoteResolution` says how the lead left the quote state: 'CONVERTIDA' (the
   // sale settled off-platform exactly as quoted; the document keeps its original

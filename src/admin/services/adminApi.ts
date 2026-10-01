@@ -199,6 +199,33 @@ export async function resolveQuote(
   }
 }
 
+/**
+ * Resends a customer-facing transactional email (`confirmation` = order
+ * received, `payment` = paid/approved notice). The server refuses the payment
+ * kind for orders without a verified payment, caps resends per kind, and
+ * reports provider failures as `success: false` so the operator sees them.
+ */
+export async function resendOrderEmail(
+  orderId: string,
+  kind: 'confirmation' | 'payment'
+): Promise<{ success: boolean; error?: string }> {
+  const headers = await getAuthHeaders()
+  try {
+    const res = await fetch('/api/admin/resend-order-email', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ orderId, kind })
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || `HTTP ${res.status}` }
+    }
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error de conexión' }
+  }
+}
+
 export async function dispatchAdminOrder(payload: DispatchOrderPayload): Promise<DispatchOrderResult> {
   const headers = await getAuthHeaders()
   try {

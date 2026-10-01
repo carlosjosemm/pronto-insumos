@@ -114,6 +114,23 @@ export type OrderStatus =
  */
 export type DispatchReferenceSource = 'generated' | 'manual'
 
+/**
+ * Server-written telemetry for one customer-facing transactional email kind
+ * ('confirmation' = order received, 'payment' = paid/approved notice).
+ * `sentAt` is the durable sent marker; `claimedAt` is an in-flight send
+ * reservation (written inside a transaction so concurrent sends serialize,
+ * reclaimable once stale); `failedAt`/`failureReason` record the last send
+ * failure for backoffice visibility until the next success clears them;
+ * `resendCount` bounds manual resends per kind.
+ */
+export interface EmailDeliveryEntry {
+  sentAt?: string
+  claimedAt?: string
+  failedAt?: string
+  failureReason?: string
+  resendCount?: number
+}
+
 export interface Order {
   orderId: string
   /**
@@ -158,6 +175,13 @@ export interface Order {
   approvedAt?: string
   approvedBy?: string
   confirmationEmailSentAt?: string
+  // Transactional-mail telemetry: server-written only (api/_lib/emailDelivery).
+  // `confirmation` reads the legacy `confirmationEmailSentAt` marker as sent
+  // when no `sentAt` exists yet; new sends keep writing both.
+  emailDelivery?: {
+    confirmation?: EmailDeliveryEntry
+    payment?: EmailDeliveryEntry
+  }
   // WhatsApp-quote resolution trail: server-written by `resolve-quote` only.
   // `quoteResolution` says how the lead left the quote state ('CONVERTIDA' = the
   // sale settled off-platform exactly as quoted; 'DECLINADA' = closed without a

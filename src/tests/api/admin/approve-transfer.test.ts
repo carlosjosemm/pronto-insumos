@@ -18,6 +18,7 @@ interface ApproveDbOptions {
   products?: Record<string, Record<string, unknown> | null>
   directLookupMisses?: boolean
   onProductUpdate?: (data: Record<string, unknown>, productId: string) => void
+  onOrderUpdate?: (data: Record<string, unknown>) => void
   onSet?: (data: Record<string, unknown>) => void
 }
 
@@ -44,6 +45,7 @@ function mockApproveDb(options: ApproveDbOptions = {}) {
     products = { 'odon-101': DEFAULT_PRODUCT },
     directLookupMisses = false,
     onProductUpdate,
+    onOrderUpdate,
     onSet
   } = options
 
@@ -106,6 +108,10 @@ function mockApproveDb(options: ApproveDbOptions = {}) {
           return { exists: false }
         }),
         update: vi.fn((ref: unknown, data: Record<string, unknown>) => {
+          if (ref === orderRef) {
+            onOrderUpdate?.(data)
+            return
+          }
           const productId = refToProductId.get(ref)
           if (productId !== undefined) onProductUpdate?.(data, productId)
         }),
@@ -583,6 +589,57 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
 
       expect(statusOutput).toBe(200)
       expect(jsonOutput.success).toBe(true)
+    })
+
+    it('stamps the payment-email sent marker on the order after the customer notice goes out', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      vi.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ id: 'e1' }) } as Response)
+      const orderUpdates: Array<Record<string, unknown>> = []
+      vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+        mockApproveDb({
+          orderData: orderWithCustomer,
+          onOrderUpdate: (data) => orderUpdates.push(data)
+        }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+      )
+
+      const req = {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+      } as VercelRequest
+      await handler(req, mockRes as VercelResponse)
+
+      expect(statusOutput).toBe(200)
+      const stamp = orderUpdates.find((data) => 'emailDelivery.payment.sentAt' in data)
+      expect(stamp?.['emailDelivery.payment.sentAt']).toEqual(expect.any(String))
+    })
+
+    it('records the payment-email failure on the order — the approval is never rolled back', async () => {
+      process.env.RESEND_API_KEY = 're_test_key'
+      process.env.WAREHOUSE_NOTIFICATION_EMAIL = 'bodega@prontoinsumos.com'
+      vi.spyOn(global, 'fetch').mockRejectedValue(new Error('resend down'))
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const orderUpdates: Array<Record<string, unknown>> = []
+      vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+        mockApproveDb({
+          orderData: orderWithCustomer,
+          onOrderUpdate: (data) => orderUpdates.push(data)
+        }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+      )
+
+      const req = {
+        method: 'POST',
+        body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+      } as VercelRequest
+      await handler(req, mockRes as VercelResponse)
+
+      // The approval stands; the failure is stamped for the operator to retry.
+      expect(statusOutput).toBe(200)
+      expect(jsonOutput.success).toBe(true)
+      expect(orderUpdates.some((data) => data.status === 'TRANSFERENCIA_APROBADA')).toBe(true)
+      const stamp = orderUpdates.find((data) => 'emailDelivery.payment.failedAt' in data)
+      expect(stamp?.['emailDelivery.payment.failedAt']).toEqual(expect.any(String))
+      expect(stamp?.['emailDelivery.payment.failureReason']).toEqual(expect.any(String))
     })
   })
 })

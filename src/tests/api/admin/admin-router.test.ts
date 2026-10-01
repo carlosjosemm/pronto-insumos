@@ -15,6 +15,7 @@ vi.mock('../../../../api/_lib/admin/update-product', () => ({ default: vi.fn() }
 vi.mock('../../../../api/_lib/admin/create-product', () => ({ default: vi.fn() }))
 vi.mock('../../../../api/_lib/admin/toggle-visibility', () => ({ default: vi.fn() }))
 vi.mock('../../../../api/_lib/admin/voucher-housekeeping', () => ({ default: vi.fn() }))
+vi.mock('../../../../api/_lib/admin/resend-order-email', () => ({ default: vi.fn() }))
 
 import handler from '../../../../api/admin/[action]'
 import dashboardStats from '../../../../api/_lib/admin/dashboard-stats'
@@ -31,6 +32,7 @@ import updateProduct from '../../../../api/_lib/admin/update-product'
 import createProduct from '../../../../api/_lib/admin/create-product'
 import toggleVisibility from '../../../../api/_lib/admin/toggle-visibility'
 import voucherHousekeeping from '../../../../api/_lib/admin/voucher-housekeeping'
+import resendOrderEmail from '../../../../api/_lib/admin/resend-order-email'
 
 const ROUTES: Record<string, ReturnType<typeof vi.fn>> = {
   'dashboard-stats': vi.mocked(dashboardStats),
@@ -46,7 +48,8 @@ const ROUTES: Record<string, ReturnType<typeof vi.fn>> = {
   'update-product': vi.mocked(updateProduct),
   'create-product': vi.mocked(createProduct),
   'toggle-visibility': vi.mocked(toggleVisibility),
-  'voucher-housekeeping': vi.mocked(voucherHousekeeping)
+  'voucher-housekeeping': vi.mocked(voucherHousekeeping),
+  'resend-order-email': vi.mocked(resendOrderEmail)
 }
 
 describe('Serverless Admin Router (/api/admin/[action])', () => {

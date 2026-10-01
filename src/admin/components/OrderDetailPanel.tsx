@@ -9,10 +9,12 @@ import {
   markOrderDelivered,
   fetchOrderHistory,
   resolvePaymentReview,
-  resolveQuote
+  resolveQuote,
+  resendOrderEmail
 } from '../services/adminApi'
 import { CARRIER_LABELS, type CarrierType } from '../types'
-import type { Order, OrderStatusHistory } from '../../types'
+import type { EmailDeliveryEntry, Order, OrderStatusHistory } from '../../types'
+import { EMAIL_CLAIM_TTL_MS, isSettledOrderStatus } from '../../utils/orderLifecycle'
 import { classifyVoucherUrl, normalizeAllowedVoucherMime, type VoucherLinkKind } from '../../utils/voucherUrl'
 
 interface OrderDetailPanelProps {
@@ -160,6 +162,31 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
     }
   }
 
+  /**
+   * Operator-triggered resend of a customer-facing transactional notice. The
+   * server claims the send inside a transaction, refuses the `payment` kind
+   * for unpaid orders, and caps resends per kind — a Resend failure surfaces
+   * here as `actionError` and is stamped on the order for visibility.
+   */
+  const handleResendEmail = async (kind: 'confirmation' | 'payment') => {
+    setActionLoading(true)
+    setActionError('')
+    setActionSuccess('')
+    const res = await resendOrderEmail(order.orderId, kind)
+    setActionLoading(false)
+    if (res.success) {
+      setActionSuccess(
+        kind === 'confirmation'
+          ? '¡Correo de confirmación de pedido reenviado al cliente!'
+          : '¡Correo de confirmación de pago reenviado al cliente!'
+      )
+      setHistoryRefreshKey(k => k + 1)
+      onOrderUpdated()
+    } else {
+      setActionError(res.error || 'Error al reenviar el correo')
+    }
+  }
+
   const handleMarkDelivered = async () => {
     setActionLoading(true)
     setActionError('')
@@ -240,6 +267,35 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
         return 'Revisión manual de pago'
     }
   })()
+
+  // Transactional-mail telemetry (server-written `emailDelivery` map). The
+  // confirmation kind also honors the legacy `confirmationEmailSentAt` marker;
+  // a `claimedAt` younger than the server claim TTL means a send is still in
+  // flight. The paid-status set and the TTL are the same constants the server
+  // enforces — the server stays authoritative either way.
+  const isPaidOrder = isSettledOrderStatus(order.status)
+  const emailEntry = (kind: 'confirmation' | 'payment'): EmailDeliveryEntry | undefined =>
+    order.emailDelivery?.[kind]
+  const emailSentAt = (kind: 'confirmation' | 'payment'): string | undefined =>
+    emailEntry(kind)?.sentAt ||
+    (kind === 'confirmation' ? order.confirmationEmailSentAt : undefined)
+  const emailInFlight = (entry?: EmailDeliveryEntry): boolean => {
+    const claimedAt = entry?.claimedAt ? Date.parse(entry.claimedAt) : NaN
+    return Number.isFinite(claimedAt) && Date.now() - claimedAt < EMAIL_CLAIM_TTL_MS
+  }
+  const emailFailureLabel = (reason?: string): string => {
+    if (!reason) return 'envío fallido'
+    if (reason.startsWith('http_')) return `proveedor rechazó (${reason.replace('_', ' ')})`
+    return (
+      {
+        missing_api_key: 'Resend API key no configurada',
+        missing_recipient: 'sin destinatario',
+        missing_customer_email: 'el pedido no tiene correo',
+        network_error: 'error de red o del proveedor',
+        send_failed: 'envío fallido'
+      }[reason] || reason
+    )
+  }
 
   // The dispatch record: carrier + reference (the typed courier guía,
   // or the internal route code minted by the dispatch handler).
@@ -462,6 +518,57 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
               )}
             </div>
           )}
+
+          {/* Transactional customer emails: delivery state + manual resend */}
+          <div style={{ background: 'var(--surface-muted)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+            <div style={{ fontWeight: '800', fontSize: '0.825rem', color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Mail size={16} style={{ color: 'var(--teal-600)' }} />
+              <span>Correos al Cliente</span>
+            </div>
+
+            {(['confirmation', 'payment'] as const).map(kind => {
+              const entry = emailEntry(kind)
+              const sentAt = emailSentAt(kind)
+              const inFlight = emailInFlight(entry)
+              const label = kind === 'confirmation' ? 'Confirmación de pedido' : 'Confirmación de pago'
+              const resendLabel = kind === 'confirmation' ? 'Reenviar confirmación' : 'Reenviar correo de pago'
+              const resendable = kind === 'confirmation' || isPaidOrder
+              return (
+                <div key={kind} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', fontSize: '0.775rem' }}>
+                  <div>
+                    <div style={{ fontWeight: '700', color: 'var(--navy-900)' }}>{label}</div>
+                    {sentAt && (
+                      <div style={{ color: 'var(--success)', fontWeight: '600' }}>
+                        Enviado el {new Date(sentAt).toLocaleString('es-CL')}
+                      </div>
+                    )}
+                    {entry?.failedAt && (
+                      <div style={{ color: 'var(--danger)', fontWeight: '600' }}>
+                        Último intento falló el {new Date(entry.failedAt).toLocaleString('es-CL')} — {emailFailureLabel(entry.failureReason)}
+                      </div>
+                    )}
+                    {!sentAt && !entry?.failedAt && !inFlight && (
+                      <div style={{ color: 'var(--text-muted)' }}>No enviado</div>
+                    )}
+                    {inFlight && (
+                      <div style={{ color: 'var(--warning)', fontWeight: '600' }}>Envío en curso…</div>
+                    )}
+                  </div>
+                  {resendable && (
+                    <button
+                      type="button"
+                      disabled={actionLoading || inFlight}
+                      onClick={() => handleResendEmail(kind)}
+                      className="admin-btn admin-btn-secondary"
+                      style={{ padding: '0.3rem 0.6rem', fontSize: '0.725rem', whiteSpace: 'nowrap' }}
+                    >
+                      {resendLabel}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
 
           {/* Status & Lifecycle Audit Trail */}
           <div style={{ background: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0.85rem' }}>

@@ -28,11 +28,43 @@ function createMockRes() {
 }
 
 /**
+ * Applies a Firestore `update()` payload (dot paths + FieldValue sentinels) to
+ * the in-memory order state, so compare-and-swap checks in the real
+ * email-delivery code see a realistic document between transactions.
+ */
+function applyOrderUpdate(target: Record<string, unknown>, update: Record<string, unknown>) {
+  for (const [path, value] of Object.entries(update)) {
+    const keys = path.split('.')
+    let node = target
+    for (let i = 0; i < keys.length - 1; i += 1) {
+      const next = node[keys[i]]
+      node[keys[i]] = next && typeof next === 'object' ? next : {}
+      node = node[keys[i]] as Record<string, unknown>
+    }
+    const last = keys[keys.length - 1]
+    const sentinelName =
+      value && typeof value === 'object'
+        ? String((value as { constructor?: { name?: string } }).constructor?.name || '')
+        : ''
+    if (sentinelName === 'DeleteTransform') {
+      delete node[last]
+    } else if (sentinelName === 'NumericIncrementTransform') {
+      node[last] = (Number(node[last]) || 0) + Number((value as { operand?: number }).operand || 0)
+    } else {
+      node[last] = value
+    }
+  }
+}
+
+/**
  * Admin SDK double for the canonical order lookup: the document key
  * resolves first, the `orderId` field query only when the key is missing.
  *
  * The double also backs the `abuse_counters` collection and the
- * throttling transactions (`db.counters`), so the real counter code runs.
+ * throttling transactions (`db.counters`), so the real counter code runs —
+ * and a `fallback` routes the email-delivery claim/commit transactions to the
+ * same mutable order state (`db.state.current`), with every transactional
+ * `update()` payload recorded in `db.txUpdates`.
  */
 function mockDbWithOrder(
   orderData: Record<string, unknown>,
@@ -40,10 +72,22 @@ function mockDbWithOrder(
   options: { legacyFieldOnly?: boolean } = {}
 ) {
   const orderRef = { update: updateSpy }
-  const orderDoc = { id: 'PRONTO-123456', data: () => orderData, ref: orderRef }
-  const counters = createThrottleCounters()
+  // The transaction double mutates `state.current` on every update — clone so
+  // a committed write can never leak into the caller's fixture object.
+  const state = { current: structuredClone(orderData) }
+  const txUpdates: Array<Record<string, unknown>> = []
+  const counters = createThrottleCounters({
+    get: async () => ({ exists: true, ref: orderRef, data: () => state.current }),
+    update: (_ref: unknown, data: Record<string, unknown>) => {
+      txUpdates.push(data)
+      applyOrderUpdate(state.current, data)
+    }
+  })
+  const orderDoc = { id: 'PRONTO-123456', data: () => state.current, ref: orderRef }
   const db = {
     counters,
+    state,
+    txUpdates,
     collection: vi.fn().mockImplementation((name: string) =>
       String(name).includes('abuse_counters')
         ? counters.collection(name)
@@ -54,7 +98,7 @@ function mockDbWithOrder(
                 .mockResolvedValue(
                   options.legacyFieldOnly
                     ? { exists: false, ref: orderRef, data: () => undefined }
-                    : { exists: true, ref: orderRef, data: () => orderData }
+                    : { exists: true, ref: orderRef, data: () => state.current }
                 )
             }),
             where: vi.fn().mockReturnValue({
@@ -156,15 +200,15 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
     expect(res.status).toHaveBeenCalledWith(400)
   })
 
-  it('should return 200 without email when Firestore Admin is unavailable', async () => {
+  it('fails closed with 503 when Firestore Admin is unavailable — never reports "sent"', async () => {
     const req = { method: 'POST', body: { orderId: 'PRONTO-123', rut: '12345678-5' } } as VercelRequest
     const res = createMockRes()
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await handler(req, res)
 
-    expect(res.status).toHaveBeenCalledWith(200)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true, emailSent: false }))
+    expect(res.status).toHaveBeenCalledWith(503)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false, emailSent: false }))
   })
 
   it('returns one identical 404 for an unknown order and for a wrong RUT — no enumeration oracle (Task 8.8)', async () => {
@@ -267,13 +311,8 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
   })
 
   it('should skip send and return duplicate flag when confirmation was already sent', async () => {
-    const updateSpy = vi.fn()
-    vi.mocked(getAdminFirestore).mockReturnValue(
-      mockDbWithOrder(
-        { ...validOrder, confirmationEmailSentAt: '2026-09-21T10:00:00Z' },
-        updateSpy
-      ) as unknown as ReturnType<typeof getAdminFirestore>
-    )
+    const db = mockDbWithOrder({ ...validOrder, confirmationEmailSentAt: '2026-09-21T10:00:00Z' })
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
     const fetchSpy = vi.spyOn(global, 'fetch')
 
     const req = { method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12345678-5' } } as VercelRequest
@@ -284,15 +323,68 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
     expect(res.status).toHaveBeenCalledWith(200)
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ duplicate: true, emailSent: false }))
     expect(fetchSpy).not.toHaveBeenCalled()
-    expect(updateSpy).not.toHaveBeenCalled()
+    expect(db.txUpdates).toHaveLength(0)
   })
 
-  it('should return emailSent:false when order has no customer email', async () => {
-    vi.mocked(getAdminFirestore).mockReturnValue(
-      mockDbWithOrder({ ...validOrder, customer: { ...validOrder.customer, email: '' } }) as unknown as ReturnType<
-        typeof getAdminFirestore
-      >
-    )
+  it('treats an emailDelivery.confirmation sent marker as already-sent (no legacy field needed)', async () => {
+    const db = mockDbWithOrder({
+      ...validOrder,
+      emailDelivery: { confirmation: { sentAt: '2026-09-29T10:00:00Z' } }
+    })
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
+    const fetchSpy = vi.spyOn(global, 'fetch')
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12345678-5' } } as VercelRequest, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ duplicate: true, emailSent: false }))
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not send while a fresh claim is in flight (concurrent sends at most once)', async () => {
+    const db = mockDbWithOrder({
+      ...validOrder,
+      emailDelivery: { confirmation: { claimedAt: new Date().toISOString() } }
+    })
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
+    const fetchSpy = vi.spyOn(global, 'fetch')
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12345678-5' } } as VercelRequest, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ emailSent: false, inFlight: true }))
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(db.txUpdates).toHaveLength(0)
+  })
+
+  it('reclaims a stale claim and sends (a crashed send must not lock the order forever)', async () => {
+    process.env.RESEND_API_KEY = 're_test_key'
+    const staleClaim = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+    const db = mockDbWithOrder({
+      ...validOrder,
+      emailDelivery: { confirmation: { claimedAt: staleClaim } }
+    })
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'email_xyz' })
+    } as Response)
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12345678-5' } } as VercelRequest, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true, emailSent: true }))
+    expect(db.state.current.emailDelivery).toMatchObject({
+      confirmation: expect.objectContaining({ sentAt: expect.any(String) })
+    })
+  })
+
+  it('should return emailSent:false and record the failure when order has no customer email', async () => {
+    const db = mockDbWithOrder({ ...validOrder, customer: { ...validOrder.customer, email: '' } })
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const req = { method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12345678-5' } } as VercelRequest
@@ -304,14 +396,19 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ emailSent: false, reason: 'missing_customer_email' })
     )
+    // The failed outcome is recorded so the backoffice can see it.
+    expect(db.state.current.emailDelivery).toMatchObject({
+      confirmation: expect.objectContaining({
+        failedAt: expect.any(String),
+        failureReason: 'missing_customer_email'
+      })
+    })
   })
 
-  it('should send email via Resend and stamp confirmationEmailSentAt on success', async () => {
+  it('should send email via Resend and stamp the sent markers on success', async () => {
     process.env.RESEND_API_KEY = 're_test_key'
-    const updateSpy = vi.fn().mockResolvedValue({})
-    vi.mocked(getAdminFirestore).mockReturnValue(
-      mockDbWithOrder(validOrder, updateSpy) as unknown as ReturnType<typeof getAdminFirestore>
-    )
+    const db = mockDbWithOrder(validOrder)
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
 
     const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
@@ -335,16 +432,20 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
     expect(body.to).toEqual(['andrea@clinica.cl'])
     expect(body.subject).toContain('PRONTO-123456')
 
-    // Idempotency stamp written
-    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({ confirmationEmailSentAt: expect.any(String) }))
+    // Sent markers committed: the shared telemetry map AND the legacy flag.
+    expect(db.state.current.emailDelivery).toMatchObject({
+      confirmation: expect.objectContaining({ sentAt: expect.any(String) })
+    })
+    expect(
+      (db.state.current.emailDelivery as Record<string, Record<string, unknown>>).confirmation.claimedAt
+    ).toBeUndefined()
+    expect(db.state.current.confirmationEmailSentAt).toEqual(expect.any(String))
   })
 
-  it('should not stamp the flag when Resend send fails (retry remains possible)', async () => {
+  it('releases the claim and records the failure when Resend send fails (retry stays possible)', async () => {
     process.env.RESEND_API_KEY = 're_test_key'
-    const updateSpy = vi.fn()
-    vi.mocked(getAdminFirestore).mockReturnValue(
-      mockDbWithOrder(validOrder, updateSpy) as unknown as ReturnType<typeof getAdminFirestore>
-    )
+    const db = mockDbWithOrder(validOrder)
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     vi.spyOn(global, 'fetch').mockResolvedValue({
@@ -360,6 +461,41 @@ describe('Order Confirmation Email Endpoint (/api/order-confirmation)', () => {
 
     expect(res.status).toHaveBeenCalledWith(200)
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true, emailSent: false }))
-    expect(updateSpy).not.toHaveBeenCalled()
+
+    // No sent marker, claim released, failure recorded for backoffice visibility.
+    const delivery = db.state.current.emailDelivery as Record<string, Record<string, unknown>>
+    expect(delivery.confirmation.sentAt).toBeUndefined()
+    expect(delivery.confirmation.claimedAt).toBeUndefined()
+    expect(delivery.confirmation.failedAt).toEqual(expect.any(String))
+    expect(delivery.confirmation.failureReason).toBe('http_500')
+    expect(db.state.current.confirmationEmailSentAt).toBeUndefined()
+  })
+
+  it('retries cleanly after a recorded failure (second call sends and clears the failure)', async () => {
+    process.env.RESEND_API_KEY = 're_test_key'
+    const db = mockDbWithOrder({
+      ...validOrder,
+      emailDelivery: {
+        confirmation: {
+          failedAt: '2026-09-29T10:00:00Z',
+          failureReason: 'network_error'
+        }
+      }
+    })
+    vi.mocked(getAdminFirestore).mockReturnValue(db as unknown as ReturnType<typeof getAdminFirestore>)
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'email_xyz' })
+    } as Response)
+
+    const res = createMockRes()
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-123456', rut: '12345678-5' } } as VercelRequest, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ emailSent: true }))
+    const delivery = db.state.current.emailDelivery as Record<string, Record<string, unknown>>
+    expect(delivery.confirmation.sentAt).toEqual(expect.any(String))
+    expect(delivery.confirmation.failedAt).toBeUndefined()
+    expect(delivery.confirmation.failureReason).toBeUndefined()
   })
 })
