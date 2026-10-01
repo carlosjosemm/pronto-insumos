@@ -21,7 +21,7 @@ Each cycle executes exactly **1 (ONE) task** from top to bottom (Priority P0 dow
 ```mermaid
 flowchart TD
     A["1. Select Next Task in TODO.md"] --> B["2. Branch Creation: git checkout -b feat/task-X.Y-..."]
-    B --> C["3. Draft Fresh implementation_plan.md"]
+    B --> C["3. Draft .devin/artifacts/task-X.Y/implementation_plan.md"]
     C --> D["4. Await Explicit User Approval (Proceed)"]
     D --> E["5. Execute Code & Write Robust Unit Tests"]
     E --> F["6. Verify: pnpm test & pnpm build"]
@@ -48,8 +48,8 @@ flowchart TD
   *(e.g., `git checkout -b feat/task-2.2-cart-localstorage`)*
 * Never work directly on `main` for roadmap tasks.
 
-### Step 3: Draft the Volatile `implementation_plan.md`
-* Overwrite `implementation_plan.md` in the artifact directory.
+### Step 3: Draft the Implementation Plan in the Task's Artifact Folder
+* Write `.devin/artifacts/task-X.Y/implementation_plan.md` — every task owns a persistent sub-folder under `.devin/artifacts/` named after the task (owner decision, 2026-09-30), so plans and walkthroughs never collide across parallel branches and stay in the repository for decision audits. The old volatile root `implementation_plan.md` is retired.
 * Set `RequestFeedback: true` and `UserFacing: true`.
 * **The plan must strictly adhere to the Minimum Required Structure defined below.**
 * Note the active task branch name in the plan.
@@ -123,15 +123,15 @@ flowchart TD
   ```
 
 ### Step 13: Walkthrough & Next 2 Tasks
-* Write/update `walkthrough.md` summarizing the completed changes, test results, and the link to the created PR.
+* Write `.devin/artifacts/task-X.Y/walkthrough.md` (the same per-task artifact folder as the plan) summarizing the completed changes, test results, and the link to the created PR.
 * **Report the next 2 open tasks (mandatory):** re-read the Active Action Board (§1) in [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md) and name the next 2 agent-executable tasks in priority order — task ID, one-line outcome/risk, and its gate. Skip suspended rows and owner-only checklist gates (mention those separately if still standing).
 * Report back to the user and await instructions to draft the implementation plan for the next task.
 
 ---
 
-## 📋 Minimum Required Structure for `implementation_plan.md`
+## 📋 Minimum Required Structure for the Implementation Plan
 
-Every volatile task implementation plan **must** contain these 5 mandatory sections:
+Every task implementation plan (`.devin/artifacts/task-X.Y/implementation_plan.md`) **must** contain these 5 mandatory sections:
 
 ```markdown
 # Task [X.Y]: [Task Title]

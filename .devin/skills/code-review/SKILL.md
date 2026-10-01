@@ -45,7 +45,7 @@ This skill codifies the review protocol used by the repository's task workflow (
 
 ## 3. Know the contract before judging
 
-Read the relevant `AGENTS.md` guides (root + the directory guide of each changed file) — they are the repo's contract, not decoration. Also read the task entry in `PRODUCTION_READINESS_TODO.md` (including its **Verification** requirement) and the volatile `implementation_plan.md`.
+Read the relevant `AGENTS.md` guides (root + the directory guide of each changed file) — they are the repo's contract, not decoration. Also read the task entry in `PRODUCTION_READINESS_TODO.md` (including its **Verification** requirement) and the task's implementation plan at `.devin/artifacts/task-X.Y/implementation_plan.md`.
 
 Invariants a reviewer must hold the change to (non-exhaustive):
 
@@ -142,4 +142,4 @@ When the author returns with fixes:
 
 - `production-readiness-workflow` **step 7** (adversarial review) and **step 8** (address claims): the parent agent evaluates this report, applies the necessary fixes, and re-runs the gates.
 - [`development-workflow`](../../../.agents/skills/parallel-worktree-workflow/SKILL.md): the same protocol applies to task branches before the commit/PR — in the primary working tree only, never a Git worktree.
-- The parent records the disposition (fixed / accepted / deferred) in `implementation_plan.md` and `walkthrough.md`; deferred items must land in the roadmap or an `AGENTS.md` known-gaps list — never in silence.
+- The parent records the disposition (fixed / accepted / deferred) in the task's artifact folder (`.devin/artifacts/task-X.Y/implementation_plan.md` and `walkthrough.md`); deferred items must land in the roadmap or an `AGENTS.md` known-gaps list — never in silence.
