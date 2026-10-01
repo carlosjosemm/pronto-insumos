@@ -78,7 +78,7 @@ All work must strictly observe the **PRONTO Master Guardrails** in [AGENTS.md](.
 
 5. **Adversarial read-only code review** — invoke the `code-review` skill (`/code-review`), which spawns a fresh-context reviewer and returns the structured report (verdict, severity-ranked findings, verified-vs-assumed evidence). Applying its protocol inline is acceptable when no subagent is available.
 
-6. **Remediate valid findings**, re-run the gates, update the as-built docs (the relevant `AGENTS.md`) and mark the roadmap checkbox `[x]`.
+6. **Remediate valid findings**, re-run the gates, update the as-built docs (the relevant `AGENTS.md`), and close the task in the roadmap (remove it from the board and Open Tasks, add one Resolved History row, add owner follow-ups to the Owner-only checklist). **Do not write an "As built" paragraph or test counts into the roadmap file** — as-built detail lives only in the `AGENTS.md`, and the narrative lives in the walkthrough artifact.
 
 ### Phase 3: Completion, PR & Walkthrough
 
