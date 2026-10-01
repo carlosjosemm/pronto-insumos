@@ -22,6 +22,8 @@ export interface StockAdjustmentPayload {
   productId: string
   newStock: number
   reason: StockAdjustmentReason
+  /** Free-text trace stored as `operatorNotes` on the audit entry (e.g. the order id a return came from). */
+  notes?: string
 }
 
 export type CarrierType = 'starken' | 'chilexpress' | 'blue_express' | 'despacho_local_melipilla'
@@ -69,6 +71,18 @@ export interface OrderListResult {
   total: number
   nextCursor?: string
 }
+
+/**
+ * Manual operations an operator performs outside the storefront (the order schema
+ * models no refund, and the Mercado Pago webhook preserves a fulfilled status).
+ * Each one is recorded on the order as a same-status incident — the same status on
+ * both sides of the history entry — so the decision is auditable without
+ * pretending the fulfillment state changed.
+ *
+ * The kinds and their labels live in `src/utils/orderIncidents.ts` because the
+ * serverless handler validates against the very same list.
+ */
+export { ORDER_INCIDENT_KINDS, INCIDENT_KIND_LABELS, type OrderIncidentKind } from '../utils/orderIncidents'
 
 /**
  * Result of the voucher-object housekeeping sweep (`/api/admin/voucher-housekeeping`).

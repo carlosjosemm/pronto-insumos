@@ -3,6 +3,7 @@ import type {
   DashboardStats,
   OrderListParams,
   OrderListResult,
+  OrderIncidentKind,
   StockAdjustmentPayload,
   DispatchOrderPayload,
   DispatchOrderResult,
@@ -383,6 +384,65 @@ export async function runVoucherHousekeeping(
       return { success: false, error: data.error || `HTTP ${res.status}` }
     }
     return { ...data, success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error de conexión' }
+  }
+}
+
+/**
+ * Cancels an order that was never settled and never shipped.
+ *
+ * `reason` is required: it is the operator's justification (e.g. "no llegó el
+ * abono", verified against the bank cartola), recorded in the order history. A
+ * paid, approved, in-preparation, dispatched or delivered order is refused by the
+ * server with `409` — those go through `recordOrderIncident` and the manual
+ * refund runbook instead, never a silent cancellation.
+ */
+export async function cancelAdminOrder(
+  orderId: string,
+  reason: string
+): Promise<{ success: boolean; duplicate?: boolean; error?: string }> {
+  const headers = await getAuthHeaders()
+  try {
+    const res = await fetch('/api/admin/cancel-order', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ orderId, reason })
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || `HTTP ${res.status}` }
+    }
+    return { success: true, duplicate: Boolean(data.duplicate) }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error de conexión' }
+  }
+}
+
+/**
+ * Records a manual order incident (cancellation note, refund, return or
+ * chargeback) as an append-only, same-status entry in the order history.
+ *
+ * `note` is required — the evidence (gateway/bank ledger line or customer
+ * contact). Nothing else changes: no status, no stock, no email.
+ */
+export async function recordOrderIncident(
+  orderId: string,
+  kind: OrderIncidentKind,
+  note: string
+): Promise<{ success: boolean; error?: string }> {
+  const headers = await getAuthHeaders()
+  try {
+    const res = await fetch('/api/admin/record-order-incident', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ orderId, kind, note })
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || `HTTP ${res.status}` }
+    }
+    return { success: true }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error de conexión' }
   }

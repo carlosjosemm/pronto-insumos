@@ -498,4 +498,103 @@ describe('OrderDetailPanel Component', () => {
       quoteSpy.mockRestore()
     })
   })
+
+  describe('Manual operations', () => {
+    it('cancels an eligible order with the typed reason', async () => {
+      const cancelSpy = vi.spyOn(adminApi, 'cancelAdminOrder').mockResolvedValue({ success: true })
+
+      render(<OrderDetailPanel order={mockOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      const cancelBtn = screen.getByText(/Cancelar Pedido/i).closest('button')
+      expect(cancelBtn).toBeDisabled()
+
+      fireEvent.change(screen.getByPlaceholderText(/sin abono en cartola/i), {
+        target: { value: 'sin abono tras 7 días' }
+      })
+      fireEvent.click(screen.getByText(/Cancelar Pedido/i))
+
+      await waitFor(() => {
+        expect(cancelSpy).toHaveBeenCalledWith('PRONTO-998811', 'sin abono tras 7 días')
+        expect(screen.getByText(/Pedido cancelado/i)).toBeInTheDocument()
+      })
+
+      cancelSpy.mockRestore()
+    })
+
+    it.each(['PAGADO_MERCADOPAGO', 'ENTREGADO'])('offers no cancel control for a %s order', (status) => {
+      render(
+        <OrderDetailPanel
+          order={{ ...mockOrder, status: status as Order['status'] }}
+          onClose={vi.fn()}
+          onOrderUpdated={vi.fn()}
+        />
+      )
+
+      expect(screen.queryByText(/Cancelar Pedido/i)).not.toBeInTheDocument()
+      // The incident form stays available: refunds and chargebacks land after delivery.
+      expect(screen.getByRole('button', { name: /Registrar Incidencia/i })).toBeInTheDocument()
+    })
+
+    it('records an incident with the chosen kind and evidence note', async () => {
+      const incidentSpy = vi.spyOn(adminApi, 'recordOrderIncident').mockResolvedValue({ success: true })
+
+      render(<OrderDetailPanel order={mockOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'DEVOLUCION' } })
+      fireEvent.change(screen.getByPlaceholderText(/Evidencia: cartola/i), {
+        target: { value: 'devolución recibida, 2 cajas' }
+      })
+      fireEvent.click(screen.getByRole('button', { name: /Registrar Incidencia/i }))
+
+      await waitFor(() => {
+        expect(incidentSpy).toHaveBeenCalledWith('PRONTO-998811', 'DEVOLUCION', 'devolución recibida, 2 cajas')
+        expect(screen.getByText(/Incidencia registrada/i)).toBeInTheDocument()
+      })
+
+      incidentSpy.mockRestore()
+    })
+
+    it('shows the incident kind badge in the audit timeline', async () => {
+      vi.spyOn(adminApi, 'fetchOrderHistory').mockResolvedValue([
+        {
+          id: 'h1',
+          orderId: 'PRONTO-998811',
+          previousStatus: 'ENTREGADO',
+          newStatus: 'ENTREGADO',
+          changedBy: 'admin-1',
+          changedByEmail: 'admin@prontoinsumos.cl',
+          actorRole: 'ADMIN',
+          timestamp: new Date().toISOString(),
+          reason: 'cartola 30-09, devolución $189.990',
+          metadata: { event: 'INCIDENTE_MANUAL', incidentKind: 'DEVOLUCION' }
+        }
+      ])
+
+      render(
+        <OrderDetailPanel order={{ ...mockOrder, status: 'ENTREGADO' }} onClose={vi.fn()} onOrderUpdated={vi.fn()} />
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText('Devolución')).toBeInTheDocument()
+      })
+    })
+
+    it('surfaces a server refusal on cancellation', async () => {
+      const cancelSpy = vi.spyOn(adminApi, 'cancelAdminOrder').mockResolvedValue({
+        success: false,
+        error: 'El pedido no puede cancelarse en su estado actual (PAGADO_MERCADOPAGO).'
+      })
+
+      render(<OrderDetailPanel order={mockOrder} onClose={vi.fn()} onOrderUpdated={vi.fn()} />)
+
+      fireEvent.change(screen.getByPlaceholderText(/sin abono en cartola/i), { target: { value: 'intento' } })
+      fireEvent.click(screen.getByText(/Cancelar Pedido/i))
+
+      await waitFor(() => {
+        expect(screen.getByText(/no puede cancelarse en su estado actual/i)).toBeInTheDocument()
+      })
+
+      cancelSpy.mockRestore()
+    })
+  })
 })
