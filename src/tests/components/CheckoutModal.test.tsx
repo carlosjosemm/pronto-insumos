@@ -716,6 +716,30 @@ describe('CheckoutModal Component', () => {
       expect(screen.getByLabelText('Comuna de Despacho')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /Continuar/i })).toBeInTheDocument()
     })
+
+    it('does not block the pre-flight when stockCount is absent — the server verifies (stock-free catalog)', () => {
+      // The public catalog omits stockCount above the low-stock threshold, so a
+      // healthy product reaches checkout without any stock figure at all.
+      const stockFreeProduct: Product = { ...mockProduct, id: 'odon-no-count' }
+      delete (stockFreeProduct as Partial<Product>).stockCount
+      render(
+        <CheckoutModal
+          {...defaultProps}
+          cartItems={[{ product: stockFreeProduct, quantity: 3 }]}
+          totalAmount={mockProduct.price}
+        />
+      )
+
+      fillContactStep()
+      advance()
+      fillDespatchStep()
+      advance()
+      fillDocumentStep()
+      advance()
+
+      // The gate passed: the shopper reaches the Pago step.
+      expect(screen.getByText(/Selecciona la Opción Preferida para tu Clínica/i)).toBeInTheDocument()
+    })
   })
 
   describe('Guided flow stepper & panels (Task 2.6)', () => {

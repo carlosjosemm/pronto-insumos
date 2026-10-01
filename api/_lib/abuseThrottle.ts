@@ -57,7 +57,12 @@ export const THROTTLE_DOC_TTL_MS = 24 * 60 * 60 * 1000
 export const THROTTLE_MESSAGE =
   'Demasiados intentos. Por seguridad, espera unos minutos antes de volver a intentarlo.'
 
-export type ThrottleScope = 'track-order' | 'upload-voucher' | 'order-confirmation' | 'create-preference'
+export type ThrottleScope =
+  | 'track-order'
+  | 'upload-voucher'
+  | 'order-confirmation'
+  | 'create-preference'
+  | 'catalog'
 export type ThrottleKeyKind = 'ip' | 'order' | 'recipient'
 
 export interface ThrottlePolicy {
@@ -119,6 +124,15 @@ export const THROTTLE_POLICIES: ThrottlePolicies = {
   'create-preference': {
     ip: { maxAttempts: 30, maxFailures: 15 },
     order: { maxAttempts: 15, maxFailures: 10 }
+  },
+  // The catalog POST re-checks specific products uncached — one billed Firestore
+  // read per id, up to 50 per request — so the IP budget is the loosest of all
+  // (a shopper re-checking the cart a few times is normal) while still capping
+  // the read amplification. GET is deliberately unthrottled: it is CDN-cached,
+  // and a counter transaction per request would defeat that caching.
+  catalog: {
+    ip: { maxAttempts: 120, maxFailures: 60 },
+    order: { maxAttempts: 60, maxFailures: 30 }
   }
 }
 

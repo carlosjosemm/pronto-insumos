@@ -56,6 +56,30 @@ describe('Product Detail Modal (ProductQuickView)', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows the low-stock cue only on a disclosed count (1–3) and never a bigger figure', () => {
+    const low = render(
+      <ProductQuickView
+        product={{ ...mockProduct, stockCount: 3 }}
+        onClose={onCloseMock}
+        onAddToCart={onAddToCartMock}
+      />
+    )
+    expect(screen.getByText('Últimas unidades — disponible para despacho')).toBeInTheDocument()
+    low.unmount()
+
+    // Above the public threshold the cue is gone (the count is omitted from the
+    // public catalog, so the modal cannot know it is low).
+    render(
+      <ProductQuickView
+        product={{ ...mockProduct, stockCount: 4 }}
+        onClose={onCloseMock}
+        onAddToCart={onAddToCartMock}
+      />
+    )
+    expect(screen.queryByText(/Últimas unidades/i)).toBeNull()
+    expect(screen.getByText('Disponible para despacho en Melipilla y San Antonio')).toBeInTheDocument()
+  })
+
   it('renders technical specifications and package contents checklist', () => {
     render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
 

@@ -173,6 +173,23 @@ describe('Cart component', () => {
   })
 
   describe('Inventory cues & stock limits', () => {
+    it('shows the "Últimas unidades" cue on a disclosed low count without a stock error', () => {
+      const lowStockProduct: Product = {
+        ...mockProduct1,
+        id: 'odon-low',
+        stockCount: 2,
+        inStock: true
+      }
+      const cartItemsLow: CartItem[] = [{ product: lowStockProduct, quantity: 1 }]
+
+      render(<Cart {...defaultProps} items={cartItemsLow} />)
+
+      expect(screen.getByText('Últimas unidades')).toBeInTheDocument()
+      // The cue is informational: checkout stays available.
+      const checkoutBtn = screen.getByRole('button', { name: /Proceder al Pago/i })
+      expect(checkoutBtn).not.toBeDisabled()
+    })
+
     it('should display "Máximo disponible" cue and disable the increment button when quantity reaches stockCount', () => {
       const limitedProduct: Product = {
         ...mockProduct1,

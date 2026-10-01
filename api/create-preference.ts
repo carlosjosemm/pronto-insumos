@@ -8,6 +8,7 @@ import { computeDiscountedUnitPrice, computeOrderTotal, normalizeQuantity } from
 import { buildPreferenceSnapshot } from './_lib/preferenceSnapshot.js'
 import type { DocumentReference } from 'firebase-admin/firestore'
 import { MIN_ORDER_OUTSIDE_MELIPILLA, MIN_ORDER_ZONE, isBelowMinimumOrder, normalizeDeliveryZone } from '../src/config/delivery.js'
+import { LOW_STOCK_PUBLIC_THRESHOLD } from '../src/config/catalog.js'
 import { formatCLP } from '../src/utils/currency.js'
 
 /**
@@ -323,11 +324,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const productSnap = await adminDb.collection(getCollectionName('products')).doc(productId).get()
       if (!productSnap.exists) {
+        // No stock figures here on purpose: the product does not exist, so any
+        // number would be fabricated — the message already says so.
         return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
           error: `El producto "${line.name || productId}" no fue encontrado en el catálogo de inventario.`,
-          productId,
-          availableStock: 0,
-          requestedQuantity: quantity
+          productId
         })
       }
       const productData = (productSnap.data() as Record<string, unknown> | null) ?? null
@@ -340,13 +341,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const inStock = isActive && productData?.inStock !== false && availableStock > 0
 
       if (!inStock || availableStock < quantity) {
+        // Exact stock is disclosed only when it is an integer within the public
+        // 1–3 bound (the same rule the catalog endpoint applies); a larger or
+        // malformed figure would let anyone probe inventory, so the refusal
+        // stays generic above it.
+        const discloseStock =
+          Number.isInteger(availableStock) && availableStock >= 1 && availableStock <= LOW_STOCK_PUBLIC_THRESHOLD
         return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
           error: isActive
-            ? `Stock insuficiente para el producto "${String(productData?.name || productId)}". Stock disponible: ${availableStock}, solicitado: ${quantity}.`
+            ? discloseStock
+              ? `Stock insuficiente para el producto "${String(productData?.name || productId)}". Stock disponible: ${availableStock}, solicitado: ${quantity}.`
+              : `Stock insuficiente para el producto "${String(
+                  productData?.name || productId
+                )}". Por favor ajusta la cantidad en tu carro o cotiza por WhatsApp.`
             : `El producto "${String(productData?.name || productId)}" no está disponible para la venta. Por favor cotiza por WhatsApp.`,
           productId,
-          availableStock,
-          requestedQuantity: quantity
+          ...(discloseStock ? { availableStock, requestedQuantity: quantity } : {})
         })
       }
 

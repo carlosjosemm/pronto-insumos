@@ -3,6 +3,7 @@ import { Product } from '../types'
 import { formatCLP } from '../utils/currency'
 import { formatCategoryDisplayName } from '../utils/categoryAlias'
 import { whatsappLink } from '../config/contact'
+import { LOW_STOCK_PUBLIC_THRESHOLD } from '../config/catalog'
 import { useScrollLock } from '../hooks/useScrollLock'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import {
@@ -76,6 +77,10 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
   if (!product) return null
 
   const isAvailable = product.inStock && (product.stockCount === undefined || product.stockCount > 0)
+  // The public catalog discloses `stockCount` only at 1–3 — the cue fires on a
+  // disclosed count and never leaks a bigger figure.
+  const isLowStock =
+    isAvailable && typeof product.stockCount === 'number' && product.stockCount <= LOW_STOCK_PUBLIC_THRESHOLD
   const maxStock = product.stockCount && product.stockCount > 0 ? product.stockCount : 99
 
   const handleAdd = () => {
@@ -312,18 +317,22 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
               <div className="detail-stock-indicator">
                 <span
                   className="product-stock-dot"
-                  style={{ background: isAvailable ? 'var(--success)' : 'var(--danger)' }}
+                  style={{
+                    background: !isAvailable ? 'var(--danger)' : isLowStock ? 'var(--signal)' : 'var(--success)'
+                  }}
                 />
                 <span
                   style={{
-                    color: isAvailable ? 'var(--success)' : 'var(--danger)',
+                    color: !isAvailable ? 'var(--danger)' : isLowStock ? 'var(--signal)' : 'var(--success)',
                     fontWeight: '600',
                     fontSize: '0.8rem'
                   }}
                 >
-                  {isAvailable
-                    ? 'Disponible para despacho en Melipilla y San Antonio'
-                    : 'Sin stock inmediato en bodega'}
+                  {!isAvailable
+                    ? 'Sin stock inmediato en bodega'
+                    : isLowStock
+                      ? 'Últimas unidades — disponible para despacho'
+                      : 'Disponible para despacho en Melipilla y San Antonio'}
                 </span>
               </div>
             </div>

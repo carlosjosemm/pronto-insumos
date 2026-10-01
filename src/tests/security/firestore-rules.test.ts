@@ -21,12 +21,15 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     expect(config.firestore.rules).toBe('firestore.rules')
   })
 
-  it('should enforce public read and admin-only write on products catalog', () => {
+  it('should restrict products catalog reads to admins (stock-free public catalog)', () => {
     const content = fs.readFileSync(rulesPath, 'utf8')
 
-    // Find products block
+    // Find products block — client reads are denied; the storefront loads the
+    // catalog through /api/catalog (Admin SDK) and the console through
+    // /api/admin/products, so exact stockCount and paused documents are no
+    // longer public.
     expect(content).toMatch(/match\s+\/products\/\{productId\}\s*\{/)
-    expect(content).toMatch(/allow\s+read:\s*if\s+true;/)
+    expect(content).toMatch(/allow\s+read:\s*if\s+isAdmin\(\);/)
     expect(content).toMatch(/allow\s+write:\s*if\s+isAdmin\(\);/)
   })
 
@@ -261,10 +264,11 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
   it('should enforce symmetric security rules on isolated development dev_* collections', () => {
     const content = fs.readFileSync(rulesPath, 'utf8')
 
-    // dev_products rules (public read, admin write)
+    // dev_products rules (admin-only reads and writes — the public catalog
+    // lives behind /api/catalog)
     expect(content).toMatch(/match\s+\/dev_products\/\{productId\}\s*\{/)
     const devProductsBlock = content.split('match /dev_products/{productId}')[1].split('}')[0]
-    expect(devProductsBlock).toContain('allow read: if true;')
+    expect(devProductsBlock).toContain('allow read: if isAdmin();')
     expect(devProductsBlock).toContain('allow write: if isAdmin();')
 
     // dev_orders rules (valid create only, client read/update/delete blocked)

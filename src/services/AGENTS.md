@@ -66,16 +66,17 @@ interface CatalogResult {
 
 `source` is `'firestore'` (the live catalog, the **only** source a persisted cart may be revalidated against), `'fixtures'` (the local `PRODUCTS` prototype catalog — development/demo only, never served in production, never authoritative for the cart) or `'unavailable'` (nothing could be loaded and fabricating a catalog is not allowed; `error` carries the customer-safe message).
 
+The catalog is loaded from **`/api/catalog`** (Firestore rules deny client reads of `products`): the endpoint serves only active products through an explicit public-field allowlist and discloses `stockCount` **only when it is an integer 1–3** — every other product reaches the storefront with **no** `stockCount` at all, which every consumer must treat as "plenty — the server verifies at payment time", never as 0.
+
 | Situation | Production (`!isSimulatedFallbackAllowed()`) | Dev / preview (or `VITE_ALLOW_SIMULATED_PAYMENTS=true`) |
 | :--- | :--- | :--- |
-| Firestore returns ≥1 active product | `firestore` | `firestore` |
-| `getDocs` rejects / returns empty / exceeds `CATALOG_FETCH_TIMEOUT_MS` | `unavailable` + `console.error` | `fixtures` + `console.warn` |
-| Missing `VITE_FIREBASE_*` config | `unavailable` + `console.error` (see the caveat below) | `fixtures` |
+| `/api/catalog` returns ≥1 product | `firestore` | `firestore` |
+| The endpoint errors / returns empty / a non-array / exceeds `CATALOG_FETCH_TIMEOUT_MS` | `unavailable` + `console.error` | `fixtures` + `console.warn` |
 
-1. **Bounded wait:** the `getDocs` race carries a **10 s** bound (`CATALOG_FETCH_TIMEOUT_MS`, relaxed from 2.5 s — a first load on slow Chilean mobile data routinely exceeded the old bound, which is what served fixtures to real shoppers). The timer is cleared once the read settles, and the Firestore SDK's own retry behaviour still applies underneath.
+1. **Bounded wait:** the `fetch` race carries a **10 s** bound (`CATALOG_FETCH_TIMEOUT_MS`, relaxed from 2.5 s — a first load on slow Chilean mobile data routinely exceeded the old bound, which is what served fixtures to real shoppers). The timer is cleared once the read settles.
 2. **Defensive document reads:** `category`/`search` comparisons read text fields with `?? ''` guards, so one legacy document missing `name`/`description`/`tag` cannot reject the whole catalog read.
 3. After client-side filtering, in-stock products are always partitioned ahead of out-of-stock (stable) so depleted supplies sink to the bottom without disturbing the requested ordering.
-4. **The missing-config branch is reachable in the browser (Task 8.11):** `firebase.ts` no longer initializes Auth at module scope — a missing/invalid `VITE_FIREBASE_API_KEY` used to throw `auth/invalid-api-key` at import time and blank the whole page. Today a broken config degrades per-request: the catalog read fails, the production runtime reports `unavailable` with the retryable error card, and only the admin console surfaces the auth configuration error. The branch is kept as defense-in-depth and is covered at the unit-test boundary.
+4. **No client Firestore catalog read remains:** the storefront imports no Firestore read API — the catalog arrives entirely from the CDN-cached endpoint, so catalog reads bill ~1/min per edge regardless of visitors, and exact `stockCount`/paused documents never reach the browser.
 
 ### 2.3 Dynamic Collection Namespacing (`firestoreEnv.ts`)
 

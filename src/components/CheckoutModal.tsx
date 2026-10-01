@@ -229,21 +229,28 @@ export default function CheckoutModal({
     if (step === 1) {
       setStep(2)
     } else if (step === 2) {
-      // Pre-flight stock check
+      // Pre-flight stock check. An absent `stockCount` is "plenty — the server
+      // verifies" (the public catalog discloses the count only at 1–3), so only
+      // an explicit `inStock: false` or a disclosed, exceeded count blocks here;
+      // `create-preference` stays the authoritative guard either way.
       const stockIssueItem = cartItems.find((item) => {
-        const stock = typeof item.product.stockCount === 'number' ? item.product.stockCount : 0
-        return !item.product.inStock || stock <= 0 || item.quantity > stock
+        if (!item.product.inStock) return true
+        if (typeof item.product.stockCount !== 'number') return false
+        return item.product.stockCount <= 0 || item.quantity > item.product.stockCount
       })
 
       if (stockIssueItem) {
-        const stock = typeof stockIssueItem.product.stockCount === 'number' ? stockIssueItem.product.stockCount : 0
-        if (!stockIssueItem.product.inStock || stock <= 0) {
+        const disclosedStock =
+          typeof stockIssueItem.product.stockCount === 'number' && stockIssueItem.product.stockCount > 0
+            ? stockIssueItem.product.stockCount
+            : null
+        if (!stockIssueItem.product.inStock || disclosedStock === null) {
           setSubmitError(
             `El producto "${stockIssueItem.product.name}" no cuenta con stock disponible. Por favor modifica tu carro para continuar.`
           )
         } else {
           setSubmitError(
-            `El producto "${stockIssueItem.product.name}" supera el stock disponible (${stockIssueItem.quantity} solicitados, ${stock} disponibles). Por favor ajusta la cantidad en el carro.`
+            `El producto "${stockIssueItem.product.name}" supera el stock disponible (${stockIssueItem.quantity} solicitados, ${disclosedStock} disponibles). Por favor ajusta la cantidad en el carro.`
           )
         }
         return
@@ -315,21 +322,27 @@ export default function CheckoutModal({
   const handleCompleteOrder = async () => {
     setSubmitError('')
 
-    // Pre-flight stock re-check
+    // Pre-flight stock re-check — same policy as the Despacho gate: an absent
+    // `stockCount` is "plenty — the server verifies"; only a disclosed count
+    // can deplete or cap a line here.
     const stockIssueItem = cartItems.find((item) => {
-      const stock = typeof item.product.stockCount === 'number' ? item.product.stockCount : 0
-      return !item.product.inStock || stock <= 0 || item.quantity > stock
+      if (!item.product.inStock) return true
+      if (typeof item.product.stockCount !== 'number') return false
+      return item.product.stockCount <= 0 || item.quantity > item.product.stockCount
     })
 
     if (stockIssueItem) {
-      const stock = typeof stockIssueItem.product.stockCount === 'number' ? stockIssueItem.product.stockCount : 0
-      if (!stockIssueItem.product.inStock || stock <= 0) {
+      const disclosedStock =
+        typeof stockIssueItem.product.stockCount === 'number' && stockIssueItem.product.stockCount > 0
+          ? stockIssueItem.product.stockCount
+          : null
+      if (!stockIssueItem.product.inStock || disclosedStock === null) {
         setSubmitError(
           `El producto "${stockIssueItem.product.name}" no cuenta con stock disponible. Por favor modifica tu carro para continuar.`
         )
       } else {
         setSubmitError(
-          `El producto "${stockIssueItem.product.name}" supera el stock disponible (${stockIssueItem.quantity} solicitados, ${stock} disponibles). Por favor ajusta la cantidad en el carro.`
+          `El producto "${stockIssueItem.product.name}" supera el stock disponible (${stockIssueItem.quantity} solicitados, ${disclosedStock} disponibles). Por favor ajusta la cantidad en el carro.`
         )
       }
       return

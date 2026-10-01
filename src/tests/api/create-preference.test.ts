@@ -810,6 +810,77 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       )
     })
 
+    it('keeps the exact stock figures in the refusal body only when the disclosed count is within the public threshold', async () => {
+      // A refusal against a well-stocked product must not hand out the exact
+      // inventory: the generic message carries no numbers and the body omits
+      // availableStock — the same disclosure bound the public catalog uses.
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': { name: 'Turbina', price: 189990, stockCount: 12, inStock: true } },
+        {
+          'PRONTO-112239': {
+            orderId: 'PRONTO-112239',
+            items: [{ productId: 'odon-101', quantity: 20 }]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(
+        {
+          method: 'POST',
+          headers: { host: 'localhost:5173' },
+          body: { orderId: 'PRONTO-112239' }
+        } as unknown as VercelRequest,
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      const body = res.json as ReturnType<typeof vi.fn>
+      const payload = body.mock.calls[0][0] as Record<string, unknown>
+      expect(String(payload.error)).toContain('Stock insuficiente')
+      expect(String(payload.error)).not.toContain('disponible:')
+      expect('availableStock' in payload).toBe(false)
+      expect(fetchSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('should return 400 Bad Request when requested item quantity exceeds available stock', async () => {
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': { name: 'Turbina Odontológica LED MasterTorque', price: 189990, stockCount: 3, inStock: true } },
+        { 'PRONTO-112233': { orderId: 'PRONTO-112233', items: [{ productId: 'odon-101', quantity: 5 }] } }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'localhost:5173' },
+        body: {
+          orderId: 'PRONTO-112233',
+          items: [
+            { product: { id: 'odon-101', name: 'Turbina Odontológica LED MasterTorque', price: 189990 }, quantity: 5 }
+          ],
+          customer: { fullName: 'Dr. Test' }
+        }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Stock insuficiente para el producto'),
+          productId: 'odon-101',
+          availableStock: 3,
+          requestedQuantity: 5
+        })
+      )
+    })
+
     it('refuses duplicate lines of the same product whose consolidated quantity oversells (400)', async () => {
       // Each line alone (5 + 5) passes the per-line check against a stock of 8,
       // but the order asks for 10 in total — the consolidated check refuses.
@@ -828,7 +899,7 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
       process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
       const fetchSpy = vi.spyOn(global, 'fetch')
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
       const res = createMockRes()
 
       await handler(
@@ -841,16 +912,18 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       )
 
       expect(res.status).toHaveBeenCalledWith(400)
+      // Stock 8 sits above the public disclosure bound, so the refusal is
+      // generic — the exact figures would let anyone probe inventory.
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('Stock insuficiente'),
-          productId: 'odon-101',
-          availableStock: 8,
-          requestedQuantity: 10
+          productId: 'odon-101'
         })
       )
+      const body = res.json as ReturnType<typeof vi.fn>
+      const payload = body.mock.calls[0][0] as Record<string, unknown>
+      expect('availableStock' in payload).toBe(false)
       expect(fetchSpy).not.toHaveBeenCalled()
-      consoleSpy.mockRestore()
     })
 
     it('builds ONE preference line with the consolidated quantity for duplicate lines within stock', async () => {
@@ -948,14 +1021,17 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       await handler(req, res)
 
       expect(res.status).toHaveBeenCalledWith(400)
+      // A zero stock sits outside the 1–3 public disclosure bound, so the
+      // refusal stays generic — no exact figures in the body.
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('Stock insuficiente para el producto'),
-          productId: 'odon-501',
-          availableStock: 0,
-          requestedQuantity: 1
+          productId: 'odon-501'
         })
       )
+      const body = res.json as ReturnType<typeof vi.fn>
+      const payload = body.mock.calls[0][0] as Record<string, unknown>
+      expect('availableStock' in payload).toBe(false)
     })
 
     it('should return 400 Bad Request when requested item does not exist in Firestore', async () => {
@@ -979,12 +1055,11 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       await handler(req, res)
 
       expect(res.status).toHaveBeenCalledWith(400)
+      // No stock figures on a missing product — any number would be fabricated.
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('no fue encontrado en el catálogo de inventario'),
-          productId: 'odon-ghost',
-          availableStock: 0,
-          requestedQuantity: 1
+          productId: 'odon-ghost'
         })
       )
     })
