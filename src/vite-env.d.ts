@@ -15,6 +15,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string
   readonly VITE_WHATSAPP_NUMBER?: string
   readonly VITE_MERCADOPAGO_PUBLIC_KEY?: string
+  readonly VITE_FIREBASE_RECAPTCHA_SITE_KEY?: string
+  readonly VITE_FIREBASE_APPCHECK_DEBUG_TOKEN?: string
 }
 
 interface ImportMeta {

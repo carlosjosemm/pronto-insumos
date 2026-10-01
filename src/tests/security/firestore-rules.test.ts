@@ -62,13 +62,15 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     expect(content).toContain('data.items is list')
     expect(content).toContain('data.items.size() > 0')
 
-    // Per-line shape guards (productId / quantity / price) on the first 10 lines
+    // Per-line shape guards (productId / quantity / price) on ALL 25 lines —
+    // rules cannot loop over a list, so every index is guarded explicitly.
     expect(content).toContain('function isValidOrderItem(item)')
     expect(content).toContain('item.productId is string && item.productId.size() > 0')
     expect(content).toContain('item.quantity is int && item.quantity >= 1')
     expect(content).toContain('item.price is number && item.price >= 0')
-    expect(content).toContain('isValidOrderItem(data.items[0])')
-    expect(content).toContain('isValidOrderItem(data.items[9])')
+    for (let index = 0; index < 25; index += 1) {
+      expect(content, `line guard for items[${index}] is missing`).toContain(`isValidOrderItem(data.items[${index}])`)
+    }
     expect(content).toContain('data.items.size() <= 25')
 
     // Ensure client cannot inject payment confirmation attributes upon creation
@@ -161,6 +163,32 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     expect(content).toContain('b.taxBreakdown.total == orderTotal')
     expect(content).toContain('b.rut == customerRut')
     expect(content).toContain('isValidBilling(data.billing, data.totalAmount, data.customer.rut)')
+  })
+
+  it('pins the delivery zone, Boleta-only document type, canonical RUT and commit-time createdAt', () => {
+    const content = fs.readFileSync(rulesPath, 'utf8')
+
+    // Delivery zones: the two communes checkout's `Comuna de Despacho` select
+    // offers (mirrored from DELIVERY_ZONES in src/config/delivery.ts).
+    expect(content).toContain("c.city in ['Melipilla', 'San Antonio']")
+
+    // Boleta-only as built: the Factura checkout path is disabled
+    // (FACTURA_ENABLED = false); both the customer and the billing document
+    // type are pinned, and the old two-value allowlist must not return.
+    expect(content).toContain("c.documentType == 'boleta'")
+    expect(content).toContain("b.documentType == 'boleta'")
+    expect(content).not.toContain("documentType in ['boleta', 'factura']")
+
+    // Canonical RUT storage: `12345678-5`. Rules cannot express Modulo 11
+    // (no loops, no string arithmetic) — this is the shape pin; checkout's
+    // validateRut() stays the check-digit authority.
+    expect(content).toContain("c.rut.matches('^[0-9]{7,8}-[0-9K]$')")
+
+    // createdAt is serverTimestamp()-sourced and bound to the request's own
+    // commit time; a caller-chosen literal timestamp falls outside the window.
+    expect(content).toContain('data.createdAt is timestamp')
+    expect(content).toContain("data.createdAt > request.time - duration.value(15, 'm')")
+    expect(content).toContain("data.createdAt < request.time + duration.value(15, 'm')")
   })
 
   it('should enforce read-only for admins and write-deny on audit log collections', () => {

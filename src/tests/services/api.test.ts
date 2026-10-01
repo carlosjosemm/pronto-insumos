@@ -332,7 +332,11 @@ describe('submitOrder', () => {
     // 2 × 189990 = 379980 → neto round(379980 / 1.19) = 319311, iva = 60669.
     // The caller's forged breakdown, RUT and EMITIDO state are all discarded.
     expect(billing.taxBreakdown).toEqual({ neto: 319311, iva: 60669, total: 379980 })
-    expect(billing.rut).toBe('12.345.678-5')
+    // The purchaser's RUT is stored in the canonical cleaned shape the
+    // firestore.rules create contract pins (`12345678-5`), whatever format
+    // the customer typed.
+    expect(billing.rut).toBe('12345678-5')
+    expect((payload.customer as Record<string, unknown>).rut).toBe('12345678-5')
     expect(billing.status).toBe('PENDIENTE_EMISION_SII')
     // Fiscal identity fields the caller legitimately supplies are preserved.
     expect(billing.direccionFiscal).toBe('Otra Calle 1')

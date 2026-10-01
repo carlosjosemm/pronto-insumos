@@ -18,6 +18,7 @@ import {
   SubmitOrderResult
 } from '../types'
 import { calculateTaxBreakdown } from '../utils/tax'
+import { cleanRut } from '../utils/rut'
 
 export interface FetchProductsOptions {
   category?: string
@@ -240,6 +241,18 @@ export async function validatePromo(code: string): Promise<{ success: boolean; p
 export async function submitOrder(orderData: SubmitOrderOptions): Promise<SubmitOrderResult> {
   const orderId = (orderData.orderId || generateOrderId()).trim().toUpperCase()
 
+  // Canonical RUT storage: `12345678-5` (digits + hyphen + check digit) — the
+  // same shape `firestore.rules` pins with `matches('^[0-9]{7,8}-[0-9K]$')`.
+  // Checkout already Modulo-11-validates the input, so this only strips the
+  // free-format punctuation a customer may type; an uncleanable value passes
+  // through unchanged and the rules reject the write (fail-closed).
+  const normalizeStoredRut = (rut: string): string => {
+    const cleaned = cleanRut(rut)
+    if (cleaned.length < 8 || cleaned.length > 9) return rut
+    return `${cleaned.slice(0, -1)}-${cleaned.slice(-1)}`
+  }
+  const customer: CustomerInfo = { ...orderData.customer, rut: normalizeStoredRut(orderData.customer.rut) }
+
   const statusMap: Record<PaymentMethod, OrderStatus> = {
     mercadopago: 'PENDIENTE_PAGO_MERCADOPAGO',
     transferencia: 'PENDIENTE_TRANSFERENCIA',
@@ -261,13 +274,13 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
   // what admin portals and manual issuance would read later.
   const billing: BillingInfo = {
     ...(orderData.billing || {
-      documentType: orderData.customer.documentType,
-      razonSocial: orderData.customer.razonSocial,
-      giroComercial: orderData.customer.giroComercial,
-      direccionFiscal: orderData.customer.address,
-      comunaFiscal: orderData.customer.city
+      documentType: customer.documentType,
+      razonSocial: customer.razonSocial,
+      giroComercial: customer.giroComercial,
+      direccionFiscal: customer.address,
+      comunaFiscal: customer.city
     }),
-    rut: orderData.customer.rut,
+    rut: customer.rut,
     taxBreakdown: calculateTaxBreakdown(totalAmount),
     status: 'PENDIENTE_EMISION_SII'
   }
@@ -278,7 +291,7 @@ export async function submitOrder(orderData: SubmitOrderOptions): Promise<Submit
     paymentMethod: orderData.paymentMethod || 'transferencia',
     status: statusMap[orderData.paymentMethod] || 'PENDIENTE_PAGO',
     totalAmount,
-    customer: orderData.customer,
+    customer,
     billing,
     sanitaryVerification: orderData.sanitaryVerification || orderData.customer.sanitaryVerification,
     items: orderData.items.map((item) => ({

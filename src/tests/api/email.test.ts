@@ -348,6 +348,9 @@ describe('Email Templates (api/_lib/emailTemplates.ts)', () => {
       billing: { documentType: 'boleta', taxBreakdown: { neto: 0, iva: 0, total: 0 } }
     })
 
+    // The stored canonical cleaned shape renders in Chilean commercial notation.
+    expect(odd.customer.rut).toBe('12.345.678-5')
+
     const tpl = buildPaymentConfirmedEmail(odd)
     expect(tpl.html).toContain('$84.026')
     expect(tpl.html).toContain('$15.965')
@@ -373,7 +376,9 @@ describe('Email Templates (api/_lib/emailTemplates.ts)', () => {
     expect(data.totalAmount).toBe(59990)
     expect(data.items[0].quantity).toBe(2)
     expect(data.items[0].price).toBe(29995)
-    expect(data.customer.rut).toBe('11111111-1')
+    // Display formatting happens at the sanitizer boundary, whatever the
+    // stored shape (here the already-cleaned form is re-rendered dotted).
+    expect(data.customer.rut).toBe('11.111.111-1')
   })
 
   it('should handle missing items and customer fields in toOrderEmailData', () => {

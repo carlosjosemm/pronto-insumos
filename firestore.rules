@@ -69,9 +69,22 @@ service cloud.firestore {
         && isBoundedString(c.email, 160)
         && isBoundedString(c.phone, 32)
         && isBoundedString(c.rut, 16)
-        && c.documentType in ['boleta', 'factura']
+        // Canonical RUT storage: `12345678-5` (7-8 digits, hyphen, check
+        // digit 0-9 or K). Rules cannot express Modulo 11 (no loops, no
+        // string arithmetic), so this is a shape pin; the checkout's
+        // validateRut() gate remains the check-digit authority.
+        && c.rut.matches('^[0-9]{7,8}-[0-9K]$')
+        // Boleta-only as built: the Factura checkout path is disabled
+        // (`FACTURA_ENABLED = false` in CheckoutModal.tsx — Factura requests
+        // route through the WhatsApp quotation flow). Re-enabling Factura
+        // means flipping that flag AND this pin together.
+        && c.documentType == 'boleta'
         && isBoundedString(c.address, 200)
-        && isBoundedString(c.city, 80)
+        // Delivery zones: Melipilla (same-day) and San Antonio (scheduled
+        // route) are the only two communes checkout's `Comuna de Despacho`
+        // select offers — mirrored here from DELIVERY_ZONES in
+        // src/config/delivery.ts (rules cannot import config).
+        && c.city in ['Melipilla', 'San Antonio']
         && isBoundedString(c.zip, 16)
         // Documented CustomerInfo field; no current writer sets it, but leaving it
         // out of the allowlist would make any future caller's payload fail wholesale.
@@ -91,7 +104,7 @@ service cloud.firestore {
           'documentType', 'rut', 'razonSocial', 'giroComercial',
           'direccionFiscal', 'comunaFiscal', 'taxBreakdown', 'status'
         ])
-        && b.documentType in ['boleta', 'factura']
+        && b.documentType == 'boleta'
         && isBoundedString(b.rut, 16)
         && b.rut == customerRut
         && isBoundedString(b.direccionFiscal, 200)
@@ -118,7 +131,15 @@ service cloud.firestore {
         // binding the field to the path kills the decoy-document shadowing vector.
         && data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 32
         && data.orderId == orderId
-        && 'createdAt' in data
+        // serverTimestamp() resolves at commit time on the server and rules
+        // evaluate against that same request.time — including for a write the
+        // browser queued while offline (both clock in at sync/commit time) —
+        // so the persisted marker always lands inside this window. Only a
+        // caller-chosen literal timestamp (arbitrary past/future value) falls
+        // outside it.
+        && data.createdAt is timestamp
+        && data.createdAt > request.time - duration.value(15, 'm')
+        && data.createdAt < request.time + duration.value(15, 'm')
         && data.totalAmount is int && data.totalAmount > 0
         && data.paymentMethod in ['mercadopago', 'transferencia', 'whatsapp']
         && data.status in [
@@ -143,8 +164,12 @@ service cloud.firestore {
         && data.items is list
         && data.items.size() > 0
         && data.items.size() <= 25
-        // Shape-check the first 10 lines (index-guarded; lines beyond 10 are
-        // verified server-side by the webhook's catalog recomputation).
+        // Shape-check ALL 25 lines (index-guarded — rules cannot loop over a
+        // list). The documented evaluation budget is 1,000 expressions per
+        // request (function calls are limited by depth, not count); a full
+        // 25-line create evaluates well under 400, so no line is left to the
+        // webhook's catalog recomputation. Prices remain server-authoritative
+        // in create-preference and the webhook — these are shape guards only.
         && (data.items.size() < 1 || isValidOrderItem(data.items[0]))
         && (data.items.size() < 2 || isValidOrderItem(data.items[1]))
         && (data.items.size() < 3 || isValidOrderItem(data.items[2]))
@@ -155,6 +180,21 @@ service cloud.firestore {
         && (data.items.size() < 8 || isValidOrderItem(data.items[7]))
         && (data.items.size() < 9 || isValidOrderItem(data.items[8]))
         && (data.items.size() < 10 || isValidOrderItem(data.items[9]))
+        && (data.items.size() < 11 || isValidOrderItem(data.items[10]))
+        && (data.items.size() < 12 || isValidOrderItem(data.items[11]))
+        && (data.items.size() < 13 || isValidOrderItem(data.items[12]))
+        && (data.items.size() < 14 || isValidOrderItem(data.items[13]))
+        && (data.items.size() < 15 || isValidOrderItem(data.items[14]))
+        && (data.items.size() < 16 || isValidOrderItem(data.items[15]))
+        && (data.items.size() < 17 || isValidOrderItem(data.items[16]))
+        && (data.items.size() < 18 || isValidOrderItem(data.items[17]))
+        && (data.items.size() < 19 || isValidOrderItem(data.items[18]))
+        && (data.items.size() < 20 || isValidOrderItem(data.items[19]))
+        && (data.items.size() < 21 || isValidOrderItem(data.items[20]))
+        && (data.items.size() < 22 || isValidOrderItem(data.items[21]))
+        && (data.items.size() < 23 || isValidOrderItem(data.items[22]))
+        && (data.items.size() < 24 || isValidOrderItem(data.items[23]))
+        && (data.items.size() < 25 || isValidOrderItem(data.items[24]))
         && !('mercadopagoPaymentId' in data)
         && !('paidAt' in data);
     }
