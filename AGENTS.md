@@ -71,7 +71,8 @@ Every feature touching currency, identity, or taxation must strictly conform to 
    * **Minimum order:** `MIN_ORDER_OUTSIDE_MELIPILLA = 60000` applies to **San Antonio delivery eligibility only** — `Melipilla` has no minimum. It is the only minimum-sale amount in the system and is enforced when leaving the **Despacho** step of the 5-step checkout.
    * **Free shipping:** `FREE_SHIPPING_THRESHOLD = 150000`, applies to **both** zones.
    * ❌ **No pickup / retiro as a fulfilment option.** "Retiro Presencial", "retiro express" and similar wording are removed. `Bodega: Av. Ortúzar 750, Melipilla` remains as *corporate/warehouse* information only — it identifies the physical depot, it is not a collection point customers can select.
-   * ❌ **No `RM` delivery copy.** San Antonio is in the Valparaíso region, so coverage copy reads `Melipilla y San Antonio`, never `Melipilla y RM`.
+   * ❌ **No `RM` in delivery-coverage copy.** San Antonio is in the Valparaíso region, so any statement of *where PRONTO delivers* reads `Melipilla y San Antonio`, never `Melipilla y RM`.
+   * ✅ **Audience and branding copy may name the Región Metropolitana** (owner decision, 2026-09-30): the storefront targets clinics of the Región Metropolitana, and Melipilla belongs to it — for example the transactional e-mail header `Melipilla & Región Metropolitana`. The test is the meaning: *who the store serves* may say RM; *which places receive deliveries* never does.
    * `FREE_SHIPPING_THRESHOLD` and the zone list are imported from `src/config/delivery.ts` — never re-declare them locally (duplicated copies have diverged before and contradicted the cart).
 
 ---
