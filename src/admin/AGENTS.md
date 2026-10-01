@@ -74,6 +74,8 @@ To strictly follow the **Anti-Overshooting Principle** in [AGENTS.md](../../AGEN
 
 ### 3.1 Role-Based Access Control (RBAC) via Firebase Custom Claims
 Staff authentication is powered by Firebase Authentication with administrative custom claims:
+
+> **Auth instance ownership (Task 8.11):** the Auth instance is resolved through `getAdminAuth()` in `src/admin/services/adminFirebase.ts` — the only place allowed to import `firebase/auth`. The shared `src/services/firebase.ts` init deliberately does not call `getAuth` (a missing/invalid `VITE_FIREBASE_API_KEY` throws `auth/invalid-api-key` synchronously and would blank the storefront at import time). `getAdminAuth()` returns `null` on a broken config with a loud log; `AdminLogin` surfaces a Spanish configuration error on submit, `AdminApp` stays on the login screen without registering a listener, and `adminApi`'s `getAuthHeaders()` sends no bearer token (the server answers `401`). Only `src/admin/**` may import the accessor — a storefront import would drag `firebase/auth` back into the storefront bundle (it is also deliberately absent from `vite.config.ts`'s `vendor-firebase` manual chunk).
 ```json
 {
   "admin": true

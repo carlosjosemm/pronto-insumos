@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import type { Transaction, Firestore, DocumentReference } from "firebase-admin/firestore";
 import { getAdminFirestore } from "../_lib/firebaseAdmin.js";
 import { verifyMercadoPagoSignature } from "../_lib/mercadopagoSignature.js";
 import { getCollectionName } from "../_lib/firestoreEnv.js";
@@ -168,8 +169,8 @@ async function respondPartialRefundIncident({
   paymentData,
   partialRefundAmount,
 }: {
-  adminDb: FirebaseFirestore.Firestore;
-  orderRef: FirebaseFirestore.DocumentReference;
+  adminDb: Firestore;
+  orderRef: DocumentReference;
   cleanOrderId: string;
   paymentId: string;
   paymentData: Record<string, unknown>;
@@ -177,7 +178,7 @@ async function respondPartialRefundIncident({
 }): Promise<{ duplicate: boolean }> {
   let partialRefundDuplicate = false;
 
-  await adminDb.runTransaction(async (transaction) => {
+  await adminDb.runTransaction(async (transaction: Transaction) => {
     // The callback may be re-run by Firestore on contention: reset the
     // closure state so a stale flag cannot leak into the result.
     partialRefundDuplicate = false;
@@ -432,7 +433,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           let reversalEvent: string | null = null;
           let reversalStatus: string | null = null;
 
-          await adminDb.runTransaction(async (transaction) => {
+          await adminDb.runTransaction(async (transaction: Transaction) => {
             // The callback may be re-run by Firestore on contention: reset the
             // closure state so a stale flag cannot leak into the result.
             reversalEvent = null;
@@ -601,7 +602,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let flaggedStatus: string | null = null;
         // Oversold lines recorded on approval.
         const stockShortfalls: StockShortfall[] = [];
-        await adminDb.runTransaction(async (transaction) => {
+        await adminDb.runTransaction(async (transaction: Transaction) => {
           // The callback may be re-run by Firestore on contention: reset the
           // closure state so a stale flag from a rolled-back attempt can never
           // leak into the committed result.

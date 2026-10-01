@@ -7,6 +7,7 @@
  */
 
 import { calculateTaxBreakdown } from '../../src/utils/tax.js'
+import { formatRut } from '../../src/utils/rut.js'
 
 export interface EmailTemplate {
   subject: string
@@ -55,7 +56,11 @@ export function toOrderEmailData(orderId: string, orderData: any): OrderEmailDat
     customer: {
       fullName: String(orderData?.customer?.fullName || ''),
       email: String(orderData?.customer?.email || ''),
-      rut: String(orderData?.customer?.rut || ''),
+      // Display formatting at the render boundary: the order document stores
+      // the canonical cleaned shape (`12345678-5`), while customer-facing copy
+      // follows the Chilean commercial notation (`12.345.678-5`). Legacy
+      // documents that stored a dotted RUT render identically.
+      rut: formatRut(String(orderData?.customer?.rut || '')),
       address: String(orderData?.customer?.address || ''),
       city: String(orderData?.customer?.city || ''),
       documentType: orderData?.customer?.documentType,

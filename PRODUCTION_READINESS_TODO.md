@@ -41,9 +41,8 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 | [4.10](#task-4-10) **NEW** | Nothing ever moves an order to `EN_PREPARACION`; owner wants the step (a new `mark-preparing` action) | Handler + panel tests; step 3 reachable for customers |
 | [4.11](#task-4-11) **NEW** | Payment incidents (a paid payment with no matching order) exist only in Firestore and an e-mail — the console cannot see them | Console list + resolve action |
 | [5.4](#task-5-4) **NEW** | The existing customer and warehouse e-mails use one bare layout (Outlook-poor, no CTA button, weak transfer instructions) | Redesigned shared layout for the existing templates only, previewable offline; no new e-mail |
-| [8.16](#task-8-16) | App Check abuse friction for public order creation | Preview checkout works with enforcement |
 | [8.18](#task-8-18) **NEW** | Raw error messages and provider bodies returned to public callers; no `no-store` on PII responses | Generic public errors, `Cache-Control: no-store` |
-| [8.23](#task-8-23) **NEW** | A production build with missing `VITE_FIREBASE_*` ships a blank storefront without failing (it already happened once) | Build fails fast on a production target |
+| [8.23](#task-8-23) **NEW** | A production build with missing `VITE_FIREBASE_*` silently ships a degraded storefront (catalog-unavailable card since 8.11) without failing | Build fails fast on a production target |
 | [8.21](#task-8-21) **NEW** | Unpaid bank transfers are never closed | Daily 72 h auto-close (Vercel cron, no e-mail), admin reopen action |
 | [9.1](#task-9-1) | Promo codes `PRONTO10` / `DENT20` are public and unlimited | Owner confirms codes are intentional/margin-safe or disables them |
 
@@ -62,8 +61,7 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 | [4.9](#task-4-9) **NEW** | Dashboard KPIs undercount (sold-out products invisible, month and sales windows capped) and admin text inputs are unbounded | Aggregation queries, input caps |
 | [8.22](#task-8-22) **NEW** | Operator scripts run unpinned `pnpm dlx tsx` / `firebase-tools` / `vercel@latest` with production credentials; `setup:admin` takes the password on the command line | Pinned dev dependencies, no secret on argv |
 | [6.2](#task-6-2) / [6.3](#task-6-3) / [6.4](#task-6-4) | Datasheets · catalog by specialty · fate of `odon-*` fixtures | Owner prioritizes |
-| [8.1](#task-8-1) / [8.11](#task-8-11) | Bundle cost · resilient Firebase init | Measured reduction / invalid config cannot blank the storefront |
-| [8.2](#task-8-2) | Type-check serverless functions consistently | Lean server check |
+| [8.1](#task-8-1) | Bundle cost (admin/Firestore graph — the storefront firebase/auth cost is already gone) | Measured reduction |
 | [8.5](#task-8-5) | Monitoring / analytics | Owner picks minimal signals + alert path |
 | [8.9](#task-8-9) | `.env.example` `SITE_URL` default contradicts the accepted host | Document + correct |
 | [8.10](#task-8-10) | Widen lint/format coverage | Findings fixed before ignores removed |
@@ -96,6 +94,7 @@ Production and operating checks that static review cannot close. **No live state
 - **8.4 preview gate (built):** deploy a preview, run `pnpm run smoke:preview -- --base=<preview-url>`, then complete the manual credential-bearing half (browser render, TEST checkout + payment, transfer voucher, admin login + read, approve-transfer / stock adjustment) with TEST credentials and non-customer data only.
 - **8.12 CSP enforcement (built in Report-Only):** on a preview, confirm zero report-only violations while walking catalog load, fonts, admin login, voucher upload, product images and the Checkout Pro redirect; then rename the global header key to `Content-Security-Policy`. Add any new origin first (2.14 adds none: `/api/catalog` is same-origin).
 - **8.13 stale-order sweep (built, `dryRun` defaults to true):** run it as a dry run from `/admin#settings`, read the candidates, then execute; re-run if it reports `truncated`.
+- **8.16 App Check (built):** register App Check for the web app in the Firebase Console (reCAPTCHA v3 provider — no billing), set `VITE_FIREBASE_RECAPTCHA_SITE_KEY` per environment (Vercel), register the local-dev debug token if needed, deploy the hardened rules, then monitor → enforce and verify preview order creation with enforcement before enforcing in production.
 - **8.6 production deployment:** a human operator runs `pnpm dlx vercel@latest deploy --prod` and verifies; the agent must not.
 - **2.9 production storage:** verify Blaze/bucket, run `pnpm run storage:cors -- --apply` and `pnpm run deploy:storage-rules`; set `FIREBASE_STORAGE_BUCKET` if the bucket is not `<project>.firebasestorage.app`.
 - **8.8 TTL record:** earlier notes recorded `abuse_counters.expiresAt` TTL as ACTIVE (2026-09-29); not re-verified. Dev twin: `gcloud firestore fields ttls update expiresAt --collection-group=dev_abuse_counters --enable-ttl --project=pronto-insumos`.
@@ -125,7 +124,7 @@ Separates source-level capability from independently verified production and own
   - **Evidence:** `firestore.rules:121` only requires `'createdAt' in data` — any type is accepted; `:119-120` bound `orderId` to length ≤ 32 and the doc id but not to the `PRONTO-XXXXXXXX` format; `:74` accepts any `customer.city` string (≤ 80); `:26-27` allow unbounded `quantity` and fractional `price`; `:148-157` shape-check only the first 10 of up to 25 lines; `email` is length-checked only.
   - **Risk:** the admin queue reads `orderBy('createdAt','desc')` (`api/_lib/admin/orders.ts:56`) and continues with `startAfter(new Date(cursor))` built from `String(createdAt)` (`:78,:143`). Firestore sorts values by type (numbers < timestamps < strings), so an order written with `createdAt: "zzz"` sorts to the **top forever**, and a page ending on it yields a cursor that is not a date — the client re-requests the first page indefinitely. Numeric `createdAt` values sink below every real order. The dashboard's bounded recent-orders read orders by the same field. Static analysis; not reproduced against a live project.
   - **Second risk (found in the second pass) — voucher-folder collision:** `sanitizeOrderIdForPath` (`api/_lib/voucherStorage.ts:62-67`) _strips_ disallowed characters instead of rejecting them, and the public rule lets anyone choose a document id. An attacker can create an order whose id is a victim's id plus a stripped character (for example `PRONTO-ABCD1234.`); every voucher path derived from it then points into the **victim's** folder. `voucher-housekeeping` lists by that sanitized prefix and treats every object the scanned order does not reference as an orphan, so sweeping the attacker's order would delete the victim's voucher (older than the 60-minute grace window). Exploiting it needs the victim's order id (40 bits, not guessable, but it appears in e-mails and tracking links) and an admin running the sweep; the impact is evidence loss, not money.
-  - **Fix:** `data.createdAt == request.time` (the client already writes `serverTimestamp()`); `data.orderId.matches('^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$')` (legacy `PRONTO-NNNNNN` ids are never re-created); `customer.city in ['Melipilla','San Antonio']` **unless** `paymentMethod == 'whatsapp'` (out-of-zone buyers settle by WhatsApp quote — see 0.22); `quantity` int in `[1, 999]`, `price` int; basic e-mail shape. Lines beyond 10 stay a server-side concern (webhook/approve recompute) unless 8.16 chooses a server create path. Make the admin cursor robust regardless (a `createdAt` that is not a timestamp is skipped/flagged, not echoed).
+  - **Fix:** `data.createdAt == request.time` (the client already writes `serverTimestamp()`); `data.orderId.matches('^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$')` (legacy `PRONTO-NNNNNN` ids are never re-created); `customer.city in ['Melipilla','San Antonio']` **unless** `paymentMethod == 'whatsapp'` (out-of-zone buyers settle by WhatsApp quote — see 0.22); `quantity` int in `[1, 999]`, `price` int; basic e-mail shape. All 25 item lines are already shape-checked (8.16); the ±15m createdAt window and the unconditional zone pin also landed there, so the residual here is the strict id format, quantity/price/e-mail bounds, the 0.22 whatsapp zone exception and the admin cursor. Make the admin cursor robust regardless (a `createdAt` that is not a timestamp is skipped/flagged, not echoed).
   - **Defense in depth for the collision:** make `sanitizeOrderIdForPath` _reject_ (return empty) when any character would be stripped, and make `voucher-housekeeping` skip any order whose document id is not canonical.
   - **Accept:** rules/drift-guard tests cover string/number `createdAt`, malformed ids, foreign zone with each payment method, huge quantity; admin pagination test with a non-timestamp `createdAt`; a voucher test proving a non-canonical id never maps into another order's folder and is skipped by the sweep; rules redeployed and verified by the owner.
 
@@ -374,11 +373,7 @@ Separates source-level capability from independently verified production and own
 
 <a id="task-8-1"></a>
 
-- [ ] **8.1. Bundle Optimization** _(P3)_ — `vendor-firebase` is ~672 kB (the remaining >500 kB warning; `main` 137 kB, `vendor-react` 141 kB). The storefront imports `getAuth` (`src/services/firebase.ts:25`) but only the admin needs it, and the admin bundle also pulls the `odon-*` fixtures through that module; fixing 8.11 is the biggest win, then `React.lazy()` for `CheckoutModal` / `ProductQuickView`. After 2.14 the storefront no longer needs the Firestore **read** API at all (only `setDoc`).
-
-<a id="task-8-2"></a>
-
-- [ ] **8.2. Type-Check the Serverless Functions** _(P3)_ — `tsconfig.json` covers only `src/**/*`. `api/**` passes `pnpm exec tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --types node --skipLibCheck api/*.ts api/_lib/*.ts api/_lib/admin/*.ts api/webhooks/*.ts` — `--target es2022` and `--skipLibCheck` are **required** (else `TS2802`/`TS18028`). Add a `tsconfig.server.json` with those flags and run it in `pnpm run verify` (8.4). Vercel's own per-function check logs `TS7006` (implicit-`any` transaction callbacks) and `TS2503` (`FirebaseFirestore` namespace) on deploy — harmless today, a hard failure if Vercel tightens it; annotate the `runTransaction`/`map` callbacks when picked up.
+- [ ] **8.1. Bundle Optimization** _(P3)_ — `vendor-firebase` is ~548 kB (8.11 already removed the storefront's `firebase/auth` cost from it); `main` is 137 kB, `vendor-react` 141 kB. The remaining wins are `React.lazy()` for `CheckoutModal` / `ProductQuickView`, and the admin bundle still pulls the `odon-*` fixtures through the shared firebase module. After 2.14 the storefront no longer needs the Firestore **read** API at all (only `setDoc`).
 
 <a id="task-8-5"></a>
 
@@ -393,10 +388,6 @@ Separates source-level capability from independently verified production and own
 
 - [ ] **8.10. Widen Lint/Format Scope to `api/` and `src/admin/`** _(P3)_ — the pointer-comment rule already lints both trees; what remains is the full TypeScript rule set (measured earlier: ~65 problems, e.g. 12× `no-explicit-any` in `adminApi.ts`, handler `any`s, unused imports in `src/admin/types.ts`). Fix in a dedicated pass, then delete the carve-out.
 
-<a id="task-8-11"></a>
-
-- [ ] **8.11. Resilient Firebase Init** _(P3)_ — `src/services/firebase.ts:25` calls `getAuth(app)` unguarded at module scope: a missing/invalid `VITE_FIREBASE_API_KEY` throws `auth/invalid-api-key` at import and blanks the page. Make `auth` nullable or admin-only (touches `adminApi.ts`, `AdminApp.tsx`, `AdminLogin.tsx`); also the 8.1 bundle win.
-
 <a id="task-8-14"></a>
 
 - [ ] **8.14. Dependency Hygiene** _(P3 — widened by the 2026-09-30 audit)_
@@ -405,13 +396,6 @@ Separates source-level capability from independently verified production and own
 <a id="task-8-15"></a>
 
 - [ ] **8.15. Operator Smoke-Script UX** _(P3)_ — production seed/import safety is done (8.17). Remaining: `scripts/send-test-comms.ts --only=whatsapp` throws because `TEST_ORDER.items` is `{ name, quantity, price }` cast to `CartItem[]` while `generateWhatsAppQuoteUrl` reads `i.product.name`; shape the fixture as `{ product: { name, price }, quantity }` and drop the cast. This script is also the documented importability smoke for `whatsappLink()` under plain Node/tsx and the base for the 5.4 preview tooling.
-
-<a id="task-8-16"></a>
-
-- [ ] **8.16. Firebase App Check for the Public `orders` Create Path** _(P2 — abuse friction, not authentication or price validation)_
-  - **Residual:** public order creation can be abused for billed writes and e-mail (0.21). App Check adds friction; it does not authenticate customers or validate catalog prices. Rule-shape gaps are tracked in 0.19.
-  - **Fix / owner steps:** initialize App Check before Firestore and enforce per environment (reCAPTCHA Enterprise/v3 site key; debug tokens for preview) without exposing values; if rules budget cannot cover all item lines, consider a lean server-side create path instead. If App Check needs a new script origin, add it to the 8.12 CSP before enforcing.
-  - **Accept:** initialization order tested; rules emulator tests (if practical); owner checklist confirms enforcement and a working preview checkout.
 
 <a id="task-8-18"></a>
 
@@ -448,7 +432,7 @@ Separates source-level capability from independently verified production and own
 <a id="task-8-23"></a>
 
 - [ ] **8.23. Fail the Production Build on a Missing Firebase Configuration** _(P2 · NEW; pairs with 8.11)_
-  - **Evidence:** `vite.config.ts` has no environment validation, and `src/services/firebase.ts` builds its config from `import.meta.env.VITE_FIREBASE_*` with `|| ''` fallbacks. The header of `scripts/sync-env-to-vercel.ts` records that the Vercel project once lost all its variables and "every production build shipped with an empty Firebase config (blank storefront) without the build ever failing".
+  - **Evidence:** `vite.config.ts` has no environment validation, and `src/services/firebase.ts` builds its config from `import.meta.env.VITE_FIREBASE_*` with `|| ''` fallbacks. The header of `scripts/sync-env-to-vercel.ts` records that the Vercel project once lost all its variables and "every production build shipped with an empty Firebase config (a blank storefront at the time; since 8.11 it degrades to the catalog-unavailable card) without the build ever failing".
   - **Fix:** a small check in `vite.config.ts` (or a `prebuild` script) that, when `VERCEL_ENV === 'production'`, fails the build if `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_PROJECT_ID` / `VITE_FIREBASE_APP_ID` are empty or still contain the `YOUR_` placeholder, naming the missing keys but never printing values; preview and local builds are unaffected. Add the same check to `scripts/smoke-preview.ts` expectations only if cheap.
   - **Accept:** a unit test of the validator (missing, placeholder, complete) and a documented failure message; `pnpm run verify` unchanged for local builds.
 
@@ -536,3 +520,6 @@ Outcomes only; detail lives in the relevant `AGENTS.md` and git history. Items m
 | 8.12 † | Edge security headers in `vercel.json`: `frame-ancestors 'none'` + `X-Frame-Options: DENY` **enforced** on `/admin`, `/admin.html` and `/admin/:path*`; `nosniff`, `Referrer-Policy`, `Permissions-Policy` and the full CSP in **Report-Only** on every non-`api/` path (promotion to enforcement is an owner step). |
 | 8.13 † | `close-stale-orders` admin action (on the existing dispatcher, still 6 function slots): scans abandoned `PENDIENTE_PAGO_MERCADOPAGO` / `PENDIENTE_PAGO` orders, consults the Mercado Pago ledger first (approved payment ⇒ parked in `PAGO_EN_REVISION`, never cancelled; unreadable ledger ⇒ untouched), transaction re-asserts the pending status, `dryRun` defaults to true, 7 s wall-clock budget, console card in `#settings`. Transfers are intentionally out of scope (see 8.21). |
 | 8.17 † | Catalog imports/seeds are non-destructive and identity-stable (name-bound ids, metadata-only updates, soft-retire `odon-*`, explicit `--confirm-production-*`, `--dry-run`). |
+| 8.16 † | App Check (reCAPTCHA v3) initializes between `initializeApp` and the Firestore instance in `src/services/firebase.ts`; the order-create rules pin the delivery zone, Boleta-only `documentType`, canonical RUT shape, a commit-time-bounded `createdAt` and all 25 item lines; `submitOrder` stores the canonical cleaned RUT. Console registration, enforcement and the preview verification are owner steps. |
+| 8.2 | `tsconfig.server.json` type-checks the full `api/` tree (including `api/admin/[action].ts`) inside `pnpm run verify` and CI; every `runTransaction` callback is annotated and the `FirebaseFirestore` namespace replaced by named imports, so Vercel's per-function TS7006/TS2503 deploy noise is fixed at the source. |
+| 8.11 | `getAuth` moved behind the admin-only `getAdminAuth()` accessor (`src/admin/services/adminFirebase.ts`): a broken Firebase config no longer blanks the storefront (catalog degrades per request; the admin console surfaces the configuration error), and `firebase/auth` left the storefront bundle (`vendor-firebase` 672 kB → 548 kB). |

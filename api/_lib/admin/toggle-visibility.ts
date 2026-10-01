@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import type { Transaction } from 'firebase-admin/firestore'
 import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
@@ -40,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Read-modify-write in ONE transaction: deriving `inStock` from a stock value
     // read outside the transaction would let a concurrent webhook deduction leave
     // `inStock` stale (visible product reported out of stock, or vice versa).
-    const result = await db.runTransaction(async (transaction) => {
+    const result = await db.runTransaction(async (transaction: Transaction) => {
       const doc = await transaction.get(productRef)
       if (!doc.exists) {
         return { notFound: true as const }

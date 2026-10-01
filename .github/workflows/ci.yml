@@ -60,5 +60,13 @@ jobs:
       - name: Type check
         run: pnpm exec tsc --noEmit
 
+      # The serverless layer is outside tsconfig.json's src/** scope, so it
+      # gets its own Node-context project — without this step, api/** would
+      # only be type-checked incidentally by Vercel's per-function build,
+      # which resolves the Admin SDK typings differently and logs TS7006/
+      # TS2503 noise the local gate does not see.
+      - name: Server type check
+        run: pnpm run typecheck:server
+
       - name: Production build
         run: pnpm build

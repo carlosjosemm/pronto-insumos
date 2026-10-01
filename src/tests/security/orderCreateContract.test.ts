@@ -29,6 +29,7 @@ vi.mock('firebase/firestore', () => ({
 
 import { submitOrder, type SubmitOrderOptions } from '../../services/api'
 import { PRODUCTS } from '../../data/products'
+import { DELIVERY_ZONES } from '../../config/delivery'
 
 const rulesSource = fs.readFileSync(path.resolve(__dirname, '../../../firestore.rules'), 'utf8')
 
@@ -146,6 +147,12 @@ describe('Order-create contract: submitOrder() payload vs firestore.rules allowl
   })
 
   it('accepts the factura payload with sanitary verification, using the submitOrder billing default', async () => {
+    // Shape-only regression: the payload keys must still fit every allowlist.
+    // The rules now REJECT this payload at the Firestore boundary — the
+    // create contract is Boleta-only — because the Factura checkout path is
+    // disabled via `FACTURA_ENABLED = false` in CheckoutModal.tsx and Factura
+    // requests route through the WhatsApp quotation flow. Re-enabling
+    // Factura means flipping that flag AND the rules pin together.
     const sanitaryVerification = {
       sisRegistryNumber: 'SIS-19284',
       credentialFileName: 'credencial.pdf',
@@ -245,6 +252,43 @@ describe('Order-create contract: submitOrder() payload vs firestore.rules allowl
     expect(tax.total).toBe(payload.totalAmount)
     expect(billing.rut).toBe((payload.customer as Record<string, unknown>).rut)
     expect(billing.status).toBe('PENDIENTE_EMISION_SII')
+  })
+
+  it('normalizes the stored RUT to the canonical shape the rules pin', async () => {
+    // Rules side: the create contract accepts only `12345678-5`-shaped RUTs.
+    expect(rulesSource).toContain("c.rut.matches('^[0-9]{7,8}-[0-9K]$')")
+
+    // Payload side: the real submitOrder() stores the purchaser's RUT cleaned,
+    // whatever free-format punctuation the customer typed.
+    const payload = await capturePayload({ items, total: 0, customer, paymentMethod: 'transferencia' })
+    expect((payload.customer as Record<string, unknown>).rut).toBe('12345678-5')
+    const billing = payload.billing as Record<string, unknown>
+    expect(billing.rut).toBe('12345678-5')
+  })
+
+  it('pins the delivery zone, Boleta-only document type and all item-line guards', async () => {
+    // Rules side: the enumerated create-contract pins.
+    expect(rulesSource).toContain("c.city in ['Melipilla', 'San Antonio']")
+    expect(rulesSource).toContain("c.documentType == 'boleta'")
+    expect(rulesSource).toContain("b.documentType == 'boleta'")
+    expect(rulesSource).toContain('data.createdAt is timestamp')
+    expect(rulesSource).toContain("data.createdAt > request.time - duration.value(15, 'm')")
+    expect(rulesSource).toContain("data.createdAt < request.time + duration.value(15, 'm')")
+    const lineGuards = rulesSource.match(/isValidOrderItem\(data\.items\[\d+\]\)/g) ?? []
+    expect(lineGuards, 'every one of the 25 possible item lines must be shape-checked').toHaveLength(25)
+
+    // Payload side: the real submitOrder() output satisfies the pins — the
+    // checkout fixture writes a comuna from the canonical zone list only.
+    const payload = await capturePayload({ items, total: 0, customer, paymentMethod: 'mercadopago' })
+    const storedCustomer = payload.customer as Record<string, unknown>
+    expect(DELIVERY_ZONES).toContain(storedCustomer.city)
+    expect(storedCustomer.documentType).toBe('boleta')
+    expect((payload.billing as Record<string, unknown>).documentType).toBe('boleta')
+
+    // The Factura checkout path stays disabled — the Boleta-only rules pin
+    // and the component flag must never drift apart silently.
+    const checkoutSource = fs.readFileSync(path.resolve(__dirname, '../../components/CheckoutModal.tsx'), 'utf8')
+    expect(checkoutSource).toContain('FACTURA_ENABLED = false')
   })
 
   it('keeps the checkout input caps in sync with the rules length caps', () => {

@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import type { Transaction } from 'firebase-admin/firestore'
 import { isAdminPreflight, setAdminResponseHeaders } from './adminHttp.js'
 import { getAdminFirestore } from '../firebaseAdmin.js'
 import { verifyAdminToken } from '../adminAuth.js'
@@ -79,7 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // The dispatch and its reference are written in ONE transaction, so a
     // dispatch can never be recorded without its route code and the daily counter can
     // never be bumped by a dispatch that failed. All reads precede all writes.
-    const dispatch = await db.runTransaction(async (transaction) => {
+    const dispatch = await db.runTransaction(async (transaction: Transaction) => {
       const orderDoc = await transaction.get(orderRef)
       if (!orderDoc.exists) {
         throw new Error(`Pedido "${orderId}" no encontrado en Firestore`)
