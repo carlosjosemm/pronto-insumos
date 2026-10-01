@@ -142,6 +142,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       ok: true,
       json: async () => ({
         status: 'approved',
+        currency_id: 'CLP',
         external_reference: 'PRONTO-123456',
         id: 998877,
         transaction_amount: 189990
@@ -257,6 +258,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       ok: true,
       json: async () => ({
         status: 'approved',
+        currency_id: 'CLP',
         external_reference: 'PRONTO-123456',
         id: 998877
       })
@@ -312,6 +314,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       ok: true,
       json: async () => ({
         status: 'approved',
+        currency_id: 'CLP',
         external_reference: 'PRONTO-123456',
         id: 998877
       })
@@ -363,6 +366,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       ok: true,
       json: async () => ({
         status: 'approved',
+        currency_id: 'CLP',
         external_reference: 'PRONTO-123456',
         id: 998877
       })
@@ -451,6 +455,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       ok: true,
       json: async () => ({
         status: 'approved',
+        currency_id: 'CLP',
         external_reference: 'PRONTO-123456',
         id: 554433
       })
@@ -497,6 +502,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       ok: true,
       json: async () => ({
         status: 'approved',
+        currency_id: 'CLP',
         external_reference: 'PRONTO-NONEXISTENT',
         id: 778899,
         transaction_amount: 189990
@@ -825,6 +831,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       ok: true,
       json: async () => ({
         status: 'approved',
+        currency_id: 'CLP',
         external_reference: 'PRONTO-123456',
         id: 998877,
         transaction_amount: 189990
@@ -1075,6 +1082,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
           ok: true,
           json: async () => ({
             status: 'approved',
+            currency_id: 'CLP',
             external_reference: 'PRONTO-123456',
             id: 998877,
             transaction_amount: 189990
@@ -1178,6 +1186,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
           ok: true,
           json: async () => ({
             status: 'approved',
+            currency_id: 'CLP',
             external_reference: 'PRONTO-123456',
             id: 111111,
             transaction_amount: 189990
@@ -1335,6 +1344,8 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       transactionAmount: number
       promoCode?: string
       items?: Array<Record<string, unknown>>
+      /** The server-only payable total frozen onto the order at preference time. */
+      pricedTotal?: number
     }
 
     /** Firestore Admin double whose order/product docs carry the configured amounts. */
@@ -1346,6 +1357,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
         orderId: 'PRONTO-123456',
         status: 'PENDIENTE_PAGO_MERCADOPAGO',
         totalAmount: cfg.totalAmount,
+        ...(cfg.pricedTotal !== undefined ? { pricedTotal: cfg.pricedTotal } : {}),
         ...(cfg.promoCode ? { promoCode: cfg.promoCode } : {}),
         items: cfg.items ?? [
           { productId: 'prod-turbine-1', name: 'Turbina', quantity: cfg.quantity, price: cfg.catalogPrice }
@@ -1384,7 +1396,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       return { mockAdminDb, mockTransactionUpdate, orderRef, productRef }
     }
 
-    function mockApprovedPaymentFetch(transactionAmount: number) {
+    function mockApprovedPaymentFetch(transactionAmount: number, currencyId = 'CLP') {
       return vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
         if (String(input).includes('api.resend.com')) {
           return { ok: true, status: 200, json: async () => ({ id: 'email_xyz' }), text: async () => '' } as Response
@@ -1393,6 +1405,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
           ok: true,
           json: async () => ({
             status: 'approved',
+            currency_id: currencyId,
             external_reference: 'PRONTO-123456',
             id: 998877,
             transaction_amount: transactionAmount
@@ -1426,6 +1439,97 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
       expect(mockTransactionUpdate).toHaveBeenCalledWith(
         productRef,
         expect.objectContaining({ stockCount: 3, inStock: true })
+      )
+    })
+
+    it('settles against the frozen snapshot when the catalog moved after the preference', async () => {
+      mockApprovedPaymentFetch(189990)
+      // The order was quoted 189990 and frozen at preference time; the catalog has
+      // since been edited to 99999 (2 × 99999 = 199998). The shopper paid the quoted
+      // amount, so the order must settle — not park in review.
+      const { mockAdminDb, mockTransactionUpdate, orderRef, productRef } = mockAmountDb({
+        totalAmount: 189990,
+        pricedTotal: 189990,
+        catalogPrice: 99999,
+        quantity: 2,
+        transactionAmount: 189990
+      })
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.json).toHaveBeenCalledWith({ received: true, verifiedStatus: 'approved' })
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
+        orderRef,
+        expect.objectContaining({ status: 'PAGADO_MERCADOPAGO' })
+      )
+      // Exactly one deduction.
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(productRef, expect.objectContaining({ stockCount: 3 }))
+      // The divergence is a soft alert, not a failure.
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('frozen price snapshot'))
+      expect(mockTransactionUpdate).not.toHaveBeenCalledWith(
+        orderRef,
+        expect.objectContaining({ status: 'PAGO_EN_REVISION' })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('flags PAGO_EN_REVISION without stock deduction when the payment currency is not CLP', async () => {
+      mockApprovedPaymentFetch(189990, 'USD')
+      const { mockAdminDb, mockTransactionUpdate, orderRef, productRef } = mockAmountDb({
+        totalAmount: 189990,
+        pricedTotal: 189990,
+        catalogPrice: 94995,
+        quantity: 2,
+        transactionAmount: 189990
+      })
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
+        orderRef,
+        expect.objectContaining({ status: 'PAGO_EN_REVISION', mercadopagoPaymentId: '998877' })
+      )
+      expect(mockTransactionUpdate).not.toHaveBeenCalledWith(
+        productRef,
+        expect.objectContaining({ stockCount: expect.any(Number) })
+      )
+      consoleSpy.mockRestore()
+    })
+
+    it('falls back to the catalog recomputation when the order carries no snapshot', async () => {
+      mockApprovedPaymentFetch(189990)
+      // No `pricedTotal`: an order created before the amount was frozen, so the live
+      // catalog total is the authority.
+      const { mockAdminDb, mockTransactionUpdate, orderRef } = mockAmountDb({
+        totalAmount: 189990,
+        catalogPrice: 94995,
+        quantity: 2,
+        transactionAmount: 189990
+      })
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const req = { method: 'POST', body: { data: { id: '998877' } } } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(mockTransactionUpdate).toHaveBeenCalledWith(
+        orderRef,
+        expect.objectContaining({ status: 'PAGADO_MERCADOPAGO' })
       )
     })
 
@@ -1550,6 +1654,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
         ok: true,
         json: async () => ({
           status: 'approved',
+          currency_id: 'CLP',
           external_reference: 'PRONTO-123456',
           id: 998877,
           transaction_amount: 100
@@ -1664,6 +1769,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
         ok: true,
         json: async () => ({
           status: 'approved',
+          currency_id: 'CLP',
           external_reference: 'PRONTO-123456',
           id,
           transaction_amount: amount
@@ -2224,6 +2330,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
             ok: true,
             json: async () => ({
               status: 'approved',
+              currency_id: 'CLP',
               status_detail: 'partially_refunded',
               external_reference: 'PRONTO-123456',
               id,
@@ -2799,6 +2906,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
         ok: true,
         json: async () => ({
           status: 'approved',
+          currency_id: 'CLP',
           external_reference: 'PRONTO-123456',
           id: '998877'
         })
@@ -2834,6 +2942,7 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
         ok: true,
         json: async () => ({
           status: 'approved',
+          currency_id: 'CLP',
           external_reference: 'PRONTO-123456',
           id: '998877'
         })

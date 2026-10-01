@@ -83,9 +83,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const snap = await pageQuery.limit(maxCount).get()
     const orders: Record<string, unknown>[] = []
 
+    // A `createdAt` that is not a real timestamp (a legacy or crafted document) must
+    // never be echoed as a cursor: `startAfter` needs a value matching the orderBy
+    // field, and a client re-requesting with an unparseable cursor would loop on the
+    // first page forever. Such rows are flagged instead of echoed.
+    const toIsoCreatedAt = (raw: unknown): string | null => {
+      if (raw && typeof (raw as { toDate?: () => Date }).toDate === 'function') {
+        const date = (raw as { toDate: () => Date }).toDate()
+        return Number.isFinite(date.getTime()) ? date.toISOString() : null
+      }
+      if (typeof raw === 'string' || typeof raw === 'number') {
+        const parsed = new Date(raw).getTime()
+        return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null
+      }
+      return null
+    }
+
     snap.forEach(doc => {
       const data = doc.data()
-      const createdAt = data.createdAt ? (typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate().toISOString() : String(data.createdAt)) : ''
+      const createdAt = toIsoCreatedAt(data.createdAt) ?? ''
+      if (!createdAt) {
+        console.warn(
+          `[Admin API Orders] Order "${doc.id}" has a non-timestamp createdAt (${String(
+            data.createdAt
+          )}); flagging the row and refusing to paginate past it.`
+        )
+      }
       // The LIST must never carry `voucherUrl`: a legacy pre-2.9 document holds the whole
       // voucher as a Base64 `data:` URL (up to ~1 MiB each), so a handful of them exceeds
       // Vercel's 4.5 MB response cap and breaks the entire order list. Report existence
@@ -96,6 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...rest,
         orderId: data.orderId || doc.id,
         createdAt,
+        ...(createdAt ? {} : { createdAtInvalid: true }),
         hasVoucher: Boolean(voucherUrl || data.voucherStoragePath)
       })
     })
@@ -132,16 +156,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const totalSnap = await baseForCount.count().get()
     const total = Number(totalSnap.data().count) || 0
 
+    // A full page means there may be more: the client continues from the last
+    // PAGE document's `createdAt` — never from the search-filtered view, whose
+    // last match can sit before unfiltered orders and would skip them. When that
+    // last document carries no real timestamp the cursor is omitted rather than
+    // echoed, so the client stops instead of looping on the first page.
+    const lastCreatedAt = orders.length > 0 ? String(orders[orders.length - 1].createdAt || '') : ''
+    const canPaginate =
+      orders.length === maxCount && orders.length > 0 && lastCreatedAt !== '' && !isNaN(new Date(lastCreatedAt).getTime())
+
     return res.status(200).json({
       success: true,
       orders: filteredOrders,
       total,
-      // A full page means there may be more: the client continues from the last
-      // PAGE document's `createdAt` — never from the search-filtered view, whose
-      // last match can sit before unfiltered orders and would skip them.
-      ...(orders.length === maxCount && orders.length > 0
-        ? { nextCursor: String(orders[orders.length - 1].createdAt || '') }
-        : {})
+      ...(canPaginate ? { nextCursor: lastCreatedAt } : {})
     })
   } catch (err: any) {
     console.error('[Admin API Orders] Error:', err)

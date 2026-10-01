@@ -195,14 +195,14 @@ describe('Serverless Admin Voucher Housekeeping (/api/admin/voucher-housekeeping
 
   it('deletes only unreferenced objects older than the grace window', async () => {
     const bucket = createMockBucket([
-      oldObject('vouchers/orders/PRONTO-A/keep.pdf'),
-      oldObject('vouchers/orders/PRONTO-A/orphan.pdf'),
-      recentObject('vouchers/orders/PRONTO-A/fresh.pdf')
+      oldObject('vouchers/orders/PRONTO-AAAAAAAA/keep.pdf'),
+      oldObject('vouchers/orders/PRONTO-AAAAAAAA/orphan.pdf'),
+      recentObject('vouchers/orders/PRONTO-AAAAAAAA/fresh.pdf')
     ])
     const db = createDb([
       {
-        id: 'PRONTO-A',
-        data: { orderId: 'PRONTO-A', voucherStoragePath: 'vouchers/orders/PRONTO-A/keep.pdf' }
+        id: 'PRONTO-AAAAAAAA',
+        data: { orderId: 'PRONTO-AAAAAAAA', voucherStoragePath: 'vouchers/orders/PRONTO-AAAAAAAA/keep.pdf' }
       }
     ])
     setupAdmin(db, bucket)
@@ -219,14 +219,37 @@ describe('Serverless Admin Voucher Housekeeping (/api/admin/voucher-housekeeping
       keptReferenced: 1,
       skippedRecent: 1
     })
-    expect(jsonOutput.deletedSample).toEqual(['vouchers/orders/PRONTO-A/orphan.pdf'])
+    expect(jsonOutput.deletedSample).toEqual(['vouchers/orders/PRONTO-AAAAAAAA/orphan.pdf'])
     // Only the orphan was ever handed to the bucket for deletion.
-    expect(bucket.fileSpy.mock.calls.map((call) => call[0])).toEqual(['vouchers/orders/PRONTO-A/orphan.pdf'])
+    expect(bucket.fileSpy.mock.calls.map((call) => call[0])).toEqual(['vouchers/orders/PRONTO-AAAAAAAA/orphan.pdf'])
+  })
+
+  it('skips any order whose id is not canonical, so a crafted id never reaches another folder', async () => {
+    // `PRONTO-ABCD1234.` sanitizes to `PRONTO-ABCD1234` — the victim's folder — and
+    // `PRONTO-ABCD1234X` is path-safe but not an id the app ever generates. Neither
+    // may derive a folder prefix, so no listing (and no delete) may happen for them.
+    const bucket = createMockBucket([
+      oldObject('vouchers/orders/PRONTO-ABCD1234/orphan.pdf'),
+      oldObject('vouchers/orders/PRONTO-ABCD1234X/orphan.pdf')
+    ])
+    const db = createDb([
+      { id: 'PRONTO-ABCD1234.', data: { orderId: 'PRONTO-ABCD1234.' } },
+      { id: 'PRONTO-ABCD1234X', data: { orderId: 'PRONTO-ABCD1234X' } }
+    ])
+    setupAdmin(db, bucket)
+
+    await handler({ method: 'POST', body: {} } as VercelRequest, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.scannedOrders).toBe(2)
+    expect(jsonOutput.deletedCount).toBe(0)
+    expect(bucket.getFiles).not.toHaveBeenCalled()
+    expect(bucket.fileSpy).not.toHaveBeenCalled()
   })
 
   it('reports what would be deleted without touching Storage in a dry run', async () => {
-    const bucket = createMockBucket([oldObject('vouchers/orders/PRONTO-A/orphan.pdf')])
-    const db = createDb([{ id: 'PRONTO-A', data: { orderId: 'PRONTO-A' } }])
+    const bucket = createMockBucket([oldObject('vouchers/orders/PRONTO-AAAAAAAA/orphan.pdf')])
+    const db = createDb([{ id: 'PRONTO-AAAAAAAA', data: { orderId: 'PRONTO-AAAAAAAA' } }])
     setupAdmin(db, bucket)
 
     await handler({ method: 'POST', body: { dryRun: true } } as VercelRequest, mockRes as VercelResponse)
@@ -237,28 +260,28 @@ describe('Serverless Admin Voucher Housekeeping (/api/admin/voucher-housekeeping
 
   it('scopes the sweep to one order when orderId is provided', async () => {
     const bucket = createMockBucket([
-      oldObject('vouchers/orders/PRONTO-A/orphan-a.pdf'),
-      oldObject('vouchers/orders/PRONTO-B/orphan-b.pdf')
+      oldObject('vouchers/orders/PRONTO-AAAAAAAA/orphan-a.pdf'),
+      oldObject('vouchers/orders/PRONTO-BBBBBBBB/orphan-b.pdf')
     ])
     const db = createDb([
-      { id: 'PRONTO-A', data: { orderId: 'PRONTO-A' } },
-      { id: 'PRONTO-B', data: { orderId: 'PRONTO-B' } }
+      { id: 'PRONTO-AAAAAAAA', data: { orderId: 'PRONTO-AAAAAAAA' } },
+      { id: 'PRONTO-BBBBBBBB', data: { orderId: 'PRONTO-BBBBBBBB' } }
     ])
     setupAdmin(db, bucket)
 
-    await handler({ method: 'POST', body: { orderId: 'PRONTO-A' } } as VercelRequest, mockRes as VercelResponse)
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-AAAAAAAA' } } as VercelRequest, mockRes as VercelResponse)
 
     expect(jsonOutput).toMatchObject({ scannedOrders: 1, deletedCount: 1 })
-    expect(bucket.getFiles.mock.calls.map((call) => call[0].prefix)).toEqual(['vouchers/orders/PRONTO-A/'])
-    expect(jsonOutput.deletedSample).toEqual(['vouchers/orders/PRONTO-A/orphan-a.pdf'])
+    expect(bucket.getFiles.mock.calls.map((call) => call[0].prefix)).toEqual(['vouchers/orders/PRONTO-AAAAAAAA/'])
+    expect(jsonOutput.deletedSample).toEqual(['vouchers/orders/PRONTO-AAAAAAAA/orphan-a.pdf'])
   })
 
   it('resolves the order through the orderId query fallback', async () => {
-    const bucket = createMockBucket([oldObject('vouchers/orders/PRONTO-A/orphan.pdf')])
-    const db = createDb([], { id: 'PRONTO-DOC', data: { orderId: 'PRONTO-A' } })
+    const bucket = createMockBucket([oldObject('vouchers/orders/PRONTO-AAAAAAAA/orphan.pdf')])
+    const db = createDb([], { id: 'PRONTO-DDDDDDDD', data: { orderId: 'PRONTO-AAAAAAAA' } })
     setupAdmin(db, bucket)
 
-    await handler({ method: 'POST', body: { orderId: 'PRONTO-A' } } as VercelRequest, mockRes as VercelResponse)
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-AAAAAAAA' } } as VercelRequest, mockRes as VercelResponse)
 
     expect(statusOutput).toBe(200)
     expect(jsonOutput.deletedCount).toBe(1)
@@ -266,14 +289,14 @@ describe('Serverless Admin Voucher Housekeeping (/api/admin/voucher-housekeeping
 
   it('returns 404 when the requested order does not exist', async () => {
     setupAdmin(createDb([]), createMockBucket([]))
-    await handler({ method: 'POST', body: { orderId: 'PRONTO-GHOST' } } as VercelRequest, mockRes as VercelResponse)
+    await handler({ method: 'POST', body: { orderId: 'PRONTO-GGGGGGGG' } } as VercelRequest, mockRes as VercelResponse)
     expect(statusOutput).toBe(404)
   })
 
   it('records a listing failure instead of aborting the whole sweep', async () => {
     const bucket = createMockBucket([])
     bucket.getFiles.mockRejectedValueOnce(new Error('storage unavailable'))
-    const db = createDb([{ id: 'PRONTO-A', data: { orderId: 'PRONTO-A' } }])
+    const db = createDb([{ id: 'PRONTO-AAAAAAAA', data: { orderId: 'PRONTO-AAAAAAAA' } }])
     setupAdmin(db, bucket)
 
     await handler({ method: 'POST', body: {} } as VercelRequest, mockRes as VercelResponse)
@@ -284,16 +307,16 @@ describe('Serverless Admin Voucher Housekeeping (/api/admin/voucher-housekeeping
   })
 
   it('records a failed delete without aborting the run', async () => {
-    const bucket = createMockBucket([oldObject('vouchers/orders/PRONTO-A/orphan.pdf')])
+    const bucket = createMockBucket([oldObject('vouchers/orders/PRONTO-AAAAAAAA/orphan.pdf')])
     bucket.deleteSpy.mockRejectedValueOnce(new Error('permission denied'))
-    const db = createDb([{ id: 'PRONTO-A', data: { orderId: 'PRONTO-A' } }])
+    const db = createDb([{ id: 'PRONTO-AAAAAAAA', data: { orderId: 'PRONTO-AAAAAAAA' } }])
     setupAdmin(db, bucket)
 
     await handler({ method: 'POST', body: {} } as VercelRequest, mockRes as VercelResponse)
 
     expect(statusOutput).toBe(200)
     expect(jsonOutput.deletedCount).toBe(0)
-    expect(jsonOutput.failures).toContain('vouchers/orders/PRONTO-A/orphan.pdf')
+    expect(jsonOutput.failures).toContain('vouchers/orders/PRONTO-AAAAAAAA/orphan.pdf')
   })
 
   it('never deletes an object outside the voucher prefix, even if it is listed', async () => {
@@ -303,7 +326,7 @@ describe('Serverless Admin Voucher Housekeeping (/api/admin/voucher-housekeeping
     bucket.getFiles.mockResolvedValueOnce([
       [{ name: 'secrets/leak.pdf', metadata: { timeCreated: new Date(Date.now() - 2 * HOUR_MS).toISOString() } }]
     ])
-    const db = createDb([{ id: 'PRONTO-A', data: { orderId: 'PRONTO-A' } }])
+    const db = createDb([{ id: 'PRONTO-AAAAAAAA', data: { orderId: 'PRONTO-AAAAAAAA' } }])
     setupAdmin(db, bucket)
 
     await handler({ method: 'POST', body: {} } as VercelRequest, mockRes as VercelResponse)

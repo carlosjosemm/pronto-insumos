@@ -380,7 +380,7 @@ describe('Order Tracking Serverless Endpoint (/api/track-order)', () => {
 
     it('locks the IP key after N failed lookups and then answers 429 without touching Firestore', async () => {
       const { counters, orderCollection } = mockOrderDb(null)
-      const maxFailures = THROTTLE_POLICIES['track-order'].ip.maxFailures
+      const maxFailures = THROTTLE_POLICIES['track-order'].ip.maxFailures!
 
       for (let attempt = 0; attempt < maxFailures; attempt += 1) {
         const res = createMockRes()

@@ -7,6 +7,7 @@ import {
   VOUCHER_PATH_ROOT,
   deleteVoucherObject,
   getVoucherBucket,
+  isCanonicalOrderId,
   sanitizeCollectionSegment,
   sanitizeOrderIdForPath,
   type AdminBucket
@@ -128,7 +129,16 @@ export async function sweepVoucherObjects(
 
   for (const target of targets) {
     const orderSegment = sanitizeOrderIdForPath(target.orderId)
-    if (!orderSegment) continue
+    // Only a canonical id may derive a folder prefix. A non-canonical id could be
+    // an id whose stripped characters collide with another order's folder, so the
+    // sweep skips it entirely instead of listing (and possibly deleting) an object
+    // that belongs to a different order.
+    if (!orderSegment || !isCanonicalOrderId(orderSegment)) {
+      console.warn(
+        `[voucher-housekeeping] Skipping non-canonical order id "${String(target.orderId)}" — no voucher path is derived from it.`
+      )
+      continue
+    }
     const prefix = `${VOUCHER_PATH_ROOT}/${segment}/${orderSegment}/`
 
     let files: Array<{ name?: string; metadata?: { timeCreated?: unknown } }>
@@ -171,7 +181,13 @@ export async function sweepVoucherObjects(
   return outcome
 }
 
-/** Order document → sweep target (its referenced object, when it has one). */
+/**
+ * Order document → sweep target (its referenced object, when it has one).
+ *
+ * The `orderId` FIELD is preferred over the document key: the voucher folder is
+ * derived from the id the order was signed under, which for a legacy order resolved
+ * through the field query is the field value, not the document key.
+ */
 function toSweepTarget(data: Record<string, unknown> | undefined, fallbackOrderId: string): VoucherSweepTarget {
   const orderId = typeof data?.orderId === 'string' && data.orderId.trim() ? data.orderId : fallbackOrderId
   const referencedPath =

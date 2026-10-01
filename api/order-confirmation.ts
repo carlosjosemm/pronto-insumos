@@ -17,9 +17,49 @@ import {
   recordThrottleFailures,
   respondThrottled,
 } from "./_lib/abuseThrottle.js";
+import { getCollectionName } from "./_lib/firestoreEnv.js";
+import type { Firestore } from "firebase-admin/firestore";
 
 function normalizeRut(raw: string): string {
   return (raw || "").replace(/[^0-9kK]/g, "").toUpperCase();
+}
+
+/**
+ * Catalog-sourced line names for the order's items, keyed by product id.
+ *
+ * This endpoint is public and mails an address the caller chose, so the line names
+ * it renders must come from the CATALOG — never from the order document's
+ * client-written `items[].name`, which is attacker-composable text carried inside a
+ * message sent from the verified PRONTO domain. Best-effort: a failed product read
+ * is logged and simply leaves that line on the neutral fallback label, so a catalog
+ * outage can never block a legitimate confirmation.
+ */
+async function resolveCatalogItemNames(
+  adminDb: Firestore,
+  orderData: Record<string, unknown>
+): Promise<Record<string, string>> {
+  const items = Array.isArray(orderData.items) ? (orderData.items as Array<Record<string, unknown>>) : [];
+  const productIds = [
+    ...new Set(items.map((item) => String(item?.productId || item?.id || "")).filter(Boolean)),
+  ];
+  const names: Record<string, string> = {};
+
+  await Promise.all(
+    productIds.map(async (productId) => {
+      try {
+        const snapshot = await adminDb.collection(getCollectionName("products")).doc(productId).get();
+        const name = snapshot.exists ? String((snapshot.data() as Record<string, unknown>)?.name || "") : "";
+        if (name) names[productId] = name;
+      } catch (err: unknown) {
+        console.warn(
+          `[Order Confirmation] Could not read catalog product "${productId}" for the confirmation email; using the neutral label:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }),
+  );
+
+  return names;
 }
 
 /**
@@ -36,6 +76,11 @@ function normalizeRut(raw: string): string {
  * claimed inside a transaction first so two concurrent calls send at most once.
  * A failed send is recorded on the order and stays retryable (or resendable
  * from the backoffice); an unavailable database answers 503, never "sent".
+ *
+ * Abuse bounds: on top of the per-IP and per-order budgets, the recipient address
+ * carries its own 24-hour budget, the rendered line names come from the catalog
+ * (never from the client-written order document) and the free-text echoes are
+ * clamped — the endpoint must not be usable as a branded relay to a third party.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -139,9 +184,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const orderData = claim.orderData;
+    // Case-folded so `Victim@clinica.cl` and `victim@clinica.cl` share one budget
+    // (the send itself keeps the address as stored). Provider-local aliasing
+    // (`+tag`, dotted locals) still yields distinct counters — a known residual,
+    // not a claim this bound makes.
     const customerEmail = String(
       (orderData.customer as { email?: string } | undefined)?.email || "",
-    ).trim();
+    )
+      .trim()
+      .toLowerCase();
     if (!customerEmail) {
       console.warn(
         `[Order Confirmation] Order ${cleanOrderId} has no customer email; skipping send.`,
@@ -162,7 +213,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
     }
 
-    const emailData = toOrderEmailData(cleanOrderId, orderData);
+    // PER-RECIPIENT BUDGET — the confirmation is the only public endpoint that mails
+    // an address the caller chose, so the recipient carries its own 24-hour budget on
+    // top of the per-IP and per-order ones. It is consumed here, after the send claim
+    // (so an idempotent duplicate never spends a slot) and before the send; a refusal
+    // releases the claim so a legitimate later attempt can retry.
+    const recipientDecision = await consumeThrottleAttempt(
+      adminDb,
+      "order-confirmation",
+      "recipient",
+      customerEmail,
+    );
+    if (!recipientDecision.allowed) {
+      console.warn(
+        `[Order Confirmation] Recipient budget exhausted for order ${cleanOrderId}; releasing the send claim.`,
+      );
+      await markEmailFailed(adminDb, orderRef, "confirmation", "recipient_budget", claim.claimIso);
+      return respondThrottled(res, recipientDecision.retryAfterSeconds);
+    }
+
+    const catalogItemNames = await resolveCatalogItemNames(adminDb, orderData);
+    const emailData = toOrderEmailData(cleanOrderId, orderData, { itemNames: catalogItemNames });
     const template = buildOrderConfirmationEmail(emailData);
     const result = await sendEmail({ to: customerEmail, ...template });
 

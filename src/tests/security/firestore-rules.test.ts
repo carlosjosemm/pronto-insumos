@@ -57,8 +57,8 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
 
     // Validate required fields
     expect(content).toContain('data.totalAmount is int && data.totalAmount > 0')
-    expect(content).toContain('orderId is string && data.orderId.size() > 0')
-    expect(content).toContain('customer is map')
+    expect(content).toContain('data.orderId is string')
+    expect(content).toContain('data.customer is map')
     expect(content).toContain('data.items is list')
     expect(content).toContain('data.items.size() > 0')
 
@@ -66,8 +66,8 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     // rules cannot loop over a list, so every index is guarded explicitly.
     expect(content).toContain('function isValidOrderItem(item)')
     expect(content).toContain('item.productId is string && item.productId.size() > 0')
-    expect(content).toContain('item.quantity is int && item.quantity >= 1')
-    expect(content).toContain('item.price is number && item.price >= 0')
+    expect(content).toContain('item.quantity is int && item.quantity >= 1 && item.quantity <= 1000000')
+    expect(content).toContain('item.price is int && item.price >= 0')
     for (let index = 0; index < 25; index += 1) {
       expect(content, `line guard for items[${index}] is missing`).toContain(`isValidOrderItem(data.items[${index}])`)
     }
@@ -85,7 +85,7 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     // variables of the match block that calls it.
     expect(content).toContain('function isValidOrderCreate(orderId)')
     expect(content).toContain('data.orderId == orderId')
-    expect(content).toContain('data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 32')
+    expect(content).toContain("data.orderId.matches('^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$')")
 
     // Both the canonical and the isolated dev collections enforce the same contract.
     for (const collection of ['orders', 'dev_orders']) {
@@ -128,14 +128,19 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
       'paidAt',
       // The warehouse-alert reservation is written by /api/upload-voucher only.
       'voucherAlertSentAt',
-      'voucherAlertCount'
+      'voucherAlertCount',
+      // The price freeze written by /api/create-preference at preference time.
+      'pricedTotal',
+      'priceSnapshot',
+      'preferenceCreatedAt',
+      'preferenceExpiresAt'
     ]) {
       expect(rootAllow).not.toContain(adminOnly)
     }
 
     // Nested allowlists and length caps.
     expect(content).toContain('function isBoundedString(value, maxLength)')
-    expect(content).toMatch(/function isValidCustomer\(c\)[\s\S]*?hasOnly\(\[/)
+    expect(content).toMatch(/function isValidCustomer\(c, paymentMethod\)[\s\S]*?hasOnly\(\[/)
     expect(content).toMatch(/function isValidBilling\(b, orderTotal, customerRut\)[\s\S]*?hasOnly\(\[/)
     expect(content).toMatch(/function isValidSanitaryVerification\(s\)[\s\S]*?hasOnly\(\[/)
     expect(content).toContain("t.keys().hasOnly(['neto', 'iva', 'total'])")
@@ -189,6 +194,39 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     expect(content).toContain('data.createdAt is timestamp')
     expect(content).toContain("data.createdAt > request.time - duration.value(15, 'm')")
     expect(content).toContain("data.createdAt < request.time + duration.value(15, 'm')")
+  })
+
+  it('pins the order-id format, line bounds, e-mail shape and the WhatsApp zone exception (Task 0.19)', () => {
+    const content = fs.readFileSync(rulesPath, 'utf8')
+
+    // The document id must carry the generator's exact shape — `PRONTO-` plus 8
+    // Crockford base32 characters. A crafted id with a strippable character (which
+    // used to sanitize into another order's voucher folder) is rejected at create.
+    expect(content).toContain("data.orderId.matches('^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$')")
+    // The old length-only bound must not return as the id guard.
+    expect(content).not.toContain('data.orderId.size() <= 32')
+
+    // Line bounds: quantity has a ceiling (it must never be tighter than what the
+    // cart can offer — the cart caps a line at stockCount, itself admin-capped at
+    // MAX_STOCK_UNITS, so this figure mirrors that cap), and price is an integer
+    // CLP amount.
+    expect(content).toContain('item.quantity <= 1000000')
+    expect(content).toContain('item.price is int && item.price >= 0')
+    expect(content).not.toContain('item.price is number')
+
+    // E-mail shape (delivery itself is the mail provider's authority). The pattern
+    // is no stricter than the checkout's own type="email" validity, so it cannot
+    // reject an address the form accepted.
+    expect(content).toContain("c.email.matches('^[^@]+@[^@]+$')")
+    expect(content).not.toContain('[.][^@]+$')
+
+    // The delivery zone is pinned to the two communes checkout delivers to, EXCEPT
+    // for a WhatsApp quote order (out-of-zone buyers settle delivery in a direct
+    // chat), which needs a non-empty bounded free-text commune.
+    expect(content).toContain('function isValidCustomer(c, paymentMethod)')
+    expect(content).toContain("c.city in ['Melipilla', 'San Antonio']")
+    expect(content).toContain("(paymentMethod == 'whatsapp' && isBoundedString(c.city, 80) && c.city.size() > 0)")
+    expect(content).toContain('isValidCustomer(data.customer, data.paymentMethod)')
   })
 
   it('should enforce read-only for admins and write-deny on audit log collections', () => {
