@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (1084 tests across 93 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (1157 tests across 96 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -29,7 +29,7 @@ Agents modifying this codebase must adhere to these absolute guardrails:
 2. **NO Monolithic or Heavy Backend Frameworks:**
    * Do **NOT** add Express, NestJS, Koa, or Fastify.
    * All backend logic is handled cleanly by single-purpose **Vercel Serverless Functions** in the `api/` directory.
-   * **Documented exception — `api/admin/[action].ts`:** the Vercel Hobby plan refuses any deployment adding more than **12** Serverless Functions, so the 14 administrative endpoints are collapsed behind one routed entry point that dispatches on `req.query.action` via a plain lookup table. Public URLs (`/api/admin/orders`, …) are unchanged. This is **not** a framework — no Express/NestJS/Koa/Fastify, no middleware pipeline, just a dispatch table. Shared non-route code lives under `api/_lib/`; paths with a `_`-prefixed segment are excluded from Vercel's function count. Full rationale and layout: [api/AGENTS.md](./api/AGENTS.md) §1.2.
+   * **Documented exception — `api/admin/[action].ts`:** the Vercel Hobby plan refuses any deployment adding more than **12** Serverless Functions, so the 16 administrative endpoints are collapsed behind one routed entry point that dispatches on `req.query.action` via a plain lookup table. Public URLs (`/api/admin/orders`, …) are unchanged. This is **not** a framework — no Express/NestJS/Koa/Fastify, no middleware pipeline, just a dispatch table. Shared non-route code lives under `api/_lib/`; paths with a `_`-prefixed segment are excluded from Vercel's function count. Full rationale and layout: [api/AGENTS.md](./api/AGENTS.md) §1.2.
 3. **NO Additional CSS Frameworks:**
    * Do **NOT** install Tailwind CSS, Bootstrap, Material UI, Chakra, or Shadcn.
    * The project has a complete, handcrafted Vanilla CSS design system with CSS custom properties in [src/index.css](./src/index.css). Keep styles centralized, fast, and dependency-free.
@@ -139,7 +139,7 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 93 suites / 1084 tests)
+# Run all automated tests (Vitest, 96 suites / 1157 tests)
 pnpm test
 
 # Run tests with live file watcher (or a V8 coverage report)
@@ -167,6 +167,11 @@ pnpm preview
 # Deploy Firestore Security Rules (protects both canonical and dev_* collections)
 # One-time per machine: `pnpm dlx firebase-tools login` — the script invokes the CLI via pnpm dlx
 pnpm run deploy:rules
+
+# Deploy Firestore composite indexes (firestore.indexes.json). Required by the admin
+# order list's status-filtered query: `orders(status ASC, createdAt DESC)`. Firestore
+# builds a new index asynchronously, so the first filtered request may wait for `Ready`.
+pnpm run deploy:indexes
 
 # Provision an administrator account for the backoffice portal (/admin)
 # (the Auth client must come from getAuth(app) — never a bare `auth` identifier)
@@ -211,7 +216,7 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 
 ```bash
 # 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 1084 tests pass
+pnpm test          # Ensure all 1157 tests pass
 pnpm build         # Validate TypeScript compilation and production bundle build
 
 # 2. Sync environment variables to Vercel (DRY RUN by default — see §7.1)
