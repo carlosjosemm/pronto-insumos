@@ -48,7 +48,6 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 
 | ID | Outcome / risk | Gate |
 | :-- | :-- | :-- |
-| [0.23](#task-0-23) **NEW** | Quantity/stock handling differs across preference, webhook and transfer approval | One shared normalizer; consolidated stock check |
 | [2.16](#task-2-16) | Customer-friendly courier label | Legacy carrier keys render through shared labels |
 | [2.21](#task-2-21) **NEW** | Tracking deep link accepts the RUT (second factor) in the URL | Remove `rut` query support |
 | [2.22](#task-2-22) **NEW** | Motion foundation: tokens, no implicit `transition: all`, matched exit animations for every overlay and toast | Design of record: [STOREFRONT_MOTION_DESIGN.md](./STOREFRONT_MOTION_DESIGN.md); after 2.19 / 2.20 |
@@ -117,11 +116,15 @@ Separates source-level capability from independently verified production and own
 
 ### Phase 0 — Security & Payment Integrity
 
+### Phase 0 — Security & Payment Integrity
+
 <a id="task-0-23"></a>
 
 - [ ] **0.23. One Quantity and Stock Policy Across Handlers** _(P3 · NEW)_
   - **Evidence:** `create-preference.ts:286-331` checks stock **per order line** (a crafted order with two lines of the same product passes each line but oversells in total); the webhook consolidates with `Math.max(1, Number(item.quantity) || 1)` (`:747`) while `normalizeQuantity` rounds (`src/utils/orderTotal.ts:39`), so a fractional legacy quantity deducts stock differently than it is priced.
   - **Fix:** consolidate by `productId` before the stock check in `create-preference`; use `normalizeQuantity` everywhere (`resolve-payment-review` and `approve-transfer` already do). **Accept:** duplicate-line and fractional-quantity tests on all three paths.
+
+### Phase 1 — Billing & Regulated Products (suspended)
 
 ### Phase 1 — Billing & Regulated Products (suspended)
 
@@ -490,3 +493,4 @@ Outcomes only; detail lives in the relevant `AGENTS.md` and git history. Items m
 | 0.20 † | The charged amount is frozen onto the order at preference time (`pricedTotal` + a per-line `priceSnapshot`) and the Mercado Pago link expires with it after 24 h (`expires` + `expiration_date_from`/`to` in the Chilean-offset form). The webhook asserts against the freeze (catalog recomputation remains the fallback for orders without one), requires `currency_id === 'CLP'`, and treats a catalog that drifted from the freeze as a soft alert instead of parking a legitimately paid order in review. |
 | 0.21 | The public confirmation e-mail can no longer be used as a branded relay: line names come from the catalog (never the client-written document; an unresolvable product renders a neutral label), the free-text name/address/company echoes are clamped, a case-folded per-recipient budget bounds sends to 5 per 24 h, and the message carries a "si no reconoces este pedido" WhatsApp escape hatch. Residual: provider-local address aliasing (`+tag`, dotted locals) still yields distinct counters, and the rendered line prices/totals remain client-supplied (the totals block is already labelled referencial). |
 | 0.22 † | Delivery zone is no longer a free-text claim: `normalizeDeliveryZone()` is the single case/accent-insensitive matcher, checkout gains "Otra comuna (coordinar por WhatsApp)" (locks the method to WhatsApp, Pago offers no online payment), the rules accept a free-text `customer.city` only for `paymentMethod == 'whatsapp'`, `create-preference` answers `400` out-of-zone, `approve-transfer`/`resolve-quote` enforce the San Antonio minimum server-side, and the admin panel shows the stored commune prominently. **Zone exception rides the next rules redeploy.** |
+| 0.23 | One quantity/stock policy across handlers: `create-preference` consolidates lines by `productId` before the stock check (duplicate lines can no longer oversell per-line) and the webhook deducts through `normalizeQuantity`, so a fractional legacy quantity is priced and deducted as the same positive integer on every path. |

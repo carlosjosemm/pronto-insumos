@@ -13,7 +13,7 @@ import {
 } from "../_lib/emailTemplates.js";
 import type { StockShortfall } from "../_lib/emailTemplates.js";
 import { resolvePromoPercent } from "../../src/config/promos.js";
-import { computeOrderTotal } from "../../src/utils/orderTotal.js";
+import { computeOrderTotal, normalizeQuantity } from "../../src/utils/orderTotal.js";
 import { readFrozenPricedTotal } from "../_lib/preferenceSnapshot.js";
 import { isSettledOrderStatus } from "../../src/utils/orderLifecycle.js";
 import { formatCLP } from "../../src/utils/currency.js";
@@ -746,7 +746,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               qty: 0,
               name: item.name,
             };
-            existing.qty += Math.max(1, Number(item.quantity) || 1);
+            // The shared quantity policy: a positive integer via
+            // normalizeQuantity — the exact figure every pricing surface
+            // (preference builder, stored total) derives, so a fractional
+            // legacy quantity can no longer deduct 2.5 units while the order
+            // was priced for 3.
+            existing.qty += normalizeQuantity(item.quantity);
             if (item.name) existing.name = item.name;
             consolidatedItems.set(pid, existing);
           }

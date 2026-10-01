@@ -253,6 +253,95 @@ describe('Mercado Pago Serverless Webhook (/api/webhooks/mercadopago)', () => {
     )
   })
 
+  it('rounds a fractional legacy quantity through normalizeQuantity so the deduction matches the price', async () => {
+    // quantity 2.5 prices as 3 (computeOrderTotal rounds) — the webhook must
+    // deduct the same 3 units, not the raw 2.5 the old Math.max clamp kept.
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        status: 'approved',
+        external_reference: 'PRONTO-123456',
+        id: 998878,
+        transaction_amount: 284985, // 3 × 94995
+        currency_id: 'CLP'
+      })
+    } as Response)
+
+    const orderRef = { id: 'order-doc-abc' }
+    const productRef = { id: 'prod-turbine-1' }
+
+    const orderData = {
+      orderId: 'PRONTO-123456',
+      status: 'PENDIENTE_PAGO_MERCADOPAGO',
+      totalAmount: 284985,
+      items: [{ productId: 'prod-turbine-1', quantity: 2.5 }]
+    }
+
+    const mockTransactionUpdate = vi.fn()
+    const mockTransactionGet = vi.fn().mockImplementation((ref: { id?: string }) => {
+      if (ref?.id === 'order-doc-abc') {
+        return Promise.resolve({
+          exists: true,
+          data: () => orderData
+        })
+      }
+      return Promise.resolve({
+        exists: true,
+        data: () => ({ stockCount: 5, inStock: true, price: 94995 })
+      })
+    })
+
+    const mockAdminDb = {
+      collection: vi.fn((colName: string) => {
+        if (colName === 'orders') {
+          return orderCollectionMock([
+            {
+              id: 'order-doc-abc',
+              ref: orderRef,
+              data: () => orderData
+            }
+          ])
+        }
+        if (colName === 'products') {
+          return {
+            doc: vi.fn().mockReturnValue(productRef)
+          }
+        }
+        return {
+          doc: vi.fn().mockReturnValue({ id: 'audit-dummy-id' })
+        }
+      }),
+      runTransaction: vi.fn(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
+        await cb({
+          get: mockTransactionGet,
+          update: mockTransactionUpdate,
+          set: vi.fn()
+        })
+      })
+    }
+
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+
+    const req = {
+      method: 'POST',
+      body: { data: { id: '998878' } }
+    } as unknown as VercelRequest
+    const res = createMockRes()
+
+    await handler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+
+    // Verify stock deduction inside transaction: 5 − round(2.5) = 2
+    expect(mockTransactionUpdate).toHaveBeenCalledWith(
+      productRef,
+      expect.objectContaining({
+        stockCount: 2,
+        inStock: true
+      })
+    )
+  })
+
   it('should acknowledge 200 with duplicate flag and skip transaction if order is already PAGADO_MERCADOPAGO (idempotency)', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,

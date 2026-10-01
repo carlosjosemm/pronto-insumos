@@ -266,6 +266,34 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
     expect(captured.update?.stockCount).toBe(5) // 10 − (2 + 3)
   })
 
+  it('rounds a fractional legacy quantity through normalizeQuantity so the deduction matches the price', async () => {
+    // quantity 2.5 prices as 3 (computeOrderTotal rounds) — the approval must
+    // deduct the same 3 units, not a raw fractional amount.
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: {
+          orderId: 'PRONTO-FRACTION',
+          status: 'PENDIENTE_TRANSFERENCIA',
+          totalAmount: 284985, // 3 × 94995
+          customer: DEFAULT_ORDER.customer,
+          items: [{ productId: 'odon-101', quantity: 2.5 }]
+        },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-FRACTIONAL', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.success).toBe(true)
+    expect(captured.update?.stockCount).toBe(7) // 10 − round(2.5)
+  })
+
   it('falls back to the orderId query when the direct doc lookup misses', async () => {
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       mockApproveDb({ directLookupMisses: true }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>

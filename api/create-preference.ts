@@ -288,8 +288,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // the input for both the stored-total agreement and the San Antonio
     // minimum, which checkout gates on the same original subtotal.
     const rawCatalogLines: Array<{ price: number; quantity: number }> = []
-    const productCache = new Map<string, Record<string, unknown> | null>()
 
+    // QUANTITY CONSOLIDATION — the one quantity/stock policy across handlers
+    // (approve-transfer and resolve-payment-review consolidate the same way):
+    // quantities are positive integers from normalizeQuantity and are summed
+    // by productId BEFORE the stock check, so a crafted order with two lines
+    // of the same product can neither pass the stock check per line and
+    // oversell in total, nor deduct a fractional amount no surface ever
+    // priced.
+    const consolidatedLines = new Map<string, { quantity: number; name?: string }>()
     for (const item of orderItems) {
       const productId = item?.productId || item?.id
 
@@ -302,22 +309,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
       }
 
-      const quantity = normalizeQuantity(item?.quantity)
-
-      let productData = productCache.get(productId)
-      if (productData === undefined) {
-        const productSnap = await adminDb.collection(getCollectionName('products')).doc(productId).get()
-        if (!productSnap.exists) {
-          return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
-            error: `El producto "${item?.name || productId}" no fue encontrado en el catálogo de inventario.`,
-            productId,
-            availableStock: 0,
-            requestedQuantity: quantity
-          })
-        }
-        productData = (productSnap.data() as Record<string, unknown> | null) ?? null
-        productCache.set(productId, productData)
+      const existing = consolidatedLines.get(productId) || {
+        quantity: 0,
+        name: typeof item?.name === 'string' ? item.name : undefined
       }
+      existing.quantity += normalizeQuantity(item?.quantity)
+      if (typeof item?.name === 'string') existing.name = item.name
+      consolidatedLines.set(productId, existing)
+    }
+
+    for (const [productId, line] of consolidatedLines) {
+      const quantity = line.quantity
+
+      const productSnap = await adminDb.collection(getCollectionName('products')).doc(productId).get()
+      if (!productSnap.exists) {
+        return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
+          error: `El producto "${line.name || productId}" no fue encontrado en el catálogo de inventario.`,
+          productId,
+          availableStock: 0,
+          requestedQuantity: quantity
+        })
+      }
+      const productData = (productSnap.data() as Record<string, unknown> | null) ?? null
 
       const availableStock = typeof productData?.stockCount === 'number' ? productData.stockCount : 0
       // `isActive === false` pauses a product from sale (admin visibility toggle).
@@ -352,6 +365,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       rawCatalogLines.push({ price: catalogPrice, quantity })
       rebuiltItems.push({
         id: productId,
+        // Catalog-authoritative title: the client-written line name never
+        // reaches the Mercado Pago checkout — the request contributes only
+        // the order id, and the catalog is the authority for what is charged.
         title: String(productData?.name || 'Insumo Odontológico'),
         quantity,
         unit_price: unitPrice,

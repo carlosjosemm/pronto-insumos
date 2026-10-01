@@ -374,19 +374,21 @@ Consumers: `webhooks/mercadopago`, `track-order`, `order-confirmation`, `upload-
 
 ### 8.2 Line-Item Consolidation Before Stock Mutation
 
-Duplicate `productId` line items inside one transaction would cause duplicate reads/writes on the same document reference. `webhooks/mercadopago` and `admin/approve-transfer` consolidate into a `Map<productId, { qty, name }>` before the transaction, reading `item.productId || item.id`:
+Duplicate `productId` line items inside one transaction would cause duplicate reads/writes on the same document reference — and a per-line stock check lets two lines of the same product pass individually while overselling in total. Every stock-mutating path therefore consolidates into a `Map<productId, { qty, name }>` **before** any stock check or mutation, reading `item.productId || item.id` and summing quantities through **`normalizeQuantity`** (`src/utils/orderTotal.ts` — positive integer, minimum 1):
 
 ```typescript
 const consolidatedItems = new Map<string, { qty: number; name?: string }>()
 for (const item of items) {
   const pid = item.productId || item.id
-  if (!pid) continue
+  if (!pid) continue // or fail closed, per endpoint
   const existing = consolidatedItems.get(pid) || { qty: 0, name: item.name }
-  existing.qty += Math.max(1, Number(item.quantity) || 1)
+  existing.qty += normalizeQuantity(item.quantity)
   if (item.name) existing.name = item.name
   consolidatedItems.set(pid, existing)
 }
 ```
+
+The five stock-mutating paths all follow this one policy — `create-preference` (consolidates before the stock check, so a crafted duplicate-line order cannot oversell in total), `webhooks/mercadopago`, `admin/approve-transfer`, `admin/resolve-payment-review` and `admin/resolve-quote` — and every quantity passes `normalizeQuantity`, the exact figure every pricing surface derives, so a fractional legacy quantity can never deduct a different amount than it was priced. (The webhook's former `Math.max(1, Number(item.quantity) || 1)` clamp kept a fractional `2.5` deduction that disagreed with the rounded price — retired.)
 
 All product reads precede all writes (Firestore transaction invariant).
 
