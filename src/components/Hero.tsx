@@ -81,8 +81,8 @@ export default function Hero({ onExploreClick }: HeroProps) {
                 <div className="hero-trust-item">
                   <ShieldCheck size={17} className="hero-trust-icon" />
                   <div className="hero-trust-text">
-                    <strong>Insumos Certificados ISP</strong>
-                    <span>Trazabilidad de lote conforme a normativa sanitaria</span>
+                    <strong>Para clínicas y laboratorios</strong>
+                    <span>Catálogo odontológico con atención directa por WhatsApp</span>
                   </div>
                 </div>
 
@@ -110,7 +110,7 @@ export default function Hero({ onExploreClick }: HeroProps) {
             ) : (
               <div className="hero-image-fallback">
                 <ShieldCheck size={48} />
-                <span>Equipamiento e Instrumental Clínico Homologado</span>
+                <span>Equipamiento e Instrumental Clínico</span>
               </div>
             )}
 

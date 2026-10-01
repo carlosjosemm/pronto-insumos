@@ -19,6 +19,7 @@ import {
 import { formatCLP } from '../utils/currency'
 import { formatCategoryDisplayName } from '../utils/categoryAlias'
 import { LOW_STOCK_PUBLIC_THRESHOLD } from '../config/catalog'
+import { REVIEWS_ENABLED } from '../config/features'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   'INSTRUMENTAL Y ACCESORIOS': Scissors,
@@ -190,8 +191,8 @@ export default function ProductCard({
         {/* Sales unit — the presentation clinics actually procure in (Appendix D.5) */}
         {product.unitOfSale && <span className="product-unit-sale">{product.unitOfSale}</span>}
 
-        {/* Rating Stars (Only rendered when verified reviews exist) */}
-        {product.reviewsCount !== undefined && product.reviewsCount > 0 ? (
+        {/* Rating Stars (hidden until a real review system exists) */}
+        {REVIEWS_ENABLED && product.reviewsCount !== undefined && product.reviewsCount > 0 ? (
           <div className="product-rating">
             <div style={{ display: 'flex', gap: '2px' }}>
               {[...Array(5)].map((_, i) => (

@@ -1,5 +1,6 @@
 import React from 'react'
 import { CATEGORIES } from '../data/products'
+import { REVIEWS_ENABLED } from '../config/features'
 import { ProductCategory, Product } from '../types'
 import {
   Activity,
@@ -137,8 +138,8 @@ export default function CategoryFilter({
               <option value="featured">Ordenar por: Destacados</option>
               <option value="price-low">Precio: Menor a Mayor</option>
               <option value="price-high">Precio: Mayor a Menor</option>
-              <option value="rating">Mejor Calificados</option>
-              <option value="reviews">Más Reseñas</option>
+              {REVIEWS_ENABLED && <option value="rating">Mejor Calificados</option>}
+              {REVIEWS_ENABLED && <option value="reviews">Más Reseñas</option>}
             </select>
           </div>
         </div>

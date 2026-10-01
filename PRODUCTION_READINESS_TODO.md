@@ -32,7 +32,6 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 | :-- | :-- | :-- |
 | ID | Outcome / risk | Gate |
 | :-- | :-- | :-- |
-| [2.24](#task-2-24) **NEW** | Owner-approved neutral wording replaces unsubstantiated claims; ratings disabled; cart shipping bar simplified | Source-content guard test; no old string remains |
 | [2.19](#task-2-19) **NEW** | Owner design: last-moment price/stock check at the Pago step with visible feedback | Changes shown and acknowledged before the order is written |
 | [2.20](#task-2-20) **NEW** | Every filter/sort/stock toggle re-reads the whole `products` collection (billed per visitor) | One catalog read per session, client-side filtering (after 2.14) |
 | [4.10](#task-4-10) **NEW** | Nothing ever moves an order to `EN_PREPARACION`; owner wants the step (a new `mark-preparing` action) | Handler + panel tests; step 3 reachable for customers |
@@ -190,31 +189,6 @@ Separates source-level capability from independently verified production and own
     5. Inline validation errors: fade + 4 px rise, border-colour transition; no height animation.
     6. **Grid:** card entrance only on first render and "Cargar más" batches (stagger `min(index % 4, 3) * 40ms`); filter/sort/stock toggles ease the grid container's opacity (0.55 → 1) instead of replaying card entrances; skeleton shimmer 1.6 s, lower contrast, static under reduced motion; images keep `imageFadeIn` (opacity only, no fill-mode).
   - **Accept:** stylesheet-guard tests for hover gating and the reduced-motion degradation of every new keyframe; component tests for the add-to-cart confirmed state (label swap, no width change, resets after 1400 ms with fake timers), `data-direction` forward/back, the value-flash `key` re-trigger, and "a filter toggle does not apply `product-card-entrance` to already-visible cards"; the manual checklist from the design document §9 including Slow-4G skeleton → image sequence with CLS ≤ 0.05; `pnpm run verify:full` clean; as-built notes added to `src/components/AGENTS.md`.
-
-<a id="task-2-24"></a>
-
-- [ ] **2.24. Replace Unsubstantiated Storefront Claims with Neutral Wording; Disable Ratings; Simplify the Shipping Bar** _(P2 · NEW; owner decisions 2026-09-30: no documentation exists for the certification claims, so neutral wording; ratings off until further notice; shipping bar simplified)_
-  - **Why:** the storefront makes claims PRONTO cannot document, on a store whose category is regulated, plus a rating UI with no review system behind it and a free-shipping nudge that implies a charge that does not exist (3.1 is suspended, so freight is zero at every amount). Misleading-advertising exposure under Chilean consumer law (Ley 19.496) is separate from the draft legal pages (7.1), so this does not reopen that suspension. The owner confirmed (H) there is no substantiation available now, so every claim below is reworded; if documentation appears later, a claim can return.
-  - **Neutral wording to apply** (Spanish, owner-approved approach; keep the layout and icons, change only the text):
-
-    | Where | Current text | Replace with |
-    | :-- | :-- | :-- |
-    | `Footer.tsx:25-29` value-prop card | "Registro ISP Chile" / "Insumos Médicos Certificados" | "Insumos odontológicos" / "Para clínicas, gabinetes y laboratorios" |
-    | `Footer.tsx:137` | "Despacho Gratuito sobre $150.000" | "Despacho sin costo en Melipilla y San Antonio" |
-    | `Footer.tsx:165` | "Boleta Electrónica Inmediata (19% IVA)" | "Boleta electrónica · IVA 19%" |
-    | `Footer.tsx:167`, `:168` | "Dispositivos Homologados Registro ISP", "Fichas de Seguridad de Materiales" | remove both bullets (datasheets are task 6.2) |
-    | `Footer.tsx:238` | "Mercado Pago Chile · Pago 100% Seguro" | "Pago procesado por Mercado Pago Chile" |
-    | `Footer.tsx:242` | "Boleta Electrónica SII · 19% IVA" | "Boleta electrónica · IVA 19%" |
-    | `Footer.tsx:250` | "Dispositivos Médicos · Registro ISP Chile" | "Insumos para clínicas y laboratorios dentales" |
-    | `Footer.tsx:261`, `:262` | "Depósito Dental Certificado", "Boleta Electrónica SII" | "Depósito dental en Melipilla", "Boleta electrónica" |
-    | `Hero.tsx:84-85` | "Insumos Certificados ISP" / "Trazabilidad de lote conforme a normativa sanitaria" | "Para clínicas y laboratorios" / "Catálogo odontológico con atención directa por WhatsApp" |
-    | `Hero.tsx:113` | "Equipamiento e Instrumental Clínico Homologado" | "Equipamiento e Instrumental Clínico" |
-    | `ProductQuickView.tsx:401` | "Normativa ISP Homologada" (+ its divider) | remove the span and one divider; "Garantía Legal SERNAC 6 meses" and "Boleta Electrónica · IVA 19%" stay |
-
-  - **Shipping bar (`Cart.tsx:92-93,136-151`):** replace the progress bar, the percentage and the "Agrega $X más para Despacho GRATIS" text with the single statement "Despacho sin costo a Melipilla y San Antonio", keeping the existing zone/minimum note (`Compra mínima San Antonio: $60.000`). `FREE_SHIPPING_THRESHOLD` stays exported for 3.1 and `LegalModal`.
-  - **Ratings disabled until further notice (J):** add `REVIEWS_ENABLED = false` in a new `src/config/features.ts` (the same one-line re-enable pattern as `FACTURA_ENABLED`); when false, `ProductCard.tsx:191-204` and `ProductQuickView.tsx:279-292` render no stars or review count, and `CategoryFilter.tsx:139-141` omits the "Mejor Calificados" and "Más Reseñas" options. Leave the `rating` / `reviewsCount` data fields and the `sortBy` handling in `fetchProducts` untouched, so turning reviews on later is the flag plus a review source. A persisted `sortBy === 'rating' | 'reviews'` must fall back to `featured`.
-  - **Known leftover, not edited here:** `LegalModal.tsx:166` still says free shipping applies "por compras sobre $150.000". That is draft legal copy under the suspended 7.1 and understates the current policy (shipping is free at every amount); leave it, and fix it when 7.1 or 3.1 is unsuspended.
-  - **Accept:** none of the "Current text" strings above remains in `src/` (a source-content test pins their absence, like the existing `Factura Electrónica Inmediata` guard); `ClinicalStorefront.test.tsx` and any other test that pinned the old strings are updated; with `REVIEWS_ENABLED = false` no rating UI renders and the sort list has no rating options; the cart renders the single shipping statement at every subtotal; `pnpm run verify:full` clean.
 
 <a id="task-2-25"></a>
 
@@ -486,3 +460,4 @@ Outcomes only; detail lives in the relevant `AGENTS.md` and git history. Items m
 | 0.22 † | Delivery zone is no longer a free-text claim: `normalizeDeliveryZone()` is the single case/accent-insensitive matcher, checkout gains "Otra comuna (coordinar por WhatsApp)" (locks the method to WhatsApp, Pago offers no online payment), the rules accept a free-text `customer.city` only for `paymentMethod == 'whatsapp'`, `create-preference` answers `400` out-of-zone, `approve-transfer`/`resolve-quote` enforce the San Antonio minimum server-side, and the admin panel shows the stored commune prominently. **Zone exception rides the next rules redeploy.** |
 | 0.23 | One quantity/stock policy across handlers: `create-preference` consolidates lines by `productId` before the stock check (duplicate lines can no longer oversell per-line) and the webhook deducts through `normalizeQuantity`, so a fractional legacy quantity is priced and deducted as the same positive integer on every path. |
 | 2.14 † | The catalog is stock-free: `/api/catalog` (7th function slot) serves active products through a public-field allowlist with `stockCount` disclosed only at 1–3 (`LOW_STOCK_PUBLIC_THRESHOLD`), `GET` is CDN-cached and `POST { ids }` uncached + IP-throttled; `products`/`dev_products` client reads flip to admin-only; `fetchProducts` reads the endpoint (same `CatalogResult` semantics); `create-preference` discloses exact stock only at 1–3; the "Últimas unidades" cue (card, quick view, cart line) fires only on a disclosed count; `Product.stockCount` is optional ("absent = plenty, the server verifies"). **Deploy order: endpoint + storefront first, rules flip last.** |
+| 2.24 | Unsubstantiated certification/registry claims replaced with neutral wording across Footer, Hero and `ProductQuickView`; the rating/review UI is gated behind `REVIEWS_ENABLED = false` (`src/config/features.ts`); the cart's free-shipping progress bar became the single statement `Despacho sin costo a Melipilla y San Antonio` (freight is free at every amount). A case-insensitive source scan (`storefrontClaims.test.ts`) pins the retired strings absent. |
