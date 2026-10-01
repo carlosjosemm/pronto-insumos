@@ -23,8 +23,18 @@ service cloud.firestore {
         && item.keys().hasOnly(['productId', 'name', 'quantity', 'price'])
         && item.productId is string && item.productId.size() > 0 && item.productId.size() <= 64
         && item.name is string && item.name.size() <= 200
-        && item.quantity is int && item.quantity >= 1
-        && item.price is number && item.price >= 0;
+        // Quantity ceiling: it must never be tighter than what checkout can offer,
+        // or a legitimate bulk line would be rejected wholesale and surface only as
+        // a generic checkout failure. The cart caps a line at the product's
+        // `stockCount`, and `stockCount` is admin-capped at MAX_STOCK_UNITS
+        // (1,000,000, api/_lib/admin/adminLimits.ts) — so this bound is that same
+        // figure. It still rejects the ~2^31 value an unauthenticated caller could
+        // otherwise store. Rules cannot import the constant; the sync is pinned by
+        // the order-create contract test.
+        && item.quantity is int && item.quantity >= 1 && item.quantity <= 1000000
+        // Integer CLP only — CLP has no cents, and a fractional price would
+        // store an amount the payment/SII layers can never reproduce.
+        && item.price is int && item.price >= 0;
     }
 
     // ── The order-create contract ─────────────────────────────────────────────
@@ -59,7 +69,11 @@ service cloud.firestore {
         && (!('credentialFileName' in s) || isBoundedString(s.credentialFileName, 200));
     }
 
-    function isValidCustomer(c) {
+    // `paymentMethod` is passed in: the delivery zone is pinned to the two
+    // communes checkout delivers to, EXCEPT for a WhatsApp quote order, whose
+    // buyer is outside the zone and settles the delivery in a direct chat
+    // (only a bounded free-text commune is then accepted).
+    function isValidCustomer(c, paymentMethod) {
       return c.keys().hasOnly([
           'fullName', 'email', 'phone', 'rut', 'documentType',
           'razonSocial', 'giroComercial', 'address', 'city', 'zip',
@@ -67,6 +81,11 @@ service cloud.firestore {
         ])
         && isBoundedString(c.fullName, 120)
         && isBoundedString(c.email, 160)
+        // Shape only — the send itself is the delivery authority. The pattern is
+        // deliberately no stricter than the checkout's own `type="email"` validity:
+        // HTML5 accepts a dotless domain, so requiring a dot here would reject an
+        // address the form accepted and dead-end checkout with a generic error.
+        && c.email.matches('^[^@]+@[^@]+$')
         && isBoundedString(c.phone, 32)
         && isBoundedString(c.rut, 16)
         // Canonical RUT storage: `12345678-5` (7-8 digits, hyphen, check
@@ -83,8 +102,14 @@ service cloud.firestore {
         // Delivery zones: Melipilla (same-day) and San Antonio (scheduled
         // route) are the only two communes checkout's `Comuna de Despacho`
         // select offers — mirrored here from DELIVERY_ZONES in
-        // src/config/delivery.ts (rules cannot import config).
-        && c.city in ['Melipilla', 'San Antonio']
+        // src/config/delivery.ts (rules cannot import config). A WhatsApp
+        // quote order is the one exception: its buyer is outside the zone and
+        // settles delivery in a direct chat, so only a bounded free-text
+        // commune is required there.
+        && (
+          c.city in ['Melipilla', 'San Antonio']
+          || (paymentMethod == 'whatsapp' && isBoundedString(c.city, 80) && c.city.size() > 0)
+        )
         && isBoundedString(c.zip, 16)
         // Documented CustomerInfo field; no current writer sets it, but leaving it
         // out of the allowlist would make any future caller's payload fail wholesale.
@@ -129,7 +154,14 @@ service cloud.firestore {
         ])
         // The document id IS the canonical order id (see api/_lib/orderLookup.ts):
         // binding the field to the path kills the decoy-document shadowing vector.
-        && data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 32
+        // The format is pinned to the generator's exact shape — `PRONTO-` plus 8
+        // Crockford base32 characters (no I, L, O, U) — so an id can never carry a
+        // character that a path sanitizer would strip, which is what let a crafted
+        // id collide into another order's voucher folder (see
+        // api/_lib/voucherStorage.ts sanitizeOrderIdForPath). Legacy `PRONTO-NNNNNN`
+        // ids are never re-created, so they are not accepted here.
+        && data.orderId is string
+        && data.orderId.matches('^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$')
         && data.orderId == orderId
         // serverTimestamp() resolves at commit time on the server and rules
         // evaluate against that same request.time — including for a write the
@@ -153,7 +185,7 @@ service cloud.firestore {
           || (data.paymentMethod == 'transferencia' && data.status == 'PENDIENTE_TRANSFERENCIA')
           || (data.paymentMethod == 'whatsapp' && data.status == 'COTIZACION_SOLICITADA_WHATSAPP')
         )
-        && data.customer is map && isValidCustomer(data.customer)
+        && data.customer is map && isValidCustomer(data.customer, data.paymentMethod)
         && (!('billing' in data)
             || (data.billing is map
                 && isValidBilling(data.billing, data.totalAmount, data.customer.rut)))

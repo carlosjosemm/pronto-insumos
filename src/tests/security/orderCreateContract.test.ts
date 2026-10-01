@@ -30,6 +30,7 @@ vi.mock('firebase/firestore', () => ({
 import { submitOrder, type SubmitOrderOptions } from '../../services/api'
 import { PRODUCTS } from '../../data/products'
 import { DELIVERY_ZONES } from '../../config/delivery'
+import { MAX_STOCK_UNITS } from '../../../api/_lib/admin/adminLimits'
 
 const rulesSource = fs.readFileSync(path.resolve(__dirname, '../../../firestore.rules'), 'utf8')
 
@@ -289,6 +290,36 @@ describe('Order-create contract: submitOrder() payload vs firestore.rules allowl
     // and the component flag must never drift apart silently.
     const checkoutSource = fs.readFileSync(path.resolve(__dirname, '../../components/CheckoutModal.tsx'), 'utf8')
     expect(checkoutSource).toContain('FACTURA_ENABLED = false')
+  })
+
+  it('pins the order-id format, line bounds, e-mail shape and WhatsApp zone exception (Task 0.19)', async () => {
+    // Rules side: the hardened create contract.
+    expect(rulesSource).toContain("data.orderId.matches('^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$')")
+    expect(rulesSource).toContain('item.quantity <= 1000000')
+    expect(rulesSource).toContain('item.price is int && item.price >= 0')
+    expect(rulesSource).toContain("c.email.matches('^[^@]+@[^@]+$')")
+    expect(rulesSource).toContain('function isValidCustomer(c, paymentMethod)')
+    expect(rulesSource).toContain("(paymentMethod == 'whatsapp' && isBoundedString(c.city, 80) && c.city.size() > 0)")
+
+    // The quantity ceiling must equal the admin stock cap: the cart offers at most
+    // the product's `stockCount`, so a rule tighter than MAX_STOCK_UNITS could
+    // reject a legitimate line and dead-end checkout with a generic error. Rules
+    // cannot import the constant, so this assertion is the sync guard.
+    expect(rulesSource).toContain(`item.quantity <= ${MAX_STOCK_UNITS}`)
+
+    // Payload side: the real submitOrder() output satisfies the new pins — the
+    // generated id is exactly `PRONTO-` + 8 Crockford characters, quantities are
+    // integers within the ceiling and prices are integer CLP.
+    const payload = await capturePayload({ items, total: 0, customer, paymentMethod: 'mercadopago' })
+    expect(payload.orderId).toMatch(/^PRONTO-[0-9A-HJKMNP-TV-Z]{8}$/)
+    const storedItems = payload.items as Array<{ quantity: number; price: number }>
+    for (const line of storedItems) {
+      expect(Number.isInteger(line.quantity)).toBe(true)
+      expect(line.quantity).toBeGreaterThanOrEqual(1)
+      expect(line.quantity).toBeLessThanOrEqual(MAX_STOCK_UNITS)
+      expect(Number.isInteger(line.price)).toBe(true)
+    }
+    expect((payload.customer as Record<string, unknown>).email).toMatch(/^[^@]+@[^@]+$/)
   })
 
   it('keeps the checkout input caps in sync with the rules length caps', () => {

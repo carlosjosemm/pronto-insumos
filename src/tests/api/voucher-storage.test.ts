@@ -20,6 +20,7 @@ import {
   deleteVoucherObject,
   extensionForVoucherContentType,
   getVoucherBucket,
+  isCanonicalOrderId,
   isVoucherStoragePathForOrder,
   normalizeVoucherContentType,
   randomVoucherToken,
@@ -98,12 +99,30 @@ describe('Voucher storage helpers (api/_lib/voucherStorage)', () => {
   })
 
   describe('path sanitizers', () => {
-    it('canonicalizes order ids and rejects unusable segments', () => {
+    it('canonicalizes order ids and REJECTS anything that is not already path-safe', () => {
       expect(sanitizeOrderIdForPath(' pronto-123456 ')).toBe('PRONTO-123456')
-      expect(sanitizeOrderIdForPath('PRONTO/123456')).toBe('PRONTO123456')
-      expect(sanitizeOrderIdForPath('../../etc')).toBe('ETC')
+      // Stripping is forbidden: an id equal to a victim's id plus a strippable
+      // character used to sanitize into the victim's voucher folder. The sanitizer
+      // must reject (return '') instead of transforming.
+      expect(sanitizeOrderIdForPath('PRONTO/123456')).toBe('')
+      expect(sanitizeOrderIdForPath('../../etc')).toBe('')
+      expect(sanitizeOrderIdForPath('PRONTO-ABCD1234.')).toBe('')
+      expect(sanitizeOrderIdForPath('PRONTO-ABCD 1234')).toBe('')
       expect(sanitizeOrderIdForPath('')).toBe('')
       expect(sanitizeOrderIdForPath(null)).toBe('')
+      expect(sanitizeOrderIdForPath('PRONTO-' + 'A'.repeat(40))).toBe('')
+    })
+
+    it('recognizes only the two order-id shapes the app generates', () => {
+      expect(isCanonicalOrderId('PRONTO-7K3M9Q2Z')).toBe(true)
+      expect(isCanonicalOrderId('pronto-7k3m9q2z')).toBe(true)
+      // Legacy 6-digit ids still resolve and are still canonical.
+      expect(isCanonicalOrderId('PRONTO-123456')).toBe(true)
+      // Crockford excludes I, L, O and U.
+      expect(isCanonicalOrderId('PRONTO-IIIIIIII')).toBe(false)
+      expect(isCanonicalOrderId('PRONTO-7K3M9Q2')).toBe(false)
+      expect(isCanonicalOrderId('PRONTO-ABCD1234.')).toBe(false)
+      expect(isCanonicalOrderId('')).toBe(false)
     })
 
     it('keeps environment-scoped collection names intact', () => {

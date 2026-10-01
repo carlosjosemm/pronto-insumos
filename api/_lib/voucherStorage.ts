@@ -58,12 +58,40 @@ export function sanitizeVoucherFileName(raw: unknown): string {
   return (cleaned || 'comprobante').slice(0, 120)
 }
 
-/** Canonical, path-safe order id (`PRONTO-XXXXXXXX` — 8 Crockford base32 chars; legacy 6-digit ids still resolve). */
+/** Length ceiling for an order-id path segment — the canonical id is 15 chars. */
+const MAX_ORDER_ID_LENGTH = 32
+
+/** The two order-id shapes the app has ever generated. */
+const CANONICAL_ORDER_ID_PATTERN = /^PRONTO-(?:[0-9A-HJKMNP-TV-Z]{8}|\d{6})$/
+
+/**
+ * Normalizes an order id for use as a Storage path segment, **rejecting** (returning
+ * `''`) anything that is not already path-safe instead of stripping the offending
+ * characters.
+ *
+ * Stripping was a folder-collision vector: an attacker-chosen document id equal to a
+ * victim's id plus a stripped character (for example `PRONTO-ABCD1234.`) sanitized into
+ * the victim's folder, so the housekeeping sweep treated the victim's voucher as an
+ * orphan and deleted it. Rejecting keeps every derived path inside the order that
+ * actually owns it.
+ */
 export function sanitizeOrderIdForPath(orderId: unknown): string {
-  return String(orderId ?? '')
+  const normalized = String(orderId ?? '')
     .trim()
     .toUpperCase()
-    .replace(/[^A-Z0-9-]/g, '')
+  if (!normalized || normalized.length > MAX_ORDER_ID_LENGTH) return ''
+  if (!/^[A-Z0-9-]+$/.test(normalized)) return ''
+  return normalized
+}
+
+/**
+ * True only for an order id in one of the shapes the app generates: the current
+ * `PRONTO-XXXXXXXX` (8 Crockford base32 characters) or the legacy `PRONTO-NNNNNN`
+ * (6 digits). Callers use it to skip a document whose id is not canonical before
+ * deriving any voucher path from it.
+ */
+export function isCanonicalOrderId(orderId: unknown): boolean {
+  return CANONICAL_ORDER_ID_PATTERN.test(sanitizeOrderIdForPath(orderId))
 }
 
 /** Path-safe collection segment (`orders` | `dev_orders` | …). */
@@ -103,7 +131,9 @@ export function isVoucherStoragePathForOrder(
   orderId: string
 ): storagePath is string {
   if (typeof storagePath !== 'string') return false
-  const prefix = `${VOUCHER_PATH_ROOT}/${sanitizeCollectionSegment(collectionName)}/${sanitizeOrderIdForPath(orderId)}/`
+  const orderSegment = sanitizeOrderIdForPath(orderId)
+  if (!orderSegment) return false
+  const prefix = `${VOUCHER_PATH_ROOT}/${sanitizeCollectionSegment(collectionName)}/${orderSegment}/`
   if (!storagePath.startsWith(prefix)) return false
   const remainder = storagePath.slice(prefix.length)
   return remainder.length > 0 && !remainder.includes('/')

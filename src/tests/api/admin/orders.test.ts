@@ -235,6 +235,38 @@ describe('Serverless Admin Orders (/api/admin/orders)', () => {
     expect(jsonOutput.nextCursor).toBeUndefined()
   })
 
+  it('flags a non-timestamp createdAt and refuses to paginate past it', async () => {
+    // A legacy or crafted document whose createdAt is not a real timestamp must
+    // never be echoed as a cursor: the client would re-request the first page
+    // forever. The row is flagged and the cursor omitted instead.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const docs = [
+      {
+        id: 'PRONTO-A',
+        data: baseOrder({
+          orderId: 'PRONTO-A',
+          createdAt: { toDate: () => new Date('2026-09-30T15:00:00Z') },
+          customer: { fullName: 'Dra. Ana Fuentes' }
+        })
+      },
+      { id: 'PRONTO-B', data: baseOrder({ orderId: 'PRONTO-B', createdAt: 'zzz' }) }
+    ]
+    const { db } = mockOrdersDb({ docs })
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler({ method: 'GET', query: { limit: '2' } } as unknown as VercelRequest, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    const orders = jsonOutput.orders as Array<Record<string, unknown>>
+    expect(orders[1]).toMatchObject({ orderId: 'PRONTO-B', createdAt: '', createdAtInvalid: true })
+    expect(orders[0]).not.toHaveProperty('createdAtInvalid')
+    expect(jsonOutput.nextCursor).toBeUndefined()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('non-timestamp createdAt'))
+    warnSpy.mockRestore()
+  })
+
   it('filters by status server-side through an equality query', async () => {
     const { db, chain } = mockOrdersDb()
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
