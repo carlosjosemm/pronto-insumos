@@ -10,6 +10,7 @@ import handler from '../../../api/create-preference'
 import { getAdminFirestore } from '../../../api/_lib/firebaseAdmin'
 import { resolvePromoPercent } from '../../../src/config/promos'
 import { computeOrderTotal } from '../../../src/utils/orderTotal'
+import { PREFERENCE_TTL_MS } from '../../../api/_lib/preferenceSnapshot'
 import { createThrottleCounters } from './helpers/throttleCounters'
 
 function createMockRes() {
@@ -48,7 +49,8 @@ function createMockRes() {
  */
 function mockAdminDbWithProducts(
   products: Record<string, Record<string, unknown>>,
-  orders: Record<string, Record<string, unknown>> = {}
+  orders: Record<string, Record<string, unknown>> = {},
+  options: { failOrderUpdate?: boolean } = {}
 ) {
   const normalizedOrders: Record<string, Record<string, unknown>> = Object.fromEntries(
     Object.entries(orders).map(([id, order]) => {
@@ -74,7 +76,20 @@ function mockAdminDbWithProducts(
     })
   )
 
+  // Records every `orderRef.update(...)` so a test can assert the price snapshot
+  // written at preference time (the handler updates the document it resolved, not
+  // the canonical id, so the ref must carry the update method).
+  const orderUpdates: Array<{ id: string; data: Record<string, unknown> }> = []
+  const refFor = (id: string) => ({
+    id,
+    update: vi.fn(async (payload: Record<string, unknown>) => {
+      if (options.failOrderUpdate) throw new Error('firestore unavailable')
+      orderUpdates.push({ id, data: payload })
+    })
+  })
+
   return {
+    orderUpdates,
     collection: vi.fn().mockImplementation((collectionName: string) => {
       const source = String(collectionName).includes('orders') ? normalizedOrders : products
       return {
@@ -82,7 +97,7 @@ function mockAdminDbWithProducts(
           get: vi.fn().mockImplementation(async () => {
             const data = source[id]
             if (data === undefined) return { exists: false, data: () => null }
-            return { exists: true, data: () => data }
+            return { exists: true, data: () => data, ref: refFor(id) }
           })
         })),
         where: vi.fn().mockImplementation((field: string, _op: string, value: unknown) => ({
@@ -91,7 +106,7 @@ function mockAdminDbWithProducts(
               const hit = Object.entries(source).find(([, doc]) => doc[field] === value)
               if (!hit) return { empty: true, docs: [] }
               const [id, data] = hit
-              return { empty: false, docs: [{ id, data: () => data }] }
+              return { empty: false, docs: [{ id, data: () => data, ref: refFor(id) }] }
             })
           })
         }))
@@ -271,6 +286,95 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
     expect(sentPayload.back_urls.failure).toContain('orderId=PRONTO-777888')
     expect(sentPayload.back_urls.pending).toContain('orderId=PRONTO-777888')
 
+    process.env.MERCADOPAGO_ACCESS_TOKEN = originalToken
+  })
+
+  it('freezes the charged amount on the order and expires the preference', async () => {
+    const originalToken = process.env.MERCADOPAGO_ACCESS_TOKEN
+    process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://www.mercadopago.cl/checkout/v1/redirect?pref_id=1' })
+    } as Response)
+
+    const mockAdminDb = mockAdminDbWithProducts(
+      { 'odon-100': { name: 'Turbina LED', price: 189990, stockCount: 10, inStock: true } },
+      { 'PRONTO-777888': { orderId: 'PRONTO-777888', items: [{ productId: 'odon-100', quantity: 2 }] } }
+    )
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+
+    const req = {
+      method: 'POST',
+      headers: { host: 'localhost:5173' },
+      body: { orderId: 'PRONTO-777888' }
+    } as unknown as VercelRequest
+    const res = createMockRes()
+
+    await handler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+
+    // The snapshot is written onto the resolved order document.
+    expect(mockAdminDb.orderUpdates).toHaveLength(1)
+    const update = mockAdminDb.orderUpdates[0]
+    expect(update.id).toBe('PRONTO-777888')
+    expect(update.data.pricedTotal).toBe(379980)
+    expect(update.data.priceSnapshot).toEqual([{ productId: 'odon-100', quantity: 2, unitPrice: 189990 }])
+    expect(typeof update.data.preferenceCreatedAt).toBe('string')
+    expect(typeof update.data.preferenceExpiresAt).toBe('string')
+    // The stored span is exactly the shared TTL.
+    const created = new Date(String(update.data.preferenceCreatedAt)).getTime()
+    const expires = new Date(String(update.data.preferenceExpiresAt)).getTime()
+    expect(expires - created).toBe(PREFERENCE_TTL_MS)
+
+    // The Mercado Pago preference carries the same window, in the offset form MP
+    // documents, and the strings are byte-identical to the stored snapshot.
+    const sentPayload = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+    expect(sentPayload.expires).toBe(true)
+    expect(sentPayload.expiration_date_from).toBe(update.data.preferenceCreatedAt)
+    expect(sentPayload.expiration_date_to).toBe(update.data.preferenceExpiresAt)
+    expect(sentPayload.expiration_date_to).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.000[+-]\d{2}:\d{2}$/)
+
+    process.env.MERCADOPAGO_ACCESS_TOKEN = originalToken
+  })
+
+  it('still mints the preference when the snapshot write fails, logging loudly', async () => {
+    const originalToken = process.env.MERCADOPAGO_ACCESS_TOKEN
+    process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: 'PREF-REAL-2', init_point: 'https://www.mercadopago.cl/checkout/v1/redirect?pref_id=2' })
+    } as Response)
+
+    // The snapshot write rejects: the sale must not be blocked — the webhook falls
+    // back to the live catalog.
+    const mockAdminDb = mockAdminDbWithProducts(
+      { 'odon-100': { name: 'Turbina LED', price: 189990, stockCount: 10, inStock: true } },
+      { 'PRONTO-777888': { orderId: 'PRONTO-777888', items: [{ productId: 'odon-100', quantity: 2 }] } },
+      { failOrderUpdate: true }
+    )
+    vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+
+    const req = {
+      method: 'POST',
+      headers: { host: 'localhost:5173' },
+      body: { orderId: 'PRONTO-777888' }
+    } as unknown as VercelRequest
+    const res = createMockRes()
+
+    await handler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Could not write the price snapshot'),
+      expect.anything()
+    )
+
+    warnSpy.mockRestore()
     process.env.MERCADOPAGO_ACCESS_TOKEN = originalToken
   })
 

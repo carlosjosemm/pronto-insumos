@@ -73,7 +73,12 @@ const ADMIN_ONLY_FIELDS = [
   'paidAt',
   // The warehouse-alert reservation is written by /api/upload-voucher only.
   'voucherAlertSentAt',
-  'voucherAlertCount'
+  'voucherAlertCount',
+  // The price freeze written by /api/create-preference at preference time.
+  'pricedTotal',
+  'priceSnapshot',
+  'preferenceCreatedAt',
+  'preferenceExpiresAt'
 ]
 
 describe('Order-create contract: submitOrder() payload vs firestore.rules allowlist (Task 0.12)', () => {

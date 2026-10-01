@@ -5,6 +5,8 @@ import { hasRealMercadoPagoToken, isSimulatedPaymentAllowed } from './_lib/simul
 import { consumeThrottleAttempt, getClientIp, recordThrottleFailures, respondThrottled } from './_lib/abuseThrottle.js'
 import { resolvePromoPercent } from '../src/config/promos.js'
 import { computeDiscountedUnitPrice, computeOrderTotal, normalizeQuantity } from '../src/utils/orderTotal.js'
+import { buildPreferenceSnapshot } from './_lib/preferenceSnapshot.js'
+import type { DocumentReference } from 'firebase-admin/firestore'
 import { MIN_ORDER_OUTSIDE_MELIPILLA, MIN_ORDER_ZONE, isBelowMinimumOrder } from '../src/config/delivery.js'
 import type { DeliveryZone } from '../src/config/delivery.js'
 import { formatCLP } from '../src/utils/currency.js'
@@ -202,10 +204,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // preference whose total diverges from the order it belongs to.
     const ordersCol = getCollectionName('orders')
     let orderData: Record<string, unknown> | null = null
+    // The document reference is kept so the price snapshot can be written onto the
+    // order the lookup actually resolved — a legacy order resolved through the
+    // `orderId` field query is not addressed by its canonical id.
+    let orderRef: DocumentReference | null = null
 
     const directOrderSnap = await adminDb.collection(ordersCol).doc(cleanOrderId).get()
     if (directOrderSnap.exists) {
       orderData = (directOrderSnap.data() as Record<string, unknown> | undefined) || null
+      orderRef = directOrderSnap.ref
     } else {
       const orderByFieldSnap = await adminDb
         .collection(ordersCol)
@@ -215,6 +222,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       orderData = orderByFieldSnap.empty
         ? null
         : (orderByFieldSnap.docs[0].data() as Record<string, unknown> | undefined) || null
+      orderRef = orderByFieldSnap.empty ? null : orderByFieldSnap.docs[0].ref
     }
 
     if (!orderData) {
@@ -404,6 +412,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
+    // FREEZE THE CHARGED AMOUNT — write the server-only price snapshot onto the
+    // order BEFORE minting the preference, so a preference that exists always has
+    // a snapshot the webhook can settle against. Best-effort: a snapshot write
+    // failure must not block a sale, and the webhook's catalog recomputation
+    // remains the fallback used when no snapshot is stored.
+    const snapshot = buildPreferenceSnapshot(
+      expectedTotal,
+      rebuiltItems.map((line) => ({ productId: line.id, quantity: line.quantity, unitPrice: line.unit_price }))
+    )
+    if (orderRef) {
+      try {
+        await orderRef.update({ ...snapshot })
+      } catch (err: unknown) {
+        console.warn(
+          `[create-preference] Could not write the price snapshot for order "${cleanOrderId}"; the webhook will fall back to the live catalog:`,
+          err instanceof Error ? err.message : err
+        )
+      }
+    }
+
     // Mercado Pago Preference Payload built exclusively from the REBUILT lines;
     // the payer is the customer stored on the order document, never the caller.
     const mpPreference = {
@@ -425,6 +453,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         pending: `${baseUrl}/?status=pending&orderId=${cleanOrderId}`
       },
       auto_return: 'approved',
+      // Expire the link when the snapshot does: a payable-forever link could be
+      // paid days later against a moved catalog or a swept order. Both dates are
+      // sent because Mercado Pago documents them as a pair; the values are the
+      // exact strings stored on the order, so the two can never disagree.
+      expires: true,
+      expiration_date_from: snapshot.preferenceCreatedAt,
+      expiration_date_to: snapshot.preferenceExpiresAt,
       notification_url: `${baseUrl}/api/webhooks/mercadopago`
     }
 

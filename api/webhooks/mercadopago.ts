@@ -14,6 +14,7 @@ import {
 import type { StockShortfall } from "../_lib/emailTemplates.js";
 import { resolvePromoPercent } from "../../src/config/promos.js";
 import { computeOrderTotal } from "../../src/utils/orderTotal.js";
+import { readFrozenPricedTotal } from "../_lib/preferenceSnapshot.js";
 import { isSettledOrderStatus } from "../../src/utils/orderLifecycle.js";
 import { formatCLP } from "../../src/utils/currency.js";
 import { hasRealMercadoPagoToken, isSimulatedPaymentAllowed } from "../_lib/simulationPolicy.js";
@@ -808,11 +809,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const discountPercent = resolvePromoPercent(
             freshOrderData?.promoCode ?? orderData.promoCode,
           );
-          const expectedAmount = catalogComplete
+          const catalogTotal = catalogComplete
             ? computeOrderTotal(catalogLines, discountPercent)
             : null;
+          // A price snapshot written at preference time is the authority: the
+          // amount the shopper was quoted is what settles, even if an admin edited
+          // a price or paused a product in between. Without a snapshot (an order
+          // created before the freeze existed) the live catalog recomputation is
+          // the fallback.
+          const frozenTotal = readFrozenPricedTotal(freshOrderData);
+          const expectedAmount = frozenTotal !== null ? frozenTotal : catalogTotal;
+          const priceSnapshotDiverged =
+            frozenTotal !== null && catalogTotal !== null && catalogTotal !== frozenTotal;
+          if (priceSnapshotDiverged) {
+            console.warn(
+              `[Mercado Pago Webhook] Order "${cleanOrderId}" settled against its frozen price snapshot (${frozenTotal}) while the live catalog now totals ${catalogTotal}; recording a soft alert, no action.`,
+            );
+          }
+          // CLP is the only accepted currency — a payment in any other currency can
+          // never match an integer-CLP total.
+          const currencyId = String(paymentData.currency_id || "");
+          const currencyVerified = currencyId === "CLP";
           const paidAmount = Number(paymentData.transaction_amount);
           const amountVerified =
+            currencyVerified &&
             expectedAmount !== null &&
             Number.isInteger(paidAmount) &&
             paidAmount === expectedAmount &&
@@ -820,7 +840,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           if (!amountVerified) {
             console.warn(
-              `[Mercado Pago Webhook] Order "${cleanOrderId}" amount verification failed: paid ${String(paymentData.transaction_amount)}, expected ${String(expectedAmount)}. Flagging for manual review; no stock deducted.`,
+              `[Mercado Pago Webhook] Order "${cleanOrderId}" amount verification failed: paid ${String(paymentData.transaction_amount)} ${currencyId || "(no currency)"}, expected ${String(expectedAmount)}. Flagging for manual review; no stock deducted.`,
             );
             transaction.update(orderRef, {
               status: "PAGO_EN_REVISION",
@@ -844,12 +864,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               reason:
                 expectedAmount === null
                   ? `No fue posible verificar el monto del pago (ID: ${paymentId}) contra el catálogo. Revisión manual requerida.`
-                  : `Monto pagado (${String(paymentData.transaction_amount)}) no coincide con el total verificado del pedido (${expectedAmount}). Revisión manual requerida.`,
+                  : !currencyVerified
+                    ? `Moneda del pago (${currencyId || "sin dato"}) distinta de CLP (ID: ${paymentId}). Revisión manual requerida.`
+                    : `Monto pagado (${String(paymentData.transaction_amount)}) no coincide con el total verificado del pedido (${expectedAmount}). Revisión manual requerida.`,
               metadata: {
                 paymentId: String(paymentId),
                 paymentStatus: paymentData.status,
+                currencyId: currencyId || null,
                 transactionAmount: paymentData.transaction_amount,
                 expectedAmount,
+                ...(frozenTotal !== null ? { frozenTotal } : {}),
               },
             });
             flaggedEvent = "PAGO_EN_REVISION";
@@ -896,7 +920,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             metadata: {
               paymentId: String(paymentId),
               paymentStatus: paymentData.status,
+              currencyId,
               transactionAmount: paymentData.transaction_amount,
+              // The frozen snapshot the amount was asserted against, and whether
+              // the live catalog had moved away from it (a soft alert, not a
+              // failure — the shopper paid the quoted amount).
+              ...(frozenTotal !== null ? { frozenTotal } : {}),
+              ...(priceSnapshotDiverged ? { priceSnapshotDiverged: true, catalogTotal } : {}),
               // Oversold lines travel with the approval so the
               // shortfall is auditable, not just emailed.
               ...(stockShortfalls.length > 0 ? { stockShortfalls } : {}),
