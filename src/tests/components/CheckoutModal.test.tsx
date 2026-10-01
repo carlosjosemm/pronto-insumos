@@ -5,7 +5,8 @@ import React from 'react'
 // Mock services before importing component
 vi.mock('../../services/api', () => ({
   submitOrder: vi.fn(),
-  generateOrderId: vi.fn(() => 'PRONTO-TEST1234')
+  generateOrderId: vi.fn(() => 'PRONTO-TEST1234'),
+  recheckCartProducts: vi.fn()
 }))
 
 vi.mock('../../services/mercadopago', () => ({
@@ -29,7 +30,7 @@ vi.mock('../../services/orderConfirmation', () => ({
 }))
 
 import CheckoutModal, { CheckoutModalProps, OTHER_COMMUNE_VALUE } from '../../components/CheckoutModal'
-import { submitOrder } from '../../services/api'
+import { submitOrder, recheckCartProducts } from '../../services/api'
 import { SESSION_ORDER_STORAGE_KEY, rememberSessionOrderId } from '../../services/orderSession'
 import { processMercadoPagoPayment } from '../../services/mercadopago'
 import { sendOrderConfirmationEmail } from '../../services/orderConfirmation'
@@ -76,6 +77,9 @@ describe('CheckoutModal Component', () => {
       total: 189990,
       itemsCount: 1
     })
+    // Default: the Pago-step pre-flight read fails, so it is a silent no-op.
+    // Tests that exercise the pre-flight override this per case.
+    vi.mocked(recheckCartProducts).mockResolvedValue({ products: [], ok: false })
   })
 
   /** Advances one step by clicking the step's "Continuar" submit button. */
@@ -1043,6 +1047,133 @@ describe('CheckoutModal Component', () => {
       render(<CheckoutModal {...defaultProps} />)
 
       expect(screen.queryByText(/Pago pendiente de confirmar/i)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Pago-step last-moment price and stock re-check', () => {
+    /**
+     * Mirrors App: it owns the cart so a reconciliation re-renders the modal
+     * with the new items and the recomputed payable total.
+     */
+    const renderHarness = (initialItems: CartItem[]) => {
+      const Harness = () => {
+        const [items, setItems] = React.useState<CartItem[]>(initialItems)
+        const total = items.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
+        return <CheckoutModal {...defaultProps} cartItems={items} totalAmount={total} onCartReconciled={setItems} />
+      }
+      return render(<Harness />)
+    }
+
+    const submitButton = () => screen.getByRole('button', { name: /Confirmar Pedido/i })
+
+    it('shows a price change, reprices the total and gates submit until acknowledged', async () => {
+      const repriced = { ...mockProduct, price: 199990 }
+      vi.mocked(recheckCartProducts).mockResolvedValue({ products: [repriced], ok: true })
+
+      renderHarness([{ product: mockProduct, quantity: 1 }])
+      completeDataEntry()
+
+      const notice = await screen.findByRole('alert')
+      expect(notice).toHaveTextContent(/Turbina Odontológica LED MasterTorque/)
+      expect(notice).toHaveTextContent('$189.990 → $199.990')
+
+      // No order is written while the change is unacknowledged.
+      expect(submitOrder).not.toHaveBeenCalled()
+      expect(submitButton()).toBeDisabled()
+
+      // The harness re-rendered the modal with the repriced line.
+      expect(screen.getAllByText(/\$199\.990/).length).toBeGreaterThan(0)
+
+      fireEvent.click(screen.getByRole('button', { name: /Continuar con el nuevo total/i }))
+      await waitFor(() => expect(submitButton()).not.toBeDisabled())
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('clamps the quantity and warns when the live stock dropped below the request', async () => {
+      const scarce = { ...mockProduct, stockCount: 1 }
+      vi.mocked(recheckCartProducts).mockResolvedValue({ products: [scarce], ok: true })
+
+      renderHarness([{ product: { ...mockProduct, stockCount: 5 }, quantity: 3 }])
+      completeDataEntry()
+
+      const notice = await screen.findByRole('alert')
+      expect(notice).toHaveTextContent(/sin stock suficiente/i)
+      expect(submitButton()).toBeDisabled()
+    })
+
+    it('removes a line that is no longer available and warns', async () => {
+      vi.mocked(recheckCartProducts).mockResolvedValue({ products: [], ok: true })
+
+      renderHarness([{ product: mockProduct, quantity: 1 }])
+      completeDataEntry()
+
+      const notice = await screen.findByRole('alert')
+      expect(notice).toHaveTextContent(/ya no disponible/i)
+      // The emptied cart can never be submitted.
+      expect(submitButton()).toBeDisabled()
+    })
+
+    it('proceeds silently when the re-check fails (the server stays the authority)', async () => {
+      vi.mocked(recheckCartProducts).mockResolvedValue({ products: [], ok: false })
+
+      renderHarness([{ product: mockProduct, quantity: 1 }])
+      completeDataEntry()
+
+      await waitFor(() => expect(recheckCartProducts).toHaveBeenCalled())
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(submitButton()).not.toBeDisabled()
+    })
+
+    it('stays silent when nothing changed', async () => {
+      vi.mocked(recheckCartProducts).mockResolvedValue({ products: [mockProduct], ok: true })
+
+      renderHarness([{ product: mockProduct, quantity: 1 }])
+      completeDataEntry()
+
+      await waitFor(() => expect(recheckCartProducts).toHaveBeenCalledTimes(1))
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('keeps the gate when the payment method changes before acknowledgment', async () => {
+      const repriced = { ...mockProduct, price: 199990 }
+      vi.mocked(recheckCartProducts).mockResolvedValue({ products: [repriced], ok: true })
+
+      renderHarness([{ product: mockProduct, quantity: 1 }])
+      completeDataEntry()
+      await screen.findByRole('alert')
+      expect(submitButton()).toBeDisabled()
+
+      // The re-check re-runs against the already-reconciled cart; the
+      // unacknowledged notice must survive and the submit stay gated.
+      fireEvent.click(screen.getByRole('radio', { name: /Mercado Pago/i }))
+      await waitFor(() => expect(recheckCartProducts).toHaveBeenCalledTimes(2))
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+      expect(submitButton()).toBeDisabled()
+    })
+
+    it('re-checks whenever a payment method is selected', async () => {
+      vi.mocked(recheckCartProducts).mockResolvedValue({ products: [mockProduct], ok: true })
+
+      renderHarness([{ product: mockProduct, quantity: 1 }])
+      completeDataEntry()
+      await waitFor(() => expect(recheckCartProducts).toHaveBeenCalledTimes(1))
+
+      fireEvent.click(screen.getByRole('radio', { name: /Mercado Pago/i }))
+      await waitFor(() => expect(recheckCartProducts).toHaveBeenCalledTimes(2))
+    })
+
+    it('creates a single order when the submit is triggered twice in the same tick', async () => {
+      vi.mocked(recheckCartProducts).mockResolvedValue({ products: [mockProduct], ok: true })
+
+      renderHarness([{ product: mockProduct, quantity: 1 }])
+      completeDataEntry()
+      await waitFor(() => expect(submitButton()).not.toBeDisabled())
+
+      const form = submitButton().closest('form') as HTMLFormElement
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+
+      await waitFor(() => expect(submitOrder).toHaveBeenCalledTimes(1))
     })
   })
 })

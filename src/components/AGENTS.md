@@ -244,6 +244,30 @@ if (isBelowMinimumOrder(formData.city, productSubtotal)) {
 * The select also renders a proactive muted hint under it when `San Antonio` is chosen: `Compra mínima para despacho a San Antonio: $60.000`.
 * The same rule is surfaced in the Cart drawer, so the shopper learns it before reaching checkout. Both read the constants from `src/config/delivery.ts`.
 
+### 3.2.2 Last-Moment Price and Stock Re-Check at the Pago Step
+
+The cart is revalidated once per page load, and `submitOrder` prices from the cart's stored
+`product.price`. Before that, when the Pago step opens and again whenever the payment method
+changes, `CheckoutModal` re-reads **only the cart's products** through the uncached surface
+(`recheckCartProducts` → `POST /api/catalog { ids }`, `no-store`), so a price or stock edit made
+after the page loaded is observed before an order is written:
+
+* A change is diffed against the cart lines (`describeCartChanges`): a reprice
+  (`«Producto»: $X → $Y`), a stock shortfall below the requested quantity, or a line that is
+  paused/removed (`ya no disponible`).
+* On a change the cart is reconciled (`revalidateCartAgainstCatalog`, with the all-gone case
+  emptied explicitly) and reported to `App` via the `onCartReconciled` prop, so the drawer, the
+  payable total and the order document all reflect the catalog the payment layer will charge.
+* The changes render in an inline `role="alert"` notice and the submit stays **disabled** until the
+  shopper clicks `Continuar con el nuevo total`. A re-check triggered by a payment-method change
+  must not silently clear that gate (`reconcilePendingRef`).
+* No change ⇒ silent. A **failed** re-check (`ok: false` — network, non-OK, over the 50-id cap)
+  does not block checkout: it is logged and `create-preference` stays the authoritative guard.
+* `handleCompleteOrder` is guarded by a `useRef` in-flight lock — two same-tick submits can both
+  pass the `isSubmitting` state guard, so the ref is what makes the order/charge single-shot.
+* The submit is also disabled when the cart is empty (a reconciled-to-empty cart cannot be ordered).
+* A monotonic sequence ref drops a stale re-check response so a slow read cannot overwrite a newer one.
+
 ### 3.3 Step 4: Payment Pathways
 
 The Pago step opens with a **compact order summary** (`.checkout-summary`): scrollable item lines (`qty × name — subtotal`) plus the Neto / IVA (19%) / Total rows computed by `calculateTaxBreakdown`. Below it, the payment pathways tailored to Chilean healthcare purchasing habits — **an out-of-zone despacho ("Otra comuna") renders none of them**: it shows a notice that delivery and payment are coordinated by WhatsApp, with the method state locked to `'whatsapp'` (Mercado Pago and bank transfer are removed from the choice list):

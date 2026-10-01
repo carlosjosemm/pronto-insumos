@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   CartItem,
   CustomerInfo,
   PaymentMethod,
+  Product,
   SubmitOrderResult,
   BillingInfo,
   SanitaryVerification,
@@ -25,7 +26,8 @@ import {
   Truck,
   PackageSearch
 } from 'lucide-react'
-import { submitOrder, generateOrderId } from '../services/api'
+import { submitOrder, generateOrderId, recheckCartProducts } from '../services/api'
+import { revalidateCartAgainstCatalog } from '../services/cartStorage'
 import { rememberSessionOrderId, getSessionOrderId } from '../services/orderSession'
 import { sendOrderConfirmationEmail } from '../services/orderConfirmation'
 import { generateWhatsAppQuoteUrl } from '../services/whatsapp'
@@ -83,6 +85,31 @@ const FIELD_MAX_LENGTH = {
   credentialFileName: 200
 } as const
 
+/**
+ * Human-readable summary of what changed between the cart lines and a fresh
+ * catalog read: a reprice, a stock shortfall, or a line that is gone/paused.
+ * Used by the Pago-step pre-flight so the shopper sees every change at once
+ * instead of discovering it as a failed payment.
+ */
+function describeCartChanges(items: CartItem[], liveProducts: Map<string, Product>): string[] {
+  const notices: string[] = []
+  for (const item of items) {
+    const live = liveProducts.get(item.product.id)
+    if (!live || !live.inStock || (typeof live.stockCount === 'number' && live.stockCount <= 0)) {
+      notices.push(`«${item.product.name}»: ya no disponible`)
+      continue
+    }
+    if (live.price !== item.product.price) {
+      notices.push(`«${item.product.name}»: ${formatCLP(item.product.price)} → ${formatCLP(live.price)}`)
+    }
+    const maxStock = typeof live.stockCount === 'number' && live.stockCount > 0 ? live.stockCount : 99
+    if (item.quantity > maxStock) {
+      notices.push(`«${item.product.name}»: sin stock suficiente (disponible: ${maxStock})`)
+    }
+  }
+  return notices
+}
+
 export interface CheckoutModalProps {
   isOpen: boolean
   onClose: () => void
@@ -91,6 +118,12 @@ export interface CheckoutModalProps {
   appliedPromo?: PromoCode | null
   onOrderSuccess: () => void
   onOpenTracking?: (orderId: string, rut: string) => void
+  /**
+   * Reports the reconciled cart back to `App` when the Pago-step pre-flight
+   * finds a price/stock change, so the drawer, the payable total and the order
+   * document all reflect the catalog the payment layer will charge.
+   */
+  onCartReconciled?: (items: CartItem[]) => void
 }
 
 export default function CheckoutModal({
@@ -100,7 +133,8 @@ export default function CheckoutModal({
   totalAmount,
   appliedPromo,
   onOrderSuccess,
-  onOpenTracking
+  onOpenTracking,
+  onCartReconciled
 }: CheckoutModalProps) {
   const [step, setStep] = useState<number>(1) // 1: Contacto, 2: Despacho, 3: Documento, 4: Pago, 5: Confirmación
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transferencia')
@@ -120,6 +154,22 @@ export default function CheckoutModal({
   const [voucherUploading, setVoucherUploading] = useState<boolean>(false)
   const [voucherUploaded, setVoucherUploaded] = useState<boolean>(false)
   const [voucherError, setVoucherError] = useState<string>('')
+
+  // Pago-step pre-flight: the changes surfaced by the uncached catalog re-check.
+  const [reconcileNotices, setReconcileNotices] = useState<string[]>([])
+  const [reconcileAcknowledged, setReconcileAcknowledged] = useState<boolean>(true)
+  // Monotonic id so a slow re-check response cannot overwrite a newer one.
+  const reconcileSeqRef = useRef<number>(0)
+  // True while a surfaced change is still awaiting the shopper's acknowledgment.
+  const reconcilePendingRef = useRef<boolean>(false)
+  // Latest cart for the re-check effect without making it a dependency (which
+  // would re-run the check every time the reconciled cart lands).
+  const cartItemsRef = useRef<CartItem[]>(cartItems)
+  // Held in a ref so the effect never depends on the callback identity: an
+  // inline lambda would otherwise re-run the check on every parent render.
+  const onCartReconciledRef = useRef<typeof onCartReconciled>(onCartReconciled)
+  // Two same-tick submits can both pass the `isSubmitting` state guard.
+  const submittingRef = useRef<boolean>(false)
 
   const hasRegulatedItems = cartItems.some((i) => i.product.prescriptionRequired)
 
@@ -143,6 +193,60 @@ export default function CheckoutModal({
     if (card) card.scrollTop = 0
   }, [step, isOpen, dialogRef])
 
+  useEffect(() => {
+    cartItemsRef.current = cartItems
+  }, [cartItems])
+
+  useEffect(() => {
+    onCartReconciledRef.current = onCartReconciled
+  }, [onCartReconciled])
+
+  // Pago-step pre-flight: when the Pago step opens and again whenever the
+  // payment method changes, re-read only the cart's products from the uncached
+  // catalog surface. A change is applied to the cart (so the order document is
+  // priced from the catalog the payment layer will charge) and shown until the
+  // shopper acknowledges it. A failed read is a no-op — `create-preference`
+  // stays the authoritative guard.
+  useEffect(() => {
+    if (!isOpen || step !== 4) return
+    const items = cartItemsRef.current
+    if (items.length === 0) return
+
+    let cancelled = false
+    const seq = ++reconcileSeqRef.current
+
+    void (async () => {
+      const { products, ok } = await recheckCartProducts(items.map((item) => item.product.id))
+      if (cancelled || seq !== reconcileSeqRef.current || !ok) return
+
+      const liveProducts = new Map(products.map((product) => [product.id, product]))
+      const notices = describeCartChanges(items, liveProducts)
+      if (notices.length === 0) {
+        // A re-run (e.g. a payment-method change) must not silently un-gate a
+        // change the shopper has not acknowledged yet.
+        if (!reconcilePendingRef.current) {
+          setReconcileNotices([])
+          setReconcileAcknowledged(true)
+        }
+        return
+      }
+
+      const reval = revalidateCartAgainstCatalog(items, products)
+      // revalidateCartAgainstCatalog short-circuits on an empty catalog, which
+      // is exactly the "every line is gone/paused" case — handle it explicitly
+      // so a fully-discontinued cart is emptied instead of submitted stale.
+      const reconciledItems = products.length === 0 ? [] : reval.items
+      reconcilePendingRef.current = true
+      setReconcileNotices(notices)
+      setReconcileAcknowledged(false)
+      onCartReconciledRef.current?.(reconciledItems)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, step, paymentMethod])
+
   // Clean form state without mock card details (PCI-DSS compliant)
   const [formData, setFormData] = useState<CustomerInfo>({
     fullName: '',
@@ -160,6 +264,11 @@ export default function CheckoutModal({
   // An "Otra comuna" despacho has no online payment: the Pago step offers
   // WhatsApp only, and the method state is forced on the Despacho transition.
   const isOutOfZoneDelivery = normalizeDeliveryZone(formData.city) === null
+
+  // The Pago submit is gated while the pre-flight has unacknowledged changes,
+  // and an empty cart can never be ordered.
+  const submitBlockedByReconcile = reconcileNotices.length > 0 && !reconcileAcknowledged
+  const submitDisabled = isSubmitting || submitBlockedByReconcile || cartItems.length === 0
 
   // An order this tab already created may still be awaiting payment when the
   // shopper re-enters checkout: the Mercado Pago return URL is forgeable and is
@@ -186,6 +295,9 @@ export default function CheckoutModal({
     setVoucherUploading(false)
     setVoucherUploaded(false)
     setVoucherError('')
+    setReconcileNotices([])
+    setReconcileAcknowledged(true)
+    reconcilePendingRef.current = false
     setFormData({
       fullName: '',
       email: '',
@@ -221,6 +333,13 @@ export default function CheckoutModal({
   const goBack = () => {
     setSubmitError('')
     setStep((prev) => Math.max(1, prev - 1))
+  }
+
+  /** Accepts the reconciled cart so the Pago submit un-gates. */
+  const acknowledgeReconcile = () => {
+    reconcilePendingRef.current = false
+    setReconcileAcknowledged(true)
+    setReconcileNotices([])
   }
 
   const handleNextStep = (e: React.FormEvent) => {
@@ -315,11 +434,23 @@ export default function CheckoutModal({
       setFacturaErrors({})
       setStep(4)
     } else if (step === 4) {
-      handleCompleteOrder()
+      if (!submitBlockedByReconcile) handleCompleteOrder()
     }
   }
 
   const handleCompleteOrder = async () => {
+    // Two same-tick submits can both pass the `isSubmitting` state guard, so the
+    // ref lock is what makes the order/charge creation single-shot.
+    if (submittingRef.current || submitBlockedByReconcile) return
+    submittingRef.current = true
+    try {
+      await completeOrder()
+    } finally {
+      submittingRef.current = false
+    }
+  }
+
+  const completeOrder = async () => {
     setSubmitError('')
 
     // Pre-flight stock re-check — same policy as the Despacho gate: an absent
@@ -1302,6 +1433,39 @@ export default function CheckoutModal({
                   </div>
                 )}
 
+                {reconcileNotices.length > 0 && (
+                  <div
+                    role="alert"
+                    style={{
+                      color: 'var(--warning)',
+                      background: 'var(--signal-soft)',
+                      border: '1px solid var(--signal-border)',
+                      padding: '0.75rem 0.9rem',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '0.8rem'
+                    }}
+                  >
+                    <div style={{ fontWeight: '700', marginBottom: '0.4rem' }}>
+                      Actualizamos tu pedido con los precios y el stock actuales:
+                    </div>
+                    <ul style={{ margin: '0 0 0.5rem', paddingLeft: '1.1rem' }}>
+                      {reconcileNotices.map((notice, idx) => (
+                        <li key={idx}>{notice}</li>
+                      ))}
+                    </ul>
+                    {!reconcileAcknowledged && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={acknowledgeReconcile}
+                        style={{ fontSize: '0.8rem' }}
+                      >
+                        Continuar con el nuevo total
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {submitError && (
                   <div
                     style={{
@@ -1326,7 +1490,7 @@ export default function CheckoutModal({
                     type="submit"
                     className="btn-primary"
                     style={{ flex: 1, justifyContent: 'center' }}
-                    disabled={isSubmitting}
+                    disabled={submitDisabled}
                   >
                     <Lock size={17} />
                     <span>

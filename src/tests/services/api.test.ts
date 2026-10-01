@@ -24,6 +24,7 @@ import {
   submitOrder,
   generateOrderId,
   invalidateCatalogCache,
+  recheckCartProducts,
   CATALOG_FETCH_TIMEOUT_MS,
   CATALOG_CACHE_TTL_MS
 } from '../../services/api'
@@ -689,5 +690,76 @@ describe('fetchProducts - in-memory catalog cache', () => {
     expect(filtered.source).toBe('firestore')
     expect(filtered.catalog).toHaveLength(2)
     expect(filtered.products.map((p) => p.id)).toEqual(['pronto-002'])
+  })
+})
+
+describe('recheckCartProducts - uncached cart pre-flight', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
+
+  it('POSTs the deduplicated ids and returns the live products', async () => {
+    const fetchSpy = vi
+      .spyOn(global, 'fetch')
+      .mockImplementation(
+        async () =>
+          new Response(JSON.stringify([{ id: 'pronto-001', price: 1000 }]), { status: 200 }) as unknown as Response
+      )
+
+    const res = await recheckCartProducts(['pronto-001', 'pronto-001', ''])
+
+    expect(res.ok).toBe(true)
+    expect(res.products).toHaveLength(1)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/catalog')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ ids: ['pronto-001'] })
+  })
+
+  it('returns ok:false on a non-OK status', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(global, 'fetch').mockImplementation(async () => new Response('{}', { status: 503 }) as unknown as Response)
+
+    const res = await recheckCartProducts(['pronto-001'])
+
+    expect(res.ok).toBe(false)
+    expect(res.products).toEqual([])
+  })
+
+  it('returns ok:false on a non-array payload', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(global, 'fetch').mockImplementation(
+      async () => new Response('{"oops":true}', { status: 200 }) as unknown as Response
+    )
+
+    expect((await recheckCartProducts(['pronto-001'])).ok).toBe(false)
+  })
+
+  it('returns ok:false on a transport failure', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'))
+
+    expect((await recheckCartProducts(['pronto-001'])).ok).toBe(false)
+  })
+
+  it('skips the request above the endpoint id cap', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fetchSpy = vi.spyOn(global, 'fetch')
+
+    const res = await recheckCartProducts(Array.from({ length: 51 }, (_, i) => `p-${i}`))
+
+    expect(res.ok).toBe(false)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('short-circuits an empty id list without a request', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+
+    const res = await recheckCartProducts([])
+
+    expect(res).toEqual({ products: [], ok: true })
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
