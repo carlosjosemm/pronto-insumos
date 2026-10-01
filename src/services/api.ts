@@ -302,6 +302,53 @@ export async function fetchProducts({
   return { products: result, catalog: catalog.slice(), source }
 }
 
+/** Matches the `/api/catalog` POST cap; a larger cart skips the pre-check. */
+const MAX_RECHECK_IDS = 50
+
+export interface CartRecheckResult {
+  /** The live products for the requested ids (active, existing ones only). */
+  products: Product[]
+  /** False when the read could not be trusted; the caller must not block checkout. */
+  ok: boolean
+}
+
+/**
+ * Uncached re-check of specific cart products against the live catalog.
+ *
+ * `POST /api/catalog { ids }` answers `Cache-Control: no-store`, so a price or
+ * stock edit made after the page loaded is always observed — the GET cache and
+ * the in-memory catalog cache are deliberately bypassed. This is a pre-flight
+ * courtesy, not the authority: on any failure it resolves `ok: false` and the
+ * caller proceeds, because `create-preference` re-prices and re-checks against
+ * the catalog server-side before charging.
+ */
+export async function recheckCartProducts(ids: string[]): Promise<CartRecheckResult> {
+  const uniqueIds = Array.from(new Set(ids.filter((id) => typeof id === 'string' && id.length > 0)))
+  if (uniqueIds.length === 0) return { products: [], ok: true }
+  if (uniqueIds.length > MAX_RECHECK_IDS) {
+    console.warn(`Cart re-check skipped: ${uniqueIds.length} products exceeds the ${MAX_RECHECK_IDS}-id endpoint cap.`)
+    return { products: [], ok: false }
+  }
+
+  try {
+    const response = await fetch('/api/catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ ids: uniqueIds })
+    })
+    if (!response.ok) throw new Error(`Catalog re-check answered ${response.status}`)
+    const products = (await response.json()) as Product[]
+    if (!Array.isArray(products)) throw new Error('Catalog re-check returned a non-array payload')
+    return { products, ok: true }
+  } catch (err: unknown) {
+    console.warn(
+      'Cart re-check against the live catalog failed; checkout proceeds (the server re-verifies at payment time):',
+      err instanceof Error ? err.message : err
+    )
+    return { products: [], ok: false }
+  }
+}
+
 export async function validatePromo(code: string): Promise<{ success: boolean; promo?: PromoCode; error?: string }> {
   await new Promise((resolve) => setTimeout(resolve, 150))
   const clean = code.trim().toUpperCase()

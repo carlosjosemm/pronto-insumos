@@ -416,6 +416,7 @@ export default function App() {
         appliedPromo={appliedPromo}
         onOrderSuccess={handleOrderSuccess}
         onOpenTracking={(orderId, rut) => handleOpenTracking(orderId, rut)}
+        onCartReconciled={setCart}
       />
 
       {/* Mercado Pago Return Status Modal */}
