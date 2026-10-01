@@ -35,9 +35,10 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 | [0.21](#task-0-21) **NEW** | Customer e-mail is unverified and attacker-composed content is sent from the verified PRONTO domain | Abuse path bounded (App Check 8.16 + catalog-sourced content + per-recipient budget) |
 | [0.22](#task-0-22) **NEW** | Delivery zone is a free-text claim; owner decision: out-of-zone buyers may order but only via WhatsApp | Zone normalizer, "Otra comuna" → WhatsApp-only, server-side minimum |
 | [2.14](#task-2-14) | **Owner decision:** remove exact stock from the public; only low stock (≤ 3) is visible | Stock-free `/api/catalog`, rules flip, badge at ≤ 3 |
-| [2.24](#task-2-24) **NEW** | Unsubstantiated storefront claims ("Boleta Electrónica Inmediata", "Certificado/Homologado ISP", "Fichas de Seguridad", fake-rating UI) and a free-shipping nudge that implies a charge that does not exist | Owner substantiates or approves neutral wording (§4 H–J) |
+| [2.24](#task-2-24) **NEW** | Owner-approved neutral wording replaces unsubstantiated claims; ratings disabled; cart shipping bar simplified | Source-content guard test; no old string remains |
 | [2.19](#task-2-19) **NEW** | Owner design: last-moment price/stock check at the Pago step with visible feedback | Changes shown and acknowledged before the order is written |
 | [2.20](#task-2-20) **NEW** | Every filter/sort/stock toggle re-reads the whole `products` collection (billed per visitor) | One catalog read per session, client-side filtering (after 2.14) |
+| [4.10](#task-4-10) **NEW** | Nothing ever moves an order to `EN_PREPARACION`; owner wants the step (a new `mark-preparing` action) | Handler + panel tests; step 3 reachable for customers |
 | [4.11](#task-4-11) **NEW** | Payment incidents (a paid payment with no matching order) exist only in Firestore and an e-mail — the console cannot see them | Console list + resolve action |
 | [5.4](#task-5-4) **NEW** | Customer e-mails are bare-bones and there is no mail at dispatch/delivery/cancel | Redesigned shared layout + lifecycle e-mails, previewable offline |
 | [8.16](#task-8-16) | App Check abuse friction for public order creation | Preview checkout works with enforcement |
@@ -59,7 +60,6 @@ Work P1 first, then P2, then P3. Rows link to detail in [§3](#3-open-tasks). **
 | [4.7](#task-4-7) **NEW** | Failed admin authentication is invisible; no idle sign-out (no MFA by owner decision) | Logged, generic error |
 | [4.8](#task-4-8) **NEW** | Admin search covers only the loaded page | Exact id/RUT server lookup |
 | [4.9](#task-4-9) **NEW** | Dashboard KPIs undercount (sold-out products invisible, month and sales windows capped) and admin text inputs are unbounded | Aggregation queries, input caps |
-| [4.10](#task-4-10) **NEW** | Nothing ever moves an order to `EN_PREPARACION`, so the customer's "Preparando en bodega" step is unreachable | Owner decision (§4 K), then one small action |
 | [8.22](#task-8-22) **NEW** | Operator scripts run unpinned `pnpm dlx tsx` / `firebase-tools` / `vercel@latest` with production credentials; `setup:admin` takes the password on the command line | Pinned dev dependencies, no secret on argv |
 | [6.2](#task-6-2) / [6.3](#task-6-3) / [6.4](#task-6-4) | Datasheets · catalog by specialty · fate of `odon-*` fixtures | Owner prioritizes |
 | [8.1](#task-8-1) / [8.11](#task-8-11) | Bundle cost · resilient Firebase init | Measured reduction / invalid config cannot blank the storefront |
@@ -236,16 +236,28 @@ Separates source-level capability from independently verified production and own
 
 <a id="task-2-24"></a>
 
-- [ ] **2.24. Unsubstantiated Storefront Claims and Misleading Nudges** _(P2 · NEW; owner decision on wording — §4 H, I, J; not a lawyer review, so it does not reopen suspended 7.1)_
-  - **Evidence (customer-facing strings):**
-    - `Footer.tsx:165` "Boleta Electrónica **Inmediata** (19% IVA)", and `:242,:262` "Boleta Electrónica SII" — no issuance path exists (1.5 is suspended), and the suspension's own rule is that no copy may claim a Boleta is issued.
-    - Certification claims about the business and the products with no substantiation in the repository: `Footer.tsx:28` "Insumos Médicos Certificados", `:167` "Dispositivos Homologados Registro ISP", `:250` "Dispositivos Médicos · Registro ISP Chile", `:261` "Depósito Dental Certificado"; `Hero.tsx:84` "Insumos Certificados ISP", `:113` "…Instrumental Clínico Homologado"; `ProductQuickView.tsx:401` "Normativa ISP Homologada". `Footer.tsx:168` "Fichas de Seguridad de Materiales" promises documents that task 6.2 has not built.
-    - `Footer.tsx:238` "Pago 100% Seguro" is an absolute guarantee; a factual alternative is "Pago procesado por Mercado Pago".
-    - **Rating UI without a review system:** `ProductCard.tsx:191-204` and `ProductQuickView.tsx:279-292` render stars and "(N reseñas clínicas verificadas)" whenever `reviewsCount > 0`, and `CategoryFilter.tsx:139-141` offers "Mejor Calificados" / "Más Reseñas" sorting. Nothing in the product collects reviews, yet `create-product`, the CSV import and the seed script all write `rating: 5.0`; any non-zero `reviewsCount` would display fabricated social proof, and today the two sorts order by a constant.
-    - **Free-shipping nudge:** `Cart.tsx:136-147` says "Agrega $X más para Despacho GRATIS" with a progress bar toward `$150.000`, but while 3.1 is suspended no freight is charged at any amount — the nudge implies a charge that does not exist.
-  - **Risk:** misleading-advertising exposure under Chilean consumer law (Ley 19.496) for claims PRONTO cannot document, on a store whose product category is regulated; separate from the draft legal pages.
-  - **Fix (after the owner answers H–J):** reword each unsupported claim to what is provable (for example "Boleta electrónica · IVA 19%", "Pago procesado por Mercado Pago"), or keep it only where the owner can document it (SEREMI sanitary authorization number, ISP registration per product); remove the rating/review UI and the two sorts until a real review system exists (leave the data fields); change the cart bar to a plain statement ("Despacho sin costo a Melipilla y San Antonio") while 3.1 is suspended. Copy must be approved by the owner before editing, per the copy-deck rule in `src/components/AGENTS.md`; existing tests that pin the current strings (`ClinicalStorefront.test.tsx`) are updated in the same change.
-  - **Accept:** no string in the list above remains unless the owner supplied its substantiation; tests pin the new wording; no rating UI or rating sort is reachable.
+- [ ] **2.24. Replace Unsubstantiated Storefront Claims with Neutral Wording; Disable Ratings; Simplify the Shipping Bar** _(P2 · NEW; owner decisions 2026-09-30: no documentation exists for the certification claims, so neutral wording; ratings off until further notice; shipping bar simplified)_
+  - **Why:** the storefront makes claims PRONTO cannot document, on a store whose category is regulated, plus a rating UI with no review system behind it and a free-shipping nudge that implies a charge that does not exist (3.1 is suspended, so freight is zero at every amount). Misleading-advertising exposure under Chilean consumer law (Ley 19.496) is separate from the draft legal pages (7.1), so this does not reopen that suspension. The owner confirmed (H) there is no substantiation available now, so every claim below is reworded; if documentation appears later, a claim can return.
+  - **Neutral wording to apply** (Spanish, owner-approved approach; keep the layout and icons, change only the text):
+
+    | Where | Current text | Replace with |
+    | :-- | :-- | :-- |
+    | `Footer.tsx:25-29` value-prop card | "Registro ISP Chile" / "Insumos Médicos Certificados" | "Insumos odontológicos" / "Para clínicas, gabinetes y laboratorios" |
+    | `Footer.tsx:137` | "Despacho Gratuito sobre $150.000" | "Despacho sin costo en Melipilla y San Antonio" |
+    | `Footer.tsx:165` | "Boleta Electrónica Inmediata (19% IVA)" | "Boleta electrónica · IVA 19%" |
+    | `Footer.tsx:167`, `:168` | "Dispositivos Homologados Registro ISP", "Fichas de Seguridad de Materiales" | remove both bullets (datasheets are task 6.2) |
+    | `Footer.tsx:238` | "Mercado Pago Chile · Pago 100% Seguro" | "Pago procesado por Mercado Pago Chile" |
+    | `Footer.tsx:242` | "Boleta Electrónica SII · 19% IVA" | "Boleta electrónica · IVA 19%" |
+    | `Footer.tsx:250` | "Dispositivos Médicos · Registro ISP Chile" | "Insumos para clínicas y laboratorios dentales" |
+    | `Footer.tsx:261`, `:262` | "Depósito Dental Certificado", "Boleta Electrónica SII" | "Depósito dental en Melipilla", "Boleta electrónica" |
+    | `Hero.tsx:84-85` | "Insumos Certificados ISP" / "Trazabilidad de lote conforme a normativa sanitaria" | "Para clínicas y laboratorios" / "Catálogo odontológico con atención directa por WhatsApp" |
+    | `Hero.tsx:113` | "Equipamiento e Instrumental Clínico Homologado" | "Equipamiento e Instrumental Clínico" |
+    | `ProductQuickView.tsx:401` | "Normativa ISP Homologada" (+ its divider) | remove the span and one divider; "Garantía Legal SERNAC 6 meses" and "Boleta Electrónica · IVA 19%" stay |
+
+  - **Shipping bar (`Cart.tsx:92-93,136-151`):** replace the progress bar, the percentage and the "Agrega $X más para Despacho GRATIS" text with the single statement "Despacho sin costo a Melipilla y San Antonio", keeping the existing zone/minimum note (`Compra mínima San Antonio: $60.000`). `FREE_SHIPPING_THRESHOLD` stays exported for 3.1 and `LegalModal`.
+  - **Ratings disabled until further notice (J):** add `REVIEWS_ENABLED = false` in a new `src/config/features.ts` (the same one-line re-enable pattern as `FACTURA_ENABLED`); when false, `ProductCard.tsx:191-204` and `ProductQuickView.tsx:279-292` render no stars or review count, and `CategoryFilter.tsx:139-141` omits the "Mejor Calificados" and "Más Reseñas" options. Leave the `rating` / `reviewsCount` data fields and the `sortBy` handling in `fetchProducts` untouched, so turning reviews on later is the flag plus a review source. A persisted `sortBy === 'rating' | 'reviews'` must fall back to `featured`.
+  - **Known leftover, not edited here:** `LegalModal.tsx:166` still says free shipping applies "por compras sobre $150.000". That is draft legal copy under the suspended 7.1 and understates the current policy (shipping is free at every amount); leave it, and fix it when 7.1 or 3.1 is unsuspended.
+  - **Accept:** none of the "Current text" strings above remains in `src/` (a source-content test pins their absence, like the existing `Factura Electrónica Inmediata` guard); `ClinicalStorefront.test.tsx` and any other test that pinned the old strings are updated; with `REVIEWS_ENABLED = false` no rating UI renders and the sort list has no rating options; the cart renders the single shipping statement at every subtotal; `pnpm run verify:full` clean.
 
 <a id="task-2-25"></a>
 
@@ -298,9 +310,11 @@ Separates source-level capability from independently verified production and own
 
 <a id="task-4-10"></a>
 
-- [ ] **4.10. Order Never Reaches `EN_PREPARACION`** _(P3 · NEW; owner decision — §4 K)_
-  - **Evidence:** `EN_PREPARACION` is read in `dispatch-order`, the webhook, `track-order` (step 3 "Preparando en Bodega") and the console, but **no handler ever writes it** (checked across `api/`); an order jumps from "Pago Acreditado" (step 2) to "En Ruta" (step 4), so the customer-facing timeline's third step is unreachable and the `EN_PREPARACION` branches are dead.
-  - **Fix (if the owner wants the step):** one small admin action `mark-preparing` on the dispatcher (paid/approved only, idempotent, history event, no stock, no e-mail) and a button in the panel; otherwise remove the dead step from the timeline copy. **Accept:** handler and panel tests, or the timeline reduced to four steps with updated tracking tests.
+- [ ] **4.10. Add the "En Preparación" Step Between Payment and Dispatch** _(P2 · NEW; owner decision 2026-09-30: the step is valid and useful)_
+  - **Evidence:** `EN_PREPARACION` is read in `dispatch-order`, the webhook, `track-order` (step 3 "Preparando en Bodega") and the console, and is already in `SETTLED_ORDER_STATUSES`, but **no handler ever writes it** (checked across `api/`). An order jumps from "Pago Acreditado" (step 2) to "En Ruta" (step 4), so the customer-facing timeline's third step is unreachable and the warehouse has no way to mark that an order is being picked.
+  - **Fix:** a new admin action `mark-preparing` on the existing dispatcher (no new function slot). It accepts only `PAGADO_MERCADOPAGO`, `TRANSFERENCIA_APROBADA` and `PAGADO_TRANSFERENCIA`; `EN_PREPARACION` is an idempotent `duplicate`; every other status (pending, quote, review, cancelled, dispatched, delivered) is `409` with no write. The status is re-read and the guard re-asserted inside a transaction. It stamps `preparationStartedAt` / `preparationStartedBy`, appends an `order_status_history` event (`metadata.event: 'PREPARACION_INICIADA'`, verified operator identity) and moves **no stock** and sends **no e-mail** (a customer notice, if wanted, belongs to 5.4). `dispatch-order` keeps accepting paid statuses directly, so preparation stays an optional step the warehouse uses, never a gate that blocks a shipment.
+  - **UI:** `OrderDetailPanel` shows an *Iniciar preparación* button for the three paid statuses (the existing dispatch form already appears for `EN_PREPARACION`); `OrderTable`'s status chips gain an *En Preparación* filter; `StatusBadge` already styles the status. Customer tracking needs no change — step 3 and its copy already exist.
+  - **Accept:** handler suite (`OPTIONS`/method/auth gates, each allowed status transitions once with one history event, duplicate re-click is a no-op with no second event, each disallowed status returns `409` with zero writes, a concurrent dispatch or cancel between read and write is not overwritten); dispatcher test updated for the new action count; panel test for the button gating and the success/duplicate/error banners; a `track-order` test that `EN_PREPARACION` renders step 3. Update `api/AGENTS.md` and `src/admin/AGENTS.md`.
 
 <a id="task-4-11"></a>
 
@@ -454,6 +468,10 @@ Separates source-level capability from independently verified production and own
 7. **Stock is removed from the public**; only low stock (≤ 3 units) is visible. There is already an "Últimas unidades" badge on the product card, but at ≤ 5 and not on the quick view or cart (2.14).
 8. **Production environment variables are set in Vercel** (not independently verified).
 9. **Branch rebased** onto the merged 8.4 / 8.12 / 8.13 work.
+10. **No documentation exists today** for the storefront's certification claims (SEREMI authorization, ISP registrations): use neutral wording (2.24). "Boleta Electrónica Inmediata" goes with them.
+11. **The cart shipping bar becomes a plain statement** — "Despacho sin costo a Melipilla y San Antonio" — while 3.1 is suspended (2.24).
+12. **Ratings and reviews are disabled until further notice**: stars, the review count and the two rating sorts (2.24, via a `REVIEWS_ENABLED = false` flag).
+13. **"En Preparación" is a valid and useful order state** between payment approved and dispatch; add the action that sets it (4.10).
 
 ### Open questions
 
@@ -464,10 +482,6 @@ Separates source-level capability from independently verified production and own
 - **E. Rules deployment.** Are the current Firestore rules, indexes and storage rules deployed to production? (The environment variables were confirmed; the rules were not.)
 - **F. Regulated products and Boleta.** Please confirm the live catalog has no `prescriptionRequired` items (1.6 is suspended on that assumption) and that "no Boleta claims anywhere" remains the policy while 1.5 is suspended.
 - **G. Low-stock wording.** Public threshold is 3 units; the admin low-stock KPI uses ≤ 5 — keep them different (operations vs. customer pressure) or align both to 3? Badge wording: "Últimas unidades" or "Quedan N"?
-- **H. Trust and compliance wording (2.24).** Can you document the claims the storefront makes — a SEREMI sanitary authorization for the depot ("Depósito Dental Certificado"), and ISP registration for the products you list ("Dispositivos Homologados Registro ISP", "Insumos Certificados ISP")? Where you cannot, may I propose neutral wording for your approval? In particular "Boleta Electrónica **Inmediata**" cannot stay while no Boleta issuance path exists.
-- **I. Free-shipping bar (2.24).** Since no freight is charged at any amount while 3.1 is suspended, may the cart bar change from "Agrega $X más para Despacho GRATIS" to a plain "Despacho sin costo a Melipilla y San Antonio"?
-- **J. Ratings (2.24).** There is no review system. May the star ratings, the "reseñas clínicas verificadas" line and the "Mejor Calificados" / "Más Reseñas" sort options be removed until reviews exist?
-- **K. Preparation step (4.10).** Do you want a "Marcar en preparación" action so customers see "Preparando en bodega", or should that step be dropped from the tracking timeline?
 
 ---
 
