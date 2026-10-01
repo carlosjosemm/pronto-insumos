@@ -22,6 +22,31 @@ export const FREE_SHIPPING_THRESHOLD = 150000
 export const MIN_ORDER_OUTSIDE_MELIPILLA = 60000
 export const MIN_ORDER_ZONE: DeliveryZone = 'San Antonio'
 
-export function isBelowMinimumOrder(zone: DeliveryZone, subtotal: number): boolean {
-  return zone === MIN_ORDER_ZONE && subtotal < MIN_ORDER_OUTSIDE_MELIPILLA
+export function isBelowMinimumOrder(zone: unknown, subtotal: number): boolean {
+  return normalizeDeliveryZone(zone) === MIN_ORDER_ZONE && subtotal < MIN_ORDER_OUTSIDE_MELIPILLA
+}
+
+function normalizeZoneName(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
+/**
+ * Resolves a stored or typed commune to a canonical `DeliveryZone`, or `null`
+ * when the value is not one of the configured zones. Matching ignores case,
+ * accents and repeated whitespace, so a stale or hand-crafted `city: "san
+ * antonio"` can never pose as a different zone than the checkout's select
+ * would have written — and an out-of-zone commune ("Otra comuna" checkout
+ * option, WhatsApp-only payment) is reported as `null` instead of being
+ * silently pinned to a zone.
+ */
+export function normalizeDeliveryZone(value: unknown): DeliveryZone | null {
+  if (typeof value !== 'string') return null
+  const normalized = normalizeZoneName(value)
+  if (!normalized) return null
+  return DELIVERY_ZONES.find((candidate) => normalizeZoneName(candidate) === normalized) ?? null
 }

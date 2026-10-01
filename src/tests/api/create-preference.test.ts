@@ -1178,6 +1178,63 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       consoleSpy.mockRestore()
     })
 
+    it('refuses an out-of-zone commune with 400 — online payment never serves it', async () => {
+      // The rules deny the create, but Admin SDK writes bypass rules and
+      // legacy documents exist: the endpoint is the last gate, so a crafted
+      // non-WhatsApp order with a foreign commune must not get a preference.
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-cheap': { name: 'Insumo Barato', price: 10000, stockCount: 10, inStock: true } },
+        {
+          'PRONTO-200007': {
+            orderId: 'PRONTO-200007',
+            customer: { fullName: 'Dra. Test', email: 't@clinica.cl', rut: '12.345.678-5', city: 'Curicó' },
+            items: [{ productId: 'odon-cheap', quantity: 1 }]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest('PRONTO-200007'), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('cotiza y coordina tu compra por WhatsApp') })
+      )
+      expect(fetchSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('no longer lets a lowercase commune dodge the San Antonio minimum', async () => {
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-cheap': { name: 'Insumo Barato', price: 10000, stockCount: 10, inStock: true } },
+        {
+          'PRONTO-200008': {
+            orderId: 'PRONTO-200008',
+            customer: { fullName: 'Dra. Test', email: 't@clinica.cl', rut: '12.345.678-5', city: 'san antonio' },
+            items: [{ productId: 'odon-cheap', quantity: 1 }]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest('PRONTO-200008'), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('compra mínima') })
+      )
+      expect(fetchSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
     it('builds the payer from the order document, ignoring the request body', async () => {
       const mockAdminDb = lifecycleDb({})
       vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)

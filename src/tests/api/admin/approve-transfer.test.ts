@@ -26,7 +26,14 @@ const DEFAULT_ORDER = {
   orderId: 'PRONTO-123',
   status: 'PENDIENTE_TRANSFERENCIA',
   totalAmount: 189990,
-  items: [{ productId: 'odon-101', name: 'Turbina', quantity: 2, price: 94995 }]
+  items: [{ productId: 'odon-101', name: 'Turbina', quantity: 2, price: 94995 }],
+  customer: {
+    fullName: 'Dra. Andrea',
+    email: 'andrea@clinica.cl',
+    rut: '12345678-5',
+    address: 'Calle 1',
+    city: 'Melipilla'
+  }
 }
 
 const DEFAULT_PRODUCT = {
@@ -238,6 +245,7 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
           orderId: 'PRONTO-DUPLICATE',
           status: 'PENDIENTE_TRANSFERENCIA',
           totalAmount: 474975,
+          customer: DEFAULT_ORDER.customer,
           items: [
             { productId: 'odon-101', quantity: 2 },
             { productId: 'odon-101', quantity: 3 }
@@ -443,6 +451,105 @@ describe('Serverless Admin Approve Transfer (/api/admin/approve-transfer)', () =
     expect(statusOutput).toBe(409)
     expect(jsonOutput.error).toContain('no existe en el catálogo')
     expect(captured.update).toBeNull()
+  })
+
+  it('refuses an out-of-zone commune with 409 and no stock movement', async () => {
+    // Only a WhatsApp order may carry a commune outside the zones; a transfer
+    // order with one is legacy or crafted and must never be approved.
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: {
+          ...DEFAULT_ORDER,
+          customer: {
+            fullName: 'Dra. Andrea',
+            email: 'andrea@clinica.cl',
+            rut: '12345678-5',
+            address: 'Calle 1',
+            city: 'Curicó'
+          }
+        },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-123', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(409)
+    expect(jsonOutput.error).toContain('fuera de zona')
+    expect(captured.update).toBeNull()
+  })
+
+  it('rejects a San Antonio approval below the original-subtotal minimum with 409', async () => {
+    // Catalog list subtotal $20.000 (2 × $10.000) — below the $60.000 San
+    // Antonio minimum even though the stored total agrees with the catalog.
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: {
+          orderId: 'PRONTO-SA-MIN',
+          status: 'PENDIENTE_TRANSFERENCIA',
+          totalAmount: 20000,
+          customer: {
+            fullName: 'Dra. Andrea',
+            email: 'andrea@clinica.cl',
+            rut: '12345678-5',
+            address: 'Calle 1',
+            city: 'San Antonio'
+          },
+          items: [{ productId: 'odon-101', name: 'Insumo Barato', quantity: 2, price: 10000 }]
+        },
+        products: { 'odon-101': { ...DEFAULT_PRODUCT, price: 10000 } },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-SA-MIN', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(409)
+    expect(jsonOutput.error).toContain('compra mínima')
+    expect(captured.update).toBeNull()
+  })
+
+  it('approves a San Antonio order at the minimum threshold', async () => {
+    const captured: { update: Record<string, unknown> | null } = { update: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockApproveDb({
+        orderData: {
+          orderId: 'PRONTO-SA-OK',
+          status: 'PENDIENTE_TRANSFERENCIA',
+          totalAmount: 120000,
+          customer: {
+            fullName: 'Dra. Andrea',
+            email: 'andrea@clinica.cl',
+            rut: '12345678-5',
+            address: 'Calle 1',
+            city: 'San Antonio'
+          },
+          items: [{ productId: 'odon-101', name: 'Turbina', quantity: 2, price: 60000 }]
+        },
+        products: { 'odon-101': { ...DEFAULT_PRODUCT, price: 60000 } },
+        onProductUpdate: (data) => (captured.update = data)
+      }) as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    const req = {
+      method: 'POST',
+      body: { orderId: 'PRONTO-SA-OK', reconciliationReference: 'cartola 30-09' }
+    } as VercelRequest
+    await handler(req, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.success).toBe(true)
+    expect(captured.update?.stockCount).toBe(8)
   })
 
   it('is idempotent: an already-approved order returns duplicate with no stock movement', async () => {

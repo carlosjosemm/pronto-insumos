@@ -456,6 +456,65 @@ describe('Serverless Admin Resolve Quote (/api/admin/resolve-quote)', () => {
     expect(captured.product?.stockCount).toBe(7) // 10 − 3
   })
 
+  it('refuses to convert a San Antonio quote below the original-subtotal minimum (409)', async () => {
+    // Catalog list subtotal $20.000 (2 × $10.000) — below the $60.000 San
+    // Antonio minimum, so the conversion is refused with no stock movement.
+    const captured: { product: Record<string, unknown> | null } = { product: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockQuoteDb({
+        orderData: {
+          orderId: 'PRONTO-123456',
+          status: 'COTIZACION_SOLICITADA_WHATSAPP',
+          paymentMethod: 'whatsapp',
+          totalAmount: 20000,
+          customer: {
+            fullName: 'Dra. Camila Fuentes',
+            email: 'contacto@fuentesdental.cl',
+            rut: '12345678-5',
+            city: 'San Antonio'
+          },
+          items: [{ productId: 'odon-101', name: 'Insumo Barato', quantity: 2, price: 10000 }]
+        },
+        productData: { stockCount: 10, inStock: true, name: 'Insumo Barato', sku: 'OD-101', price: 10000 },
+        onProductUpdate: (data) => (captured.product = data)
+      }).db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler({ method: 'POST', body: convertBody } as VercelRequest, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(409)
+    expect(jsonOutput.error).toContain('compra mínima')
+    expect(captured.product).toBeNull()
+  })
+
+  it('converts an out-of-zone quote normally — WhatsApp is the sanctioned path for those buyers', async () => {
+    const captured: { product: Record<string, unknown> | null } = { product: null }
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      mockQuoteDb({
+        orderData: {
+          orderId: 'PRONTO-123456',
+          status: 'COTIZACION_SOLICITADA_WHATSAPP',
+          paymentMethod: 'whatsapp',
+          totalAmount: 379980,
+          customer: {
+            fullName: 'Dra. Camila Fuentes',
+            email: 'contacto@fuentesdental.cl',
+            rut: '12345678-5',
+            city: 'Curicó'
+          },
+          items: [{ productId: 'odon-101', name: 'Turbina', quantity: 2, price: 189990 }]
+        },
+        onProductUpdate: (data) => (captured.product = data)
+      }).db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler({ method: 'POST', body: convertBody } as VercelRequest, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.success).toBe(true)
+    expect(captured.product?.stockCount).toBe(8)
+  })
+
   it('records an oversell shortfall in the audit and history metadata instead of hiding it', async () => {
     const setDocs: Array<Record<string, unknown>> = []
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(

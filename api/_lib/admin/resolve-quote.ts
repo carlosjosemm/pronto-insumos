@@ -14,6 +14,13 @@ import {
 import type { StockShortfall } from '../emailTemplates.js'
 import { resolvePromoPercent } from '../../../src/config/promos.js'
 import { computeDiscountedUnitPrice, normalizeQuantity } from '../../../src/utils/orderTotal.js'
+import { formatCLP } from '../../../src/utils/currency.js'
+import {
+  MIN_ORDER_OUTSIDE_MELIPILLA,
+  MIN_ORDER_ZONE,
+  isBelowMinimumOrder,
+  normalizeDeliveryZone
+} from '../../../src/config/delivery.js'
 
 const RESOLUTIONS = ['convert', 'decline'] as const
 const MAX_RECONCILIATION_REFERENCE_LENGTH = 120
@@ -268,6 +275,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isActive: boolean
       }[] = []
       let expectedTotal = 0
+      // Original product subtotal (catalog list prices × quantities, BEFORE
+      // the promo discount) — the figure the San Antonio minimum gates on.
+      // An out-of-zone commune is legitimate here (WhatsApp quotes are exactly
+      // the path out-of-zone buyers use), so only the San Antonio minimum
+      // applies.
+      let rawSubtotal = 0
 
       for (const [productId, itemInfo] of consolidatedQty.entries()) {
         const productRef = db
@@ -299,6 +312,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           } satisfies QuoteOutcome
         }
         expectedTotal += computeDiscountedUnitPrice(catalogPrice, discountPercent) * itemInfo.qty
+        rawSubtotal += catalogPrice * itemInfo.qty
 
         const currentStock =
           typeof productData.stockCount === 'number'
@@ -343,6 +357,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           message: `El total verificado del pedido (${expectedTotal}) no coincide con el monto registrado (${
             orderData.totalAmount ?? 'sin registro'
           }). Corrige el pedido o registra la venta negociada como pedido nuevo; no se rebajó stock.`,
+        } satisfies QuoteOutcome
+      }
+
+      // San Antonio minimum — the sale converted from a quote obeys the same
+      // original-subtotal minimum as every other payment method (catalog list
+      // prices × consolidated quantities, pre-discount); the operator sees the
+      // shortfall instead of silently fulfilling an ineligible despacho.
+      const orderCustomer =
+        orderData.customer && typeof orderData.customer === 'object'
+          ? (orderData.customer as Record<string, unknown>)
+          : {}
+      if (isBelowMinimumOrder(normalizeDeliveryZone(orderCustomer.city), rawSubtotal)) {
+        return {
+          outcome: 'conflict',
+          currentStatus,
+          message: `La compra mínima para despacho a ${MIN_ORDER_ZONE} es de ${formatCLP(
+            MIN_ORDER_OUTSIDE_MELIPILLA
+          )} (subtotal original: ${formatCLP(rawSubtotal)}). No se rebajó stock.`,
         } satisfies QuoteOutcome
       }
 

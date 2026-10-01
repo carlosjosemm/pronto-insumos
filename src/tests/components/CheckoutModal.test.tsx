@@ -28,7 +28,7 @@ vi.mock('../../services/orderConfirmation', () => ({
   sendOrderConfirmationEmail: vi.fn().mockResolvedValue(true)
 }))
 
-import CheckoutModal, { CheckoutModalProps } from '../../components/CheckoutModal'
+import CheckoutModal, { CheckoutModalProps, OTHER_COMMUNE_VALUE } from '../../components/CheckoutModal'
 import { submitOrder } from '../../services/api'
 import { SESSION_ORDER_STORAGE_KEY, rememberSessionOrderId } from '../../services/orderSession'
 import { processMercadoPagoPayment } from '../../services/mercadopago'
@@ -458,6 +458,141 @@ describe('CheckoutModal Component', () => {
       fillDocumentStep()
       advance()
       expect(screen.getByText(/Selecciona la Opción Preferida para tu Clínica/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('Out-of-zone commune ("Otra comuna" → WhatsApp only)', () => {
+    const selectOtherCommune = () => {
+      fireEvent.change(screen.getByLabelText('Comuna de Despacho'), { target: { value: OTHER_COMMUNE_VALUE } })
+    }
+
+    it('reveals the commune text field and the WhatsApp coordination hint', () => {
+      render(<CheckoutModal {...defaultProps} />)
+
+      fillContactStep()
+      advance()
+
+      expect(screen.queryByLabelText('Nombre de tu comuna')).not.toBeInTheDocument()
+      selectOtherCommune()
+      expect(screen.getByLabelText('Nombre de tu comuna')).toBeInTheDocument()
+      expect(screen.getByText(/coordinaremos la entrega y el pago por WhatsApp/i)).toBeInTheDocument()
+    })
+
+    it('blocks leaving Despacho while the out-of-zone commune is blank', () => {
+      render(<CheckoutModal {...defaultProps} />)
+
+      fillContactStep()
+      advance()
+      selectOtherCommune()
+      fillDespatchStep()
+
+      // An empty commune is blocked natively (required input) — the form never
+      // submits and the shopper stays on Despacho.
+      advance()
+      expect(screen.getByLabelText('Comuna de Despacho')).toBeInTheDocument()
+      expect(screen.queryByText(/Selecciona la Opción Preferida para tu Clínica/i)).not.toBeInTheDocument()
+
+      // A whitespace-only commune passes native validation but is caught by
+      // the handler's trim check with the explicit Spanish message.
+      fireEvent.change(screen.getByLabelText('Nombre de tu comuna'), { target: { value: '   ' } })
+      advance()
+      expect(screen.getByText('Ingresa tu comuna para coordinar el despacho por WhatsApp.')).toBeInTheDocument()
+      expect(screen.getByLabelText('Comuna de Despacho')).toBeInTheDocument()
+    })
+
+    it('applies no San Antonio minimum to an out-of-zone commune', () => {
+      render(
+        <CheckoutModal
+          {...defaultProps}
+          cartItems={[{ product: { ...mockProduct, price: 18500 }, quantity: 1 }]}
+          totalAmount={22015}
+        />
+      )
+
+      fillContactStep()
+      advance()
+      selectOtherCommune()
+      fireEvent.change(screen.getByLabelText('Nombre de tu comuna'), { target: { value: 'Curicó' } })
+      fillDespatchStep()
+
+      advance()
+
+      // The minimum never fires for a foreign commune; the shopper reaches Documento.
+      expect(screen.getByPlaceholderText('12.345.678-K')).toBeInTheDocument()
+    })
+
+    it('offers WhatsApp as the only payment method for an out-of-zone despacho', () => {
+      render(<CheckoutModal {...defaultProps} />)
+
+      fillContactStep()
+      advance()
+      selectOtherCommune()
+      fireEvent.change(screen.getByLabelText('Nombre de tu comuna'), { target: { value: 'Curicó' } })
+      fillDespatchStep()
+      advance()
+      fillDocumentStep()
+      advance()
+
+      expect(screen.getByText(/está fuera de nuestras zonas de despacho directo/i)).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: /whatsapp/i })).toBeChecked()
+      expect(screen.queryByRole('radio', { name: /Transferencia Bancaria/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('radio', { name: /Mercado Pago/i })).not.toBeInTheDocument()
+    })
+
+    it('submits the order with paymentMethod whatsapp and the typed commune', async () => {
+      render(<CheckoutModal {...defaultProps} />)
+
+      fillContactStep()
+      advance()
+      selectOtherCommune()
+      fireEvent.change(screen.getByLabelText('Nombre de tu comuna'), { target: { value: 'Curicó' } })
+      fillDespatchStep()
+      advance()
+      fillDocumentStep()
+      advance()
+
+      fireEvent.click(screen.getByRole('button', { name: /Generar Cotización/i }))
+
+      await waitFor(() => {
+        expect(submitOrder).toHaveBeenCalledTimes(1)
+      })
+      const payload = vi.mocked(submitOrder).mock.calls[0][0]
+      expect(payload.paymentMethod).toBe('whatsapp')
+      expect(payload.customer.city).toBe('Curicó')
+    })
+
+    it('canonicalizes a zone name typed into the free-text field so the payload always passes the rules', async () => {
+      // A shopper who picks "Otra comuna" and types "melipilla" is really
+      // ordering a Melipilla despacho: the select flips back to the canonical
+      // zone, the online methods return, and the stored commune is the
+      // canonical spelling the Firestore rules accept for a non-WhatsApp order.
+      render(<CheckoutModal {...defaultProps} />)
+
+      fillContactStep()
+      advance()
+      selectOtherCommune()
+      fireEvent.change(screen.getByLabelText('Nombre de tu comuna'), { target: { value: 'melipilla' } })
+
+      // The canonical zone took over immediately: the select flipped back and
+      // the free-text field unmounted, still on the Despacho step.
+      expect(screen.getByLabelText('Comuna de Despacho')).toHaveValue('Melipilla')
+      expect(screen.queryByLabelText('Nombre de tu comuna')).not.toBeInTheDocument()
+
+      fillDespatchStep()
+      advance()
+      fillDocumentStep()
+      advance()
+
+      // The online methods returned for the canonical Melipilla despacho.
+      expect(screen.getByRole('radio', { name: /Mercado Pago/i })).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /Confirmar Pedido/i }))
+
+      await waitFor(() => {
+        expect(submitOrder).toHaveBeenCalledTimes(1)
+      })
+      const payload = vi.mocked(submitOrder).mock.calls[0][0]
+      expect(payload.customer.city).toBe('Melipilla')
     })
   })
 

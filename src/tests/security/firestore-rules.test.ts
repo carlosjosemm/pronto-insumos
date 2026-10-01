@@ -177,6 +177,13 @@ describe('Firestore Security Rules (firestore.rules & firebase.json)', () => {
     // offers (mirrored from DELIVERY_ZONES in src/config/delivery.ts).
     expect(content).toContain("c.city in ['Melipilla', 'San Antonio']")
 
+    // Out-of-zone exception: a free-text commune is accepted ONLY for a
+    // WhatsApp order — its delivery and payment are settled in a direct chat,
+    // so an online-payment order (Mercado Pago / transfer) can never carry a
+    // commune outside the two configured zones. The method reaches the
+    // customer validator as a parameter (the create-contract wiring).
+    expect(content).toContain("(paymentMethod == 'whatsapp' && isBoundedString(c.city, 80) && c.city.size() > 0)")
+
     // Boleta-only as built: the Factura checkout path is disabled
     // (FACTURA_ENABLED = false); both the customer and the billing document
     // type are pinned, and the old two-value allowlist must not return.

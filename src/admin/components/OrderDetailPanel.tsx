@@ -483,6 +483,12 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
             <div style={{ color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
               {order.customer?.address}, {order.customer?.city} (CP {order.customer?.zip || '9500000'})
             </div>
+            {/* The stored commune is shown verbatim and prominently: an
+                out-of-zone commune (free-text, WhatsApp-only payment) must be
+                visible to the operator before dispatch is registered. */}
+            <div style={{ marginTop: '0.35rem', fontWeight: 800, color: 'var(--navy-900)' }}>
+              Comuna de Despacho: {order.customer?.city || 'sin comuna'}
+            </div>
           </div>
 
           {/* Dispatch record */}

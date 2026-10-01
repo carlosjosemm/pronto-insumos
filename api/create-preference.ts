@@ -7,8 +7,7 @@ import { resolvePromoPercent } from '../src/config/promos.js'
 import { computeDiscountedUnitPrice, computeOrderTotal, normalizeQuantity } from '../src/utils/orderTotal.js'
 import { buildPreferenceSnapshot } from './_lib/preferenceSnapshot.js'
 import type { DocumentReference } from 'firebase-admin/firestore'
-import { MIN_ORDER_OUTSIDE_MELIPILLA, MIN_ORDER_ZONE, isBelowMinimumOrder } from '../src/config/delivery.js'
-import type { DeliveryZone } from '../src/config/delivery.js'
+import { MIN_ORDER_OUTSIDE_MELIPILLA, MIN_ORDER_ZONE, isBelowMinimumOrder, normalizeDeliveryZone } from '../src/config/delivery.js'
 import { formatCLP } from '../src/utils/currency.js'
 
 /**
@@ -384,14 +383,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // SAN ANTONIO MINIMUM — the same original product subtotal checkout gates
     // on (list prices × quantities, BEFORE the promo discount) must reach the
     // zone minimum for a San Antonio despacho. Melipilla has no minimum. The
-    // zone comes from the order document's stored comuna, never the request.
+    // zone comes from the order document's stored comuna, never the request,
+    // and is matched case/accent-insensitively so a crafted "san antonio"
+    // cannot dodge the minimum. An out-of-zone commune is refused outright:
+    // those buyers settle through the WhatsApp quote path, so an online
+    // payment must never exist for them.
     const orderCustomer =
       orderData.customer && typeof orderData.customer === 'object'
         ? (orderData.customer as Record<string, unknown>)
         : {}
-    const deliveryZone = String(orderCustomer.city || '').trim()
+    const deliveryZone = normalizeDeliveryZone(orderCustomer.city)
+    if (!deliveryZone) {
+      console.warn(
+        `[create-preference] Order "${cleanOrderId}" targets the out-of-zone commune "${String(
+          orderCustomer.city || ''
+        )}"; online payment refused — out-of-zone buyers settle by WhatsApp quote.`
+      )
+      return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
+        error:
+          'Despachamos solo a Melipilla y San Antonio. Para otra comuna, cotiza y coordina tu compra por WhatsApp.',
+        orderId: cleanOrderId
+      })
+    }
     const rawSubtotal = rawCatalogLines.reduce((acc, line) => acc + line.price * line.quantity, 0)
-    if (isBelowMinimumOrder(deliveryZone as DeliveryZone, rawSubtotal)) {
+    if (isBelowMinimumOrder(deliveryZone, rawSubtotal)) {
       console.warn(
         `[create-preference] Order "${cleanOrderId}" targets ${MIN_ORDER_ZONE} with an original subtotal of ${rawSubtotal} CLP, below the ${MIN_ORDER_OUTSIDE_MELIPILLA} minimum; preference refused.`
       )

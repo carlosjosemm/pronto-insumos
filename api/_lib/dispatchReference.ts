@@ -1,7 +1,7 @@
 import {
   DEFAULT_DELIVERY_ZONE,
   DELIVERY_ZONE_REFERENCE_CODES,
-  DELIVERY_ZONES
+  normalizeDeliveryZone
 } from '../../src/config/delivery.js'
 import type { DispatchReferenceSource } from '../../src/types'
 
@@ -42,23 +42,15 @@ export function chileanDateKey(date: Date): string {
   return formatted.replace(/-/g, '').slice(2)
 }
 
-function normalizeZoneName(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-}
-
 /**
  * Zone prefix for the reference. The checkout exposes `DELIVERY_ZONES` as a
- * select, but legacy orders may carry a free-text commune — anything that does
- * not match a configured zone falls back to Melipilla, the default zone.
+ * select (plus an "Otra comuna" WhatsApp-only option), but legacy orders may
+ * carry a free-text commune — anything that does not match a configured zone
+ * (case/accent-insensitively, via the shared `normalizeDeliveryZone`) falls
+ * back to Melipilla, the default zone the parcel leaves from.
  */
 export function resolveDispatchReferencePrefix(city?: string): string {
-  const normalizedCity = typeof city === 'string' ? normalizeZoneName(city) : ''
-  const zone = DELIVERY_ZONES.find((candidate) => normalizeZoneName(candidate) === normalizedCity)
+  const zone = normalizeDeliveryZone(city)
   return DELIVERY_ZONE_REFERENCE_CODES[zone ?? DEFAULT_DELIVERY_ZONE]
 }
 
