@@ -30,7 +30,7 @@ flowchart TD
     F --> G["7. Adversarial Code Review (Read-Only)"]
     G --> H["8. Address Code Review Issues & Re-Verify"]
     H --> I["9. Update As-Built in AGENTS.md"]
-    I --> J["10. Mark Checkbox [x] in TODO.md"]
+    I --> J["10. Close Task in TODO.md: one history row, no as-built prose"]
     J --> K["11. Await Human Wrap-Up -> Conventional Git Commit"]
     K --> L["12. Push Branch & Create Pull Request (gh pr create)"]
     L --> M["13. Walkthrough & Next 2 Tasks"]
@@ -85,10 +85,16 @@ flowchart TD
 * Add unit tests to verify each edge case and re-run `pnpm test` and `pnpm build`.
 
 ### Step 9: Update As-Built Documentation
-* Document what was implemented and any new patterns in the relevant directory's `AGENTS.md` (e.g., `api/AGENTS.md`, `src/components/AGENTS.md`, etc.).
+* Document what was implemented and any new patterns in the relevant directory's `AGENTS.md` (e.g., `api/AGENTS.md`, `src/components/AGENTS.md`, etc.). **This is the only home for as-built detail**: design decisions, behaviour contracts, file/line references, edge cases and test coverage notes.
+* The per-task narrative (what changed, gate results, review findings) belongs in `.devin/artifacts/task-X.Y/walkthrough.md` (Step 13) — never in the roadmap file.
 
-### Step 10: Update Roadmap Checklist
-* Mark the task as completed `[x]` in [PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md).
+### Step 10: Close the Task in the Roadmap (keep the roadmap lean)
+[PRODUCTION_READINESS_TODO.md](../../../PRODUCTION_READINESS_TODO.md) is a working task list, not a changelog. Closing a task is exactly three edits to it, and nothing else:
+1. **Remove** the task's row from the Active Action Board (§1) and its full entry from Open Tasks (§3).
+2. **Add one row** to Resolved History (§5): the task ID and a one-to-two-sentence outcome. Put a `†` after the ID only if an owner acceptance step is still owed.
+3. **Add any remaining owner/human action** (preview deploy, credential, walkthrough, console step) as one bullet in the Owner-only checklist (§1). This is the only place such follow-ups go.
+
+**Never write any of the following into the roadmap file** — they are what made it grow past 450 lines and they already have a home: an "As built" paragraph (→ the relevant `AGENTS.md`), "Verified: `pnpm test` N/N" or any test/suite counts (→ the walkthrough or PR description; counts go stale on every merge), file:line evidence or acceptance narratives (→ the plan and walkthrough artifacts), review-finding write-ups (→ the walkthrough). If a task entry is being **kept** rather than closed (partial delivery), edit its remaining scope; do not append what was done.
 
 ### Step 11: Human Wrap-Up Approval & Conventional Git Commit
 * **CRITICAL TIMING RULE:** **NEVER commit prematurely.** Keep changes uncommitted in the working tree until the user explicitly reviews the code-review report and issues the command to **"wrap up and proceed"**.
@@ -158,7 +164,7 @@ The owner must name the tasks **and** authorize the mode, e.g. *"work on 8.4, 8.
 | The one-task-per-run rule | Step 6 — the five gates green (`pnpm run verify:full`) before each commit |
 | The per-task "await instructions for the next plan" handoff | Steps 7–8 — the adversarial code review and the remediation of its findings |
 | | Step 9 — as-built documentation in the relevant `AGENTS.md` |
-| | Step 10 — the roadmap checkbox |
+| | Step 10 — closing the task in the roadmap (board/§3 removal, one history row, owner checklist) |
 | | Step 12 — the conventional commit with the Devin trailer, the pre-PR sync, and the PR |
 | | Step 13 — the per-task walkthrough, and the final next-2-tasks report |
 
@@ -270,8 +276,8 @@ Every task implementation plan (`.devin/artifacts/task-X.Y/implementation_plan.m
 - Confirm that the full suite (84+ existing tests) remains green.
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
-- Specify which AGENTS.md files will receive updated "as built" descriptions.
-- Target checkbox to mark [x] in PRODUCTION_READINESS_TODO.md.
+- Specify which AGENTS.md files will receive updated "as built" descriptions (this is where all as-built detail goes).
+- State the one-to-two-sentence outcome for the Resolved History row and any owner action items for the Owner-only checklist. Do not plan an "As built" paragraph for the roadmap file.
 ```
 
 ---

@@ -2,7 +2,7 @@
 
 <!-- markdownlint-disable MD033 -->
 
-A working task list, not a changelog. Finished work is one line in [§5 Resolved History](#5-resolved-history); its as-built detail lives in the `AGENTS.md` of the directory it touches (mostly `api/AGENTS.md`, `src/admin/AGENTS.md`, `src/services/AGENTS.md`). **Open tasks keep their IDs** (they are referenced from code comments and `AGENTS.md` files) — do not renumber. New IDs are appended at the end of each phase.
+A working task list, not a changelog. Finished work is one line in [§5 Resolved History](#5-resolved-history); its as-built detail lives in the `AGENTS.md` of the directory it touches (mostly `api/AGENTS.md`, `src/admin/AGENTS.md`, `src/services/AGENTS.md`). **Open tasks keep their IDs** (they are referenced from code comments and `AGENTS.md` files) — do not renumber. New IDs are appended at the end of each phase. **Closing a task** means exactly three edits here: remove its board row and its §3 entry, add one §5 row (ID + one or two sentences), and add any owner follow-up to the Owner-only checklist. Never add "As built" paragraphs, test counts or file-level evidence to this file — they go to the relevant `AGENTS.md` and the task walkthrough.
 
 **Last updated:** 2026-09-30 (condensed + full static re-audit + owner answers, rebased onto `main@3418420`) · **Audit provenance:** static source audit; no live infrastructure, Firestore data, provider dashboard or production behavior was verified. · **Market:** Melipilla & San Antonio, Chile (storefront audience: Región Metropolitana clinics) · **Stack:** Vercel (React 18 + Serverless Node) · Firebase (Firestore + Cloud Storage, Blaze) · Mercado Pago Chile · Resend
 
