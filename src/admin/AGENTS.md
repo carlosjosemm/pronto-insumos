@@ -99,6 +99,7 @@ Staff authentication is powered by Firebase Authentication with administrative c
    - Validates `Authorization: Bearer <ID_TOKEN>`.
    - Verifies signature, expiry, and `decodedToken.admin === true`.
    - Never trusts client-provided identity without cryptographic signature verification.
+4. **The portal cannot be framed.** `vercel.json` sends `X-Frame-Options: DENY` and an enforced `Content-Security-Policy: frame-ancestors 'none'` on **all three** admin URLs: `/admin`, `/admin.html` and `/admin/:path*`. `/admin.html` is not redundant — `dist/admin.html` is a real static file that Vercel serves ahead of the catch-all rewrite, so it reaches this same logged-in page without matching a rewrite source, and omitting it would leave a one-URL bypass of the anti-framing headers. This matters because the page renders *Aprobar Transferencia*, *Marcar Despachado* and the destructive inventory controls, so a framed copy is a click-jacking surface — an operator tricked into clicking inside a transparent iframe would move money and stock. The enforced policy carries only `frame-ancestors`: the site-wide `Content-Security-Policy-Report-Only` policy (Firebase, Google Fonts, the signed Storage PUT) is staged and not yet enforced, and enforcing it on the live backoffice before a preview walkthrough would break the portal. `src/tests/security/vercelHeaders.test.ts` pins both halves, including the `/admin.html` case.
 
 ---
 

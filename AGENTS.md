@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (1222 tests across 99 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (1230 tests across 100 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -139,7 +139,7 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 99 suites / 1222 tests)
+# Run all automated tests (Vitest, 100 suites / 1230 tests)
 pnpm test
 
 # Run tests with live file watcher (or a V8 coverage report)
@@ -253,6 +253,30 @@ A green Vite build proves nothing about the deployed app: the build succeeds wit
    * **What it cannot prove — do not read a green run as more than it is:** the shell probes are HTTP `200` checks, so they cannot see the storefront blank page (a server-side request never executes the client bundle); the `403` on the admin read is answered identically by a healthy deployment and by one with no Admin SDK credentials; and the `OPTIONS` answer is produced before any CORS header is set. The blank page and the real admin read are covered only by step 2.
    * **Deployment Protection:** a preview behind Vercel's Deployment Protection answers every probe with a login redirect or a `401`, so all nine fail. Disable protection for the deployment under test (or probe through its sharing link).
 2. **Manual, credential-bearing half** — with **Mercado Pago TEST credentials and non-customer test data only**, and **never against production**: load the storefront in a browser and confirm it renders (this is the only step that catches a blank page from a bad `VITE_FIREBASE_API_KEY`), complete a test checkout and a test payment end to end, upload a bank-transfer voucher for a test order, log into `/admin` and read the order, then approve the test transfer (or adjust stock) and confirm the inventory audit entry. Use the owner's own test account and a synthetic customer (never a real clinic's data), and delete or cancel the test order afterwards.
+
+### 🧱 Edge Security Headers (`vercel.json`)
+
+`vercel.json` carries a `headers` block next to its `rewrites` — no serverless function is involved, so the Vercel Hobby function count is untouched. Two rules:
+
+- **Every non-`api/` path** (`"/((?!api/).*)"`, the same shape the storefront rewrite uses, so API JSON responses stay header-free): `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a `Permissions-Policy` that denies every feature the app never uses (`camera`, `microphone`, `geolocation`, `payment`, `usb`, `serial`, `bluetooth`, `magnetometer`, `gyroscope`, `accelerometer`, `midi`, `display-capture`, `idle-detection` — verified against the source: no geolocation or media API is called anywhere), and the full `Content-Security-Policy-Report-Only`.
+- **Three admin URLs** — `/admin`, `/admin.html` and `/admin/:path*` — each get `X-Frame-Options: DENY` plus an **enforced** `Content-Security-Policy: frame-ancestors 'none'`. ⚠️ **All three are required, and `/admin.html` is the one that is easy to miss:** the two rewrite sources cover the friendly URLs, but `dist/admin.html` is also a real static file that Vercel serves *ahead* of the catch-all rewrite, so `/admin.html` reaches the same logged-in backoffice without ever matching a rewrite source. Leave it out and the anti-framing headers are bypassable by one URL. That is the clickjacking fix — the backoffice renders *Aprobar Transferencia*, *Marcar Despachado* and the destructive inventory controls, so it must never be framed. The enforced policy deliberately contains **only** `frame-ancestors`: a report-only policy is not enforced, and enforcing an unverified `default-src` on the live backoffice would break it.
+
+**The report-only policy, origin by origin** (each entry is a real consumer, not a guess):
+
+| Directive | Sources | Consumer |
+| :--- | :--- | :--- |
+| `default-src` | `'self'` | the baseline for everything not listed below |
+| `script-src` | `'self'` | the bundled entry chunks. **No `'unsafe-inline'`, no `'unsafe-eval'`** — the only inline `<script>` in either HTML entry is the `application/ld+json` data block, which is never executed as script and so is not subject to `script-src`. |
+| `style-src` | `'self' 'unsafe-inline' https://fonts.googleapis.com` | the Google Fonts stylesheet **and** the ~575 React inline `style={{ … }}` attributes. A bare `'self'` would drop every one of them, which is why `'unsafe-inline'` is here for styles only. |
+| `font-src` | `'self' https://fonts.gstatic.com` | the font binaries that stylesheet loads |
+| `img-src` | `'self' data: blob: https://firebasestorage.googleapis.com` | product images, inline data URLs, and the Blob URL the backoffice opens for a legacy Base64 voucher |
+| `connect-src` | `'self' data: https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://storage.googleapis.com https://firebaselogging-pa.googleapis.com` | `/api/*`; the Firestore Web SDK channel; Firebase Auth (admin login + `getIdToken`); the **signed V4 PUT** that uploads a transfer voucher browser → Storage; the SDK's own telemetry transport; and `data:`, because the backoffice `fetch`es a legacy Base64 voucher URL before re-wrapping it as a Blob — without `data:` here, *Ver comprobante* breaks on pre-2.9 orders the moment the policy is enforced |
+| `base-uri` / `object-src` | `'self'` / `'none'` | injection hardening |
+| `form-action` | `'self' https://www.mercadopago.cl` | Checkout Pro (see the caveat below) |
+
+**Two handoffs CSP cannot govern — stated rather than faked.** The Checkout Pro handoff is a top-level `window.location` redirect to the preference's `init_point`, and every `wa.me` link is an `<a href>`. Both are *navigations*; the only directive that could constrain those (`navigate-to`) is unimplemented in every browser, so `wa.me` appears in no directive and Mercado Pago is listed under `form-action` only to pre-authorize a future form-based handoff. Do not "fix" this by adding them to `connect-src`/`img-src` — that would be noise, not protection.
+
+**Staged rollout — the policy is NOT enforced yet.** The task sequence is report-only → verify on a preview → enforce, and the agent must not deploy. To promote: on a preview, open the storefront and `/admin` with the console visible and confirm **zero** violations while walking the catalog load, font render, admin login, a voucher upload, a product image and the Checkout Pro redirect; then rename the global rule's header key from `Content-Security-Policy-Report-Only` to `Content-Security-Policy`. Re-verify on a preview first — a violation that only appears after enforcement is a broken page for real customers. ⚠️ Before enforcing, add any new origin the catalog or checkout starts using (a product-image CDN, a new provider) to the matching directive; a missing origin is a silently broken feature, not a security win. `src/tests/security/vercelHeaders.test.ts` fails if the full policy is ever moved to an enforcing header while the report-only one disappears — the rollout is a deliberate, reviewed change.
 
 ### 🛡️ Deployment Guardrails
 
