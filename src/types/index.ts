@@ -26,7 +26,14 @@ export interface Product {
   rating: number
   reviewsCount: number
   inStock: boolean
-  stockCount: number
+  /**
+   * Physical warehouse count — OPTIONAL on storefront data: the public catalog
+   * discloses it only when it is 1–3 (the low-stock cue) and omits it
+   * otherwise ("plenty — the server verifies at payment time"). Admin surfaces
+   * read the full document through /api/admin and always carry it. Every
+   * consumer must treat an absent count as "plenty", never as 0.
+   */
+  stockCount?: number
   isActive?: boolean
   prescriptionRequired: boolean
   ispRegistrationNumber?: string

@@ -25,7 +25,6 @@ import {
   generateOrderId,
   CATALOG_FETCH_TIMEOUT_MS
 } from '../../services/api'
-import { getDocs } from 'firebase/firestore'
 import { PRODUCTS } from '../../data/products'
 import { Product } from '../../types'
 
@@ -455,7 +454,11 @@ describe('Canonical order id entropy (Task 8.8)', () => {
 
 describe('fetchProducts - catalog source (Task 2.11)', () => {
   beforeEach(() => {
-    vi.mocked(getDocs).mockResolvedValue({ empty: true, docs: [] } as never)
+    // The storefront loads the catalog from /api/catalog (Firestore rules deny
+    // client reads), so the boundary mock is global fetch, not the Firestore SDK.
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([]), { status: 200 }) as unknown as Response
+    )
     vi.unstubAllEnvs()
   })
 
@@ -466,6 +469,11 @@ describe('fetchProducts - catalog source (Task 2.11)', () => {
     vi.unstubAllEnvs()
     vi.useRealTimers()
   })
+
+  /** Stubs /api/catalog to answer with the given payload. */
+  const mockCatalogEndpoint = (body: unknown, status = 200) => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify(body), { status }) as unknown as Response)
+  }
 
   it('serves the local fixture catalog outside production, flagged as fixtures', async () => {
     vi.stubEnv('VITE_VERCEL_ENV', 'preview')
@@ -502,10 +510,10 @@ describe('fetchProducts - catalog source (Task 2.11)', () => {
     expect(JSON.stringify(res)).not.toContain('odon-')
   })
 
-  it('refuses to fabricate a catalog in production when the read rejects', async () => {
+  it('refuses to fabricate a catalog in production when the endpoint answers an error status', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.stubEnv('VITE_VERCEL_ENV', 'production')
-    vi.mocked(getDocs).mockRejectedValue(new Error('network down'))
+    mockCatalogEndpoint({ error: 'down' }, 503)
 
     const res = await fetchProducts()
 
@@ -514,11 +522,11 @@ describe('fetchProducts - catalog source (Task 2.11)', () => {
     expect(JSON.stringify(res)).not.toContain('odon-')
   })
 
-  it('refuses to fabricate a catalog in production when the read exceeds the timeout bound', async () => {
+  it('refuses to fabricate a catalog in production when the endpoint exceeds the timeout bound', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.useFakeTimers()
     vi.stubEnv('VITE_VERCEL_ENV', 'production')
-    vi.mocked(getDocs).mockReturnValue(new Promise(() => {}) as never)
+    vi.spyOn(global, 'fetch').mockReturnValue(new Promise(() => {}) as never)
 
     const pending = fetchProducts()
     await vi.advanceTimersByTimeAsync(CATALOG_FETCH_TIMEOUT_MS)
@@ -538,49 +546,25 @@ describe('fetchProducts - catalog source (Task 2.11)', () => {
     expect(res.products).toHaveLength(PRODUCTS.length)
   })
 
-  it('refuses to fabricate a catalog in production when Firebase credentials are absent', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    vi.stubEnv('VITE_VERCEL_ENV', 'production')
-    vi.stubEnv('VITE_FIREBASE_PROJECT_ID', '')
-    vi.stubEnv('VITE_FIREBASE_API_KEY', '')
+  it('returns the live catalog with the firestore source, already filtered to active products by the endpoint', async () => {
+    // The endpoint serves only active products and the public-field allowlist —
+    // the storefront maps the JSON straight onto Product.
+    mockCatalogEndpoint([{ ...PRODUCTS[0], id: 'pronto-001', isActive: true, inStock: true, stockCount: 2 }])
 
     const res = await fetchProducts()
 
-    expect(res.source).toBe('unavailable')
-    expect(res.products).toEqual([])
+    expect(res.source).toBe('firestore')
+    expect(res.products.map((p) => p.id)).toEqual(['pronto-001'])
+    expect(res.catalog.map((p) => p.id)).toEqual(['pronto-001'])
   })
 
   it('does not reject the catalog when a document is missing its text fields (review P3)', async () => {
-    vi.stubEnv('VITE_VERCEL_ENV', 'preview')
-    vi.mocked(getDocs).mockResolvedValue({
-      empty: false,
-      docs: [
-        { id: 'pronto-900', data: () => ({ id: 'pronto-900', category: 'OPERATORIA', isActive: true, inStock: true }) }
-      ]
-    } as never)
+    mockCatalogEndpoint([{ id: 'pronto-900', category: 'OPERATORIA', inStock: true }])
 
     const res = await fetchProducts({ search: 'turbina' })
 
     expect(res.source).toBe('firestore')
     expect(res.products).toEqual([])
     expect(res.catalog).toHaveLength(1)
-  })
-
-  it('returns the live catalog with the firestore source and drops paused documents', async () => {
-    vi.mocked(getDocs).mockResolvedValue({
-      empty: false,
-      docs: [
-        {
-          id: 'pronto-001',
-          data: () => ({ ...PRODUCTS[0], id: 'pronto-001', isActive: true, inStock: true, stockCount: 5 })
-        },
-        { id: 'pronto-002', data: () => ({ ...PRODUCTS[1], id: 'pronto-002', isActive: false }) }
-      ]
-    } as never)
-
-    const res = await fetchProducts()
-
-    expect(res.source).toBe('firestore')
-    expect(res.products.map((p) => p.id)).toEqual(['pronto-001'])
   })
 })

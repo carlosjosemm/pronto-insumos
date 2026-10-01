@@ -41,14 +41,22 @@ import {
   DEFAULT_DELIVERY_ZONE,
   MIN_ORDER_OUTSIDE_MELIPILLA,
   MIN_ORDER_ZONE,
-  isBelowMinimumOrder
+  isBelowMinimumOrder,
+  normalizeDeliveryZone
 } from '../config/delivery'
-import type { DeliveryZone } from '../config/delivery'
 import { useScrollLock } from '../hooks/useScrollLock'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 
 /** Factura Electrónica is disabled storefront-wide — the path is kept behind this flag. */
 const FACTURA_ENABLED = false
+
+/**
+ * Sentinel `<option>` value for the "Otra comuna" delivery choice. It never
+ * reaches Firestore: picking it clears `formData.city` and the shopper types
+ * the commune into a free-text field instead (WhatsApp-only payment). Exported
+ * for the checkout tests, which drive the select by value.
+ */
+export const OTHER_COMMUNE_VALUE = '__otra_comuna__'
 
 /** Guided-flow step labels. Step 5 (Confirmación) is outside the stepper. */
 const STEPS = ['Contacto', 'Despacho', 'Documento', 'Pago'] as const
@@ -67,6 +75,7 @@ const FIELD_MAX_LENGTH = {
   phone: 32,
   rut: 16,
   address: 200,
+  city: 80,
   zip: 16,
   razonSocial: 160,
   giroComercial: 160,
@@ -148,6 +157,10 @@ export default function CheckoutModal({
     zip: ''
   })
 
+  // An "Otra comuna" despacho has no online payment: the Pago step offers
+  // WhatsApp only, and the method state is forced on the Despacho transition.
+  const isOutOfZoneDelivery = normalizeDeliveryZone(formData.city) === null
+
   // An order this tab already created may still be awaiting payment when the
   // shopper re-enters checkout: the Mercado Pago return URL is forgeable and is
   // written before the webhook verifies anything, so the storefront cannot know
@@ -216,30 +229,45 @@ export default function CheckoutModal({
     if (step === 1) {
       setStep(2)
     } else if (step === 2) {
-      // Pre-flight stock check
+      // Pre-flight stock check. An absent `stockCount` is "plenty — the server
+      // verifies" (the public catalog discloses the count only at 1–3), so only
+      // an explicit `inStock: false` or a disclosed, exceeded count blocks here;
+      // `create-preference` stays the authoritative guard either way.
       const stockIssueItem = cartItems.find((item) => {
-        const stock = typeof item.product.stockCount === 'number' ? item.product.stockCount : 0
-        return !item.product.inStock || stock <= 0 || item.quantity > stock
+        if (!item.product.inStock) return true
+        if (typeof item.product.stockCount !== 'number') return false
+        return item.product.stockCount <= 0 || item.quantity > item.product.stockCount
       })
 
       if (stockIssueItem) {
-        const stock = typeof stockIssueItem.product.stockCount === 'number' ? stockIssueItem.product.stockCount : 0
-        if (!stockIssueItem.product.inStock || stock <= 0) {
+        const disclosedStock =
+          typeof stockIssueItem.product.stockCount === 'number' && stockIssueItem.product.stockCount > 0
+            ? stockIssueItem.product.stockCount
+            : null
+        if (!stockIssueItem.product.inStock || disclosedStock === null) {
           setSubmitError(
             `El producto "${stockIssueItem.product.name}" no cuenta con stock disponible. Por favor modifica tu carro para continuar.`
           )
         } else {
           setSubmitError(
-            `El producto "${stockIssueItem.product.name}" supera el stock disponible (${stockIssueItem.quantity} solicitados, ${stock} disponibles). Por favor ajusta la cantidad en el carro.`
+            `El producto "${stockIssueItem.product.name}" supera el stock disponible (${stockIssueItem.quantity} solicitados, ${disclosedStock} disponibles). Por favor ajusta la cantidad en el carro.`
           )
         }
         return
       }
 
+      // Out-of-zone commune ("Otra comuna"): the buyer must name it. Delivery
+      // and payment are then settled in a WhatsApp chat, so the Pago step is
+      // locked to that method.
+      const isOutOfZone = normalizeDeliveryZone(formData.city) === null
+      if (isOutOfZone && !formData.city.trim()) {
+        setSubmitError('Ingresa tu comuna para coordinar el despacho por WhatsApp.')
+        return
+      }
+
       // Minimum-order gate: San Antonio despacho requires a $60.000 product subtotal
       const productSubtotal = cartItems.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
-      const deliveryZone = (formData.city || DEFAULT_DELIVERY_ZONE) as DeliveryZone
-      if (isBelowMinimumOrder(deliveryZone, productSubtotal)) {
+      if (isBelowMinimumOrder(formData.city, productSubtotal)) {
         setSubmitError(
           `La compra mínima para despacho a ${MIN_ORDER_ZONE} es de ${formatCLP(MIN_ORDER_OUTSIDE_MELIPILLA)}`
         )
@@ -254,6 +282,9 @@ export default function CheckoutModal({
         }
       }
 
+      if (isOutOfZone) {
+        setPaymentMethod('whatsapp')
+      }
       setSisError('')
       setStep(3)
     } else if (step === 3) {
@@ -291,21 +322,27 @@ export default function CheckoutModal({
   const handleCompleteOrder = async () => {
     setSubmitError('')
 
-    // Pre-flight stock re-check
+    // Pre-flight stock re-check — same policy as the Despacho gate: an absent
+    // `stockCount` is "plenty — the server verifies"; only a disclosed count
+    // can deplete or cap a line here.
     const stockIssueItem = cartItems.find((item) => {
-      const stock = typeof item.product.stockCount === 'number' ? item.product.stockCount : 0
-      return !item.product.inStock || stock <= 0 || item.quantity > stock
+      if (!item.product.inStock) return true
+      if (typeof item.product.stockCount !== 'number') return false
+      return item.product.stockCount <= 0 || item.quantity > item.product.stockCount
     })
 
     if (stockIssueItem) {
-      const stock = typeof stockIssueItem.product.stockCount === 'number' ? stockIssueItem.product.stockCount : 0
-      if (!stockIssueItem.product.inStock || stock <= 0) {
+      const disclosedStock =
+        typeof stockIssueItem.product.stockCount === 'number' && stockIssueItem.product.stockCount > 0
+          ? stockIssueItem.product.stockCount
+          : null
+      if (!stockIssueItem.product.inStock || disclosedStock === null) {
         setSubmitError(
           `El producto "${stockIssueItem.product.name}" no cuenta con stock disponible. Por favor modifica tu carro para continuar.`
         )
       } else {
         setSubmitError(
-          `El producto "${stockIssueItem.product.name}" supera el stock disponible (${stockIssueItem.quantity} solicitados, ${stock} disponibles). Por favor ajusta la cantidad en el carro.`
+          `El producto "${stockIssueItem.product.name}" supera el stock disponible (${stockIssueItem.quantity} solicitados, ${disclosedStock} disponibles). Por favor ajusta la cantidad en el carro.`
         )
       }
       return
@@ -631,9 +668,15 @@ export default function CheckoutModal({
                       <select
                         id="ck-city"
                         required
-                        value={formData.city || DEFAULT_DELIVERY_ZONE}
+                        value={normalizeDeliveryZone(formData.city) ?? OTHER_COMMUNE_VALUE}
                         onChange={(e) => {
-                          setFormData({ ...formData, city: e.target.value })
+                          const next = e.target.value
+                          // Switching to "Otra comuna" clears the stored commune so
+                          // the free-text field starts empty, and the method follows
+                          // the delivery choice: out-of-zone has no online payment
+                          // (WhatsApp only), a real zone restores the checkout default.
+                          setFormData({ ...formData, city: next === OTHER_COMMUNE_VALUE ? '' : next })
+                          setPaymentMethod(next === OTHER_COMMUNE_VALUE ? 'whatsapp' : 'transferencia')
                           if (facturaErrors.city) setFacturaErrors((prev) => ({ ...prev, city: '' }))
                         }}
                         aria-label="Comuna de Despacho"
@@ -644,11 +687,46 @@ export default function CheckoutModal({
                             {zone}
                           </option>
                         ))}
+                        <option value={OTHER_COMMUNE_VALUE}>Otra comuna (coordinar por WhatsApp)</option>
                       </select>
-                      {formData.city === MIN_ORDER_ZONE && (
+                      {normalizeDeliveryZone(formData.city) === MIN_ORDER_ZONE && (
                         <p className="checkout-hint">
                           Compra mínima para despacho a {MIN_ORDER_ZONE}: {formatCLP(MIN_ORDER_OUTSIDE_MELIPILLA)}
                         </p>
+                      )}
+                      {normalizeDeliveryZone(formData.city) === null && (
+                        <>
+                          <label className="checkout-label" htmlFor="ck-other-commune" style={{ marginTop: '0.5rem' }}>
+                            ¿Cuál es tu comuna?
+                          </label>
+                          <input
+                            id="ck-other-commune"
+                            className="checkout-input"
+                            maxLength={FIELD_MAX_LENGTH.city}
+                            type="text"
+                            required
+                            placeholder="Ej: Curicó"
+                            value={formData.city}
+                            onChange={(e) => {
+                              // Canonicalize on the fly: a zone name typed here
+                              // ("melipilla", "sán antonio") is stored as its canonical
+                              // form, so the payload never carries a spelling the rules
+                              // would refuse for an online-payment order — and the
+                              // forced WhatsApp method (out-of-zone) reverts to the
+                              // checkout default once the commune is a real zone.
+                              const typed = e.target.value
+                              const zone = normalizeDeliveryZone(typed)
+                              setFormData({ ...formData, city: zone ?? typed })
+                              if (zone) setPaymentMethod('transferencia')
+                              if (facturaErrors.city) setFacturaErrors((prev) => ({ ...prev, city: '' }))
+                            }}
+                            aria-label="Nombre de tu comuna"
+                          />
+                          <p className="checkout-hint">
+                            Despachamos directo a Melipilla y San Antonio. Para otra comuna coordinaremos la entrega y
+                            el pago por WhatsApp.
+                          </p>
+                        </>
                       )}
                     </div>
                     <div>
@@ -1069,27 +1147,48 @@ export default function CheckoutModal({
                 <div>
                   <label className="checkout-label">Selecciona la Opción Preferida para tu Clínica:</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {/* Option 1: Transferencia Bancaria */}
-                    <label
-                      className={`checkout-pay-option${
-                        paymentMethod === 'transferencia' ? ' checkout-pay-option--selected' : ''
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="payMethod"
-                        value="transferencia"
-                        checked={paymentMethod === 'transferencia'}
-                        onChange={() => setPaymentMethod('transferencia')}
-                      />
-                      <Building2 size={20} style={{ color: 'var(--ink-700)' }} />
-                      <div>
-                        <div className="checkout-pay-title">Transferencia Bancaria Directa (Banco de Chile)</div>
-                        <div className="checkout-pay-desc">
-                          Cuenta corriente comercial con comprobante y emisión de Factura.
-                        </div>
+                    {/* Out-of-zone commune: delivery and payment are coordinated in
+                        a WhatsApp chat, so the online methods are not offered. */}
+                    {isOutOfZoneDelivery && (
+                      <div
+                        style={{
+                          background: 'var(--accent-soft)',
+                          color: 'var(--ink-700)',
+                          padding: '0.85rem',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.825rem',
+                          border: '1px solid var(--accent-border)'
+                        }}
+                      >
+                        Tu comuna (<strong>{formData.city.trim()}</strong>) está fuera de nuestras zonas de despacho
+                        directo (Melipilla y San Antonio). Coordinaremos la entrega y el pago contigo por WhatsApp; no
+                        se requiere pago en línea.
                       </div>
-                    </label>
+                    )}
+
+                    {/* Option 1: Transferencia Bancaria */}
+                    {!isOutOfZoneDelivery && (
+                      <label
+                        className={`checkout-pay-option${
+                          paymentMethod === 'transferencia' ? ' checkout-pay-option--selected' : ''
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="payMethod"
+                          value="transferencia"
+                          checked={paymentMethod === 'transferencia'}
+                          onChange={() => setPaymentMethod('transferencia')}
+                        />
+                        <Building2 size={20} style={{ color: 'var(--ink-700)' }} />
+                        <div>
+                          <div className="checkout-pay-title">Transferencia Bancaria Directa (Banco de Chile)</div>
+                          <div className="checkout-pay-desc">
+                            Cuenta corriente comercial con comprobante y emisión de Factura.
+                          </div>
+                        </div>
+                      </label>
+                    )}
 
                     {/* Option 2: WhatsApp Quote */}
                     <label
@@ -1114,26 +1213,28 @@ export default function CheckoutModal({
                     </label>
 
                     {/* Option 3: Mercado Pago Chile */}
-                    <label
-                      className={`checkout-pay-option${
-                        paymentMethod === 'mercadopago' ? ' checkout-pay-option--selected' : ''
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="payMethod"
-                        value="mercadopago"
-                        checked={paymentMethod === 'mercadopago'}
-                        onChange={() => setPaymentMethod('mercadopago')}
-                      />
-                      <CreditCard size={20} style={{ color: 'var(--accent)' }} />
-                      <div>
-                        <div className="checkout-pay-title">Pago Inmediato Mercado Pago Chile / Webpay</div>
-                        <div className="checkout-pay-desc">
-                          Procesamiento protegido vía Mercado Pago Checkout Pro oficial.
+                    {!isOutOfZoneDelivery && (
+                      <label
+                        className={`checkout-pay-option${
+                          paymentMethod === 'mercadopago' ? ' checkout-pay-option--selected' : ''
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="payMethod"
+                          value="mercadopago"
+                          checked={paymentMethod === 'mercadopago'}
+                          onChange={() => setPaymentMethod('mercadopago')}
+                        />
+                        <CreditCard size={20} style={{ color: 'var(--accent)' }} />
+                        <div>
+                          <div className="checkout-pay-title">Pago Inmediato Mercado Pago Chile / Webpay</div>
+                          <div className="checkout-pay-desc">
+                            Procesamiento protegido vía Mercado Pago Checkout Pro oficial.
+                          </div>
                         </div>
-                      </div>
-                    </label>
+                      </label>
+                    )}
                   </div>
                 </div>
 

@@ -168,11 +168,18 @@ describe('ProductCard component', () => {
     expect(screen.queryByText('Sin Stock')).toBeNull()
   })
 
-  it('should render low-stock warning without leaking the raw stock count when stockCount <= 5', () => {
-    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+  it('should render low-stock warning without leaking the raw stock count when stockCount <= 3', () => {
+    // The public catalog discloses the count only at 1–3 — the cue fires there
+    // and never renders the number itself.
+    render(<ProductCard product={{ ...mockProduct, stockCount: 3 }} onAddToCart={() => {}} onQuickView={() => {}} />)
     expect(screen.getByText('Últimas unidades')).toBeInTheDocument()
     // Confidentiality: the exact warehouse count must never be rendered
-    expect(screen.queryByText(/Últimas 4 unid\./)).toBeNull()
+    expect(screen.queryByText(/Últimas 3 unid\./)).toBeNull()
+  })
+
+  it('renders no low-stock cue once the count exceeds the public threshold (only the server verifies)', () => {
+    render(<ProductCard product={{ ...mockProduct, stockCount: 4 }} onAddToCart={() => {}} onQuickView={() => {}} />)
+    expect(screen.queryByText('Últimas unidades')).toBeNull()
   })
 
   describe('Media contract & procurement IA (Phase 9 / D.5)', () => {

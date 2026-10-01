@@ -7,8 +7,8 @@ import { resolvePromoPercent } from '../src/config/promos.js'
 import { computeDiscountedUnitPrice, computeOrderTotal, normalizeQuantity } from '../src/utils/orderTotal.js'
 import { buildPreferenceSnapshot } from './_lib/preferenceSnapshot.js'
 import type { DocumentReference } from 'firebase-admin/firestore'
-import { MIN_ORDER_OUTSIDE_MELIPILLA, MIN_ORDER_ZONE, isBelowMinimumOrder } from '../src/config/delivery.js'
-import type { DeliveryZone } from '../src/config/delivery.js'
+import { MIN_ORDER_OUTSIDE_MELIPILLA, MIN_ORDER_ZONE, isBelowMinimumOrder, normalizeDeliveryZone } from '../src/config/delivery.js'
+import { LOW_STOCK_PUBLIC_THRESHOLD } from '../src/config/catalog.js'
 import { formatCLP } from '../src/utils/currency.js'
 
 /**
@@ -289,8 +289,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // the input for both the stored-total agreement and the San Antonio
     // minimum, which checkout gates on the same original subtotal.
     const rawCatalogLines: Array<{ price: number; quantity: number }> = []
-    const productCache = new Map<string, Record<string, unknown> | null>()
 
+    // QUANTITY CONSOLIDATION — the one quantity/stock policy across handlers
+    // (approve-transfer and resolve-payment-review consolidate the same way):
+    // quantities are positive integers from normalizeQuantity and are summed
+    // by productId BEFORE the stock check, so a crafted order with two lines
+    // of the same product can neither pass the stock check per line and
+    // oversell in total, nor deduct a fractional amount no surface ever
+    // priced.
+    const consolidatedLines = new Map<string, { quantity: number; name?: string }>()
     for (const item of orderItems) {
       const productId = item?.productId || item?.id
 
@@ -303,22 +310,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
       }
 
-      const quantity = normalizeQuantity(item?.quantity)
-
-      let productData = productCache.get(productId)
-      if (productData === undefined) {
-        const productSnap = await adminDb.collection(getCollectionName('products')).doc(productId).get()
-        if (!productSnap.exists) {
-          return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
-            error: `El producto "${item?.name || productId}" no fue encontrado en el catálogo de inventario.`,
-            productId,
-            availableStock: 0,
-            requestedQuantity: quantity
-          })
-        }
-        productData = (productSnap.data() as Record<string, unknown> | null) ?? null
-        productCache.set(productId, productData)
+      const existing = consolidatedLines.get(productId) || {
+        quantity: 0,
+        name: typeof item?.name === 'string' ? item.name : undefined
       }
+      existing.quantity += normalizeQuantity(item?.quantity)
+      if (typeof item?.name === 'string') existing.name = item.name
+      consolidatedLines.set(productId, existing)
+    }
+
+    for (const [productId, line] of consolidatedLines) {
+      const quantity = line.quantity
+
+      const productSnap = await adminDb.collection(getCollectionName('products')).doc(productId).get()
+      if (!productSnap.exists) {
+        // No stock figures here on purpose: the product does not exist, so any
+        // number would be fabricated — the message already says so.
+        return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
+          error: `El producto "${line.name || productId}" no fue encontrado en el catálogo de inventario.`,
+          productId
+        })
+      }
+      const productData = (productSnap.data() as Record<string, unknown> | null) ?? null
 
       const availableStock = typeof productData?.stockCount === 'number' ? productData.stockCount : 0
       // `isActive === false` pauses a product from sale (admin visibility toggle).
@@ -328,13 +341,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const inStock = isActive && productData?.inStock !== false && availableStock > 0
 
       if (!inStock || availableStock < quantity) {
+        // Exact stock is disclosed only when it is an integer within the public
+        // 1–3 bound (the same rule the catalog endpoint applies); a larger or
+        // malformed figure would let anyone probe inventory, so the refusal
+        // stays generic above it.
+        const discloseStock =
+          Number.isInteger(availableStock) && availableStock >= 1 && availableStock <= LOW_STOCK_PUBLIC_THRESHOLD
         return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
           error: isActive
-            ? `Stock insuficiente para el producto "${String(productData?.name || productId)}". Stock disponible: ${availableStock}, solicitado: ${quantity}.`
+            ? discloseStock
+              ? `Stock insuficiente para el producto "${String(productData?.name || productId)}". Stock disponible: ${availableStock}, solicitado: ${quantity}.`
+              : `Stock insuficiente para el producto "${String(
+                  productData?.name || productId
+                )}". Por favor ajusta la cantidad en tu carro o cotiza por WhatsApp.`
             : `El producto "${String(productData?.name || productId)}" no está disponible para la venta. Por favor cotiza por WhatsApp.`,
           productId,
-          availableStock,
-          requestedQuantity: quantity
+          ...(discloseStock ? { availableStock, requestedQuantity: quantity } : {})
         })
       }
 
@@ -353,6 +375,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       rawCatalogLines.push({ price: catalogPrice, quantity })
       rebuiltItems.push({
         id: productId,
+        // Catalog-authoritative title: the client-written line name never
+        // reaches the Mercado Pago checkout — the request contributes only
+        // the order id, and the catalog is the authority for what is charged.
         title: String(productData?.name || 'Insumo Odontológico'),
         quantity,
         unit_price: unitPrice,
@@ -384,14 +409,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // SAN ANTONIO MINIMUM — the same original product subtotal checkout gates
     // on (list prices × quantities, BEFORE the promo discount) must reach the
     // zone minimum for a San Antonio despacho. Melipilla has no minimum. The
-    // zone comes from the order document's stored comuna, never the request.
+    // zone comes from the order document's stored comuna, never the request,
+    // and is matched case/accent-insensitively so a crafted "san antonio"
+    // cannot dodge the minimum. An out-of-zone commune is refused outright:
+    // those buyers settle through the WhatsApp quote path, so an online
+    // payment must never exist for them.
     const orderCustomer =
       orderData.customer && typeof orderData.customer === 'object'
         ? (orderData.customer as Record<string, unknown>)
         : {}
-    const deliveryZone = String(orderCustomer.city || '').trim()
+    const deliveryZone = normalizeDeliveryZone(orderCustomer.city)
+    if (!deliveryZone) {
+      console.warn(
+        `[create-preference] Order "${cleanOrderId}" targets the out-of-zone commune "${String(
+          orderCustomer.city || ''
+        )}"; online payment refused — out-of-zone buyers settle by WhatsApp quote.`
+      )
+      return rejectPreference(res, adminDb, req, cleanOrderId, 400, {
+        error:
+          'Despachamos solo a Melipilla y San Antonio. Para otra comuna, cotiza y coordina tu compra por WhatsApp.',
+        orderId: cleanOrderId
+      })
+    }
     const rawSubtotal = rawCatalogLines.reduce((acc, line) => acc + line.price * line.quantity, 0)
-    if (isBelowMinimumOrder(deliveryZone as DeliveryZone, rawSubtotal)) {
+    if (isBelowMinimumOrder(deliveryZone, rawSubtotal)) {
       console.warn(
         `[create-preference] Order "${cleanOrderId}" targets ${MIN_ORDER_ZONE} with an original subtotal of ${rawSubtotal} CLP, below the ${MIN_ORDER_OUTSIDE_MELIPILLA} minimum; preference refused.`
       )

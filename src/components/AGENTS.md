@@ -195,7 +195,7 @@ graph TD
 | **Email** | `formData.email` | 1 · Contacto | **Critical Chilean Fiscal Field:** Electronic tax documents (DTEs) issued through electronic invoicing providers connected to the SII must be dispatched to a formal electronic mailbox. In dental clinics, this email is often monitored by the clinic's accountant or administrator (`facturacion@clinica.cl`), ensuring tax documents are not lost in personal dentist inboxes. For Boleta, receives the purchase confirmation and Boleta PDF. | Required standard email format (`type="email"`). |
 | **Teléfono** | `formData.phone` | 1 · Contacto | Direct telephone and WhatsApp contact for delivery coordination. Crucial for the Melipilla urban route and the scheduled San Antonio route to confirm clinic reception hours before dispatching. | Required string. Rendered as `type="tel" inputmode="tel"` so mobile devices open the phone keypad. |
 | **Dirección de despacho** | `formData.address` | 2 · Despacho | Dual-purpose field: Specifies the street, building, office number (e.g., *"Av. Ortúzar 750, Of. 302"*), and acts as the fiscal address registered on the electronic tax invoice. | Mandatory. Validated via `validateFacturaFields` when Factura is (re-)enabled. |
-| **Comuna** | `formData.city` | 2 · Despacho · `aria-label="Comuna de Despacho"` | **A `<select>`, not free text.** Only the two real delivery zones are offered — `Melipilla` (default) and `San Antonio` — sourced from `DELIVERY_ZONES` in [src/config/delivery.ts](../../src/config/delivery.ts). It determines logistics eligibility (the San Antonio minimum order) and satisfies the SII DTE address requirement. | Mandatory. Defaults to `DEFAULT_DELIVERY_ZONE` (`Melipilla`). |
+| **Comuna** | `formData.city` | 2 · Despacho · `aria-label="Comuna de Despacho"` | **A `<select>` plus one free-text branch.** The select offers `Melipilla` (default), `San Antonio` and **"Otra comuna (coordinar por WhatsApp)"** — the zones sourced from `DELIVERY_ZONES` in [src/config/delivery.ts](../../src/config/delivery.ts). Picking "Otra comuna" clears `formData.city` and reveals a required free-text commune input (`maxLength` 80, mirroring the rules cap); the despacho then has no online payment — the Pago step offers WhatsApp only and the method state is forced to `'whatsapp'`. A zone name typed into the free-text field (`"melipilla"`, `"sán antonio"`) is canonicalized on the fly via `normalizeDeliveryZone()`, so the payload never carries a spelling the Firestore rules would refuse for a non-WhatsApp order. The commune determines logistics eligibility (the San Antonio minimum) and satisfies the SII DTE address requirement. | Mandatory. Zones write their canonical name; "Otra comuna" requires a non-empty typed commune (trimmed check in `handleNextStep`). |
 | **Código postal** | `formData.zip` | 2 · Despacho | Chilean postal district code (e.g., *"9500000"* for Melipilla) or regional identifier. Carries `inputmode="numeric"`. | Required string. |
 | **N° Registro SIS** | `sisRegistryNumber` | 2 · Despacho (conditional) · *N° Registro SIS (Superintendencia) \** | **Sanitary Verification Field:** Rendered only when cart contains regulated clinical supplies (`prescriptionRequired === true`). Represents the practitioner's official registration in the Superintendencia de Salud's RNPI. | Required if `hasRegulatedItems`. Minimum 4 numeric/alphanumeric characters. |
 | **Credencial / Receta** | `credentialFileName` | 2 · Despacho (conditional) · *Credencial Profesional o Receta (Opcional)* | Allows uploading an image or PDF of the professional credential or prescription authorizing controlled supply acquisition. ⚠️ Because step panels remount via `key={step}`, navigating back to Despacho clears the chosen file from the DOM input while the `✓ Adjunto:` chip (state) persists — cosmetic only, since only the *name* reaches the payload. | Optional file attachment (`.pdf`, `.jpg`, `.png`). |
@@ -230,21 +230,20 @@ Immediately after the stock check, `handleNextStep()` enforces the only minimum-
 
 ```typescript
 const productSubtotal = cartItems.reduce((acc, item) => acc + item.product.price * item.quantity, 0)
-const deliveryZone = (formData.city || DEFAULT_DELIVERY_ZONE) as DeliveryZone
-if (isBelowMinimumOrder(deliveryZone, productSubtotal)) {
+if (isBelowMinimumOrder(formData.city, productSubtotal)) {
   setSubmitError(`La compra mínima para despacho a ${MIN_ORDER_ZONE} es de ${formatCLP(MIN_ORDER_OUTSIDE_MELIPILLA)}`)
   return
 }
 ```
 
-* `isBelowMinimumOrder()` returns true only for `zone === 'San Antonio' && subtotal < 60000`. **Melipilla has no minimum.**
+* `isBelowMinimumOrder()` normalizes the stored commune through `normalizeDeliveryZone()` first (case/accent/whitespace-insensitive), so only a canonical `San Antonio` order below `$60.000` is refused. **Melipilla has no minimum, and an out-of-zone commune has none either** — those buyers settle by WhatsApp quote, where the operator coordinates the actual despacho.
 * The subtotal is the pre-tax product sum, matching the figure the Cart drawer shows — not `totalAmount`, which includes IVA.
 * The select also renders a proactive muted hint under it when `San Antonio` is chosen: `Compra mínima para despacho a San Antonio: $60.000`.
 * The same rule is surfaced in the Cart drawer, so the shopper learns it before reaching checkout. Both read the constants from `src/config/delivery.ts`.
 
 ### 3.3 Step 4: Payment Pathways
 
-The Pago step opens with a **compact order summary** (`.checkout-summary`): scrollable item lines (`qty × name — subtotal`) plus the Neto / IVA (19%) / Total rows computed by `calculateTaxBreakdown`. Below it, 3 distinct payment pathways tailored to Chilean healthcare purchasing habits:
+The Pago step opens with a **compact order summary** (`.checkout-summary`): scrollable item lines (`qty × name — subtotal`) plus the Neto / IVA (19%) / Total rows computed by `calculateTaxBreakdown`. Below it, the payment pathways tailored to Chilean healthcare purchasing habits — **an out-of-zone despacho ("Otra comuna") renders none of them**: it shows a notice that delivery and payment are coordinated by WhatsApp, with the method state locked to `'whatsapp'` (Mercado Pago and bank transfer are removed from the choice list):
 
 1. **Transferencia Bancaria Directa (Banco de Chile):**
    * The preferred B2B method for dental clinics managing monthly account balances.
@@ -382,7 +381,7 @@ The Cart drawer is one of five surfaces that call `useScrollLock(...)` from [src
 
 ### 6.1 `ProductCard.tsx`
 
-* **Confidential Stock Defense:** Warehouse inventory counts (`stockCount`) are **never rendered** to public users to prevent competitors from scraping inventory levels. The low-stock cue is the fixed string **`Últimas unidades`** (it used to interpolate the count as `Últimas N unid.` — never reintroduce that), the out-of-stock cue is **`Sin stock`**, and the add button reads `Agregar` / `Agotado`. `stockCount` still drives *whether* the cue shows (`<= 5`) and still caps steppers; only the number is withheld.
+* **Confidential Stock Defense:** Warehouse inventory counts (`stockCount`) are **never rendered** to public users to prevent competitors from scraping inventory levels. The low-stock cue is the fixed string **`Últimas unidades`** (it used to interpolate the count as `Últimas N unid.` — never reintroduce that), the out-of-stock cue is **`Sin stock`**, and the add button reads `Agregar` / `Agotado`. The cue fires only on a **disclosed** count — the public catalog omits `stockCount` unless it is 1–3 (`LOW_STOCK_PUBLIC_THRESHOLD` in [src/config/catalog.ts](../config/catalog.ts)), so an absent count means "plenty — the server verifies" and renders no cue. `stockCount` still caps steppers (absent ⇒ 99 ceiling); only the number is withheld.
 * **Media contract (Phase 9):** `.media-placeholder-box` is a fixed **4:3** area, so a delivered photo never changes a card's height. Two treatments:
   * *No photo* (all current catalog items have `images: []`) → the icon-on-dot-grid placeholder, which is now **category icon only** — the repeated product name was removed because it duplicated the card title. One neutral treatment; the eight `gradient-*` theme rules were collapsed, so `placeholderTheme` no longer changes the look.
   * *Photo present* → the `.media-placeholder-box--photo` modifier: `var(--surface-card)` background, uniform `var(--space-4)` padding, and `object-fit: contain` on `.product-card-img`. `cover` on a fixed-height box cropped real photos — do not put it back.

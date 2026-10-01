@@ -14,6 +14,13 @@ import {
 import type { StockShortfall } from "../emailTemplates.js";
 import { resolvePromoPercent } from "../../../src/config/promos.js";
 import { computeDiscountedUnitPrice, normalizeQuantity } from "../../../src/utils/orderTotal.js";
+import { formatCLP } from "../../../src/utils/currency.js";
+import {
+  MIN_ORDER_OUTSIDE_MELIPILLA,
+  MIN_ORDER_ZONE,
+  isBelowMinimumOrder,
+  normalizeDeliveryZone,
+} from "../../../src/config/delivery.js";
 
 /** Source states from which a bank transfer may be approved. */
 const APPROVABLE_STATUSES = new Set([
@@ -155,6 +162,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } satisfies ApprovalOutcome;
       }
 
+      // Out-of-zone guard: only a WhatsApp order may carry a commune outside
+      // Melipilla / San Antonio, and a transfer order is never WhatsApp — so a
+      // transfer order with an out-of-zone commune is legacy or crafted and
+      // must never be approved (its delivery was never offered).
+      const orderCustomer =
+        orderData.customer && typeof orderData.customer === "object"
+          ? (orderData.customer as Record<string, unknown>)
+          : {};
+      const deliveryZone = normalizeDeliveryZone(
+        (orderCustomer as { city?: unknown }).city
+      );
+      if (!deliveryZone) {
+        return {
+          outcome: "conflict",
+          currentStatus,
+          message: `El pedido registra la comuna fuera de zona "${String(
+            (orderCustomer as { city?: unknown }).city || "sin comuna"
+          )}"; los despachos fuera de Melipilla y San Antonio se coordinan por WhatsApp. No se rebajó stock.`,
+        } satisfies ApprovalOutcome;
+      }
+
       const items: Array<Record<string, unknown>> = Array.isArray(orderData.items)
         ? (orderData.items as Array<Record<string, unknown>>)
         : [];
@@ -208,6 +236,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isActive: boolean;
       }[] = [];
       let expectedTotal = 0;
+      // Original product subtotal (catalog list prices × quantities, BEFORE
+      // the promo discount) — the same figure the San Antonio minimum gates
+      // on in checkout and create-preference.
+      let rawSubtotal = 0;
 
       for (const [productId, itemInfo] of consolidatedQty.entries()) {
         const productRef = db
@@ -239,6 +271,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           } satisfies ApprovalOutcome;
         }
         expectedTotal += computeDiscountedUnitPrice(catalogPrice, discountPercent) * itemInfo.qty;
+        rawSubtotal += catalogPrice * itemInfo.qty;
 
         const currentStock =
           typeof productData.stockCount === "number"
@@ -283,6 +316,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           message: `El total verificado del pedido (${expectedTotal}) no coincide con el monto registrado (${
             orderData.totalAmount ?? "sin registro"
           }). Corrige el pedido o cotiza por WhatsApp; no se rebajó stock.`,
+        } satisfies ApprovalOutcome;
+      }
+
+      // San Antonio minimum — enforced server-side for EVERY payment method
+      // against the same original product subtotal checkout gates on (catalog
+      // list prices × consolidated quantities, BEFORE the promo discount), so
+      // a crafted order document with understated line prices cannot slip a
+      // below-minimum sale through approval. Melipilla has no minimum.
+      if (isBelowMinimumOrder(deliveryZone, rawSubtotal)) {
+        return {
+          outcome: "conflict",
+          currentStatus,
+          message: `La compra mínima para despacho a ${MIN_ORDER_ZONE} es de ${formatCLP(
+            MIN_ORDER_OUTSIDE_MELIPILLA
+          )} (subtotal original: ${formatCLP(rawSubtotal)}). No se rebajó stock.`,
         } satisfies ApprovalOutcome;
       }
 

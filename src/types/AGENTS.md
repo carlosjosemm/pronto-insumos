@@ -227,7 +227,10 @@ export interface Product {
   rating: number;                // Customer evaluation (0–5; 0 = no reviews yet — see §3.4)
   reviewsCount: number;          // Total clinician reviews
   inStock: boolean;              // Public stock flag: (stockCount > 0 && isActive !== false)
-  stockCount: number;            // Physical warehouse count in Melipilla
+  stockCount?: number;           // Physical warehouse count in Melipilla — OPTIONAL on storefront data:
+                                 // the public catalog discloses it only at 1–3 and omits it otherwise
+                                 // ("plenty — the server verifies at payment time"); admin surfaces
+                                 // always carry it. Treat absent as "plenty", never as 0.
   isActive?: boolean;            // Decoupled visibility switch (default: true). False pauses product from sales.
   prescriptionRequired: boolean; // Triggers '⚕️ Requiere SIS' badge & SIS check in checkout
   ispRegistrationNumber?: string;// Chilean ISP health registry code for controlled pharmaceuticals/devices

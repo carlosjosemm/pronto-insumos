@@ -275,6 +275,10 @@ describe('Order-create contract: submitOrder() payload vs firestore.rules allowl
   it('pins the delivery zone, Boleta-only document type and all item-line guards', async () => {
     // Rules side: the enumerated create-contract pins.
     expect(rulesSource).toContain("c.city in ['Melipilla', 'San Antonio']")
+    // Out-of-zone exception: a free-text commune only for a WhatsApp order,
+    // capped at the same 80 chars the checkout input mirrors; the method
+    // reaches the customer validator as a parameter.
+    expect(rulesSource).toContain("(paymentMethod == 'whatsapp' && isBoundedString(c.city, 80) && c.city.size() > 0)")
     expect(rulesSource).toContain("c.documentType == 'boleta'")
     expect(rulesSource).toContain("b.documentType == 'boleta'")
     expect(rulesSource).toContain('data.createdAt is timestamp')
@@ -341,6 +345,7 @@ describe('Order-create contract: submitOrder() payload vs firestore.rules allowl
       ['phone', 32],
       ['rut', 16],
       ['address', 200],
+      ['city', 80],
       ['zip', 16],
       ['razonSocial', 160],
       ['giroComercial', 160],

@@ -4,7 +4,7 @@ import { computeCartTotal } from '../utils/orderTotal'
 import { db } from './firebase'
 import { getCollectionName } from './firestoreEnv'
 import { isSimulatedFallbackAllowed } from './simulationPolicy'
-import { collection, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import {
   BillingInfo,
   CartItem,
@@ -97,14 +97,21 @@ export function generateOrderId(): string {
 }
 
 /**
- * Fetch products from Firestore.
+ * Fetch products from the public catalog endpoint (`/api/catalog`).
  *
- * FAIL-CLOSED: in a production runtime a missing configuration, a rejected read,
- * an empty snapshot or a timeout all resolve to `source: 'unavailable'` — the prototype
- * `PRODUCTS` fixtures are never served to real shoppers, and the caller must surface a
- * retryable error instead of a catalog it cannot trust. Outside production the fixtures
- * remain the offline fallback, flagged as `source: 'fixtures'` so no caller can mistake
- * them for live data (and never revalidate a persisted cart against them).
+ * The storefront never reads the `products` collection directly — Firestore
+ * rules deny client reads, and the endpoint is the sole catalog authority
+ * (active products only, explicit public-field allowlist, `stockCount`
+ * disclosed only at 1–3; everything else is "plenty, the server verifies" at
+ * payment time).
+ *
+ * FAIL-CLOSED: in a production runtime an unavailable endpoint, a rejected
+ * read, an empty catalog or a timeout all resolve to `source: 'unavailable'` —
+ * the prototype `PRODUCTS` fixtures are never served to real shoppers, and the
+ * caller must surface a retryable error instead of a catalog it cannot trust.
+ * Outside production the fixtures remain the offline fallback, flagged as
+ * `source: 'fixtures'` so no caller can mistake them for live data (and never
+ * revalidate a persisted cart against them).
  */
 export async function fetchProducts({
   category = 'all',
@@ -115,63 +122,51 @@ export async function fetchProducts({
   let catalog: Product[]
   let source: CatalogSource
 
-  const hasFirebaseConfig = Boolean(import.meta.env.VITE_FIREBASE_PROJECT_ID && import.meta.env.VITE_FIREBASE_API_KEY)
   const allowFixtureFallback = isSimulatedFallbackAllowed()
 
-  if (!hasFirebaseConfig) {
-    // No Firebase credentials: the local catalog is a development convenience only.
-    // In the browser this branch is only reachable while the Firebase project id is
-    // missing but the API key is present — `src/services/firebase.ts` throws
-    // `auth/invalid-api-key` at import time otherwise. It is kept as
-    // defense-in-depth for the server-side/unit-test boundary.
-    if (!allowFixtureFallback) {
+  try {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+    const response = await Promise.race([
+      fetch('/api/catalog', { headers: { Accept: 'application/json' } }),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error('Catalog endpoint timeout')), CATALOG_FETCH_TIMEOUT_MS)
+      })
+    ]).finally(() => clearTimeout(timeoutHandle))
+
+    if (!response.ok) {
+      throw new Error(`Catalog endpoint answered ${response.status}`)
+    }
+    const liveProducts = (await response.json()) as Product[]
+    if (!Array.isArray(liveProducts)) {
+      throw new Error('Catalog endpoint returned a non-array payload')
+    }
+
+    if (liveProducts.length > 0) {
+      catalog = liveProducts
+      source = 'firestore'
+    } else if (allowFixtureFallback) {
+      console.warn(
+        'Catalog endpoint returned an empty catalog; using the local products fixture (non-production runtime).'
+      )
+      catalog = [...PRODUCTS]
+      source = 'fixtures'
+    } else {
       console.error(
-        'Firebase credentials are not configured in a production runtime; refusing to serve the local catalog fixtures.'
+        'Catalog endpoint returned an empty catalog in a production runtime; refusing to serve the local fixtures.'
       )
       return { products: [], catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
     }
+  } catch (err: unknown) {
+    if (!allowFixtureFallback) {
+      console.error(
+        'Catalog endpoint unavailable in a production runtime; refusing to serve the local fixtures:',
+        err instanceof Error ? err.message : err
+      )
+      return { products: [], catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
+    }
+    console.warn('Catalog endpoint fallback to local products:', err instanceof Error ? err.message : err)
     catalog = [...PRODUCTS]
     source = 'fixtures'
-  } else {
-    try {
-      const productsRef = collection(db, getCollectionName('products'))
-      let timeoutHandle: ReturnType<typeof setTimeout> | undefined
-      const snapshot = await Promise.race([
-        getDocs(productsRef),
-        new Promise<never>((_, reject) => {
-          timeoutHandle = setTimeout(() => reject(new Error('Firestore catalog timeout')), CATALOG_FETCH_TIMEOUT_MS)
-        })
-      ]).finally(() => clearTimeout(timeoutHandle))
-
-      const liveProducts = snapshot.docs
-        .map((d) => ({ id: d.id, ...d.data() }) as Product)
-        .filter((p) => p.isActive !== false)
-
-      if (liveProducts.length > 0) {
-        catalog = liveProducts
-        source = 'firestore'
-      } else if (allowFixtureFallback) {
-        console.warn('Firestore returned an empty catalog; using the local products fixture (non-production runtime).')
-        catalog = [...PRODUCTS]
-        source = 'fixtures'
-      } else {
-        console.error(
-          'Firestore returned an empty catalog in a production runtime; refusing to serve the local fixtures.'
-        )
-        return { products: [], catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
-      }
-    } catch (err: unknown) {
-      if (!allowFixtureFallback) {
-        console.error(
-          'Firestore catalog unavailable in a production runtime; refusing to serve the local fixtures:',
-          err instanceof Error ? err.message : err
-        )
-        return { products: [], catalog: [], source: 'unavailable', error: CATALOG_UNAVAILABLE_MESSAGE }
-      }
-      console.warn('Firestore catalog fallback to local products:', err instanceof Error ? err.message : err)
-      catalog = [...PRODUCTS]
-      source = 'fixtures'
-    }
   }
 
   let result = catalog

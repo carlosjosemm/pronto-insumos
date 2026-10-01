@@ -41,7 +41,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           setRecentOrders(ordersData.orders || [])
           const critical = (productsData || [])
             .filter(p => typeof p.stockCount === 'number' && p.stockCount <= 5)
-            .sort((a, b) => a.stockCount - b.stockCount)
+            .sort((a, b) => (a.stockCount ?? 0) - (b.stockCount ?? 0))
           setCriticalProducts(critical)
         }
       } catch (err) {
@@ -247,8 +247,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span className={`admin-stock-badge ${p.stockCount <= 2 ? 'admin-stock-badge--critical' : 'admin-stock-badge--low'}`}>
-                      {p.stockCount} unid.
+                    <span className={`admin-stock-badge ${(p.stockCount ?? 0) <= 2 ? 'admin-stock-badge--critical' : 'admin-stock-badge--low'}`}>
+                      {p.stockCount ?? 0} unid.
                     </span>
                     <button
                       type="button"

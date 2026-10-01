@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { formatCLP } from '../utils/currency'
 import { formatCategoryDisplayName } from '../utils/categoryAlias'
+import { LOW_STOCK_PUBLIC_THRESHOLD } from '../config/catalog'
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   'INSTRUMENTAL Y ACCESORIOS': Scissors,
@@ -51,9 +52,11 @@ export default function ProductCard({
 }: ProductCardProps) {
   const CategoryIcon = ICON_BY_CATEGORY[product.category] || Activity
 
-  // Defensive stock check
+  // Defensive stock check. An absent `stockCount` is "plenty — the server
+  // verifies" (the public catalog discloses the count only at 1–3), so the
+  // low-stock cue can only ever fire on a disclosed count.
   const isAvailable = product.inStock && (product.stockCount === undefined || product.stockCount > 0)
-  const isLowStock = isAvailable && product.stockCount !== undefined && product.stockCount <= 5
+  const isLowStock = isAvailable && product.stockCount !== undefined && product.stockCount <= LOW_STOCK_PUBLIC_THRESHOLD
   const maxStock = product.stockCount && product.stockCount > 0 ? product.stockCount : 99
 
   // Featured card accent strip

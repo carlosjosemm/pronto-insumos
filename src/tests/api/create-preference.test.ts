@@ -9,7 +9,7 @@ vi.mock('../../../api/_lib/firebaseAdmin', () => ({
 import handler from '../../../api/create-preference'
 import { getAdminFirestore } from '../../../api/_lib/firebaseAdmin'
 import { resolvePromoPercent } from '../../../src/config/promos'
-import { computeOrderTotal } from '../../../src/utils/orderTotal'
+import { computeOrderTotal, normalizeQuantity } from '../../../src/utils/orderTotal'
 import { PREFERENCE_TTL_MS } from '../../../api/_lib/preferenceSnapshot'
 import { createThrottleCounters } from './helpers/throttleCounters'
 
@@ -58,7 +58,7 @@ function mockAdminDbWithProducts(
       const lines = items.map((item) => {
         const productId = String(item.productId || item.id || '')
         const price = Number(products[productId]?.price) || 0
-        const quantity = Math.max(1, Number(item.quantity) || 1)
+        const quantity = normalizeQuantity(item?.quantity)
         return { price, quantity }
       })
       const defaults = {
@@ -810,6 +810,196 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       )
     })
 
+    it('keeps the exact stock figures in the refusal body only when the disclosed count is within the public threshold', async () => {
+      // A refusal against a well-stocked product must not hand out the exact
+      // inventory: the generic message carries no numbers and the body omits
+      // availableStock — the same disclosure bound the public catalog uses.
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': { name: 'Turbina', price: 189990, stockCount: 12, inStock: true } },
+        {
+          'PRONTO-112239': {
+            orderId: 'PRONTO-112239',
+            items: [{ productId: 'odon-101', quantity: 20 }]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(
+        {
+          method: 'POST',
+          headers: { host: 'localhost:5173' },
+          body: { orderId: 'PRONTO-112239' }
+        } as unknown as VercelRequest,
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      const body = res.json as ReturnType<typeof vi.fn>
+      const payload = body.mock.calls[0][0] as Record<string, unknown>
+      expect(String(payload.error)).toContain('Stock insuficiente')
+      expect(String(payload.error)).not.toContain('disponible:')
+      expect('availableStock' in payload).toBe(false)
+      expect(fetchSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('should return 400 Bad Request when requested item quantity exceeds available stock', async () => {
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': { name: 'Turbina Odontológica LED MasterTorque', price: 189990, stockCount: 3, inStock: true } },
+        { 'PRONTO-112233': { orderId: 'PRONTO-112233', items: [{ productId: 'odon-101', quantity: 5 }] } }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+
+      const req = {
+        method: 'POST',
+        headers: { host: 'localhost:5173' },
+        body: {
+          orderId: 'PRONTO-112233',
+          items: [
+            { product: { id: 'odon-101', name: 'Turbina Odontológica LED MasterTorque', price: 189990 }, quantity: 5 }
+          ],
+          customer: { fullName: 'Dr. Test' }
+        }
+      } as unknown as VercelRequest
+      const res = createMockRes()
+
+      await handler(req, res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Stock insuficiente para el producto'),
+          productId: 'odon-101',
+          availableStock: 3,
+          requestedQuantity: 5
+        })
+      )
+    })
+
+    it('refuses duplicate lines of the same product whose consolidated quantity oversells (400)', async () => {
+      // Each line alone (5 + 5) passes the per-line check against a stock of 8,
+      // but the order asks for 10 in total — the consolidated check refuses.
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': { name: 'Turbina', price: 189990, stockCount: 8, inStock: true } },
+        {
+          'PRONTO-112236': {
+            orderId: 'PRONTO-112236',
+            items: [
+              { productId: 'odon-101', quantity: 5 },
+              { productId: 'odon-101', quantity: 5 }
+            ]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(
+        {
+          method: 'POST',
+          headers: { host: 'localhost:5173' },
+          body: { orderId: 'PRONTO-112236' }
+        } as unknown as VercelRequest,
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      // Stock 8 sits above the public disclosure bound, so the refusal is
+      // generic — the exact figures would let anyone probe inventory.
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Stock insuficiente'),
+          productId: 'odon-101'
+        })
+      )
+      const body = res.json as ReturnType<typeof vi.fn>
+      const payload = body.mock.calls[0][0] as Record<string, unknown>
+      expect('availableStock' in payload).toBe(false)
+      expect(fetchSpy).not.toHaveBeenCalled()
+    })
+
+    it('builds ONE preference line with the consolidated quantity for duplicate lines within stock', async () => {
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': { name: 'Turbina', price: 189990, stockCount: 10, inStock: true } },
+        {
+          'PRONTO-112237': {
+            orderId: 'PRONTO-112237',
+            items: [
+              { productId: 'odon-101', quantity: 2 },
+              { productId: 'odon-101', quantity: 3 }
+            ]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(
+        {
+          method: 'POST',
+          headers: { host: 'localhost:5173' },
+          body: { orderId: 'PRONTO-112237' }
+        } as unknown as VercelRequest,
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      const sentPayload = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+      expect(sentPayload.items).toHaveLength(1)
+      expect(sentPayload.items[0]).toMatchObject({ id: 'odon-101', quantity: 5, unit_price: 189990 })
+      consoleSpy.mockRestore()
+    })
+
+    it('rounds a fractional legacy quantity through normalizeQuantity for pricing and stock alike', async () => {
+      // quantity 2.5 prices and stock-checks as 3 — the same figure the webhook
+      // deducts, so the deduction can never disagree with the charge.
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-101': { name: 'Turbina', price: 189990, stockCount: 3, inStock: true } },
+        {
+          'PRONTO-112238': {
+            orderId: 'PRONTO-112238',
+            items: [{ productId: 'odon-101', quantity: 2.5 }]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'PREF-REAL-1', init_point: 'https://mp.cl/checkout' })
+      } as Response)
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(
+        {
+          method: 'POST',
+          headers: { host: 'localhost:5173' },
+          body: { orderId: 'PRONTO-112238' }
+        } as unknown as VercelRequest,
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      const sentPayload = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+      expect(sentPayload.items[0].quantity).toBe(3)
+      consoleSpy.mockRestore()
+    })
+
     it('should return 400 Bad Request when requested item is marked inStock: false', async () => {
       const mockAdminDb = mockAdminDbWithProducts(
         { 'odon-501': { name: 'Lidocaína 2%', price: 38500, stockCount: 0, inStock: false } },
@@ -831,14 +1021,17 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       await handler(req, res)
 
       expect(res.status).toHaveBeenCalledWith(400)
+      // A zero stock sits outside the 1–3 public disclosure bound, so the
+      // refusal stays generic — no exact figures in the body.
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('Stock insuficiente para el producto'),
-          productId: 'odon-501',
-          availableStock: 0,
-          requestedQuantity: 1
+          productId: 'odon-501'
         })
       )
+      const body = res.json as ReturnType<typeof vi.fn>
+      const payload = body.mock.calls[0][0] as Record<string, unknown>
+      expect('availableStock' in payload).toBe(false)
     })
 
     it('should return 400 Bad Request when requested item does not exist in Firestore', async () => {
@@ -862,12 +1055,11 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
       await handler(req, res)
 
       expect(res.status).toHaveBeenCalledWith(400)
+      // No stock figures on a missing product — any number would be fabricated.
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('no fue encontrado en el catálogo de inventario'),
-          productId: 'odon-ghost',
-          availableStock: 0,
-          requestedQuantity: 1
+          productId: 'odon-ghost'
         })
       )
     })
@@ -1175,6 +1367,63 @@ describe('Create Preference Serverless Endpoint (/api/create-preference)', () =>
 
       expect(res.status).toHaveBeenCalledWith(200)
       expect(fetchSpy).toHaveBeenCalledTimes(1)
+      consoleSpy.mockRestore()
+    })
+
+    it('refuses an out-of-zone commune with 400 — online payment never serves it', async () => {
+      // The rules deny the create, but Admin SDK writes bypass rules and
+      // legacy documents exist: the endpoint is the last gate, so a crafted
+      // non-WhatsApp order with a foreign commune must not get a preference.
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-cheap': { name: 'Insumo Barato', price: 10000, stockCount: 10, inStock: true } },
+        {
+          'PRONTO-200007': {
+            orderId: 'PRONTO-200007',
+            customer: { fullName: 'Dra. Test', email: 't@clinica.cl', rut: '12.345.678-5', city: 'Curicó' },
+            items: [{ productId: 'odon-cheap', quantity: 1 }]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest('PRONTO-200007'), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('cotiza y coordina tu compra por WhatsApp') })
+      )
+      expect(fetchSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('no longer lets a lowercase commune dodge the San Antonio minimum', async () => {
+      const mockAdminDb = mockAdminDbWithProducts(
+        { 'odon-cheap': { name: 'Insumo Barato', price: 10000, stockCount: 10, inStock: true } },
+        {
+          'PRONTO-200008': {
+            orderId: 'PRONTO-200008',
+            customer: { fullName: 'Dra. Test', email: 't@clinica.cl', rut: '12.345.678-5', city: 'san antonio' },
+            items: [{ productId: 'odon-cheap', quantity: 1 }]
+          }
+        }
+      )
+      vi.mocked(getAdminFirestore).mockReturnValue(mockAdminDb as unknown as ReturnType<typeof getAdminFirestore>)
+      process.env.MERCADOPAGO_ACCESS_TOKEN = 'APP_USR-VALID-TOKEN-XYZ'
+      const fetchSpy = vi.spyOn(global, 'fetch')
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const res = createMockRes()
+
+      await handler(mpRequest('PRONTO-200008'), res)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('compra mínima') })
+      )
+      expect(fetchSpy).not.toHaveBeenCalled()
       consoleSpy.mockRestore()
     })
 

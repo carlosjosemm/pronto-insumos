@@ -21,6 +21,7 @@ import { validatePromo } from '../services/api'
 import { formatCLP } from '../utils/currency'
 import { computeCartTotal } from '../utils/orderTotal'
 import { resolvePromo } from '../config/promos'
+import { LOW_STOCK_PUBLIC_THRESHOLD } from '../config/catalog'
 import {
   FREE_SHIPPING_THRESHOLD,
   DELIVERY_ZONES,
@@ -198,6 +199,12 @@ export default function Cart({
                   : 99
               const isMaxStock = !isOutOfStock && item.quantity >= maxStock
               const isOverStock = !isOutOfStock && item.quantity > maxStock
+              // The public catalog discloses `stockCount` only at 1–3, so this
+              // cue fires on a disclosed count and never leaks a bigger figure.
+              const isLowStock =
+                !isOutOfStock &&
+                typeof item.product.stockCount === 'number' &&
+                item.product.stockCount <= LOW_STOCK_PUBLIC_THRESHOLD
 
               return (
                 <div
@@ -236,6 +243,8 @@ export default function Cart({
                       <span className="cart-stock-cue cart-stock-cue--warning">
                         Máximo disponible ({maxStock} unid.)
                       </span>
+                    ) : isLowStock ? (
+                      <span className="cart-stock-cue cart-stock-cue--warning">Últimas unidades</span>
                     ) : null}
                     <div className="cart-item-price">{formatCLP(item.product.price * item.quantity)}</div>
                   </div>
