@@ -8,7 +8,8 @@ import type {
   DispatchOrderPayload,
   DispatchOrderResult,
   ProductUpdatePayload,
-  VoucherHousekeepingResult
+  VoucherHousekeepingResult,
+  StalePendingOrdersResult
 } from '../types'
 import type { Order, Product } from '../../types'
 
@@ -402,6 +403,35 @@ export async function runVoucherHousekeeping(
   const headers = await getAuthHeaders()
   try {
     const res = await fetch('/api/admin/voucher-housekeeping', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(options)
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || `HTTP ${res.status}` }
+    }
+    return { ...data, success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error de conexión' }
+  }
+}
+
+/**
+ * Sweeps abandoned online-payment orders (`PENDIENTE_PAGO_MERCADOPAGO`).
+ *
+ * `dryRun` (the server default) only lists the candidates. The sweep asks the
+ * Mercado Pago ledger about every candidate before writing: an order whose
+ * payment already settled is never cancelled — it is parked in `PAGO_EN_REVISION`
+ * for manual review — and an order whose ledger could not be read is left
+ * untouched, so nothing is ever closed on an unverified ledger.
+ */
+export async function closeStalePendingOrders(
+  options: { olderThanHours?: number; limit?: number; dryRun?: boolean } = {}
+): Promise<StalePendingOrdersResult> {
+  const headers = await getAuthHeaders()
+  try {
+    const res = await fetch('/api/admin/close-stale-orders', {
       method: 'POST',
       headers,
       body: JSON.stringify(options)
