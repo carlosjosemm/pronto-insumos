@@ -11,6 +11,8 @@ description: >-
 
 This skill codifies the mechanics for executing a development task in the **PRONTO Insumos Odontológicos** repository: branch → plan → approval → implement → verify → review → docs → wrap-up → commit → push → PR → walkthrough. Roadmap task *selection* lives in [`production-readiness-workflow`](../production-readiness-workflow/SKILL.md); the review report format lives in the [`code-review`](../../../.devin/skills/code-review/SKILL.md) skill.
 
+**`--YOLO` mode suspends the two human waits in this protocol — nothing else.** When the owner explicitly authorizes it for a named set of related tasks, steps 3 and 8 below (plan approval and the wrap-up command) are skipped, several tasks run back to back, and their PRs are published as one GitHub stack. The plan artifact, the five gates, the adversarial review, the as-built docs, the commit and the PR all still apply, per layer. The canonical definition, the stacking mechanics and the `main`-moved-mid-stack procedure live in [`production-readiness-workflow`](../production-readiness-workflow/SKILL.md) — read it before using the mode.
+
 > [!IMPORTANT]
 > **No Git worktrees. Ever.** All task work happens in the **primary working tree**, on a dedicated branch. Do not run `git worktree add`, do not create sibling task directories, and do not open a second workspace per task. *(Owner decision, 2026-09-28 — the previous worktree-based protocol is retired; the skill directory name is retained only to preserve the historical identifier.)*
 
@@ -21,12 +23,12 @@ This skill codifies the mechanics for executing a development task in the **PRON
 ```mermaid
 flowchart TD
     A["1. Task Intake & Branch Formulation"] --> B["2. Draft .devin/artifacts/task-X.Y/implementation_plan.md"]
-    B --> C["3. Await Human Approval (Proceed)"]
+    B --> C["3. Await Human Approval (Proceed) — skipped under --YOLO"]
     C --> D["4. Execute Changes & Unit Tests"]
     D --> E["5. Verify: test, build, lint, format, tsc"]
     E --> F["6. Adversarial Read-Only Code Review (/code-review)"]
     F --> G["7. Remediate Findings & Update As-Built Docs"]
-    G --> H["8. Await Human Wrap-Up Command"]
+    G --> H["8. Await Human Wrap-Up Command — skipped under --YOLO"]
     H --> I["9. Stage & Conventional Commit"]
     I --> J["10. Pre-PR Sync & Conflict Check"]
     J --> K["11. Push Branch & Create the Pull Request"]
@@ -59,7 +61,7 @@ All work must strictly observe the **PRONTO Master Guardrails** in [AGENTS.md](.
    3. *Proposed Changes* (`[NEW]`, `[MODIFY]`, `[DELETE]`).
    4. *Robust Unit Testing Plan* (Vitest suites in `src/tests/`).
    5. *As-Built Documentation & Roadmap Sync Plan*.
-   * Note the branch name and status in the header. **STOP and await explicit human approval ("Proceed").**
+   * Note the branch name and status in the header. **STOP and await explicit human approval ("Proceed").** *(Skipped under `--YOLO` mode — the plan is still written and committed.)*
    * ❌ Never write task artifacts to the repository root — the old volatile root `implementation_plan.md` is retired (it was the recurring rebase conflict on every PR, since every in-flight branch overwrote the same file).
 
 2. **Execute the changes** — minimal and lean. No extraneous libraries (no Redux, no Tailwind, no Express). Chilean localization: integer CLP, Modulo 11 RUT, Boleta/Factura separation.
@@ -81,7 +83,7 @@ All work must strictly observe the **PRONTO Master Guardrails** in [AGENTS.md](.
 ### Phase 3: Completion, PR & Walkthrough
 
 > [!CAUTION]
-> **CRITICAL TIMING GUARD:** Never stage, commit, push, or open the PR prematurely. Await the explicit human command **"wrap up and proceed"**.
+> **CRITICAL TIMING GUARD:** Never stage, commit, push, or open the PR prematurely. Await the explicit human command **"wrap up and proceed"**. *(Skipped under `--YOLO` mode — the gates, the review and the docs are still mandatory per layer; only the human wait is removed. Push and PR each layer against the branch below it, then link the stack.)*
 
 > [!IMPORTANT]
 > **MANDATORY PRE-PR SYNC — never push a branch that is behind `origin/main`.** Run the check below on **every** wrap-up, even when the branch is only minutes old; it is not optional, and the owner must never have to ask for it. Pushing a stale branch is what produces conflicted, un-mergeable PRs.

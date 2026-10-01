@@ -103,3 +103,35 @@ export interface VoucherHousekeepingResult {
   failures?: string[]
   error?: string
 }
+
+/**
+ * Result of the stale pending-order sweep (`/api/admin/close-stale-orders`).
+ *
+ * `dryRun: true` lists the candidates without writing anything — the action
+ * cancels business records, so the safe direction is the default. A candidate
+ * whose Mercado Pago ledger holds a settled payment is never cancelled: it is
+ * counted in `parkedCount` and moved to `PAGO_EN_REVISION` for manual review.
+ * A candidate whose ledger could not be read is left untouched and reported in
+ * `failures`, never cancelled on an unverified ledger.
+ */
+export interface StalePendingOrdersResult {
+  success: boolean
+  dryRun?: boolean
+  olderThanHours?: number
+  cutoff?: string
+  scannedOrders?: number
+  /** Every pending order in the collection, whether or not this run scanned it. */
+  pendingTotal?: number
+  staleOrders?: number
+  closedCount?: number
+  parkedCount?: number
+  skippedStatusChanged?: number
+  closedSample?: string[]
+  parkedSample?: string[]
+  failures?: string[]
+  /** More pending orders than this run could handle: run it again. */
+  truncated?: boolean
+  /** The run stopped on its own wall-clock budget instead of the scan bound. */
+  timeBudgetExhausted?: boolean
+  error?: string
+}

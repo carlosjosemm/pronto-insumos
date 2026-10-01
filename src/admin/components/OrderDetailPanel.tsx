@@ -329,6 +329,8 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
         return 'Posible doble cobro detectado'
       case 'PAGO_ESTADO_INVALIDO':
         return 'El pedido no admitía pago automático'
+      case 'PAGO_ACREDITADO_TARDIO':
+        return 'El pago se acreditó después de que el pedido dejara de estar pendiente'
       case 'PAGO_REEMBOLSADO':
         return 'Pago reembolsado o contracargado'
       case 'PAGO_EN_REVISION':

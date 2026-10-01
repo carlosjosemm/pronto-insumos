@@ -11,7 +11,7 @@ This document is the root-level source of truth for any AI agent or engineer wor
 * **Business Model:** Small, highly responsive dental supplies distributor (instruments, consumables, restorative materials, equipment).
 * **Primary Geography:** **Melipilla** (warehouse & same-day local delivery) + **San Antonio** (scheduled route). There are **no** Región Metropolitana routes and **no** customer pickup — see §3.4.
 * **Customer Base:** Dental clinics and independent dentists needing fast fulfillment, a legal tax document (**Boleta Electrónica** with 19% IVA; Factura Electrónica on request via WhatsApp), and flexible payment options (Mercado Pago Chile and direct bank transfer).
-* **Current Operational State:** Functional prototype with complete Vitest test coverage (1157 tests across 96 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
+* **Current Operational State:** Functional prototype with complete Vitest test coverage (1255 tests across 101 suites), transitioning into a production-ready system according to [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 
 ---
 
@@ -91,6 +91,7 @@ Agents must strictly respect the payment boundaries defined in [PRODUCTION_READI
 * ✅ **Strict Secret Separation:** Browser code uses `VITE_` variables only. Server credentials (`MERCADOPAGO_ACCESS_TOKEN`, `FIREBASE_PRIVATE_KEY`, etc.) belong strictly in `process.env` inside the `api/` directory.
 * ✅ **Server-side price & total verification (Task 0.9, extended by 0.14):** `/api/create-preference` builds every preference line from the **order document's** `items` — the request body contributes only the order id (Task 0.14g) — prices them from the current Firestore catalog, and fails closed (`503`) when Firestore Admin is unavailable with a real token. The applied promo is read from the **order document** — never from the request body — and resolved against `src/config/promos.ts`, so the charge and the webhook's expectation can never disagree on which code applied; paused products (`isActive === false`) and unregistered orders are rejected with `400`. The webhook asserts `paymentData.transaction_amount` **and** `order.totalAmount` against a catalog-recomputed total (`src/utils/orderTotal.ts`) before marking `PAGADO_MERCADOPAGO`; mismatches go to `PAGO_EN_REVISION` with **no** stock deduction and no customer "paid" email.
 * ✅ **Webhook reconciliation guards (Task 0.14):** the Mercado Pago verification itself fails closed — only a `404` is acked (`200`); a revoked token, MP `5xx` or a malformed id returns `502` so MP retries. One normalized signed payment id drives both the HMAC check and the MP fetch. An approved payment may only settle `PENDIENTE_PAGO_MERCADOPAGO`/`PAGO_EN_REVISION`, an order's lines are deducted **at most once** (`paidAt`/`approvedAt` are settlement markers), settled orders get a double-payment incident (history + warehouse alert, never a status flip or a second deduction), other statuses are parked in `PAGO_EN_REVISION`, and `refunded`/`charged_back` payments park the order for manual reconciliation (refunds stay off-platform). Oversell shortfalls are recorded in the history/audit metadata and the warehouse alert instead of being hidden by the `Math.max(0, …)` clamp.
+* ✅ **Abandoned online orders are swept with the ledger as the gate (Task 8.13):** every checkout attempt leaves a `PENDIENTE_PAGO_MERCADOPAGO` order behind, and the `close-stale-orders` admin action (on the existing dispatcher — no new function slot) is the backstop for the ones nobody retries. It consults the Mercado Pago ledger by `external_reference` **before** writing: a settled payment is never cancelled (the order is parked in `PAGO_EN_REVISION` with a `PAGO_ACREDITADO_TARDIO` history event for manual review, exactly as the webhook parks an unjoinable payment), an unreadable ledger leaves the order untouched and records a failure, and only a verifiably payment-free candidate is cancelled. Every write re-reads the order inside a transaction and re-asserts the pending status, so a webhook approval landing mid-sweep wins; a payment that settles *after* the sweep is parked by the webhook's own guard and never reopens the order as paid. It moves no stock, implies no refund, defaults to a dry run, and stops on its own wall-clock budget (7 s) so a large backlog returns a complete report instead of being killed mid-run.
 * ✅ **Promo discounts are derived from the code, never from stored state:** every surface (cart display, `submitOrder`, preference builder, webhook) resolves the percent through `resolvePromo`/`resolvePromoPercent` in `src/config/promos.ts`. A `PromoCode` object hydrated from `localStorage` is a display artifact — `cartStorage` re-resolves it on load and `App`/`Cart` re-derive at render, so a hand-edited cart can never render a discount the payment layer would refuse to charge. The promo **policy** model (expiry, usage limits, redemption audit, product eligibility) is deliberately thin today and tracked as **Task 9.1** in [PRODUCTION_READINESS_TODO.md](./PRODUCTION_READINESS_TODO.md).
 * ✅ **Voucher bytes never live in Firestore (Task 2.9):** bank-transfer vouchers are uploaded **browser → Cloud Storage** over a short-lived V4 signed URL (`x-goog-content-length-range` signed in, so Storage itself rejects anything above 5 MiB), and the order document keeps only `voucherStoragePath` / `voucherUrl` (download-token URL) / `voucherFileName` / `voucherContentType` / `voucherSizeBytes`. `/api/upload-voucher` is the sole authority for the transition, which is allowed **only** from `PENDIENTE_TRANSFERENCIA` / `TRANSFERENCIA_COMPROBANTE_SUBIDO` and is re-asserted inside a transaction. The bucket is deny-all (`storage.rules`; deploy with `pnpm run deploy:storage-rules`) and reached exclusively through signed URLs and download tokens. Never reintroduce a Base64 `data:` voucher transport. **Task 2.15 bounds the leftovers:** every `sign` reserves a lifetime slot in `voucherSignCount` (transactional, cap 10, `429` + WhatsApp fallback at the cap, `500` fail-closed if the reservation cannot be written), and the `voucher-housekeeping` admin action deletes only the objects an order does not reference and that are older than a 60-minute grace window. The admin order **list** omits `voucherUrl` (a legacy Base64 voucher would exceed Vercel's 4.5 MB response cap) and reports `hasVoucher`; the `?orderId=` detail request still returns the URL.
 * ✅ **Public dual-factor endpoints are throttled and no longer enumerate (Task 8.8):** `/api/track-order`, `/api/upload-voucher` and `/api/order-confirmation` return **one identical `404`** for "order not found" *and* "RUT mismatch" (`respondOrderLookupFailed` in `api/_lib/orderLookup.ts`) — the old `404`/`401` split told an attacker which order ids exist, and a company RUT is public. Attempts and failed lookups are budgeted per IP and per order id (`api/_lib/abuseThrottle.ts`: 15-minute window, 15-minute lock, `429` + `Retry-After`, Firestore counters under `abuse_counters`, raw IPs stored only as SHA-256 pseudonyms, **fail-open with a loud log** so a counter outage never takes tracking down). The canonical order id is now **`PRONTO-` + 8 Crockford base32 chars** from `crypto.getRandomValues` (40 bits; legacy `PRONTO-NNNNNN` ids still resolve), which makes the residual distributed probe infeasible. Warehouse "voucher received" alerts are budgeted per order (5-minute cooldown, 5 max, reserved inside the confirm transaction) so a re-upload loop cannot exhaust the Resend quota. The still-unthrottled public `orders` create write path needs Firebase App Check — tracked as **Task 8.16**.
@@ -139,12 +140,16 @@ Each subfolder contains its own localized `AGENTS.md` specifying its scope, desi
 # Start local Vite development server (automatically connects to dev_* collections)
 pnpm dev
 
-# Run all automated tests (Vitest, 96 suites / 1157 tests)
+# Run all automated tests (Vitest, 101 suites / 1255 tests)
 pnpm test
 
 # Run tests with live file watcher (or a V8 coverage report)
 pnpm test:watch
 pnpm test:coverage
+
+# --- The pre-release gate: run this before ANY deploy or pull request ---
+pnpm run verify        # pnpm test && pnpm exec tsc --noEmit && pnpm build
+pnpm run verify:full   # the above + pnpm lint + pnpm format:check (the PR gate)
 
 # Lint the repo (ESLint flat config, zero errors expected)
 pnpm lint
@@ -195,6 +200,11 @@ pnpm run catalog:import          # Import CSV into production products — requi
 # --- Operator scripts without pnpm aliases (run via tsx) ---
 pnpm dlx tsx scripts/fix-catalog-data-quality.ts                    # dev by default; prod needs --env=prod --confirm-production-fix
 pnpm dlx tsx scripts/send-test-comms.ts [--only=email|whatsapp]     # Resend/WhatsApp smoke test against TEST_EMAIL
+
+# Read-only smoke test of a deployed preview — the request-time half of the
+# release gate (API ESM, admin auth, public-endpoint validation, both shells).
+# It refuses the production host, needs no credential and mutates nothing.
+pnpm run smoke:preview -- --base=https://pronto-insumos-<hash>.vercel.app
 ```
 
 Always verify that `pnpm test` passes completely without regressions after making changes.
@@ -205,7 +215,7 @@ Always verify that `pnpm test` passes completely without regressions after makin
 
 ## 🚀 7. Deployment & CI/CD Workflow (Vercel CLI)
 
-The deployment and CI/CD strategy for this project is deliberately simple, lean, and direct. We do not use complex external CI pipelines, Docker containers, or multi-stage cloud runners. All previews and production releases are deployed directly using the **Vercel CLI**.
+The deployment and CI/CD strategy for this project is deliberately simple, lean, and direct. We do not use complex external CI pipelines, Docker containers, or multi-stage cloud runners. All previews and production releases are deployed directly using the **Vercel CLI** — the one GitHub Actions workflow is a pull-request *verification* gate that never deploys (see below).
 
 ### 📋 Prerequisites & Linking
 
@@ -215,9 +225,8 @@ The deployment and CI/CD strategy for this project is deliberately simple, lean,
 ### 🛠️ Deployment Commands
 
 ```bash
-# 1. Mandatory Pre-Flight Verification (Run locally before deploying)
-pnpm test          # Ensure all 1157 tests pass
-pnpm build         # Validate TypeScript compilation and production bundle build
+# 1. Mandatory Pre-Flight Verification — ONE command, run locally before deploying
+pnpm run verify    # pnpm test && pnpm exec tsc --noEmit && pnpm build
 
 # 2. Sync environment variables to Vercel (DRY RUN by default — see §7.1)
 pnpm run env:sync -- --target preview            # prints the plan, writes nothing
@@ -226,13 +235,53 @@ pnpm run env:sync -- --target preview --apply    # writes only NEW vars
 # 3. Deploy a Staging / Preview Release (Generates a unique preview URL)
 pnpm dlx vercel
 
-# 4. Deploy directly to Production (Promotes live to production domain)
+# 4. Smoke the preview at request time (read-only; refuses the production host)
+pnpm run smoke:preview -- --base=https://pronto-insumos-<hash>.vercel.app
+
+# 5. Deploy directly to Production (Promotes live to production domain)
 pnpm dlx vercel --prod
 ```
 
+### ✅ Pull Request Verification (`.github/workflows/ci.yml`)
+
+One job, no matrix, no cache warmers, and **no deployment**: on every pull request (and on a push to `main`) GitHub Actions runs `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm test`, `pnpm exec tsc --noEmit` and `pnpm build` on Node 22 with pnpm read from `package.json`'s `packageManager`. That is `pnpm run verify` plus lint — the CI job exists so a pull request carries automated evidence, not so the pipeline can deploy. **Lint belongs in CI because it enforces the self-contained-comment policy** (guardrail 7), not merely style; `format:check` stays local (`pnpm run verify:full`) because a PR should not fail on whitespace, and guardrail 5 rules out a heavier pipeline. ❌ **Do not add deploy steps, matrices, containers or staging runners here** — Vercel CLI remains the only release path.
+
+### 🧪 Runtime / Operator Acceptance Gate (preview, before promoting)
+
+A green Vite build proves nothing about the deployed app: the build succeeds with *zero* environment variables set (the storefront then renders blank), and `api/` is transpiled in place so an ESM resolution fault surfaces as HTTP 500 `FUNCTION_INVOCATION_FAILED` only at request time. Promote to production only after **both** halves below pass on the preview deployment.
+
+1. **Automated, credential-free half** — `pnpm run smoke:preview -- --base=https://<preview-host>`. Nine read-only probes: both HTML shells are served, the Mercado Pago webhook module loads under the deployed runtime, the routed admin endpoint answers its preflight and refuses an unauthenticated read with `403`, and the four public endpoints reject a malformed body before touching Firestore or Storage. Any `500` is reported as a runtime/ESM or provider-configuration failure. The tool refuses the production host (and its subdomains) outright and never sends an `Authorization` header.
+   * **What it cannot prove — do not read a green run as more than it is:** the shell probes are HTTP `200` checks, so they cannot see the storefront blank page (a server-side request never executes the client bundle); the `403` on the admin read is answered identically by a healthy deployment and by one with no Admin SDK credentials; and the `OPTIONS` answer is produced before any CORS header is set. The blank page and the real admin read are covered only by step 2.
+   * **Deployment Protection:** a preview behind Vercel's Deployment Protection answers every probe with a login redirect or a `401`, so all nine fail. Disable protection for the deployment under test (or probe through its sharing link).
+2. **Manual, credential-bearing half** — with **Mercado Pago TEST credentials and non-customer test data only**, and **never against production**: load the storefront in a browser and confirm it renders (this is the only step that catches a blank page from a bad `VITE_FIREBASE_API_KEY`), complete a test checkout and a test payment end to end, upload a bank-transfer voucher for a test order, log into `/admin` and read the order, then approve the test transfer (or adjust stock) and confirm the inventory audit entry. Use the owner's own test account and a synthetic customer (never a real clinic's data), and delete or cancel the test order afterwards.
+
+### 🧱 Edge Security Headers (`vercel.json`)
+
+`vercel.json` carries a `headers` block next to its `rewrites` — no serverless function is involved, so the Vercel Hobby function count is untouched. Two rules:
+
+- **Every non-`api/` path** (`"/((?!api/).*)"`, the same shape the storefront rewrite uses, so API JSON responses stay header-free): `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a `Permissions-Policy` that denies every feature the app never uses (`camera`, `microphone`, `geolocation`, `payment`, `usb`, `serial`, `bluetooth`, `magnetometer`, `gyroscope`, `accelerometer`, `midi`, `display-capture`, `idle-detection` — verified against the source: no geolocation or media API is called anywhere), and the full `Content-Security-Policy-Report-Only`.
+- **Three admin URLs** — `/admin`, `/admin.html` and `/admin/:path*` — each get `X-Frame-Options: DENY` plus an **enforced** `Content-Security-Policy: frame-ancestors 'none'`. ⚠️ **All three are required, and `/admin.html` is the one that is easy to miss:** the two rewrite sources cover the friendly URLs, but `dist/admin.html` is also a real static file that Vercel serves *ahead* of the catch-all rewrite, so `/admin.html` reaches the same logged-in backoffice without ever matching a rewrite source. Leave it out and the anti-framing headers are bypassable by one URL. That is the clickjacking fix — the backoffice renders *Aprobar Transferencia*, *Marcar Despachado* and the destructive inventory controls, so it must never be framed. The enforced policy deliberately contains **only** `frame-ancestors`: a report-only policy is not enforced, and enforcing an unverified `default-src` on the live backoffice would break it.
+
+**The report-only policy, origin by origin** (each entry is a real consumer, not a guess):
+
+| Directive | Sources | Consumer |
+| :--- | :--- | :--- |
+| `default-src` | `'self'` | the baseline for everything not listed below |
+| `script-src` | `'self'` | the bundled entry chunks. **No `'unsafe-inline'`, no `'unsafe-eval'`** — the only inline `<script>` in either HTML entry is the `application/ld+json` data block, which is never executed as script and so is not subject to `script-src`. |
+| `style-src` | `'self' 'unsafe-inline' https://fonts.googleapis.com` | the Google Fonts stylesheet **and** the ~575 React inline `style={{ … }}` attributes. A bare `'self'` would drop every one of them, which is why `'unsafe-inline'` is here for styles only. |
+| `font-src` | `'self' https://fonts.gstatic.com` | the font binaries that stylesheet loads |
+| `img-src` | `'self' data: blob: https://firebasestorage.googleapis.com` | product images, inline data URLs, and the Blob URL the backoffice opens for a legacy Base64 voucher |
+| `connect-src` | `'self' data: https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://storage.googleapis.com https://firebaselogging-pa.googleapis.com` | `/api/*`; the Firestore Web SDK channel; Firebase Auth (admin login + `getIdToken`); the **signed V4 PUT** that uploads a transfer voucher browser → Storage; the SDK's own telemetry transport; and `data:`, because the backoffice `fetch`es a legacy Base64 voucher URL before re-wrapping it as a Blob — without `data:` here, *Ver comprobante* breaks on pre-2.9 orders the moment the policy is enforced |
+| `base-uri` / `object-src` | `'self'` / `'none'` | injection hardening |
+| `form-action` | `'self' https://www.mercadopago.cl` | Checkout Pro (see the caveat below) |
+
+**Two handoffs CSP cannot govern — stated rather than faked.** The Checkout Pro handoff is a top-level `window.location` redirect to the preference's `init_point`, and every `wa.me` link is an `<a href>`. Both are *navigations*; the only directive that could constrain those (`navigate-to`) is unimplemented in every browser, so `wa.me` appears in no directive and Mercado Pago is listed under `form-action` only to pre-authorize a future form-based handoff. Do not "fix" this by adding them to `connect-src`/`img-src` — that would be noise, not protection.
+
+**Staged rollout — the policy is NOT enforced yet.** The task sequence is report-only → verify on a preview → enforce, and the agent must not deploy. To promote: on a preview, open the storefront and `/admin` with the console visible and confirm **zero** violations while walking the catalog load, font render, admin login, a voucher upload, a product image and the Checkout Pro redirect; then rename the global rule's header key from `Content-Security-Policy-Report-Only` to `Content-Security-Policy`. Re-verify on a preview first — a violation that only appears after enforcement is a broken page for real customers. ⚠️ Before enforcing, add any new origin the catalog or checkout starts using (a product-image CDN, a new provider) to the matching directive; a missing origin is a silently broken feature, not a security win. `src/tests/security/vercelHeaders.test.ts` fails if the full policy is ever moved to an enforcing header while the report-only one disappears — the rollout is a deliberate, reviewed change.
+
 ### 🛡️ Deployment Guardrails
 
-* **Pre-Flight Testing:** Never execute `vercel --prod` without first confirming that `pnpm test` and `pnpm build` succeed without errors.
+* **Pre-Flight Testing:** Never execute `vercel --prod` without first confirming that `pnpm run verify` succeeds (and, before a pull request, `pnpm run verify:full`). A green `vercel --prod` on its own proves nothing — see the runtime/operator gate above.
 * **Environment Variable Sync:** when introducing new variables, add them to `.env.example` and push them up with `pnpm run env:sync` (§7.1) before deploying. ❌ **Never paste `.env.local` wholesale** — it carries `FIRESTORE_ENV=development`, and copying that into Production would silently point the live storefront at the `dev_*` collections.
 * **A green `vercel --prod` proves nothing about the app.** The build succeeds with *zero* environment variables set; the storefront then renders a **blank page** (the module-scope `getAuth()` in `src/services/firebase.ts` throws `auth/invalid-api-key` and aborts the whole import graph) while the build log stays clean. Verify with `pnpm dlx vercel@latest env ls` **and** by loading the deployed URL — never by the build log alone.
 * **`public/og-preview.jpg` — social-share card (delivered):** `index.html` references `https://pronto-insumos.vercel.app/og-preview.jpg` from `og:image`, `twitter:image` and the JSON-LD `image`. It is a **human-produced asset** (redesign proposal Appendix B.1) shipped at **1200×630 JPEG, ~128 KB**. **Format deviation from the proposal (as built):** Appendix B.0 specified *PNG ≤300 KB*, but PNG is lossless and a photorealistic 1200×630 banner lands at ~1 MB; the JPEG carries the identical composition at 128 KB. ❌ **Never generate a substitute image.** If this asset is ever replaced, re-verify it is exactly 1200×630 and that `index.html`'s three references match the filename before promoting — a missing file silently breaks every link preview, including the WhatsApp shares that are one of PRONTO's own sales channels. The favicon, by contrast, has a final turnkey SVG already committed at `public/favicon.svg`.

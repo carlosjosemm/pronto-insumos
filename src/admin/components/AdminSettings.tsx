@@ -1,13 +1,18 @@
 import React, { useState } from 'react'
-import { Building2, MapPin, CreditCard, Shield, Clock, Trash2, Search } from 'lucide-react'
+import { Building2, MapPin, CreditCard, Shield, Clock, Trash2, Search, TimerReset } from 'lucide-react'
 import { BANK_DETAILS } from '../../config/bankDetails'
-import { runVoucherHousekeeping } from '../services/adminApi'
+import { runVoucherHousekeeping, closeStalePendingOrders } from '../services/adminApi'
 
 export const AdminSettings: React.FC = () => {
   const [sweepLoading, setSweepLoading] = useState<'review' | 'clean' | null>(null)
   const [sweepResult, setSweepResult] = useState('')
   const [sweepError, setSweepError] = useState('')
   const [sweepLimit, setSweepLimit] = useState(100)
+
+  const [staleLoading, setStaleLoading] = useState<'review' | 'close' | null>(null)
+  const [staleResult, setStaleResult] = useState('')
+  const [staleError, setStaleError] = useState('')
+  const [staleHours, setStaleHours] = useState(48)
 
   /**
    * Runs the voucher housekeeping sweep. `dryRun` only reports; the real run deletes the
@@ -31,6 +36,36 @@ export const AdminSettings: React.FC = () => {
       `Revisados ${res.scannedObjects ?? 0} objeto(s) en ${res.scannedOrders ?? 0} pedido(s): ` +
         `${verb} ${res.deletedCount ?? 0} comprobante(s) huérfano(s). ` +
         `${res.keptReferenced ?? 0} vigente(s), ${res.skippedRecent ?? 0} reciente(s) omitido(s).${failures}`
+    )
+  }
+
+  /**
+   * Sweeps abandoned online-payment orders. `dryRun` only lists the candidates; the real
+   * run closes them, but never one whose Mercado Pago ledger already shows a settled
+   * payment — that order is sent to *Pago en Revisión* instead, and an order whose ledger
+   * could not be read is left untouched. `staleHours` is the idle window the server clamps
+   * to 1–720 hours.
+   */
+  const runStaleSweep = async (dryRun: boolean) => {
+    setStaleLoading(dryRun ? 'review' : 'close')
+    setStaleResult('')
+    setStaleError('')
+    const res = await closeStalePendingOrders({ dryRun, olderThanHours: staleHours })
+    setStaleLoading(null)
+    if (!res.success) {
+      setStaleError(res.error || 'No fue posible revisar los pedidos pendientes antiguos.')
+      return
+    }
+    const verb = dryRun ? 'se cerrarían' : 'se cerraron'
+    const parkVerb = dryRun ? 'se enviarían a revisión manual' : 'se enviaron a revisión manual'
+    const failures = res.failures?.length ? ` ${res.failures.length} pedido(s) sin verificar (no se tocaron).` : ''
+    const more = res.truncated
+      ? ' Quedan pedidos pendientes por revisar: vuelve a ejecutarlo más tarde.'
+      : ''
+    setStaleResult(
+      `Revisados ${res.scannedOrders ?? 0} de ${res.pendingTotal ?? 0} pedido(s) pendiente(s); ` +
+        `${res.staleOrders ?? 0} con más de ${res.olderThanHours ?? staleHours} hora(s) sin pago: ` +
+        `${verb} ${res.closedCount ?? 0} y ${res.parkedCount ?? 0} con pago ya acreditado ${parkVerb}.${failures}${more}`
     )
   }
 
@@ -142,6 +177,92 @@ export const AdminSettings: React.FC = () => {
               }}
             >
               {sweepError}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="admin-card">
+        <div className="admin-card-header">
+          <h2 className="admin-card-title">Pedidos Pendientes Antiguos</h2>
+        </div>
+        <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.85rem' }}>
+          <div style={{ color: 'var(--text-secondary)' }}>
+            Cada intento de compra en línea deja un pedido pendiente. Cuando el cliente abandona el pago,
+            ese pedido queda como fantasma. Antes de cerrar uno, esta revisión consulta la cartola de
+            Mercado Pago: si el pago ya está acreditado, el pedido <strong>no se cancela</strong> y se
+            envía a revisión manual; si la cartola no se puede consultar, el pedido no se toca.
+          </div>
+
+          <div className="admin-form-group">
+            <label className="admin-label" htmlFor="stale-hours">
+              Horas sin pago para considerarlo abandonado
+            </label>
+            <input
+              id="stale-hours"
+              type="number"
+              className="admin-input"
+              min={1}
+              max={720}
+              value={staleHours}
+              onChange={e => setStaleHours(Math.max(1, Math.min(720, Number(e.target.value) || 1)))}
+              disabled={staleLoading !== null}
+            />
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              Mínimo 1 hora, máximo 720 (30 días). Revisa primero en seco: solo el segundo botón cierra pedidos.
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="admin-btn admin-btn-secondary"
+              disabled={staleLoading !== null}
+              onClick={() => runStaleSweep(true)}
+            >
+              <Search size={15} />
+              <span>{staleLoading === 'review' ? 'Revisando...' : 'Revisar pendientes antiguos'}</span>
+            </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn-danger"
+              disabled={staleLoading !== null}
+              onClick={() => runStaleSweep(false)}
+            >
+              <TimerReset size={15} />
+              <span>{staleLoading === 'close' ? 'Cerrando...' : 'Cerrar pendientes antiguos'}</span>
+            </button>
+          </div>
+
+          {staleResult && (
+            <div
+              style={{
+                background: 'var(--success-bg)',
+                color: 'var(--success)',
+                border: '1px solid #a7f3d0',
+                padding: '0.75rem',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.8rem',
+                fontWeight: '600'
+              }}
+            >
+              {staleResult}
+            </div>
+          )}
+
+          {staleError && (
+            <div
+              style={{
+                background: 'var(--danger-bg)',
+                color: 'var(--danger)',
+                border: '1px solid #fecaca',
+                padding: '0.75rem',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.8rem',
+                fontWeight: '600'
+              }}
+            >
+              {staleError}
             </div>
           )}
         </div>

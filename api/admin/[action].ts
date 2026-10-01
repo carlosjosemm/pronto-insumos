@@ -16,6 +16,7 @@ import voucherHousekeeping from '../_lib/admin/voucher-housekeeping.js'
 import resendOrderEmail from '../_lib/admin/resend-order-email.js'
 import cancelOrder from '../_lib/admin/cancel-order.js'
 import recordOrderIncident from '../_lib/admin/record-order-incident.js'
+import closeStaleOrders from '../_lib/admin/close-stale-orders.js'
 
 type AdminHandler = (req: VercelRequest, res: VercelResponse) => unknown
 
@@ -47,7 +48,8 @@ const ADMIN_ACTIONS: Record<string, AdminHandler> = {
   'voucher-housekeeping': voucherHousekeeping,
   'resend-order-email': resendOrderEmail,
   'cancel-order': cancelOrder,
-  'record-order-incident': recordOrderIncident
+  'record-order-incident': recordOrderIncident,
+  'close-stale-orders': closeStaleOrders
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
