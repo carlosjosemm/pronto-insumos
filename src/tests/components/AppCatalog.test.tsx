@@ -34,6 +34,7 @@ const { CATALOG, makeProduct, fetchProductsMock } = vi.hoisted(() => {
 
 vi.mock('../../services/api', () => ({
   fetchProducts: fetchProductsMock,
+  invalidateCatalogCache: vi.fn(),
   validatePromo: vi.fn().mockResolvedValue({ success: false })
 }))
 

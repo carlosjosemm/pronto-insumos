@@ -10,7 +10,7 @@ import CheckoutModal from './components/CheckoutModal'
 import PaymentReturnModal from './components/PaymentReturnModal'
 import OrderTrackingModal from './components/OrderTrackingModal'
 import Footer from './components/Footer'
-import { fetchProducts } from './services/api'
+import { fetchProducts, invalidateCatalogCache } from './services/api'
 import {
   saveCartToStorage,
   loadCartFromStorage,
@@ -238,6 +238,9 @@ export default function App() {
 
   /** Re-arms the catalog request after an unavailable/failed load. */
   const handleRetryCatalog = useCallback(() => {
+    // A failed read is never cached, but a retry must always go back to the
+    // endpoint rather than re-serve the in-memory catalog.
+    invalidateCatalogCache()
     setCatalogRetryKey((key) => key + 1)
   }, [])
 
