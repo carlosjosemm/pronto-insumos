@@ -110,6 +110,23 @@ describe('Cart component', () => {
     expect(screen.getByText('Proceder al Pago')).toBeInTheDocument()
   })
 
+  it('states that delivery is free without a threshold progress bar', () => {
+    render(<Cart {...defaultProps} />)
+    // Subtotal is $459.970, well above the old $150.000 threshold.
+    expect(screen.getByText('Despacho sin costo a Melipilla y San Antonio')).toBeInTheDocument()
+    expect(screen.getByText(/Compra mínima San Antonio/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Despacho GRATIS/i)).toBeNull()
+    expect(screen.queryByText(/Agrega .* más para/i)).toBeNull()
+    expect(document.querySelector('.progress-fill')).toBeNull()
+  })
+
+  it('keeps the single free-delivery statement below the old threshold too', () => {
+    const smallCart: CartItem[] = [{ product: mockProduct2, quantity: 1 }] // $79.990
+    render(<Cart {...defaultProps} items={smallCart} />)
+    expect(screen.getByText('Despacho sin costo a Melipilla y San Antonio')).toBeInTheDocument()
+    expect(screen.queryByText(/Agrega .* más para/i)).toBeNull()
+  })
+
   it('should show empty cart message when no items', () => {
     render(<Cart {...defaultProps} items={[]} />)
     expect(screen.getByText('Tu carro está vacío')).toBeInTheDocument()

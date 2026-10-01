@@ -73,11 +73,12 @@ describe('ProductCard component', () => {
     expect(onQuickView).toHaveBeenCalledWith(mockProduct)
   })
 
-  it('should display the rating value', () => {
-    render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
-    // Rating 5.0 is rendered as "5" in a styled span
-    const ratingElements = screen.getAllByText('5')
-    expect(ratingElements.length).toBeGreaterThanOrEqual(1)
+  it('renders no rating UI while reviews are disabled, even for a reviewed product', () => {
+    const { container } = render(<ProductCard product={mockProduct} onAddToCart={() => {}} onQuickView={() => {}} />)
+    // REVIEWS_ENABLED is false: the storefront has no review system, so a
+    // reviewed product must still show no stars and no review count.
+    expect(container.querySelector('.product-rating')).toBeNull()
+    expect(screen.queryByText('(42)')).toBeNull()
   })
 
   it('should show at most ONE media badge, preferring the discount over the mediaBadge', () => {

@@ -22,6 +22,7 @@ import { CartItem, Product, ProductCategory, PromoCode, Toast } from './types'
 import { CheckCircle2 } from 'lucide-react'
 import { computeCartTotal } from './utils/orderTotal'
 import { resolvePromoPercent } from './config/promos'
+import { REVIEWS_ENABLED } from './config/features'
 
 type PaymentReturnStatus = 'approved' | 'failure' | 'pending' | null
 
@@ -111,6 +112,12 @@ export default function App() {
   const [sortBy, setSortBy] = useState<string>('featured')
   const [inStockOnly, setInStockOnly] = useState<boolean>(false)
 
+  // A `sortBy` value of 'rating' | 'reviews' (a legacy or future persisted
+  // value — the state is not persisted today) has no selector option while
+  // reviews are disabled, so it must resolve to the default ordering instead
+  // of a sort the shopper cannot see or switch back.
+  const effectiveSortBy = !REVIEWS_ENABLED && (sortBy === 'rating' || sortBy === 'reviews') ? 'featured' : sortBy
+
   const bootstrap = useMemo(() => parseUrlBootstrap(), [])
 
   const [products, setProducts] = useState<Product[]>([])
@@ -125,7 +132,7 @@ export default function App() {
   // `loading` is derived from which request has completed, so a filter change
   // flips it to true during render instead of via a state-setting effect. The retry
   // key re-arms both the request and the loading state after a failure.
-  const catalogRequestKey = `${selectedCategory}|${search}|${sortBy}|${inStockOnly}|${catalogRetryKey}`
+  const catalogRequestKey = `${selectedCategory}|${search}|${effectiveSortBy}|${inStockOnly}|${catalogRetryKey}`
   const loading = loadedRequestKey !== catalogRequestKey
 
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -173,7 +180,7 @@ export default function App() {
         const res = await fetchProducts({
           category: selectedCategory,
           search,
-          sortBy,
+          sortBy: effectiveSortBy,
           inStockOnly
         })
         if (!isMounted) return
@@ -222,7 +229,7 @@ export default function App() {
     return () => {
       isMounted = false
     }
-  }, [selectedCategory, search, sortBy, inStockOnly, catalogRequestKey, addToast])
+  }, [selectedCategory, search, effectiveSortBy, inStockOnly, catalogRequestKey, addToast])
 
   // Persist cart and promo code changes to localStorage
   useEffect(() => {
@@ -344,7 +351,7 @@ export default function App() {
         <CategoryFilter
           selectedCategory={selectedCategory}
           onSelectCategory={setSelectedCategory}
-          sortBy={sortBy}
+          sortBy={effectiveSortBy}
           onSortChange={setSortBy}
           inStockOnly={inStockOnly}
           onToggleInStock={setInStockOnly}

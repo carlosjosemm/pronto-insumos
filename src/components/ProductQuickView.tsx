@@ -4,6 +4,7 @@ import { formatCLP } from '../utils/currency'
 import { formatCategoryDisplayName } from '../utils/categoryAlias'
 import { whatsappLink } from '../config/contact'
 import { LOW_STOCK_PUBLIC_THRESHOLD } from '../config/catalog'
+import { REVIEWS_ENABLED } from '../config/features'
 import { useScrollLock } from '../hooks/useScrollLock'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import {
@@ -280,8 +281,8 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
             {/* Sales unit — same line as the card (Appendix D.5) */}
             {product.unitOfSale && <span className="product-unit-sale">{product.unitOfSale}</span>}
 
-            {/* Clinical Rating (Optional - hidden when zero reviews) */}
-            {product.reviewsCount !== undefined && product.reviewsCount > 0 && (
+            {/* Clinical Rating (hidden until a real review system exists) */}
+            {REVIEWS_ENABLED && product.reviewsCount !== undefined && product.reviewsCount > 0 && (
               <div className="product-rating detail-rating-row">
                 <div style={{ display: 'flex', gap: '2px' }}>
                   {[...Array(5)].map((_, i) => (
@@ -407,8 +408,6 @@ export default function ProductQuickView({ product, onClose, onAddToCart, cartQu
 
             {/* Regulatory & Warranty Note */}
             <div className="detail-guarantee-note">
-              <span>Normativa ISP Homologada</span>
-              <span className="divider">•</span>
               <span>Garantía Legal SERNAC 6 meses</span>
               <span className="divider">•</span>
               <span>Boleta Electrónica · IVA 19%</span>

@@ -71,3 +71,14 @@ describe('CategoryFilter pill counts (Task 2.11)', () => {
     expect(pillCount('Ortodoncia')).toBe('1')
   })
 })
+
+describe('CategoryFilter sort options (reviews disabled)', () => {
+  it('offers no rating/review sort options while reviews are disabled', () => {
+    renderFilter([makeProduct('pronto-001', 'OPERATORIA')])
+
+    const options = Array.from(document.querySelectorAll('.sort-select option')).map((o) => o.getAttribute('value'))
+    expect(options).toEqual(['featured', 'price-low', 'price-high'])
+    expect(screen.queryByRole('option', { name: /Calificados/i })).toBeNull()
+    expect(screen.queryByRole('option', { name: /Reseñas/i })).toBeNull()
+  })
+})

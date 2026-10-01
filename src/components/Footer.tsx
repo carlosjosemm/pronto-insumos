@@ -22,10 +22,10 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
             </div>
             <div>
               <div style={{ fontWeight: '700', fontSize: '0.925rem', color: 'var(--text-inverse)' }}>
-                Registro ISP Chile
+                Insumos odontológicos
               </div>
               <div style={{ fontSize: '0.775rem', color: 'var(--text-on-dark-muted)' }}>
-                Insumos Médicos Certificados
+                Para clínicas, gabinetes y laboratorios
               </div>
             </div>
           </div>
@@ -134,7 +134,7 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
               <li>• Despacho Express Clínicas Melipilla</li>
               <li>• Despacho Programado San Antonio</li>
               <li>• Compra mínima San Antonio: $60.000</li>
-              <li>• Despacho Gratuito sobre $150.000</li>
+              <li>• Despacho sin costo en Melipilla y San Antonio</li>
               {onOpenTracking && (
                 <li>
                   <button
@@ -162,10 +162,8 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
           <div>
             <h4 className="footer-heading">Cumplimiento Clínico</h4>
             <ul className="footer-links-list">
-              <li>• Boleta Electrónica Inmediata (19% IVA)</li>
+              <li>• Boleta electrónica · IVA 19%</li>
               <li>• Factura para Clínicas — Cotización por WhatsApp</li>
-              <li>• Dispositivos Homologados Registro ISP</li>
-              <li>• Fichas de Seguridad de Materiales</li>
               <li>
                 •{' '}
                 <button type="button" aria-haspopup="dialog" onClick={() => setLegalSection('terminos')}>
@@ -232,14 +230,14 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
         </div>
 
         {/* Visual Trust Badge Certification Bar */}
-        <div className="footer-trust-badges" aria-label="Certificaciones y sellos de confianza">
+        <div className="footer-trust-badges" aria-label="Formas de pago, boleta y despacho">
           <div className="footer-trust-badge">
             <ShieldCheck size={18} />
-            <span>Mercado Pago Chile · Pago 100% Seguro</span>
+            <span>Pago procesado por Mercado Pago Chile</span>
           </div>
           <div className="footer-trust-badge">
             <Building2 size={18} />
-            <span>Boleta Electrónica SII · 19% IVA</span>
+            <span>Boleta electrónica · IVA 19%</span>
           </div>
           <div className="footer-trust-badge">
             <Truck size={18} />
@@ -247,7 +245,7 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
           </div>
           <div className="footer-trust-badge">
             <Activity size={18} />
-            <span>Dispositivos Médicos · Registro ISP Chile</span>
+            <span>Insumos para clínicas y laboratorios dentales</span>
           </div>
         </div>
 
@@ -258,8 +256,8 @@ export default function Footer({ onOpenTracking }: FooterProps = {}) {
             Chile.
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-            <span>Depósito Dental Certificado</span>
-            <span>Boleta Electrónica SII</span>
+            <span>Depósito dental en Melipilla</span>
+            <span>Boleta electrónica</span>
           </div>
         </div>
       </div>

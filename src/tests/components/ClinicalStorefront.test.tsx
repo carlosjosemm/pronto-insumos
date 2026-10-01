@@ -49,13 +49,17 @@ describe('Clinical Storefront UI/UX Enhancement Tests', () => {
       expect(screen.getByText('el mismo día')).toBeInTheDocument()
       expect(screen.getByText('Boleta Electrónica · IVA 19%')).toBeInTheDocument()
       expect(screen.getByText('Despacho el mismo día')).toBeInTheDocument()
-      expect(screen.getByText('Insumos Certificados ISP')).toBeInTheDocument()
+      expect(screen.getByText('Para clínicas y laboratorios')).toBeInTheDocument()
       expect(screen.getByText('Mesa Técnica WhatsApp')).toBeInTheDocument()
       // The retired pill chrome and Factura advertising must not come back
       expect(screen.queryByText('Garantías Comerciales B2B')).not.toBeInTheDocument()
       expect(screen.queryByText('VALIDEZ SII')).not.toBeInTheDocument()
       expect(screen.queryByText(/Factura Electrónica Inmediata/i)).not.toBeInTheDocument()
       expect(screen.queryByText(/Retiro en Av\. Ortúzar/i)).not.toBeInTheDocument()
+      // Unsubstantiated certification claims were replaced with neutral wording
+      expect(screen.queryByText(/Insumos Certificados ISP/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Trazabilidad de lote/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Homologado/i)).not.toBeInTheDocument()
     })
 
     it('should render the hand-drawn underline motif on the hero keyword', () => {
@@ -118,6 +122,28 @@ describe('Clinical Storefront UI/UX Enhancement Tests', () => {
       render(<Footer />)
       expect(screen.queryByText(/Sembrar Firebase/i)).not.toBeInTheDocument()
       expect(screen.queryByText(/🔥/i)).not.toBeInTheDocument()
+    })
+
+    it('states the delivery and invoicing facts without unsubstantiated certification claims', () => {
+      render(<Footer />)
+
+      expect(screen.getByText('Insumos odontológicos')).toBeInTheDocument()
+      expect(screen.getByText('Para clínicas, gabinetes y laboratorios')).toBeInTheDocument()
+      expect(screen.getByText(/Despacho sin costo en Melipilla y San Antonio/)).toBeInTheDocument()
+      expect(screen.getByText('Boleta electrónica · IVA 19%')).toBeInTheDocument()
+      expect(screen.getByText('Pago procesado por Mercado Pago Chile')).toBeInTheDocument()
+      expect(screen.getByText('Insumos para clínicas y laboratorios dentales')).toBeInTheDocument()
+      expect(screen.getByText('Depósito dental en Melipilla')).toBeInTheDocument()
+
+      // The retired certification/registry claims must not return
+      expect(screen.queryByText(/Registro ISP Chile/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Insumos Médicos Certificados/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Despacho Gratuito/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Dispositivos Homologados/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Fichas de Seguridad de Materiales/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Pago 100% Seguro/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Dispositivos Médicos/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Depósito Dental Certificado/i)).not.toBeInTheDocument()
     })
   })
 })

@@ -197,6 +197,22 @@ describe('Product Detail Modal (ProductQuickView)', () => {
     expect(screen.queryByText(/reseñas clínicas verificadas/i)).toBeNull()
   })
 
+  it('renders no rating row while reviews are disabled, even for a reviewed product', () => {
+    render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
+
+    // REVIEWS_ENABLED is false — a reviewed product must still show no stars.
+    expect(screen.queryByText(/reseñas clínicas verificadas/i)).toBeNull()
+    expect(screen.queryByText('4.9')).toBeNull()
+  })
+
+  it('states the guarantee without the retired ISP homologation claim', () => {
+    render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
+
+    expect(screen.getByText('Garantía Legal SERNAC 6 meses')).toBeInTheDocument()
+    expect(screen.getByText('Boleta Electrónica · IVA 19%')).toBeInTheDocument()
+    expect(screen.queryByText(/Normativa ISP Homologada/i)).toBeNull()
+  })
+
   it('renders manufacturer line when manufacturer is provided', () => {
     render(<ProductQuickView product={mockProduct} onClose={onCloseMock} onAddToCart={onAddToCartMock} />)
     expect(screen.getByText('Instruments · NSK')).toBeInTheDocument()

@@ -22,12 +22,7 @@ import { formatCLP } from '../utils/currency'
 import { computeCartTotal } from '../utils/orderTotal'
 import { resolvePromo } from '../config/promos'
 import { LOW_STOCK_PUBLIC_THRESHOLD } from '../config/catalog'
-import {
-  FREE_SHIPPING_THRESHOLD,
-  DELIVERY_ZONES,
-  MIN_ORDER_OUTSIDE_MELIPILLA,
-  MIN_ORDER_ZONE
-} from '../config/delivery'
+import { DELIVERY_ZONES, MIN_ORDER_OUTSIDE_MELIPILLA, MIN_ORDER_ZONE } from '../config/delivery'
 import { useScrollLock } from '../hooks/useScrollLock'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 
@@ -90,8 +85,6 @@ export default function Cart({
   // Derived so the rendered breakdown always balances: Subtotal − Descuento = Total.
   const discountAmount = Math.max(0, subtotal - total)
 
-  const progressPercent = Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100)
-  const remainingForFreeShipping = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal)
   const hasRegulatedItems = items.some((item) => item.product.prescriptionRequired)
   const hasStockIssues = items.some((item) => {
     const isOutOfStock =
@@ -133,18 +126,12 @@ export default function Cart({
           </button>
         </div>
 
-        {/* Free Shipping Progress Tracker */}
+        {/* Shipping statement — freight is free at every amount, so a progress
+            bar toward a threshold would imply a charge that does not exist.
+            The zone minimum below is the only real gate. */}
         <div className="free-shipping-bar">
           <div className="free-shipping-text">
-            <span>
-              {remainingForFreeShipping > 0
-                ? `Agrega ${formatCLP(remainingForFreeShipping)} más para Despacho GRATIS`
-                : `✓ Despacho sin costo — superaste los ${formatCLP(FREE_SHIPPING_THRESHOLD)}`}
-            </span>
-            <span>{Math.round(progressPercent)}%</span>
-          </div>
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${progressPercent}%` }}></div>
+            <span>Despacho sin costo a Melipilla y San Antonio</span>
           </div>
           <p className="free-shipping-zone-note">
             Despacho a {DELIVERY_ZONES.join(' y ')} · Compra mínima {MIN_ORDER_ZONE}:{' '}
