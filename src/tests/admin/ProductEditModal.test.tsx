@@ -129,4 +129,27 @@ describe('ProductEditModal Component', () => {
 
     createSpy.mockRestore()
   })
+
+  it('re-seeds every field when a different product is opened (keyed remount)', () => {
+    const productB: Product = {
+      ...mockProduct,
+      id: 'odon-205',
+      name: 'Fotocurador LED de Arco',
+      price: 189990,
+      stockCount: 7,
+      tag: 'NUEVO',
+      description: 'Fotopolimerizador de arco'
+    }
+
+    // Mount for product A, then remount for product B: the parent keys the modal
+    // by product id, so the fields re-seed instead of keeping A's values.
+    const { rerender } = render(<ProductEditModal product={mockProduct} onClose={vi.fn()} onSuccess={vi.fn()} />)
+    expect(screen.getByDisplayValue('Kit Composite Nanohíbrido')).toBeInTheDocument()
+
+    rerender(<ProductEditModal key={productB.id} product={productB} onClose={vi.fn()} onSuccess={vi.fn()} />)
+
+    expect(screen.getByDisplayValue('Fotopolimerizador de arco')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('189990')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('Kit Composite Nanohíbrido')).not.toBeInTheDocument()
+  })
 })

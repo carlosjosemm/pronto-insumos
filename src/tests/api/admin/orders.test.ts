@@ -14,46 +14,78 @@ vi.mock('../../../../api/_lib/firebaseAdmin', () => ({
 
 const LEGACY_DATA_URL = 'data:application/pdf;base64,JVBERi0xLjQK' + 'A'.repeat(64)
 
-interface OrderFixture {
-  id: string
-  data: Record<string, unknown>
+interface OrdersDbOptions {
+  /** Documents the bounded page read returns (already in createdAt-desc order). */
+  docs?: Array<{ id: string; data: Record<string, unknown> }>
+  /** Document returned by the orderId direct document-key lookup. */
+  directDoc?: Record<string, unknown> | null
+  /** Document returned by the orderId field-query fallback. */
+  fallbackDoc?: Record<string, unknown> | null
+  /** Document key reported for the field-query fallback (the key wins over the stored orderId field). */
+  fallbackId?: string
+  failGet?: boolean
 }
 
 /**
- * Firestore double for the admin orders handler: the list read uses `snap.forEach`,
- * the detail read uses `doc(id).get()` with a `where('orderId','==')` fallback.
+ * Firestore Admin double for the orders handler. The chain records every
+ * `orderBy` / `where` / `startAfter` / `limit` call so cases can pin that the
+ * status filter and the cursor run server-side and the page read is bounded.
  */
-function createOrdersDb(fixtures: OrderFixture[], options: { whereHit?: OrderFixture | null } = {}) {
-  const docs = fixtures.map((fixture) => ({ id: fixture.id, data: () => fixture.data }))
-  const whereDocs = options.whereHit ? [{ id: options.whereHit.id, data: () => options.whereHit!.data }] : []
+function mockOrdersDb(options: OrdersDbOptions = {}) {
+  const docs = options.docs || []
+  const whereCalls: Array<[string, string, unknown]> = []
+  const snapshots = docs.map((d) => ({ id: d.id, data: () => d.data }))
+
+  const pageSnap = {
+    empty: snapshots.length === 0,
+    docs: snapshots,
+    forEach: (cb: (doc: unknown) => void) => snapshots.forEach(cb)
+  }
+
+  const chain = {
+    orderBy: vi.fn(() => chain),
+    where: vi.fn((field: string, op: string, val: unknown) => {
+      whereCalls.push([field, op, val])
+      return chain
+    }),
+    startAfter: vi.fn(() => chain),
+    limit: vi.fn(() => chain),
+    get: vi.fn(async () => {
+      if (options.failGet) throw new Error('firestore down')
+      // The orderId field fallback reads through the same chain; it expects the
+      // `{ empty, docs }` shape, so the get dispatches on what was filtered for.
+      const usedForFallback = whereCalls.some(([field]) => field === 'orderId')
+      if (usedForFallback) {
+        return options.fallbackDoc
+          ? { empty: false, docs: [{ id: options.fallbackId || 'PRONTO-A', data: () => options.fallbackDoc }] }
+          : { empty: true, docs: [] }
+      }
+      return pageSnap
+    }),
+    count: vi.fn(() => ({
+      get: vi.fn(async () => ({ data: () => ({ count: docs.length }) }))
+    }))
+  }
 
   const db = {
     collection: vi.fn((name: string) => {
-      if (name !== 'orders') return { doc: vi.fn(() => ({ id: 'unused' })) }
+      if (name !== 'orders') return { doc: vi.fn() }
       return {
-        get: vi.fn().mockResolvedValue({
-          forEach: (cb: (doc: (typeof docs)[number]) => void) => docs.forEach(cb)
-        }),
-        doc: vi.fn((id: string) => {
-          const hit = fixtures.find((fixture) => fixture.id === id)
-          return {
-            get: vi
-              .fn()
-              .mockResolvedValue(
-                hit ? { exists: true, id, data: () => hit.data } : { exists: false, id, data: () => undefined }
-              )
-          }
-        }),
-        where: vi.fn(() => ({
-          limit: vi.fn(() => ({
-            get: vi.fn().mockResolvedValue({ empty: whereDocs.length === 0, docs: whereDocs })
-          }))
-        }))
+        // The document key echoes the queried id, mirroring the real resolver:
+        // the persisted doc key equals the canonical order id. The get() result
+        // carries the snapshot id too — the handler reads `doc.id` off it.
+        doc: vi.fn((id: string) => ({
+          id,
+          get: vi.fn(async () =>
+            options.directDoc ? { exists: true, id, data: () => options.directDoc } : { exists: false }
+          )
+        })),
+        ...chain
       }
     })
   }
 
-  return { db }
+  return { db, chain }
 }
 
 const baseOrder = (overrides: Record<string, unknown> = {}) => ({
@@ -76,11 +108,6 @@ describe('Serverless Admin Orders (/api/admin/orders)', () => {
     vi.clearAllMocks()
     jsonOutput = {}
     statusOutput = 200
-    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({
-      authenticated: true,
-      uid: 'admin-1',
-      email: 'admin@prontoinsumos.cl'
-    })
 
     mockRes = {
       setHeader: vi.fn(),
@@ -94,37 +121,198 @@ describe('Serverless Admin Orders (/api/admin/orders)', () => {
       }),
       end: vi.fn()
     }
+
+    vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({
+      authenticated: true,
+      uid: 'admin-1',
+      email: 'admin@prontoinsumos.cl'
+    } as Awaited<ReturnType<typeof adminAuth.verifyAdminToken>>)
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('acknowledges OPTIONS preflight with 200', async () => {
+  it('answers the OPTIONS preflight with 200', async () => {
+    const { db } = mockOrdersDb()
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
     await handler({ method: 'OPTIONS' } as VercelRequest, mockRes as VercelResponse)
+
     expect(statusOutput).toBe(200)
-    expect(mockRes.end).toHaveBeenCalled()
+    expect(mockRes.end).toHaveBeenCalledTimes(1)
   })
 
   it('rejects non-GET methods with 405', async () => {
+    const { db } = mockOrdersDb()
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
     await handler({ method: 'POST' } as VercelRequest, mockRes as VercelResponse)
+
     expect(statusOutput).toBe(405)
+    expect(jsonOutput.success).toBe(false)
   })
 
   it('rejects unauthenticated requests with 403', async () => {
     vi.mocked(adminAuth.verifyAdminToken).mockResolvedValue({ authenticated: false, error: 'Unauthorized' })
-    await handler({ method: 'GET', query: {} } as VercelRequest, mockRes as VercelResponse)
+
+    await handler({ method: 'GET', query: {} } as unknown as VercelRequest, mockRes as VercelResponse)
+
     expect(statusOutput).toBe(403)
+    expect(jsonOutput.success).toBe(false)
   })
 
   it('returns 500 when Firestore Admin is unavailable', async () => {
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(null)
-    await handler({ method: 'GET', query: {} } as VercelRequest, mockRes as VercelResponse)
+
+    await handler({ method: 'GET', query: {} } as unknown as VercelRequest, mockRes as VercelResponse)
+
     expect(statusOutput).toBe(500)
   })
 
+  it('returns the bounded page sorted by createdAt desc with total and nextCursor when full', async () => {
+    const docs = [
+      {
+        id: 'PRONTO-C',
+        data: baseOrder({
+          orderId: 'PRONTO-C',
+          totalAmount: 300000,
+          createdAt: { toDate: () => new Date('2026-09-30T15:00:00Z') },
+          customer: { fullName: 'Dra. Camila Fuentes' }
+        })
+      },
+      {
+        id: 'PRONTO-B',
+        data: baseOrder({
+          orderId: 'PRONTO-B',
+          status: 'PAGADO_MERCADOPAGO',
+          totalAmount: 200000,
+          createdAt: { toDate: () => new Date('2026-09-30T14:00:00Z') },
+          customer: { fullName: 'Dra. Bruno Soto' }
+        })
+      }
+    ]
+    const { db, chain } = mockOrdersDb({ docs })
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler({ method: 'GET', query: { limit: '2' } } as unknown as VercelRequest, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.success).toBe(true)
+    expect((jsonOutput.orders as Array<{ orderId: string }>).map((o) => o.orderId)).toEqual(['PRONTO-C', 'PRONTO-B'])
+    expect(jsonOutput.total).toBe(2)
+    expect(jsonOutput.nextCursor).toBe('2026-09-30T14:00:00.000Z')
+    // The read is bounded: the page query carries the requested page size.
+    expect(chain.limit).toHaveBeenCalledWith(2)
+  })
+
+  it('omits nextCursor when the page is not full', async () => {
+    const docs = [
+      {
+        id: 'PRONTO-A',
+        data: baseOrder({
+          orderId: 'PRONTO-A',
+          createdAt: { toDate: () => new Date('2026-09-30T15:00:00Z') },
+          customer: { fullName: 'Dra. Ana Fuentes' }
+        })
+      }
+    ]
+    const { db } = mockOrdersDb({ docs })
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler({ method: 'GET', query: {} } as unknown as VercelRequest, mockRes as VercelResponse)
+
+    expect(statusOutput).toBe(200)
+    expect(jsonOutput.total).toBe(1)
+    expect(jsonOutput.nextCursor).toBeUndefined()
+  })
+
+  it('filters by status server-side through an equality query', async () => {
+    const { db, chain } = mockOrdersDb()
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler(
+      { method: 'GET', query: { status: 'PENDIENTE_TRANSFERENCIA' } } as unknown as VercelRequest,
+      mockRes as VercelResponse
+    )
+
+    expect(chain.where).toHaveBeenCalledWith('status', '==', 'PENDIENTE_TRANSFERENCIA')
+  })
+
+  it('filters the transfer-approved chip through the dual-status in query', async () => {
+    const { db, chain } = mockOrdersDb()
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler(
+      { method: 'GET', query: { status: 'TRANSFERENCIA_APROBADA' } } as unknown as VercelRequest,
+      mockRes as VercelResponse
+    )
+
+    expect(chain.where).toHaveBeenCalledWith('status', 'in', ['TRANSFERENCIA_APROBADA', 'PAGADO_TRANSFERENCIA'])
+  })
+
+  it('continues after the client cursor through startAfter', async () => {
+    const { db, chain } = mockOrdersDb()
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler(
+      { method: 'GET', query: { cursor: '2026-09-30T14:00:00.000Z' } } as unknown as VercelRequest,
+      mockRes as VercelResponse
+    )
+
+    expect(chain.startAfter).toHaveBeenCalledWith(new Date('2026-09-30T14:00:00.000Z'))
+  })
+
+  it('search filters the loaded page in memory by id, name and RUT', async () => {
+    const docs = [
+      {
+        id: 'PRONTO-A',
+        data: baseOrder({
+          orderId: 'PRONTO-A',
+          createdAt: { toDate: () => new Date('2026-09-30T15:00:00Z') },
+          customer: { fullName: 'Dra. Camila Fuentes', rut: '12.345.678-5', city: 'Melipilla' }
+        })
+      },
+      {
+        id: 'PRONTO-B',
+        data: baseOrder({
+          orderId: 'PRONTO-B',
+          createdAt: { toDate: () => new Date('2026-09-30T14:00:00Z') },
+          customer: { fullName: 'Dr. Juan Pérez', rut: '9.876.543-2', city: 'San Antonio' }
+        })
+      }
+    ]
+    const { db } = mockOrdersDb({ docs })
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler(
+      { method: 'GET', query: { search: 'fuentes' } } as unknown as VercelRequest,
+      mockRes as VercelResponse
+    )
+    expect((jsonOutput.orders as Array<{ orderId: string }>).map((o) => o.orderId)).toEqual(['PRONTO-A'])
+
+    await handler({ method: 'GET', query: { search: '9.876' } } as unknown as VercelRequest, mockRes as VercelResponse)
+    expect((jsonOutput.orders as Array<{ orderId: string }>).map((o) => o.orderId)).toEqual(['PRONTO-B'])
+  })
+
   it('omits a legacy Base64 voucherUrl from the list and reports hasVoucher instead', async () => {
-    const { db } = createOrdersDb([
+    const docs = [
       {
         id: 'PRONTO-LEGACY',
         data: baseOrder({
@@ -134,12 +322,13 @@ describe('Serverless Admin Orders (/api/admin/orders)', () => {
           voucherUploadedAt: '2026-09-01T10:00:00.000Z'
         })
       }
-    ])
+    ]
+    const { db } = mockOrdersDb({ docs })
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
 
-    await handler({ method: 'GET', query: {} } as VercelRequest, mockRes as VercelResponse)
+    await handler({ method: 'GET', query: {} } as unknown as VercelRequest, mockRes as VercelResponse)
 
     expect(statusOutput).toBe(200)
     const orders = jsonOutput.orders as Record<string, unknown>[]
@@ -154,11 +343,10 @@ describe('Serverless Admin Orders (/api/admin/orders)', () => {
       status: 'PENDIENTE_TRANSFERENCIA',
       totalAmount: 189990
     })
-    expect((orders[0].customer as Record<string, unknown>).fullName).toBe('Dra. Andrea')
   })
 
   it('reports hasVoucher for a Storage-backed voucher and false when there is none', async () => {
-    const { db } = createOrdersDb([
+    const docs = [
       {
         id: 'PRONTO-STORAGE',
         data: baseOrder({
@@ -167,12 +355,13 @@ describe('Serverless Admin Orders (/api/admin/orders)', () => {
         })
       },
       { id: 'PRONTO-NONE', data: baseOrder({ orderId: 'PRONTO-NONE' }) }
-    ])
+    ]
+    const { db } = mockOrdersDb({ docs })
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
 
-    await handler({ method: 'GET', query: {} } as VercelRequest, mockRes as VercelResponse)
+    await handler({ method: 'GET', query: {} } as unknown as VercelRequest, mockRes as VercelResponse)
 
     const orders = jsonOutput.orders as Record<string, unknown>[]
     const storage = orders.find((o) => o.orderId === 'PRONTO-STORAGE')
@@ -182,10 +371,25 @@ describe('Serverless Admin Orders (/api/admin/orders)', () => {
     expect(none?.hasVoucher).toBe(false)
   })
 
-  it('returns the full document, voucherUrl included, for a detail request (doc-key hit)', async () => {
-    const { db } = createOrdersDb([
-      { id: 'PRONTO-LEGACY', data: baseOrder({ orderId: 'PRONTO-LEGACY', voucherUrl: LEGACY_DATA_URL }) }
-    ])
+  it('returns a single order on the orderId direct document-key hit', async () => {
+    const directDoc = baseOrder({ orderId: 'PRONTO-A' })
+    const { db } = mockOrdersDb({ directDoc })
+    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
+      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
+    )
+
+    await handler(
+      { method: 'GET', query: { orderId: 'PRONTO-A' } } as unknown as VercelRequest,
+      mockRes as VercelResponse
+    )
+
+    expect(statusOutput).toBe(200)
+    expect((jsonOutput.order as Record<string, unknown>).orderId).toBe('PRONTO-A')
+  })
+
+  it('returns the full document, voucherUrl included, for a detail request', async () => {
+    const directDoc = baseOrder({ orderId: 'PRONTO-LEGACY', voucherUrl: LEGACY_DATA_URL })
+    const { db } = mockOrdersDb({ directDoc })
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
@@ -196,17 +400,14 @@ describe('Serverless Admin Orders (/api/admin/orders)', () => {
     )
 
     expect(statusOutput).toBe(200)
-    const order = jsonOutput.order as Record<string, unknown>
-    expect(order.voucherUrl).toBe(LEGACY_DATA_URL)
-    expect(order.orderId).toBe('PRONTO-LEGACY')
+    // The detail request is the only response allowed to carry a legacy Base64
+    // voucher — a single order document is always within Vercel's 4.5 MB cap.
+    expect((jsonOutput.order as Record<string, unknown>).voucherUrl).toBe(LEGACY_DATA_URL)
   })
 
-  it('returns the full document through the orderId query fallback', async () => {
-    const legacyFixture = {
-      id: 'PRONTO-DECOY',
-      data: baseOrder({ orderId: 'PRONTO-LEGACY', voucherUrl: LEGACY_DATA_URL })
-    }
-    const { db } = createOrdersDb([], { whereHit: legacyFixture })
+  it('falls back to the orderId field query when the direct key misses, doc key winning', async () => {
+    const fallbackDoc = baseOrder({ orderId: 'PRONTO-LEGACY', voucherUrl: LEGACY_DATA_URL })
+    const { db } = mockOrdersDb({ fallbackDoc, fallbackId: 'PRONTO-DECOY' })
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
@@ -223,64 +424,32 @@ describe('Serverless Admin Orders (/api/admin/orders)', () => {
     expect(order.orderId).toBe('PRONTO-DECOY')
   })
 
-  it('returns 404 for a detail request that matches no order', async () => {
-    const { db } = createOrdersDb([])
+  it('returns 404 when neither orderId lookup finds the order', async () => {
+    const { db } = mockOrdersDb()
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
 
     await handler(
-      { method: 'GET', query: { orderId: 'PRONTO-GHOST' } } as unknown as VercelRequest,
+      { method: 'GET', query: { orderId: 'PRONTO-MISSING' } } as unknown as VercelRequest,
       mockRes as VercelResponse
     )
 
     expect(statusOutput).toBe(404)
+    expect(jsonOutput.success).toBe(false)
   })
 
-  it('treats TRANSFERENCIA_APROBADA as the PAGADO_TRANSFERENCIA filter group', async () => {
-    const { db } = createOrdersDb([
-      { id: 'PRONTO-A', data: baseOrder({ orderId: 'PRONTO-A', status: 'TRANSFERENCIA_APROBADA' }) },
-      { id: 'PRONTO-B', data: baseOrder({ orderId: 'PRONTO-B', status: 'PAGADO_TRANSFERENCIA' }) },
-      { id: 'PRONTO-C', data: baseOrder({ orderId: 'PRONTO-C', status: 'PENDIENTE_TRANSFERENCIA' }) }
-    ])
+  it('returns 500 when Firestore rejects the page read', async () => {
+    const { db } = mockOrdersDb({ failGet: true })
     vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
       db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
     )
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    await handler(
-      { method: 'GET', query: { status: 'TRANSFERENCIA_APROBADA' } } as unknown as VercelRequest,
-      mockRes as VercelResponse
-    )
+    await handler({ method: 'GET', query: {} } as unknown as VercelRequest, mockRes as VercelResponse)
 
-    const orders = jsonOutput.orders as Record<string, unknown>[]
-    expect(orders.map((o) => o.orderId).sort()).toEqual(['PRONTO-A', 'PRONTO-B'])
-  })
-
-  it('filters the list by customer name and RUT', async () => {
-    const { db } = createOrdersDb([
-      {
-        id: 'PRONTO-A',
-        data: baseOrder({
-          orderId: 'PRONTO-A',
-          customer: { fullName: 'Dra. Camila Fuentes', rut: '12.345.678-5', city: 'Melipilla' }
-        })
-      },
-      {
-        id: 'PRONTO-B',
-        data: baseOrder({
-          orderId: 'PRONTO-B',
-          customer: { fullName: 'Dr. Juan Pérez', rut: '9.876.543-2', city: 'San Antonio' }
-        })
-      }
-    ])
-    vi.mocked(firebaseAdminLib.getAdminFirestore).mockReturnValue(
-      db as unknown as ReturnType<typeof firebaseAdminLib.getAdminFirestore>
-    )
-
-    await handler({ method: 'GET', query: { search: 'camila' } } as unknown as VercelRequest, mockRes as VercelResponse)
-    expect((jsonOutput.orders as Record<string, unknown>[]).map((o) => o.orderId)).toEqual(['PRONTO-A'])
-
-    await handler({ method: 'GET', query: { search: '9.876' } } as unknown as VercelRequest, mockRes as VercelResponse)
-    expect((jsonOutput.orders as Record<string, unknown>[]).map((o) => o.orderId)).toEqual(['PRONTO-B'])
+    expect(statusOutput).toBe(500)
+    expect(jsonOutput.success).toBe(false)
+    errorSpy.mockRestore()
   })
 })

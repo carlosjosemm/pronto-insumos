@@ -1,90 +1,86 @@
-# Task 4.3 (follow-up): Close the `create-product` Price/Unit Hardening Gap
+# Task 4.2: Backoffice Readiness Sweep
 
-**Branch:** `fix/task-4.3-create-product-price-bound` (primary working tree — no worktree; cut from `main` @ `718a4cd`, which already includes Task 2.15 / PR #42)
-**Status:** **Implemented, reviewed, remediated — gates green; awaiting owner "wrap up and proceed".** 93 suites / 1084 tests (+20). Adversarial review returned *approve with findings* (D1–D3 doc drift, N1 note, P1/P2 pre-existing); no code change required, doc findings remediated.
+**Branch:** `feat/task-4.2-backoffice-readiness-sweep` (Windsurf-managed worktree checkout — the session's sanctioned working environment; no manually-created `git worktree add`)
+**Status:** **Implemented, reviewed, gates green — awaiting owner "wrap up and proceed".** 1059/1059 tests (92 suites) after rebasing onto `origin/main` (Task 2.18 merged mid-task); build / lint / format:check / tsc all clean. Adversarial review returned *approve with findings* (F1–F9); all remediated. See §6.
 
 ---
 
 ## 1. Context & Problem Statement
 
-**Task 4.3 (`PRODUCTION_READINESS_TODO.md`, P1) is already implemented and merged** — PR **#36**, commit `6444114 fix(admin): harden admin state, amount and inventory mutations (Task 4.3)` (merge `ef67f2e`). Its Accept criteria are covered by passing suites (`approve-transfer` 20, `dispatch-order` 18, `resolve-payment-review` 23, `OrderDetailPanel` 22, `update-stock` 8, `update-product` 6, `mark-delivered` 6, `adminAuth` 4, `adminHttp` 4, `toggle-visibility` 4).
+`PRODUCTION_READINESS_TODO.md` §3, Task 4.2 *(P2)* — the backoffice readiness sweep:
 
-**The one real residual** is on the *create* path. 4.3's rule — *"CLP price/total inputs must be finite integers within permitted bounds … never silently `Math.round`"* — was applied to `update-product` and `update-stock`, but **not** to `api/_lib/admin/create-product.ts`, which still coerces with `parseInt(String(...))`:
+> - Add dedicated handler suites for `orders`, `products`, `mark-delivered`, `toggle-visibility` (happy path, auth rejection, method gate, `OPTIONS`, malformed payload; mirror `approve-transfer.test.ts`).
+> - **Bound reads:** `orders.ts:48` loads all orders and slices to 50; `dashboard-stats.ts:49-50` loads all orders/products. `fetchAdminOrders({ cursor })` sends a cursor the server ignores. Add `orderBy('createdAt','desc').limit(n).startAfter(cursor)` and server-side status filtering; keep search on the loaded page or indexed field. Use `count()` aggregations or bounded stats, keeping read/per-page cost in scope without heavy infrastructure.
+> - **Deep links/state:** `AdminOrders` searches only the first 50 although `fetchAdminOrder` exists; refresh selected order after `onOrderUpdated`. Distinguish read failure from an empty list.
+> - **Dashboard definition:** KPI excludes dispatched/delivered paid sales and transfer `approvedAt`, while subtitle says pending preparation; align the KPI and copy.
+> - Relabel placeholder cards in `src/admin/AGENTS.md` §6.1 to 8.5 / suspended 3.1; use `--teal-600` instead of undefined token references in `OrderDetailPanel.tsx:396,409`. Fix `ProductEditModal` prop→state sync effect (`:56-61`, `react-hooks/set-state-in-effect`) with lazy initialization/`key` remount. Stale `AdminOrders.tsx:42` copy remains suspended under 3.3.
 
-| Input | Current behaviour (`create-product`) | `update-product` / `update-stock` |
-| :-- | :-- | :-- |
-| `price: 189.99` | silently becomes **189** | `400` |
-| `price: '189.99'` | silently becomes **189** | `400` (number-only) |
-| `price: '12abc'` | silently becomes **12** | `400` |
-| `price: '1e3'` | silently becomes **1** | `400` |
-| `price: 1_000_000_000` | **accepted** (no ceiling) | `400` (`MAX_CLP`) |
-| `stockCount: 3.5` | silently becomes **3** | `400` |
-| `stockCount: 2_000_000` | **accepted** (no ceiling) | `400` (`MAX_STOCK_UNITS`) |
+Current state (verified against the tree):
 
-So a typo at creation time can persist a catalog price or stock level that the sibling edit handlers would refuse — the exact failure class 4.3 closed everywhere else, and the `999_999_999` / `1_000_000` bounds currently exist as **two private copies** that can drift.
-
-Secondary: the Active Action Board row for 4.3 (`PRODUCTION_READINESS_TODO.md:26`) is still unticked while the detail entry is `[x]` with an as-built note.
-
----
+- **Handler suites:** `mark-delivered.test.ts` (6 cases), `toggle-visibility.test.ts` (4) and `dashboard-stats.test.ts` (2) already exist — the TODO's coverage-gap note is stale for those three. The remaining gap is **`orders` and `products`**: no dedicated suite exercises either handler's `OPTIONS` preflight, method gate, auth rejection, happy path, `orderId` lookup or error paths.
+- **Unbounded reads:** `api/_lib/admin/orders.ts:47` reads the whole `orders` collection on every list view, sorts/filters in memory, then slices to 50 — read cost grows with volume and the payload risks Vercel's 4.5 MB response cap (the same risk Task 2.15 records for legacy Base64 vouchers). `dashboard-stats.ts:48-49` reads all orders + all products on every dashboard load. `fetchAdminOrders({ cursor })` (`src/admin/services/adminApi.ts:60`) sends a `cursor` the server never reads.
+- **Deep links/state:** `AdminOrders.tsx:22-24` only preselects the deep-linked order when it appears in the first page, although `fetchAdminOrder` exists; after `onOrderUpdated` the component reloads the list but leaves `selectedOrder` holding the stale pre-update object; a read failure is swallowed (`catch` only logs) so the UI renders an empty table indistinguishable from a genuinely empty queue.
+- **Dashboard KPI:** `dashboard-stats.ts:62` computes `paidAtRaw = data.paidAt || (paid-status ? data.createdAt : null)` and `:71` sums only orders whose **current** status is one of the three paid states — so money confirmed today drops out of "Ventas Hoy" the moment the order ships, and a transfer approved today counts on its creation date (`approvedAt` is never consulted). The subtitle says "Facturación neta confirmada hoy" while the value is neither all confirmed-today money nor net-of-IVA.
+- **Small fixes:** `OrderDetailPanel.tsx:461,474` reference `var(--primary)`, which `admin.css` never defines (both declarations silently drop); `ProductEditModal.tsx:56-82` populates form fields from `product` inside a `useEffect` — the synchronous-setState-in-effect pattern the storefront forbids.
 
 ## 2. Human Action Items & Placeholders (TODO for Human)
 
-- **None.** No new credentials, secrets or environment variables; nothing added to `.env.example`.
-- **Unchanged human gate (4.3):** the bank-deposit / Mercado Pago-ledger verification before approving a transfer or a review case remains a manual operator step (no bank API exists) — this follow-up does not alter it.
-
----
+**Resolved (2026-09-30):** the composite index `orders(status ASC, createdAt DESC)` was declared in `firestore.indexes.json`, registered in `firebase.json`, deployed with `firebase deploy --only firestore:indexes --project pronto-insumos` and independently verified live via `firebase firestore:indexes` (fields: `status ASC`, `createdAt DESC`, implicit `__name__ DESC`; density `SPARSE_ALL`). Firestore builds new indexes asynchronously — the definition is registered and the build completes in the background, so the first status-filtered request may need to wait for the build to reach `Ready` before it succeeds. The pre-existing `abuse_counters.expiresAt` TTL field override was preserved (no `--force`). No new credentials or `.env.example` entries. (Task 8.5 — monitoring/analytics — and suspended 3.1 — freight — remain separate roadmap rows; this task only relabels the placeholder cards to point at them.)
 
 ## 3. Proposed Changes
 
-- **[NEW]** `api/_lib/admin/adminLimits.ts` — one shared authority for the numeric bounds:
-  - `MAX_CLP = 999_999_999` (CLP has no cents) and `MAX_STOCK_UNITS = 1_000_000`.
-  - `isValidClpAmount(value): value is number` → `number`, integer, `1…MAX_CLP`.
-  - `isValidStockUnits(value): value is number` → `number`, integer, `0…MAX_STOCK_UNITS`.
-  - Self-contained header comment on **why it is shared**: three handlers must reject exactly the same values; three private copies drift and let one endpoint accept what another refuses.
-- **[MODIFY]** `api/_lib/admin/create-product.ts` — replace both `parseInt(String(price), 10)` / `parseInt(String(stockCount), 10)` calls with the shared guards. **Number-only**, matching `update-product`/`update-stock` (the admin UI already sends `Math.round(price)` / `Math.max(0, Math.round(stockCount))` numbers — `ProductEditModal.tsx:124-125`). `stockCount` keeps its `= 10` default when the key is omitted. Error messages mirror the sibling handlers (they include the bound).
-- **[MODIFY]** `api/_lib/admin/update-product.ts` — import `MAX_CLP` + `isValidClpAmount` from the shared module; drop the private constant. Behaviour and message unchanged.
-- **[MODIFY]** `api/_lib/admin/update-stock.ts` — import `MAX_STOCK_UNITS` + `isValidStockUnits`; drop the private constant. Behaviour and message unchanged.
-- **[MODIFY]** `PRODUCTION_READINESS_TODO.md` — tick the 4.3 board row and append one line to the 4.3 as-built recording this follow-up (create-path parity + the shared bounds module).
-- **[MODIFY]** `api/AGENTS.md` — §7 table: note the shared `adminLimits.ts` bounds on the `create-product` / `update-product` / `update-stock` rows.
+### 3.1 `api/_lib/admin/orders.ts` — cursor pagination + server-side status filtering
 
-### Non-goals
+- List path: `orderBy('createdAt','desc').limit(n)` with `startAfter(parsedCursor)` — the server honors the `cursor` `fetchAdminOrders` already sends (parsed from its ISO string to a `Date`; `createdAt` is a server `Timestamp`, so the field is orderable and the cursor is a valid start-after value).
+- Server-side status filtering: a single status becomes `where('status','==',status)`; the `TRANSFERENCIA_APROBADA` chip keeps its dual-status semantics through `where('status','in',['TRANSFERENCIA_APROBADA','PAGADO_TRANSFERENCIA'])`. An equality-family filter on `status` combined with the sort on a different field (`createdAt`) requires the manual composite index `orders(status ASC, createdAt DESC)` — declared in `firestore.indexes.json`, deployed with `firebase deploy --only firestore:indexes`; without it Firestore answers `failed-precondition` and the handler returns `500`.
+- Search stays client-side on the loaded page (per the task: "keep search on the loaded page or indexed field") — the in-memory search block is unchanged, it just operates on the bounded page.
+- `total` becomes the filtered-set count via a `count()` aggregation on the same filtered query (index-entry reads only, no document transfer) so the UI's `total` stays meaningful under pagination; `nextCursor` is the last loaded document's `createdAt` ISO string.
 
-- No new dependency, no UI change, no `firestore.rules` / schema change, no other handler touched.
-- Not re-opening 4.3's already-merged guards; this is strictly the missing create-path parity.
+### 3.2 `api/_lib/admin/dashboard-stats.ts` — bounded stats + KPI alignment
 
-### Deliberate behaviour change (called out for approval)
+- `pendingOrders`: `where('status','in',[pending statuses])` + `count()` aggregation — the exact all-time count with zero document reads, so an old unresolved order (the Task 8.13 case) can never disappear from the KPI.
+- `lowStockProducts`: bounded `where('stockCount','<=',5)` read (the candidate set is inherently small for one store) + the existing published filter applied client-side — exact, index-free.
+- `salesToday` + `ordersThisMonth`: one bounded recent-orders read (`orderBy('createdAt','desc').limit(400)`) + the existing client-side Chile-date math. KPI fix: `settledAt = data.paidAt || data.approvedAt` (falling back to `createdAt` only for paid statuses without a marker) and the settled check accepts orders carrying a settlement marker regardless of their current fulfillment status — money confirmed today stays in "Ventas Hoy" after shipping, and transfer approvals count on `approvedAt`.
+- Documented edge: orders older than the bounded window cannot be today's sales or this month's orders by definition; a months-old order approved today is caught while it is inside the window (realistic for one dental supplier) — recorded in the as-built docs.
 
-`create-product` stops accepting **numeric strings** (`'8990'`). The sole consumer (`ProductEditModal` → `createProductDetails`) already sends numbers, so no client breaks; the tightening is what makes the three handlers consistent.
+### 3.3 `src/admin/components/AdminOrders.tsx` — deep links, selection refresh, failure-vs-empty
 
----
+- Deep-link fetch: when `initialOrderId` is set and the order is not in the first page, fall back to `fetchAdminOrder(initialOrderId)` so `#orders/<id>` opens the inspector from any queue depth.
+- Selection refresh: after `onOrderUpdated`, reload the list **and** re-find the selected order by id, replacing the stale object (the panel then renders the updated status instead of the pre-action snapshot).
+- Failure-vs-empty: a read failure sets an error state rendered as a retryable banner above the table — an empty queue and a failed load are no longer the same screen.
+
+### 3.4 `src/admin/components/AdminDashboard.tsx` — KPI copy alignment
+
+- "Ventas Hoy" subtitle: "Facturación neta confirmada hoy" → "Facturación confirmada hoy (IVA incluido)" — the value is `totalAmount` (IVA-inclusive), so the copy stops calling it net.
+
+### 3.5 Small fixes
+
+- `src/admin/components/OrderDetailPanel.tsx` — `var(--primary)` → `var(--teal-600)` at both sites (the `History` icon colour and the audit-timeline `borderLeft`), resolving the known broken token from `src/admin/AGENTS.md` §2.3.
+- `src/admin/components/ProductEditModal.tsx` — drop the prop→state sync `useEffect`; seed the form fields with lazy `useState` initializers from `product` and let the parent's per-open remount (plus `key={product?.id ?? 'create'}`) re-seed on product switch — the same convention `StockAdjustModal` already follows.
+- `src/admin/AGENTS.md` §6.1 — relabel the placeholder surfaces to their real roadmap anchors: the two analytics cards → Task 8.5 (monitoring/analytics if useful), the shipping-rates card → suspended 3.1 (no freight below `$150.000`, owner decision). §6.2's `ProductEditModal` known-issue entry is updated to "as built" once the effect is gone.
+- ❌ NOT touched: `AdminOrders.tsx:42` header copy (`…Melipilla y RM`) — suspended under 3.3.
 
 ## 4. Robust Unit Testing Plan (MANDATORY)
 
-Boundaries mocked at the edge (`adminAuth`, `firebaseAdmin`), mirroring the existing doubles. **Suite count stays 93** (extend existing files, no new suite).
+Vitest suites in `src/tests/` (every network/SDK boundary mocked; never a real outbound request):
 
-| Suite | Cases |
-| :-- | :-- |
-| `src/tests/api/admin/create-product.test.ts` **(extend)** | `it.each` over rejected prices → `400` + `precio`: fractional `189.99`, `NaN`, `Infinity`, `0`, `-500`, out-of-range `1_000_000_000`, and the junk strings the old `parseInt` accepted (`'189.99'`, `'12abc'`, `'1e3'`, `''`); boundary **accepted**: `MAX_CLP` → `200`; `it.each` over rejected `stockCount` → `400` + `stock`: fractional `3.5`, negative `-1`, out-of-range `1_000_001`, `NaN`, `'15'`; omitted `stockCount` still defaults to `10`; the existing create/audit happy path is unchanged |
-| `src/tests/api/admin/update-product.test.ts` **(extend)** | boundary **accepted**: `price: MAX_CLP` → `200` (pins the shared ceiling); existing fractional/NaN/out-of-range rejections stay green |
-| `src/tests/api/admin/update-stock.test.ts` **(extend)** | boundary **accepted**: `newStock: MAX_STOCK_UNITS` → `200`; existing rejection table stays green |
+| Suite | Change | Cases |
+| :-- | :-- | :-- |
+| `api/admin/orders.test.ts` | NEW | `OPTIONS` preflight → `200`; non-GET → `405`; unauthenticated → `403`; happy path returns the bounded page sorted by `createdAt` desc with `total` + `nextCursor`; `orderId` direct hit → `200`, field fallback → `200`, miss → `404`; server-side status filter (single `==` and the dual-status `in` chip); search filters the loaded page; Firestore rejection → `500`. |
+| `api/admin/products.test.ts` | NEW | `OPTIONS` → `200`; non-GET → `405`; unauthenticated → `403`; happy path returns products with `id` + `total`; category filter (`all` passthrough + exact match); Firestore rejection → `500`. |
+| `api/admin/dashboard-stats.test.ts` | MODIFY | Existing two cases re-pointed at the new bounded double; new: `pendingOrders` counted through the status-in `count()` aggregation (an old pending order inside the double is counted); `lowStockProducts` from the bounded low-stock read + published filter (a paused product with low stock is excluded); KPI fix — a settled order that has since been dispatched still counts in `salesToday`, and a transfer approval counts on `approvedAt` (not `createdAt`). |
+| `admin/AdminOrders.test.tsx` | NEW | Deep link: an `initialOrderId` present in the first page preselects it; one absent from the first page triggers the `fetchAdminOrder` fallback and opens the panel; `onOrderUpdated` reloads and re-selects the updated order; a read failure renders the retryable banner (distinct from an empty list); the retry action re-runs the load. |
+| `admin/AdminDashboard.test.tsx` | MODIFY | "Ventas Hoy" subtitle asserts the aligned copy. |
+| `admin/ProductEditModal.test.tsx` | MODIFY | Existing cases re-pointed at the lazy-initializer shape; new: opening the modal for product A then product B re-seeds the fields (key remount); create mode seeds the defaults. |
 
-Zero-regression: the full 93-suite / 1064-test baseline plus the new cases must pass.
+**Mocking strategy:** Firestore Admin doubles per handler (the `approve-transfer.test.ts` shape); `fetchAdminOrders`/`fetchAdminOrder` mocked in UI suites; `global.fetch` at the boundary where the adapter is exercised.
 
----
+**Zero Regression Policy:** the full suite (1028+ tests, 89+ suites) stays green.
 
 ## 5. As-Built Documentation & Roadmap Sync Plan
 
-- `api/AGENTS.md` §7 — the three handler rows reference the shared `adminLimits.ts` bounds.
-- `PRODUCTION_READINESS_TODO.md` — 4.3 board row `[x]`; as-built line notes the create-path parity.
-
-## 6. Risks & Edge Cases
-
-- **Number-only tightening** — only reachable breakage is a non-UI caller sending strings; documented and flagged above.
-- **Refactor of two merged handlers** — behaviour-preserving by construction (same guard, same message, bound imported rather than re-declared); their existing suites are the regression net.
-- **`stockCount` default** — applied before validation, so an omitted key still yields `10` rather than a `400`.
-
-## 7. Verification
-
-`pnpm test` (expect 93 suites, >1064 tests), `pnpm build`, `pnpm lint`, `pnpm format:check`,
-`pnpm exec tsc --noEmit` + the documented `api/` strict check. Then the adversarial `code-review`
-subagent, remediation, as-built docs, roadmap tick, commit + PR.
+- `src/admin/AGENTS.md` — §6.1 relabel (8.5 / suspended 3.1); §6.2 entries updated to "as built" (`ProductEditModal` effect gone, `--primary` resolved); the AdminOrders deep-link/refresh/failure contract documented.
+- `api/AGENTS.md` — the orders/dashboard-stats handlers' bounded-read contracts (cursor pagination, server-side status filter, count() aggregation) documented in the admin-handler section.
+- `src/tests/AGENTS.md` — the new/modified suites catalogued.
+- `PRODUCTION_READINESS_TODO.md` §3 Task 4.2 — "As built" entry + `[x]`; refresh the §1 board row.
+- `walkthrough.md` — branch, commit, PR URL, verification results, review-finding dispositions (at wrap-up).
